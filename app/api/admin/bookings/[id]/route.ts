@@ -4,62 +4,84 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import type { BookingStatus } from '@/lib/supabase'
 
 export async function PATCH(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+req: NextRequest,
+context: { params: Promise<{ id: string }> }
 ) {
-  if (!requireAdminAuth(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+if (!requireAdminAuth(req)) {
+return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
 
-  const { id } = params
-  const body = await req.json()
-  const { status, notes } = body as { status?: BookingStatus; notes?: string }
+const { id } = await context.params
 
-  if (!status) {
-    return NextResponse.json({ error: 'status is required' }, { status: 400 })
-  }
+const body = await req.json()
+const { status, notes } = body as {
+status?: BookingStatus
+notes?: string
+}
 
-  // Append to status_history
-  const { data: existing } = await supabaseAdmin
-    .from('bookings')
-    .select('status_history')
-    .eq('id', id)
-    .single()
+if (!status) {
+return NextResponse.json(
+{ error: 'status is required' },
+{ status: 400 }
+)
+}
 
-  const history = existing?.status_history ?? []
-  history.push({ status, timestamp: new Date().toISOString(), note: notes ?? null })
+const { data: existing } = await supabaseAdmin
+.from('bookings')
+.select('status_history')
+.eq('id', id)
+.single()
 
-  const { data, error } = await supabaseAdmin
-    .from('bookings')
-    .update({ status, notes: notes ?? null, status_history: history })
-    .eq('id', id)
-    .select()
-    .single()
+const history = existing?.status_history ?? []
+history.push({
+status,
+timestamp: new Date().toISOString(),
+note: notes ?? null,
+})
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+const { data, error } = await supabaseAdmin
+.from('bookings')
+.update({
+status,
+notes: notes ?? null,
+status_history: history,
+})
+.eq('id', id)
+.select()
+.single()
 
-  return NextResponse.json({ booking: data })
+if (error) {
+return NextResponse.json(
+{ error: error.message },
+{ status: 500 }
+)
+}
+
+return NextResponse.json({ booking: data })
 }
 
 export async function GET(
-  req: NextRequest,
-  { params }: { params: { id: string } }
+req: NextRequest,
+context: { params: Promise<{ id: string }> }
 ) {
-  if (!requireAdminAuth(req)) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+if (!requireAdminAuth(req)) {
+return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+}
 
-  const { data, error } = await supabaseAdmin
-    .from('bookings')
-    .select('*')
-    .eq('id', params.id)
-    .single()
+const { id } = await context.params
 
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 })
-  }
+const { data, error } = await supabaseAdmin
+.from('bookings')
+.select('*')
+.eq('id', id)
+.single()
 
-  return NextResponse.json({ booking: data })
+if (error) {
+return NextResponse.json(
+{ error: error.message },
+{ status: 500 }
+)
+}
+
+return NextResponse.json({ booking: data })
 }
