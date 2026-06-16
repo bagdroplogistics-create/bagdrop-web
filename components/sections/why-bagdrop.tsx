@@ -22,8 +22,8 @@ const REASONS = [
     Icon:        ShieldCheck,
     stat:        '₹50K',
     statLabel:   'standard insurance coverage',
-    title:       'Insured, every time',
-    description: 'Standard insurance is included with every booking. Upgrade to premium coverage for high-value items like wedding attire.',
+    title:       'Insure, every time',
+    description: 'Standard insurance is included with every booking. Get your Marine Insurance as per insurance policy.',
   },
   {
     Icon:        Clock,
