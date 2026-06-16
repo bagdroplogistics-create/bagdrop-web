@@ -1,0 +1,22 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Cabin bag">
+  <!-- Telescoping handle -->
+  <rect x="38" y="6" width="24" height="4" rx="2" fill="#EAEAEA" stroke="#545454" stroke-width="1.5"/>
+  <line x1="43" y1="10" x2="43" y2="23" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="57" y1="10" x2="57" y2="23" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Carry handle arch -->
+  <path d="M41 23 Q41 17 50 17 Q59 17 59 23" stroke="#545454" stroke-width="2" stroke-linecap="round"/>
+  <!-- Body -->
+  <rect x="17" y="23" width="66" height="62" rx="8" fill="white" stroke="#545454" stroke-width="2"/>
+  <!-- Zipper inset -->
+  <rect x="22" y="28" width="56" height="52" rx="6" fill="none" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Horizontal divider -->
+  <line x1="17" y1="58" x2="83" y2="58" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Zip pull -->
+  <circle cx="50" cy="58" r="3" fill="#FF6300"/>
+  <!-- Wheel housings -->
+  <rect x="21" y="82" width="14" height="6" rx="3" fill="#EAEAEA" stroke="#545454" stroke-width="1.5"/>
+  <rect x="65" y="82" width="14" height="6" rx="3" fill="#EAEAEA" stroke="#545454" stroke-width="1.5"/>
+  <!-- Wheel hubs -->
+  <circle cx="28" cy="85" r="2" fill="#FF6300"/>
+  <circle cx="72" cy="85" r="2" fill="#FF6300"/>
+</svg>

@@ -1,0 +1,21 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Oversized luggage">
+  <!-- Handle bar -->
+  <rect x="32" y="4" width="36" height="5" rx="2.5" fill="#FF6300"/>
+  <!-- Handle lines -->
+  <line x1="39" y1="9" x2="39" y2="19" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="61" y1="9" x2="61" y2="19" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Body (tall + wide = oversized) -->
+  <rect x="7" y="19" width="86" height="74" rx="10" fill="white" stroke="#545454" stroke-width="2"/>
+  <!-- Inset frame -->
+  <rect x="12" y="24" width="76" height="64" rx="8" fill="none" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Diagonal orange strap -->
+  <line x1="12" y1="24" x2="88" y2="88" stroke="#FF6300" stroke-width="3" stroke-linecap="round" opacity="0.35"/>
+  <!-- Strap buckle — horizontal center -->
+  <rect x="43" y="50" width="14" height="8" rx="2" fill="none" stroke="#FF6300" stroke-width="2"/>
+  <line x1="50" y1="50" x2="50" y2="58" stroke="#FF6300" stroke-width="1.5"/>
+  <!-- Heavy-duty wheels -->
+  <circle cx="16" cy="90" r="5.5" fill="#EAEAEA" stroke="#545454" stroke-width="2"/>
+  <circle cx="84" cy="90" r="5.5" fill="#EAEAEA" stroke="#545454" stroke-width="2"/>
+  <circle cx="16" cy="90" r="2.5" fill="#FF6300"/>
+  <circle cx="84" cy="90" r="2.5" fill="#FF6300"/>
+</svg>

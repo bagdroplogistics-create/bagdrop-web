@@ -1,0 +1,260 @@
+// ─────────────────────────────────────────────────────────────
+// BAGDROP — Application Constants
+// Single source of truth for static config used across the app.
+// ─────────────────────────────────────────────────────────────
+
+export const SITE = {
+  name: 'Bagdrop',
+  url: 'https://bagdrop.co',
+  tagline: 'Travel Light. Arrive Stress-Free.',
+  description:
+    'Premium luggage delivery for airports, weddings, relocations, and intercity travel across India.',
+  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '919000000000',
+  email: 'hello@bagdrop.co',
+  supportEmail: 'support@bagdrop.co',
+  phone: '+91 90000 00000', // update with real number
+} as const
+
+// ─── Service Types ──────────────────────────────────────────
+export const SERVICE_TYPES = [
+  {
+    id: 'airport-delivery',
+    label: 'Airport Delivery',
+    description: 'Pickup from airport, delivered to your door.',
+    href: '/airport-delivery',
+    icon: 'plane-landing',
+  },
+  {
+    id: 'door-to-door',
+    label: 'Door-to-Door',
+    description: 'From your home to any destination.',
+    href: '/door-to-door',
+    icon: 'home',
+  },
+  {
+    id: 'destination-weddings',
+    label: 'Destination Weddings',
+    description: 'White-glove handling for your big day.',
+    href: '/destination-weddings',
+    icon: 'heart',
+  },
+  {
+    id: 'student-relocation',
+    label: 'Student Relocation',
+    description: 'Skip the airline fees when you move.',
+    href: '/student-relocation',
+    icon: 'graduation-cap',
+  },
+  {
+    id: 'corporate-travel',
+    label: 'Corporate Travel',
+    description: 'Volume rates and dedicated support.',
+    href: '/corporate-travel',
+    icon: 'briefcase',
+  },
+  {
+    id: 'excess-baggage',
+    label: 'Excess Baggage',
+    description: 'Ship it cheaper than the airline charges.',
+    href: '/excess-baggage',
+    icon: 'package',
+  },
+] as const
+
+// ─── Bag Types ──────────────────────────────────────────────
+export type BagTypeId =
+  | 'cabin'
+  | 'medium'
+  | 'large'
+  | 'oversized'
+  | 'sports'
+  | 'wedding'
+
+export const BAG_TYPES: Record<
+  BagTypeId,
+  {
+    id: BagTypeId
+    label: string
+    description: string
+    dimensions: string
+    maxWeight: string
+    basePrice: number
+    svgPath: string
+  }
+> = {
+  cabin: {
+    id: 'cabin',
+    label: 'Cabin Bag',
+    description: 'Small carry-on size',
+    dimensions: 'Up to 55 × 40 × 20 cm',
+    maxWeight: 'Up to 8 kg',
+    basePrice: 499,
+    svgPath: '/icons/bags/cabin.svg',
+  },
+  medium: {
+    id: 'medium',
+    label: 'Medium Suitcase',
+    description: 'Standard checked bag',
+    dimensions: 'Up to 65 × 45 × 25 cm',
+    maxWeight: 'Up to 23 kg',
+    basePrice: 699,
+    svgPath: '/icons/bags/medium.svg',
+  },
+  large: {
+    id: 'large',
+    label: 'Large Suitcase',
+    description: 'Large checked luggage',
+    dimensions: 'Up to 75 × 50 × 30 cm',
+    maxWeight: 'Up to 32 kg',
+    basePrice: 899,
+    svgPath: '/icons/bags/large.svg',
+  },
+  oversized: {
+    id: 'oversized',
+    label: 'Oversized Luggage',
+    description: 'Extra-large items',
+    dimensions: 'Over 75 cm any side',
+    maxWeight: 'Up to 50 kg',
+    basePrice: 1299,
+    svgPath: '/icons/bags/oversized.svg',
+  },
+  sports: {
+    id: 'sports',
+    label: 'Sports Equipment',
+    description: 'Duffel bags, kit bags',
+    dimensions: 'Flexible sizing',
+    maxWeight: 'Up to 30 kg',
+    basePrice: 999,
+    svgPath: '/icons/bags/sports.svg',
+  },
+  wedding: {
+    id: 'wedding',
+    label: 'Wedding Luggage',
+    description: 'Garment bags, wedding attire',
+    dimensions: 'All sizes',
+    maxWeight: 'Up to 20 kg',
+    basePrice: 1499,
+    svgPath: '/icons/bags/wedding.svg',
+  },
+}
+
+// ─── Coverage — Cities & Airport Terminals ──────────────────
+// Add new entries here whenever a route is added to VALID_ROUTES.
+export const COVERAGE_CITIES = [
+  // ── Gujarat ─────────────────────────────────────────────
+  { id: 'ahmedabad',        label: 'Ahmedabad',             code: 'AMD', airport: 'Sardar Vallabhbhai Patel International' },
+  { id: 'baroda',           label: 'Baroda',                code: 'BDQ', airport: null },
+  { id: 'anand',            label: 'Anand',                 code: null,  airport: null },
+  { id: 'dahod',            label: 'Dahod',                 code: null,  airport: null },
+  { id: 'nadiad',           label: 'Nadiad',                code: null,  airport: null },
+
+  // ── Maharashtra ──────────────────────────────────────────
+  { id: 'mumbai',           label: 'Mumbai',                code: 'BOM', airport: 'Chhatrapati Shivaji Maharaj International' },
+  { id: 'mumbai-airport-t2',label: 'Mumbai Airport (T2)',   code: 'BOM', airport: 'Chhatrapati Shivaji Maharaj T2' },
+
+  // ── Delhi / NCR ──────────────────────────────────────────
+  { id: 'delhi',            label: 'Delhi',                 code: 'DEL', airport: 'Indira Gandhi International' },
+  { id: 'delhi-airport-t3', label: 'Delhi Airport (T3)',    code: 'DEL', airport: 'Indira Gandhi International T3' },
+
+  // ── Rajasthan ────────────────────────────────────────────
+  { id: 'jaipur',           label: 'Jaipur',                code: 'JAI', airport: 'Jaipur International' },
+  { id: 'udaipur',          label: 'Udaipur',               code: 'UDR', airport: 'Maharana Pratap Airport' },
+
+  // ── Goa ─────────────────────────────────────────────────
+  { id: 'goa',              label: 'Goa',                   code: 'GOI', airport: 'Manohar International' },
+
+  // ── Karnataka ────────────────────────────────────────────
+  { id: 'bangalore',        label: 'Bangalore',             code: 'BLR', airport: 'Kempegowda International' },
+
+  // ── Telangana ────────────────────────────────────────────
+  { id: 'hyderabad-airport',label: 'Hyderabad Airport',     code: 'HYD', airport: 'Rajiv Gandhi International' },
+] as const
+
+// Derive CityId from the cities list so it stays in sync automatically.
+// booking-types.ts imports this instead of defining its own union.
+export type CityId = (typeof COVERAGE_CITIES)[number]['id']
+
+// ─── Valid Routes ────────────────────────────────────────────
+// Only these from→to pairs are bookable.
+// To add a new route: add one entry here (and ensure both cities
+// exist in COVERAGE_CITIES above).
+export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
+  // Baroda routes
+  { from: 'baroda',           to: 'mumbai-airport-t2' },
+  { from: 'baroda',           to: 'mumbai' },
+  { from: 'baroda',           to: 'delhi-airport-t3' },
+
+  // Ahmedabad routes
+  { from: 'ahmedabad',        to: 'bangalore' },
+  { from: 'ahmedabad',        to: 'delhi' },
+  { from: 'ahmedabad',        to: 'mumbai' },
+  { from: 'ahmedabad',        to: 'mumbai-airport-t2' },
+
+  // Anand routes
+  { from: 'anand',            to: 'mumbai' },
+  { from: 'anand',            to: 'mumbai-airport-t2' },
+
+  // Dahod routes
+  { from: 'dahod',            to: 'hyderabad-airport' },
+
+  // Delhi routes
+  { from: 'delhi',            to: 'udaipur' },
+  { from: 'delhi-airport-t3', to: 'baroda' },
+
+  // Goa routes
+  { from: 'goa',              to: 'mumbai' },
+
+  // Mumbai routes
+  { from: 'mumbai',           to: 'udaipur' },
+  { from: 'mumbai',           to: 'jaipur' },
+
+  // Nadiad routes
+  { from: 'nadiad',           to: 'mumbai-airport-t2' },
+] as const
+
+// ─── Time Slots ──────────────────────────────────────────────
+export const TIME_SLOTS = [
+  { id: 'morning',   label: 'Morning',   range: '7:00 AM – 11:00 AM', icon: 'sunrise' },
+  { id: 'afternoon', label: 'Afternoon', range: '12:00 PM – 4:00 PM', icon: 'sun' },
+  { id: 'evening',   label: 'Evening',   range: '5:00 PM – 9:00 PM',  icon: 'sunset' },
+] as const
+
+// ─── Trust Metrics ───────────────────────────────────────────
+export const TRUST_METRICS = [
+  { value: '12,000+', label: 'Bags Delivered', suffix: '' },
+  { value: '8',       label: 'Cities Covered', suffix: '+' },
+  { value: '98.7',    label: 'On-Time Rate',   suffix: '%' },
+  { value: '4.9',     label: 'Customer Rating', suffix: '/5' },
+] as const
+
+// ─── Navigation ──────────────────────────────────────────────
+export const NAV_LINKS = [
+  { label: 'Services', href: '/services', hasDropdown: true },
+  { label: 'About',    href: '/about',    hasDropdown: false },
+  { label: 'FAQ',      href: '/faq',      hasDropdown: false },
+] as const
+
+// ─── Add-on Services ─────────────────────────────────────────
+export const ADDON_SERVICES = [
+  {
+    id: 'packing',
+    label: 'Professional Packing',
+    description: 'Bubble wrap + secure packing by our team',
+    price: 299,
+    icon: 'package-check',
+  },
+  {
+    id: 'insurance',
+    label: 'Insurance Upgrade',
+    description: 'Coverage up to Rs. 50,000',
+    price: 199,
+    icon: 'shield-check',
+  },
+  {
+    id: 'express',
+    label: 'Express Delivery',
+    description: 'Delivered within 4 hours of pickup',
+    price: 499,
+    icon: 'zap',
+  },
+] as const
