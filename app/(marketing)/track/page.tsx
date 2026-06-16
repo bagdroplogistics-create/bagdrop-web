@@ -1,6 +1,7 @@
 'use client'
 
 import * as React from 'react'
+import { Suspense } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import {
@@ -70,7 +71,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
   )
 }
 
-export default function TrackPage() {
+ function TrackPageContent() {
   const searchParams = useSearchParams()
   const [input, setInput]     = React.useState(searchParams.get('id') ?? '')
   const [result, setResult]   = React.useState<TrackResult | null>(null)
@@ -313,5 +314,12 @@ export default function TrackPage() {
         </AnimatePresence>
       </div>
     </div>
+  )
+}
+export default function TrackPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-cream" />}>
+      <TrackPageContent />
+    </Suspense>
   )
 }
