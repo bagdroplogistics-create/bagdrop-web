@@ -23,7 +23,7 @@ const REASONS = [
     stat:        '₹50K',
     statLabel:   'standard insurance coverage',
     title:       'Insure, every time',
-    description: 'Standard insurance is included with every booking. Get your Marine Insurance as per insurance policy.',
+    description: 'Get your Marine Insurance as per insurance policy.',
   },
   {
     Icon:        Clock,
