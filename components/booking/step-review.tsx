@@ -1,10 +1,9 @@
 'use client'
 
-import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Luggage, MapPin, Calendar, Clock,
-  Plane, User, Mail, Phone, MessageSquare, Send,
+  Plane, User, Mail, MessageSquare, Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -20,25 +19,16 @@ interface StepReviewProps {
 }
 
 export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps) {
-  const [loading, setLoading] = useState(false)
-  const [error,   setError]   = useState<string | null>(null)
   const valid = isStep4Valid(state)
 
-  const fromCity   = COVERAGE_CITIES.find(c => c.id === state.fromCity)
-  const toCity     = COVERAGE_CITIES.find(c => c.id === state.toCity)
-  const service    = SERVICE_TYPES.find(s => s.id === state.serviceId)
-  // timeSlotId is now a free HH:MM string — format to 12-hour for display
-  const timeSlotDisplay = state.timeSlotId
-    ? (() => {
-        try {
-          const [h, m] = state.timeSlotId.split(':').map(Number)
-          const d = new Date(); d.setHours(h, m)
-          return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
-        } catch { return state.timeSlotId }
-      })()
-    : '—'
-  const addons     = ADDON_SERVICES.filter(a => state.addonIds.includes(a.id as never))
-  const activeBags = state.bags.filter(b => b.quantity > 0)
+  const fromCity  = COVERAGE_CITIES.find(c => c.id === state.fromCity)
+  const toCity    = COVERAGE_CITIES.find(c => c.id === state.toCity)
+  const service   = SERVICE_TYPES.find(s => s.id === state.serviceId)
+
+  // timeSlotId is already an AM/PM display string (e.g. "09:00 AM – 12:00 PM")
+  const timeSlotDisplay = state.timeSlotId ?? '—'
+  const addons          = ADDON_SERVICES.filter(a => state.addonIds.includes(a.id as never))
+  const activeBags      = state.bags.filter(b => b.quantity > 0)
 
   const formattedDate = state.date
     ? new Date(state.date + 'T00:00:00').toLocaleDateString('en-IN', {
@@ -46,16 +36,9 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
       })
     : ''
 
-  async function handleSubmit() {
-    if (!valid || loading) return
-    setError(null)
-    setLoading(true)
-    try {
-      onBook()
-    } catch (err) {
-      setLoading(false)
-      setError(err instanceof Error ? err.message : 'Something went wrong.')
-    }
+  function handleSubmit() {
+    if (!valid) return
+    onBook() // triggers OTP modal in booking-engine
   }
 
   return (
@@ -68,7 +51,9 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
     >
       <div>
         <h2 className="font-display text-lg font-semibold text-text-primary">Review &amp; confirm</h2>
-        <p className="mt-1 text-sm text-text-muted">Fill in your details and we will get in touch to confirm your booking.</p>
+        <p className="mt-1 text-sm text-text-muted">
+          Fill in your details. You'll verify your mobile number on the next step before we confirm.
+        </p>
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -84,12 +69,6 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             id="email" label="Email address" icon={Mail} required
             type="email" placeholder="priya@example.com"
             value={state.email} onChange={v => onChange({ email: v })}
-          />
-          <FormField
-            id="phone" label="Phone number" icon={Phone} required
-            type="tel" placeholder="98765 43210"
-            value={state.phone} onChange={v => onChange({ phone: v })}
-            hint="10-digit Indian mobile number"
           />
           <FormField
             id="notes" label="Special instructions" icon={MessageSquare}
@@ -111,7 +90,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             )}
             <div className="my-2 border-t border-border" />
             {activeBags.map(b => (
-              <SummaryRow key={b.type} icon={Luggage} label={BAG_TYPES[b.type].label} value={'\xd7' + b.quantity} />
+              <SummaryRow key={b.type} icon={Luggage} label={BAG_TYPES[b.type].label} value={'×' + b.quantity} />
             ))}
             {addons.length > 0 && (
               <>
@@ -123,41 +102,25 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             )}
           </div>
 
-          {error && (
-            <motion.p
-              className="rounded-xl bg-red-50 border border-red-200 p-3 text-sm text-red-600"
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              role="alert"
-            >
-              {error}
-            </motion.p>
-          )}
-
           <Button
             variant="primary"
             size="xl"
             className="w-full group"
             onClick={handleSubmit}
-            disabled={!valid || loading}
-            loading={loading}
+            disabled={!valid}
           >
-            {!loading && (
-              <>
-                <Send className="h-4 w-4" />
-                Confirm Booking Request
-              </>
-            )}
+            <Send className="h-4 w-4" />
+            Confirm Booking
           </Button>
 
           <p className="text-center text-xs text-text-muted">
-            No payment required now &middot; Our team will call to confirm &middot; 100% free to request
+            Mobile verification required at next step &middot; No payment now
           </p>
         </div>
       </div>
 
       <div className="pt-2">
-        <Button variant="secondary" size="lg" onClick={onBack} className="group" disabled={loading}>
+        <Button variant="secondary" size="lg" onClick={onBack} className="group">
           <ArrowLeft className="h-4 w-4 transition-transform duration-200 group-hover:-translate-x-1" />
           Back to Schedule
         </Button>
