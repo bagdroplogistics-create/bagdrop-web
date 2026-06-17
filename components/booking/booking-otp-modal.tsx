@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Phone, ShieldCheck, ArrowRight, RotateCcw, X } from 'lucide-react'
+import { Mail, ShieldCheck, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Inline 6-box OTP input ────────────────────────────────────
@@ -20,6 +20,11 @@ function OtpBoxes({
       refs.current[Math.min(value.length - 1, 5)]?.focus()
     }
   }, [value])
+
+  // Auto-focus first box when OTP stage appears
+  useEffect(() => {
+    refs.current[0]?.focus()
+  }, [])
 
   function handleChange(idx: number, raw: string) {
     const all = raw.replace(/\D/g, '')
@@ -82,49 +87,59 @@ function OtpBoxes({
 
 // ── Main modal ────────────────────────────────────────────────
 export interface BookingOtpModalProps {
-  /** Called with the verified 10-digit phone (no +91) after OTP success */
-  onVerified: (phone: string) => void
-  /** Called when the user dismisses the modal without verifying */
+  /** Customer email from booking state — OTP is sent here via Resend */
+  email: string
+  /** Called after OTP is verified — parent then submits the booking */
+  onVerified: () => void
+  /** Called when the customer closes the modal without verifying */
   onClose: () => void
 }
 
-type Stage  = 'input' | 'verify'
-type Status = 'idle' | 'loading' | 'verifying' | 'error'
+type Status = 'sending' | 'ready' | 'verifying' | 'error'
 
-export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
-  const [stage,    setStage]    = useState<Stage>('input')
-  const [status,   setStatus]   = useState<Status>('idle')
-  const [error,    setError]    = useState<string | null>(null)
-  const [phone,    setPhone]    = useState('')
-  const [otp,      setOtp]      = useState('')
-  const [shownOtp, setShownOtp] = useState<string | null>(null)
+export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalProps) {
+  const [status,          setStatus]          = useState<Status>('sending')
+  const [error,           setError]           = useState<string | null>(null)
+  const [otp,             setOtp]             = useState('')
+  const [resendCountdown, setResendCountdown] = useState(0)
 
-  const isLoading = status === 'loading' || status === 'verifying'
+  const isLoading = status === 'sending' || status === 'verifying'
 
-  async function handleSendOtp() {
-    const cleaned = phone.replace(/\D/g, '')
-    if (!/^[6-9]\d{9}$/.test(cleaned)) {
-      setError('Please enter a valid 10-digit Indian mobile number.')
-      return
+  // Send OTP via Resend immediately when modal mounts
+  useEffect(() => {
+    sendOtp()
+  }, []) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Resend cooldown countdown
+  useEffect(() => {
+    if (resendCountdown <= 0) return
+    const t = setTimeout(() => setResendCountdown(c => c - 1), 1000)
+    return () => clearTimeout(t)
+  }, [resendCountdown])
+
+  // Auto-verify as soon as all 6 digits are entered
+  useEffect(() => {
+    if (otp.length === 6 && status === 'ready') {
+      handleVerifyOtp()
     }
+  }, [otp]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  async function sendOtp() {
+    setStatus('sending')
     setError(null)
-    setStatus('loading')
+    setOtp('')
     try {
       const res  = await fetch('/api/auth/send-otp', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ type: 'phone', contact: '+91' + cleaned }),
+        body:    JSON.stringify({ type: 'email', contact: email }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to send OTP.')
-      if (data.otp) {
-        setShownOtp(data.otp)
-        setOtp(data.otp) // auto-fill boxes
-      }
-      setStatus('idle')
-      setStage('verify')
+      setStatus('ready')
+      setResendCountdown(30)
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : 'Something went wrong. Please try again.')
+      setError(err instanceof Error ? err.message : 'Could not send OTP. Please try again.')
       setStatus('error')
     }
   }
@@ -134,28 +149,26 @@ export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
     setError(null)
     setStatus('verifying')
     try {
-      const cleaned = phone.replace(/\D/g, '')
       const res  = await fetch('/api/auth/verify-otp', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ type: 'phone', contact: '+91' + cleaned, otp }),
+        body:    JSON.stringify({ type: 'email', contact: email, otp }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Incorrect or expired code.')
-      // Success — pass verified phone to parent; parent will submit the booking
-      onVerified(cleaned)
+      // Verified — let parent create the booking
+      onVerified()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Verification failed. Please try again.')
-      setStatus('error')
+      setStatus('ready')
     }
   }
 
-  function handleReset() {
-    setStage('input')
-    setStatus('idle')
-    setError(null)
-    setOtp('')
-    setShownOtp(null)
+  // Show masked email: priya@example.com → pr***@example.com
+  function maskEmail(e: string) {
+    const [local, domain] = e.split('@')
+    if (!domain) return e
+    return `${local.slice(0, 2)}***@${domain}`
   }
 
   return (
@@ -178,10 +191,12 @@ export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
         transition={{ duration: 0.25, ease: 'easeOut' as const }}
       >
         <div className="rounded-3xl border border-border bg-white p-7 shadow-2xl shadow-black/10">
+
           {/* Close */}
           <button
             onClick={onClose}
-            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-cream hover:text-text-primary"
+            disabled={isLoading}
+            className="absolute right-4 top-4 flex h-8 w-8 items-center justify-center rounded-lg text-text-muted transition-colors hover:bg-cream hover:text-text-primary disabled:opacity-40"
             aria-label="Close"
           >
             <X className="h-4 w-4" />
@@ -193,89 +208,72 @@ export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
               <ShieldCheck className="h-7 w-7" strokeWidth={1.75} />
             </div>
             <h2 className="font-display text-xl font-bold text-text-primary">
-              {stage === 'input' ? 'Verify Mobile Number' : 'Enter your code'}
+              {status === 'sending' ? 'Sending code…' : 'Verify your email'}
             </h2>
             <p className="mt-1.5 text-sm text-text-muted">
-              {stage === 'input'
-                ? 'One quick verification before we confirm your booking.'
-                : `OTP sent to +91 ${phone.replace(/\D/g, '')}`}
+              {status === 'sending'
+                ? 'Sending your verification code via email.'
+                : <>We sent a 6-digit code to<br />
+                    <span className="font-semibold text-text-primary">{maskEmail(email)}</span>
+                  </>
+              }
             </p>
           </div>
 
           <AnimatePresence mode="wait">
 
-            {/* ── Step 1: Phone input ── */}
-            {stage === 'input' && (
+            {/* Sending spinner */}
+            {status === 'sending' && (
               <motion.div
-                key="input"
-                initial={{ opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -12 }}
-                transition={{ duration: 0.2 }}
+                key="sending"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="flex flex-col items-center gap-4 py-6"
+              >
+                <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-brand border-t-transparent" />
+                <p className="text-sm text-text-muted">Please wait…</p>
+              </motion.div>
+            )}
+
+            {/* Send failed */}
+            {status === 'error' && (
+              <motion.div
+                key="send-error"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
                 className="space-y-4"
               >
-                <div className="space-y-1.5">
-                  <label htmlFor="modal-phone" className="block text-sm font-medium text-text-primary">
-                    Mobile number
-                  </label>
-                  <div className="flex gap-2">
-                    <div className="flex h-12 shrink-0 select-none items-center rounded-xl border border-border bg-cream px-3 text-sm font-semibold text-text-secondary">
-                      🇮🇳 +91
-                    </div>
-                    <div className="relative flex-1">
-                      <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted pointer-events-none" strokeWidth={1.75} />
-                      <input
-                        id="modal-phone"
-                        type="tel"
-                        inputMode="numeric"
-                        value={phone}
-                        onChange={e => setPhone(e.target.value.replace(/\D/g, '').slice(0, 10))}
-                        onKeyDown={e => e.key === 'Enter' && handleSendOtp()}
-                        placeholder="98765 43210"
-                        autoComplete="tel-national"
-                        className="input-base pl-10 w-full"
-                      />
-                    </div>
-                  </div>
+                <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-center">
+                  <p className="text-sm font-medium text-red-700">{error}</p>
                 </div>
-
-                {error && <p className="text-sm text-red-500">{error}</p>}
-
                 <button
-                  onClick={handleSendOtp}
-                  disabled={isLoading || phone.replace(/\D/g, '').length !== 10}
-                  className="group flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-6 text-sm font-semibold text-white shadow-lg shadow-brand/25 transition-all hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+                  onClick={sendOtp}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-brand px-6 text-sm font-semibold text-white shadow-lg shadow-brand/25 transition-all hover:opacity-90"
                 >
-                  {status === 'loading'
-                    ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    : <>Get OTP <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" /></>}
+                  Try again
                 </button>
               </motion.div>
             )}
 
-            {/* ── Step 2: OTP verification ── */}
-            {stage === 'verify' && (
+            {/* OTP entry */}
+            {(status === 'ready' || status === 'verifying') && (
               <motion.div
                 key="verify"
-                initial={{ opacity: 0, x: 12 }}
-                animate={{ opacity: 1, x: 0 }}
-                exit={{ opacity: 0, x: -12 }}
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
                 transition={{ duration: 0.2 }}
-                className="space-y-4"
+                className="space-y-5"
               >
-                {/* On-screen OTP display */}
-                {shownOtp && (
-                  <div className="rounded-2xl border-2 border-brand/25 bg-brand-light px-4 py-3 text-center">
-                    <p className="mb-1 text-[10px] font-semibold uppercase tracking-widest text-brand/70">
-                      Your OTP
-                    </p>
-                    <p className="font-mono text-3xl font-bold tracking-[0.3em] text-brand">
-                      {shownOtp}
-                    </p>
-                  </div>
-                )}
+                {/* Inbox hint */}
+                <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-light px-4 py-2.5">
+                  <Mail className="h-4 w-4 text-brand shrink-0" strokeWidth={1.75} />
+                  <span className="text-sm text-brand font-medium">Check your inbox &amp; spam folder</span>
+                </div>
 
-                {/* 6-box input */}
+                {/* 6-box OTP */}
                 <div className="space-y-2">
                   <label className="block text-center text-sm font-medium text-text-primary">
                     Enter 6-digit code
@@ -284,8 +282,18 @@ export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
                   <p className="text-center text-xs text-text-muted">Code expires in 10 minutes</p>
                 </div>
 
-                {error && <p className="text-center text-sm text-red-500">{error}</p>}
+                {/* Inline error */}
+                {error && (
+                  <motion.p
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="text-center text-sm text-red-500"
+                  >
+                    {error}
+                  </motion.p>
+                )}
 
+                {/* Verify button */}
                 <button
                   onClick={handleVerifyOtp}
                   disabled={isLoading || otp.length !== 6}
@@ -293,16 +301,18 @@ export function BookingOtpModal({ onVerified, onClose }: BookingOtpModalProps) {
                 >
                   {status === 'verifying'
                     ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    : <><ShieldCheck className="h-4 w-4" /> Verify &amp; Confirm Booking</>}
+                    : <><ShieldCheck className="h-4 w-4" /> Verify &amp; Confirm Booking</>
+                  }
                 </button>
 
+                {/* Resend */}
                 <button
-                  onClick={handleReset}
-                  disabled={isLoading}
-                  className="flex w-full items-center justify-center gap-1.5 text-xs text-text-muted transition-colors hover:text-brand disabled:opacity-50"
+                  onClick={sendOtp}
+                  disabled={isLoading || resendCountdown > 0}
+                  className="flex w-full items-center justify-center gap-1.5 text-xs text-text-muted transition-colors hover:text-brand disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  Change number / resend code
+                  {resendCountdown > 0 ? `Resend code in ${resendCountdown}s` : 'Resend code'}
                 </button>
               </motion.div>
             )}

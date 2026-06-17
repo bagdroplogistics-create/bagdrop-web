@@ -11,7 +11,7 @@ import { StepReview }       from './step-review'
 import { BookingOtpModal }  from './booking-otp-modal'
 import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
 import { calculatePrice } from '@/lib/pricing'
-import type { BookingState } from '@/lib/booking-types'
+import type { BookingState } from '@/lib/booking-types' // still needed for reducer type
 
 type Action =
   | { type: 'PATCH';     payload: Partial<BookingState> }
@@ -52,19 +52,17 @@ export function BookingEngine() {
     setShowOtpModal(true)
   }
 
-  // Called after OTP is verified successfully.
-  // Submits the booking with the verified mobile number.
-  async function handleOtpVerified(verifiedPhone: string) {
+  // Called after email OTP is verified successfully.
+  // Email is already in booking state — submit immediately.
+  async function handleOtpVerified() {
     setShowOtpModal(false)
     setSubmitting(true)
-
-    const bookingWithPhone: BookingState = { ...booking, phone: verifiedPhone }
 
     try {
       const res = await fetch('/api/bookings', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ booking: bookingWithPhone, pricing }),
+        body:    JSON.stringify({ booking, pricing }),
       })
 
       const data = await res.json()
@@ -73,7 +71,7 @@ export function BookingEngine() {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
           'bagdrop_booking',
-          JSON.stringify({ booking: bookingWithPhone, trackingId: data.trackingId })
+          JSON.stringify({ booking, trackingId: data.trackingId })
         )
       }
 
@@ -90,6 +88,7 @@ export function BookingEngine() {
       <AnimatePresence>
         {showOtpModal && (
           <BookingOtpModal
+            email={booking.email}
             onVerified={handleOtpVerified}
             onClose={() => setShowOtpModal(false)}
           />

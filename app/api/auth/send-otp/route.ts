@@ -57,7 +57,7 @@ export async function POST(req: Request) {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from:    'Bagdrop <onboarding@resend.dev>',
+        from:    'Bagdrop <otp@bagdrop.co>',
         to:      contact.trim(),
         subject: 'Your Bagdrop verification code',
         html: `
@@ -76,7 +76,11 @@ export async function POST(req: Request) {
     if (!emailRes.ok) {
       const errBody = await emailRes.json().catch(() => ({}))
       console.error('[send-otp] Resend error:', errBody)
-      return NextResponse.json({ error: 'Failed to send email. Please try again.' }, { status: 500 })
+      // Surface the real Resend message in development; generic in production
+      const detail = process.env.NODE_ENV === 'development'
+        ? (errBody?.message ?? JSON.stringify(errBody))
+        : 'Failed to send email. Please try again.'
+      return NextResponse.json({ error: detail }, { status: 500 })
     }
 
     // Don't expose OTP for email — it's in their inbox
