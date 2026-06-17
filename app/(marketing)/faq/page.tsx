@@ -9,7 +9,7 @@ const FAQS = [
   {
     category: 'Booking',
     items: [
-      { q: 'How far in advance do I need to book?', a: 'We recommend at least 24 hours for airport pickups and 48 hours for intercity. Same-day may be available in select cities — check at checkout.' },
+      { q: 'How far in advance do I need to book?', a: 'We recommend at least 72 hours for airport pickups and intercity. Same-day may be available in select cities — check at checkout.' },
       { q: 'Can I change or cancel my booking?', a: 'Yes. Contact us on WhatsApp at least 6 hours before your pickup slot. Cancellations made more than 24 hours in advance are fully refunded.' },
       { q: 'How do I book for multiple people or a group?', a: 'Use our Group / Wedding booking option. You can add up to 30 bags in a single booking. For larger volumes, contact us for a custom quote.' },
     ],
@@ -17,7 +17,7 @@ const FAQS = [
   {
     category: 'Pickup & Delivery',
     items: [
-      { q: 'What happens on the day of pickup?', a: 'Our executive will call you 30 minutes before arrival. They will photograph and seal your bags, provide a receipt, and give you your tracking link.' },
+      { q: 'What happens on the day of pickup?', a: 'Our executive will call you 30 minutes before arrival.' },
       { q: 'What if I\'m not home for pickup?', a: 'You can authorize someone else to hand over your bags. Contact us in advance so we can update the booking.' },
       { q: 'Do you deliver to hotels?', a: 'Absolutely. Hotels are one of our most common delivery addresses. We coordinate with the front desk to ensure seamless handover.' },
     ],
@@ -25,9 +25,9 @@ const FAQS = [
   {
     category: 'Tracking & Insurance',
     items: [
-      { q: 'Can I track my bag in real time?', a: 'Yes. You receive a live tracking link via WhatsApp and email as soon as your bag is collected. Share it with anyone.' },
-      { q: 'What if my bag is damaged or lost?', a: 'Every booking includes standard insurance. We initiate claims immediately. You can upgrade to ₹50,000 premium coverage at checkout for high-value items.' },
-      { q: 'Is my bag safe during transit?', a: 'Your bag is sealed, photographed, and documented at pickup. We use dedicated vehicles — your bags never share space with random parcels.' },
+      { q: 'Can I track my bag in real time?', a: 'Yes. You receive a live tracking link via WhatsApp and email as soon as your bag is collected.(Coming Soon)' },
+      { q: 'What if my bag is damaged or lost?', a: 'You can buy up to ₹50,000 premium coverage at checkout for high-value items.' },
+      { q: 'Is my bag safe during transit?', a: 'Your bag is sealed, photographed, and documented at pickup. We use dedicated vehicles.' },
     ],
   },
   {
