@@ -72,7 +72,7 @@ export default function AboutPage() {
             <div className="grid grid-cols-2 gap-5">
               {[
                 { label: 'Bags Delivered', value: '12,000+' },
-                { label: 'Cities Covered', value: '8+' },
+                { label: 'Cities Covered', value: '50+' },
                 { label: 'On-Time Rate',   value: '98.7%' },
                 { label: 'Customer Rating', value: '4.9 / 5' },
               ].map(m => (

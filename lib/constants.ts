@@ -242,7 +242,7 @@ export const TIME_SLOTS = [
 // ─── Trust Metrics ───────────────────────────────────────────
 export const TRUST_METRICS = [
   { value: '12,000+', label: 'Bags Delivered', suffix: '' },
-  { value: '8',       label: 'Cities Covered', suffix: '+' },
+  { value: '50',      label: 'Cities Covered', suffix: '+' },
   { value: '98.7',    label: 'On-Time Rate',   suffix: '%' },
   { value: '4.9',     label: 'Customer Rating', suffix: '/5' },
 ] as const

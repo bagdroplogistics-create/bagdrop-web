@@ -41,7 +41,7 @@ const METRICS = [
   },
   {
     label:    'Cities Covered',
-    to:       8,
+    to:       50,
     suffix:   '+',
     decimals: 0,
   },
