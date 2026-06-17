@@ -9,12 +9,12 @@ const FAQS = [
   {
     question: 'How far in advance do I need to book?',
     answer:
-      'We recommend booking at least 24 hours in advance for airport pickups and 48 hours for intercity deliveries. Same-day service may be available in select cities — check at checkout.',
+      'We recommend booking at least 72 hours in advance for airport pickups and intercity deliveries. Same-day service may be available in select cities — check at checkout.',
   },
   {
     question: 'What happens if my bag is damaged or lost?',
     answer:
-      'Every Bagdrop delivery includes standard insurance coverage. If anything happens to your bag, we initiate a claim immediately. You can also upgrade to Rs. 50,000 premium coverage at checkout for high-value items.',
+      'Every Bagdrop delivery includes standard insurance coverage. If anything happens to your bag, we initiate a claim immediately. You can also buy up to Rs. 50,000 premium coverage at checkout for high-value items.',
   },
   {
     question: 'Which cities do you currently operate in?',
@@ -24,17 +24,17 @@ const FAQS = [
   {
     question: 'Can I track my bag in real time?',
     answer:
-      'Yes. Once your booking is confirmed, you receive a live tracking link via WhatsApp and email. You can share this link with anyone — family, hotel reception, or your event coordinator.',
+      'Yes. Once your booking is confirmed, you receive a live tracking link via WhatsApp and email. You can share this link with anyone — family, hotel reception, or your event coordinator.(Coming Soon)',
   },
   {
     question: 'What types of bags can you handle?',
     answer:
-      'We handle cabin bags, medium and large suitcases, oversized luggage, sports equipment (duffel bags, golf bags), and wedding garments. Prohibited items follow standard logistics regulations. When in doubt, contact us on WhatsApp.',
+      'We handle cabin bags, medium and large suitcases, oversized luggage, sports equipment (duffel bags, golf bags) and wedding garments. Prohibited items follow standard logistics regulations. When in doubt, contact us on WhatsApp.',
   },
   {
     question: 'Is there a weight limit per bag?',
     answer:
-      'Standard bags up to 32 kg are covered under normal pricing. Bags between 32–50 kg fall under our Oversized category. For heavier items or commercial shipments, contact us for a custom quote.',
+      'Standard bags up to 32 kg are covered under normal pricing. Bags between 32–50 kg fall under our Oversized category. For heavier items or commercial shipments contact us for a custom quote.',
   },
 ]
 
