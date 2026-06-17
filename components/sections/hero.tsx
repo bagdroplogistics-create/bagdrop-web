@@ -22,7 +22,7 @@ const SLIDES = [
   },
   {
     id: 'wedding',
-    image: 'https://images.unsplash.com/photo-1583939003579-730e3918a45a?auto=format&fit=crop&w=1920&q=80',
+    image: '/images/wedding-slide.jpg',
     badge: 'Destination Weddings',
     headline1: 'Your Wedding Day.',
     headline2: 'Bag-Free.',
@@ -32,7 +32,7 @@ const SLIDES = [
   },
   {
     id: 'student',
-    image: 'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?auto=format&fit=crop&w=1920&q=80',
+    image: '/images/student-slide.jpg',
     badge: 'Student Relocation',
     headline1: 'Moving For College?',
     headline2: "We've Got Your Bags.",
