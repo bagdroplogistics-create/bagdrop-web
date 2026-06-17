@@ -20,6 +20,15 @@ const FOOTER_LINKS = {
     { label: 'Corporate Travel',     href: '/corporate-travel' },
     { label: 'Excess Baggage',       href: '/excess-baggage' },
   ],
+  Locations: [
+    { label: 'Mumbai',    href: '/about' },
+    { label: 'Delhi',     href: '/about' },
+    { label: 'Goa',       href: '/about' },
+    { label: 'Gujarat',   href: '/about' },
+    { label: 'Rajasthan', href: '/about' },
+    { label: 'Hyderabad', href: '/about' },
+    { label: 'Bangalore', href: '/about' },
+  ],
   Company: [
     { label: 'About Bagdrop', href: '/about' },
     { label: 'Contact Us',    href: '/contact' },
@@ -49,15 +58,15 @@ export function Footer() {
   return (
     <footer className="border-t border-border bg-white" aria-label="Site footer">
       <div className="section-container py-16">
-        <div className="grid grid-cols-2 gap-8 lg:grid-cols-5">
+        <div className="grid grid-cols-2 gap-8 lg:grid-cols-6">
 
           {/* Brand column */}
           <div className="col-span-2 lg:col-span-1 space-y-4">
             <Link href="/" aria-label="Bagdrop — Home">
               <BagdropLogo variant="default" />
             </Link>
-            <p className="text-sm leading-relaxed text-text-muted max-w-[200px]">
-              Travel light. We handle the bags.
+            <p className="text-sm leading-relaxed text-text-muted max-w-[220px]">
+              The Baggage Infrastructure Layer for Modern Travel.
             </p>
             <div className="flex items-center gap-3">
               {SOCIAL_LINKS.map(({ label, href, Icon }) => (
@@ -114,7 +123,7 @@ export function Footer() {
             © {year} Bagdrop Logistics Solutions Pvt. Ltd. All rights reserved.
           </p>
           <span className="text-xs text-text-muted">
-            Operating in Mumbai · Delhi · Ahmedabad · Goa
+            Operating in Mumbai · Delhi · Goa · Gujarat · Rajasthan · Hyderabad · Bangalore
           </span>
         </div>
       </div>

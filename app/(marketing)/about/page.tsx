@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Image from 'next/image'
 import { Plane, Shield, Zap, Heart } from 'lucide-react'
 
 export const metadata: Metadata = {
@@ -9,16 +10,16 @@ export const metadata: Metadata = {
 const VALUES = [
   { icon: Plane,  title: 'Aviation-first',  desc: 'We think like an airport, not a courier. Every process is designed around the traveller\'s journey.' },
   { icon: Shield, title: 'Trust above all', desc: 'Your bags are insured, tracked, and treated with the same care you expect from a premium airline.' },
-  { icon: Zap,    title: 'Obsessed with speed', desc: 'Same-day pickups. Real-time tracking. 30-minute response SLA. We move as fast as you do.' },
+  { icon: Zap,    title: '24 / 48 / 72 Hour Delivery', desc: 'Same-day, next-day, or scheduled — choose the delivery window that fits your travel plan. We move as fast as you do.' },
   { icon: Heart,  title: 'Built for India', desc: 'From NRI families landing at BOM to students shipping to Pune — we\'re solving a uniquely Indian problem.' },
 ]
 
 const MILESTONES = [
-  { year: '2023', event: 'Bagdrop founded in Mumbai' },
-  { year: '2024', event: 'First airport partnership — BOM Terminal 2' },
-  { year: '2024', event: 'Expanded to Delhi, Ahmedabad, Goa' },
-  { year: '2025', event: '12,000+ bags delivered. Seed round open.' },
-  { year: '2026', event: 'National rollout — 15 cities' },
+  { year: '2025', event: 'Bagdrop Founded' },
+  { year: '2025', event: 'Pickup Services Launched Inside Mumbai T2' },
+  { year: '2025', event: 'Expanded Operations — Mumbai · Delhi · Goa · Gujarat · Rajasthan · Hyderabad · Bangalore' },
+  { year: '2025–2026', event: '12,000+ Bags Delivered' },
+  { year: '2026', event: 'National Rollout Across 15 Cities' },
 ]
 
 export default function AboutPage() {
@@ -108,42 +109,82 @@ export default function AboutPage() {
 
       {/* Timeline */}
       <section className="section-padding bg-white">
-        <div className="section-container max-w-2xl">
-          <div className="text-center mb-12">
-            <span className="eyebrow">Journey</span>
-            <h2 className="mt-3 font-display text-display-md text-text-primary">How we got here</h2>
-          </div>
-          <div className="space-y-0">
-            {MILESTONES.map((m, i) => (
-              <div key={i} className="flex gap-6">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white text-xs font-bold">
-                    {m.year.slice(2)}
+        <div className="section-container">
+          <div className="grid gap-12 lg:grid-cols-2 lg:gap-16 items-center">
+
+            {/* Left — timeline */}
+            <div>
+              <div className="mb-10">
+                <span className="eyebrow">Journey</span>
+                <h2 className="mt-3 font-display text-display-md text-text-primary">How we got here</h2>
+              </div>
+              <div className="space-y-0">
+                {MILESTONES.map((m, i) => (
+                  <div key={i} className="flex gap-6">
+                    <div className="flex flex-col items-center">
+                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand text-white text-xs font-bold">
+                        {m.year.slice(-2)}
+                      </div>
+                      {i < MILESTONES.length - 1 && <div className="mt-1 w-0.5 flex-1 min-h-[2.5rem] bg-stone-200" />}
+                    </div>
+                    <div className="pb-8">
+                      <p className="text-xs font-semibold text-brand">{m.year}</p>
+                      <p className="mt-0.5 text-base font-medium text-text-primary">{m.event}</p>
+                    </div>
                   </div>
-                  {i < MILESTONES.length - 1 && <div className="mt-1 w-0.5 flex-1 min-h-[2.5rem] bg-stone-200" />}
-                </div>
-                <div className="pb-8">
-                  <p className="text-xs font-semibold text-brand">{m.year}</p>
-                  <p className="mt-0.5 text-base font-medium text-text-primary">{m.event}</p>
+                ))}
+              </div>
+            </div>
+
+            {/* Right — image */}
+            <div className="relative hidden lg:block">
+              <div className="relative h-[520px] w-full overflow-hidden rounded-3xl shadow-2xl">
+                <Image
+                  src="https://images.unsplash.com/photo-1556388158-158ea5ccacbd?auto=format&fit=crop&w=800&q=80"
+                  alt="Bagdrop — baggage handling operations at the airport"
+                  fill
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                  className="object-cover object-center"
+                />
+                {/* Subtle brand overlay */}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-transparent" />
+                {/* Stat pill */}
+                <div className="absolute bottom-6 left-6 right-6 rounded-2xl border border-white/20 bg-white/90 backdrop-blur-sm px-5 py-4 shadow-lg">
+                  <p className="text-xs font-semibold uppercase tracking-widest text-brand mb-1">Our milestone</p>
+                  <p className="font-display text-2xl font-black text-text-primary">12,000+ Bags</p>
+                  <p className="text-sm text-text-muted">delivered across India since 2025</p>
                 </div>
               </div>
-            ))}
+            </div>
+
           </div>
         </div>
       </section>
 
-      {/* CTA */}
-      <section className="section-padding bg-brand">
-        <div className="section-container text-center">
+      {/* CTA — full-width background image with dark overlay */}
+      <section className="relative section-padding overflow-hidden">
+        {/* Background image */}
+        <Image
+          src="https://images.unsplash.com/photo-1436491865332-7a61a109cc05?auto=format&fit=crop&w=1920&q=80"
+          alt=""
+          fill
+          sizes="100vw"
+          className="object-cover object-center"
+          aria-hidden="true"
+        />
+        {/* Dark overlay */}
+        <div className="absolute inset-0 bg-black/70" aria-hidden="true" />
+
+        <div className="relative z-10 section-container text-center">
           <h2 className="font-display text-display-md font-bold text-white">Join the journey</h2>
-          <p className="mt-4 text-lg text-white/75">
+          <p className="mt-4 text-lg text-white/75 max-w-xl mx-auto">
             Whether you're a traveler, a hotel, an airport, or an investor — we'd love to talk.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-4">
-            <a href="/book" className="rounded-xl bg-white px-8 py-4 font-bold text-brand hover:opacity-90 transition-opacity">
+            <a href="/book" className="rounded-xl bg-brand px-8 py-4 font-bold text-white hover:opacity-90 transition-opacity shadow-lg shadow-brand/30">
               Book a Delivery
             </a>
-            <a href="/contact" className="rounded-xl border border-white/30 bg-white/10 px-8 py-4 font-bold text-white hover:bg-white/20 transition-colors">
+            <a href="/contact" className="rounded-xl border border-white/40 bg-white/10 px-8 py-4 font-bold text-white hover:bg-white/20 transition-colors backdrop-blur-sm">
               Get in Touch
             </a>
           </div>

@@ -11,7 +11,7 @@ import { BagdropLogo } from '@/components/ui/logo'
 
 const NAV_LINKS = [
   { label: 'Services', href: '/services', hasDropdown: true },
-  { label: 'About',    href: '/about',    hasDropdown: false },
+  { label: 'About Us', href: '/about',    hasDropdown: false },
   { label: 'FAQ',      href: '/faq',      hasDropdown: false },
 ]
 
