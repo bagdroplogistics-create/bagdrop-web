@@ -60,7 +60,6 @@ export async function POST(req: Request) {
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
     type:  'magiclink',
     email: authEmail,
-    options: { shouldCreateUser: true },
   })
 
   if (linkError || !linkData?.user?.id) {
