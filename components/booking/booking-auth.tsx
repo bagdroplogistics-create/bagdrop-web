@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Phone, ArrowRight, RotateCcw, ShieldCheck } from 'lucide-react'
 import { supabaseBrowser } from '@/lib/supabase-browser'
@@ -18,7 +18,7 @@ interface BookingAuthProps {
 interface OtpBoxesProps {
   value:    string                        // always 0–6 chars
   onChange: (v: string) => void
-  onComplete: (v: string) => void         // called when all 6 filled
+  onComplete?: (v: string) => void        // optional: called when all 6 filled
   disabled?: boolean
 }
 
@@ -39,7 +39,6 @@ function OtpBoxes({ value, onChange, onComplete, disabled }: OtpBoxesProps) {
       const filled = all.slice(0, 6)
       onChange(filled)
       refs.current[Math.min(filled.length - 1, 5)]?.focus()
-      if (filled.length === 6) onComplete(filled)
       return
     }
 
@@ -49,7 +48,6 @@ function OtpBoxes({ value, onChange, onComplete, disabled }: OtpBoxesProps) {
     onChange(clamped)
 
     if (digit && idx < 5) refs.current[idx + 1]?.focus()
-    if (clamped.length === 6) onComplete(clamped)
   }
 
   function handleKeyDown(idx: number, e: React.KeyboardEvent<HTMLInputElement>) {
@@ -82,6 +80,7 @@ function OtpBoxes({ value, onChange, onComplete, disabled }: OtpBoxesProps) {
           onChange={e => handleChange(i, e.target.value)}
           onKeyDown={e => handleKeyDown(i, e)}
           onFocus={e => e.target.select()}
+          id={`otp-box-${i}`}
           aria-label={`Digit ${i + 1} of 6`}
           className={cn(
             'h-14 w-11 sm:w-12 rounded-xl border-2 text-center text-2xl font-bold font-mono transition-all duration-150',
@@ -144,7 +143,7 @@ export function BookingAuth({ onAuth }: BookingAuthProps) {
   }
 
   // ── Verify OTP ──────────────────────────────────────────────
-  const handleVerifyOtp = useCallback(async (code: string) => {
+  async function handleVerifyOtp(code: string) {
     if (code.length !== 6) return
 
     setError(null)
@@ -174,16 +173,21 @@ export function BookingAuth({ onAuth }: BookingAuthProps) {
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Verification failed. Please try again.')
       setStatus('error')
-      setOtp('')          // clear boxes so user can re-enter
     }
-  }, [phone, onAuth])
+  }
 
-  // Auto-submit when shownOtp fills all 6 boxes (phone flow)
+  // Auto-focus first empty box when OTP screen appears
   useEffect(() => {
-    if (stage === 'verify' && shownOtp && otp.length === 6 && status === 'sent') {
-      handleVerifyOtp(otp)
+    if (stage === 'verify' && !shownOtp) {
+      // Manual entry mode — focus box 0
+      setTimeout(() => {
+        const firstBox = document.getElementById('otp-box-0') as HTMLInputElement | null
+        firstBox?.focus()
+      }, 100)
     }
-  }, [stage, shownOtp, otp, status, handleVerifyOtp])
+    // When shownOtp is set, boxes are pre-filled — no auto-submit,
+    // user clicks Verify & Continue themselves.
+  }, [stage, shownOtp])
 
   function handleReset() {
     setStage('input')
@@ -298,7 +302,6 @@ export function BookingAuth({ onAuth }: BookingAuthProps) {
                 <OtpBoxes
                   value={otp}
                   onChange={setOtp}
-                  onComplete={handleVerifyOtp}
                   disabled={isLoading}
                 />
                 <p className="text-center text-xs text-text-muted">

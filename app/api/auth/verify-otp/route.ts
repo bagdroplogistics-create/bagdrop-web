@@ -18,9 +18,12 @@ export async function POST(req: Request) {
     : syntheticEmail(contact)
 
   const now = new Date().toISOString()
+  const otpStr = String(otp).trim()
 
-  // ── 1. Check OTP ──────────────────────────────────────────────
-  const { data: record, error: fetchError } = await supabaseAdmin
+  // ── 1. Fetch latest unused, unexpired OTP for this contact ──
+  //    Don't filter by OTP value in SQL — check in application code
+  //    so we can give a clear "wrong code" vs "expired" message.
+  const { data: rows, error: fetchError } = await supabaseAdmin
     .from('auth_otps')
     .select('id, otp, used')
     .eq('contact', authEmail)
@@ -28,22 +31,32 @@ export async function POST(req: Request) {
     .gt('expires_at', now)
     .order('created_at', { ascending: false })
     .limit(1)
-    .single()
 
-  if (fetchError || !record) {
-    return NextResponse.json({ error: 'Invalid or expired code. Please request a new one.' }, { status: 400 })
+  if (fetchError) {
+    console.error('[verify-otp] DB fetch error:', fetchError)
+    return NextResponse.json({ error: 'Database error. Please try again.' }, { status: 500 })
   }
 
-  if (record.otp !== otp) {
-    return NextResponse.json({ error: 'Incorrect code. Please check and try again.' }, { status: 400 })
+  const record = rows?.[0]
+
+  if (!record) {
+    return NextResponse.json(
+      { error: 'Code expired or not found. Tap "Resend" to get a new one.' },
+      { status: 400 }
+    )
+  }
+
+  if (String(record.otp).trim() !== otpStr) {
+    return NextResponse.json(
+      { error: 'Incorrect code. Please check and try again.' },
+      { status: 400 }
+    )
   }
 
   // ── 2. Mark OTP used ──────────────────────────────────────────
   await supabaseAdmin.from('auth_otps').update({ used: true }).eq('id', record.id)
 
-  // ── 3. Create/retrieve Supabase auth user ─────────────────────
-  //    generateLink creates the user if not exists AND confirms email.
-  //    We capture the user.id so we can set a temp password next.
+  // ── 3. Create/retrieve Supabase auth user via generateLink ────
   const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
     type:  'magiclink',
     email: authEmail,
@@ -55,14 +68,15 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Could not create account. Please try again.' }, { status: 500 })
   }
 
-  // ── 4. Set a one-time temp password the client will sign in with ──
-  //    Using signInWithPassword (not magic-link tokens) is the only
-  //    path that reliably persists a Supabase session in localStorage.
+  // ── 4. Set one-time temp password for client signInWithPassword ──
   const tempPassword = crypto.randomUUID()
 
   const { error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
     linkData.user.id,
-    { password: tempPassword }
+    {
+      password:      tempPassword,
+      email_confirm: true,   // required — allows signInWithPassword without email verification
+    }
   )
 
   if (updateError) {

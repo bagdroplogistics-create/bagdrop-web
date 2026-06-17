@@ -54,12 +54,8 @@ export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
     'baroda',
   ]
 
-  // When a pickup is selected → show only valid drops for that pickup.
-  // When no pickup is selected → show the curated default drop list.
-  const validToIds = state.fromCity
-    ? VALID_ROUTES.filter(r => r.from === state.fromCity).map(r => r.to)
-    : DEFAULT_DROP_IDS
-  const toCities = COVERAGE_CITIES.filter(c => validToIds.includes(c.id as CityId))
+  // Always show the 8 default drop cities — regardless of which pickup is selected.
+  const toCities = COVERAGE_CITIES.filter(c => DEFAULT_DROP_IDS.includes(c.id as CityId))
 
   function handleFromChange(cityId: CityId | null) {
     // Reset toCity if it is no longer valid for the new fromCity
@@ -196,13 +192,6 @@ export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
           </div>
         </div>
 
-        {/* Helper text */}
-        {state.fromCity && toCities.length === 0 && (
-          <p className="mt-2 text-xs text-amber-600">
-            No active routes from this location yet. Please{' '}
-            <a href="/contact" className="underline">contact us</a> for a custom quote.
-          </p>
-        )}
       </div>
 
       {/* ── CTA ── */}
