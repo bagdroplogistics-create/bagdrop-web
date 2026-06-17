@@ -109,11 +109,7 @@ export function isStep2Valid(s: BookingState): boolean {
 }
 
 export function isStep3Valid(s: BookingState): boolean {
-  const base = !!(s.date && s.timeSlotId && s.pickupAddress && s.dropAddress)
-  if (s.serviceId === 'airport-delivery') {
-    return base && !!(s.flightNumber)
-  }
-  return base
+  return !!(s.date && s.timeSlotId && s.pickupAddress && s.dropAddress)
 }
 
 export function isStep4Valid(s: BookingState): boolean {

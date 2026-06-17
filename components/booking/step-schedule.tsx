@@ -158,7 +158,7 @@ export function StepSchedule({ state, onChange, onNext, onBack }: StepSchedulePr
           {/* Flight Number / PNR */}
           <div className="space-y-1.5">
             <label htmlFor="flight-number" className="block text-sm font-medium text-text-primary">
-              Flight number / PNR <span className="text-brand">*</span>
+              Flight number / PNR
             </label>
             <input
               id="flight-number"
