@@ -64,7 +64,7 @@ export function BookingGate() {
         </button>
       </div>
 
-      <BookingEngine user={user} />
+     <BookingEngine />
     </div>
   )
 }
