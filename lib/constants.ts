@@ -179,17 +179,24 @@ export const COVERAGE_CITIES = [
 // booking-types.ts imports this instead of defining its own union.
 export type CityId = (typeof COVERAGE_CITIES)[number]['id']
 
-// ─── Simplified Booking Locations ────────────────────────────
-// The 7 service regions shown in the pickup / drop dropdowns.
+// ─── Booking Locations ───────────────────────────────────────
+// Specific cities shown in the pickup / drop dropdowns.
 // Both dropdowns use the same list.
 export const BOOKING_LOCATIONS = [
-  { id: 'mumbai'    as const, label: 'Mumbai' },
-  { id: 'delhi'     as const, label: 'Delhi' },
-  { id: 'goa'       as const, label: 'Goa' },
-  { id: 'gujarat'   as const, label: 'Gujarat' },
-  { id: 'rajasthan' as const, label: 'Rajasthan' },
-  { id: 'hyderabad' as const, label: 'Hyderabad' },
-  { id: 'bangalore' as const, label: 'Bangalore' },
+  { id: 'baroda'            as const, label: 'Vadodara' },
+  { id: 'ahmedabad'         as const, label: 'Ahmedabad' },
+  { id: 'mumbai'            as const, label: 'Mumbai' },
+  { id: 'mumbai-airport-t2' as const, label: 'Mumbai Airport T2' },
+  { id: 'anand'             as const, label: 'Anand' },
+  { id: 'nadiad'            as const, label: 'Nadiad' },
+  { id: 'dahod'             as const, label: 'Dahod' },
+  { id: 'delhi-airport-t3'  as const, label: 'Delhi Airport' },
+  { id: 'goa'               as const, label: 'Goa' },
+  { id: 'bangalore'         as const, label: 'Bangalore' },
+  { id: 'udaipur'           as const, label: 'Udaipur' },
+  { id: 'jaipur'            as const, label: 'Jaipur' },
+  { id: 'rajasthan'         as const, label: 'Rajasthan' },
+  { id: 'hyderabad-airport' as const, label: 'Hyderabad Airport' },
 ]
 
 // ─── Valid Routes ────────────────────────────────────────────
