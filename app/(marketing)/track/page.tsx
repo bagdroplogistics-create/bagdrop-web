@@ -110,7 +110,7 @@ function StatusBadge({ status }: { status: BookingStatus }) {
       <section className="relative bg-[#111] py-20 lg:py-28 overflow-hidden">
         <div
           className="absolute inset-0 bg-cover bg-center bg-no-repeat opacity-55"
-          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1578575437130-527eed3abbec?w=1400&q=80')" }}
+          style={{ backgroundImage: "url('https://images.unsplash.com/photo-1540339832862-474599807836?w=1400&q=80')" }}
           aria-hidden="true"
         />
         <div className="absolute inset-0 bg-gradient-to-r from-black/35 to-black/10" aria-hidden="true" />
