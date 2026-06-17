@@ -168,11 +168,29 @@ export const COVERAGE_CITIES = [
 
   // ── Telangana ────────────────────────────────────────────
   { id: 'hyderabad-airport',label: 'Hyderabad Airport',     code: 'HYD', airport: 'Rajiv Gandhi International' },
+  { id: 'hyderabad',        label: 'Hyderabad',             code: 'HYD', airport: 'Rajiv Gandhi International' },
+
+  // ── Regional / simplified booking labels ─────────────────
+  { id: 'gujarat',          label: 'Gujarat',               code: null,  airport: null },
+  { id: 'rajasthan',        label: 'Rajasthan',             code: null,  airport: null },
 ] as const
 
 // Derive CityId from the cities list so it stays in sync automatically.
 // booking-types.ts imports this instead of defining its own union.
 export type CityId = (typeof COVERAGE_CITIES)[number]['id']
+
+// ─── Simplified Booking Locations ────────────────────────────
+// The 7 service regions shown in the pickup / drop dropdowns.
+// Both dropdowns use the same list.
+export const BOOKING_LOCATIONS = [
+  { id: 'mumbai'    as const, label: 'Mumbai' },
+  { id: 'delhi'     as const, label: 'Delhi' },
+  { id: 'goa'       as const, label: 'Goa' },
+  { id: 'gujarat'   as const, label: 'Gujarat' },
+  { id: 'rajasthan' as const, label: 'Rajasthan' },
+  { id: 'hyderabad' as const, label: 'Hyderabad' },
+  { id: 'bangalore' as const, label: 'Bangalore' },
+]
 
 // ─── Valid Routes ────────────────────────────────────────────
 // Only these from→to pairs are bookable.
@@ -213,10 +231,12 @@ export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
 ] as const
 
 // ─── Time Slots ──────────────────────────────────────────────
+// Displayed in 12-hour AM/PM format. The `id` is stored in timeSlotId on BookingState.
 export const TIME_SLOTS = [
-  { id: 'morning',   label: 'Morning',   range: '7:00 AM – 11:00 AM', icon: 'sunrise' },
-  { id: 'afternoon', label: 'Afternoon', range: '12:00 PM – 4:00 PM', icon: 'sun' },
-  { id: 'evening',   label: 'Evening',   range: '5:00 PM – 9:00 PM',  icon: 'sunset' },
+  { id: '09:00 AM – 12:00 PM', label: 'Morning',   range: '09:00 AM – 12:00 PM' },
+  { id: '12:00 PM – 03:00 PM', label: 'Afternoon', range: '12:00 PM – 03:00 PM' },
+  { id: '03:00 PM – 06:00 PM', label: 'Evening',   range: '03:00 PM – 06:00 PM' },
+  { id: '06:00 PM – 12:00 AM', label: 'Night',     range: '06:00 PM – 12:00 AM' },
 ] as const
 
 // ─── Trust Metrics ───────────────────────────────────────────
@@ -237,24 +257,10 @@ export const NAV_LINKS = [
 // ─── Add-on Services ─────────────────────────────────────────
 export const ADDON_SERVICES = [
   {
-    id: 'packing',
-    label: 'Professional Packing',
-    description: 'Bubble wrap + secure packing by our team',
-    price: 299,
-    icon: 'package-check',
-  },
-  {
     id: 'insurance',
     label: 'Insurance Upgrade',
-    description: 'Coverage up to Rs. 50,000',
+    description: 'Extended coverage up to Rs. 50,000',
     price: 199,
     icon: 'shield-check',
-  },
-  {
-    id: 'express',
-    label: 'Express Delivery',
-    description: 'Delivered within 4 hours of pickup',
-    price: 499,
-    icon: 'zap',
   },
 ] as const

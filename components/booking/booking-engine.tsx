@@ -1,17 +1,17 @@
 'use client'
 
-import { useReducer, useMemo, useEffect, useState } from 'react'
+import { useReducer, useMemo, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
-import { StepIndicator } from './step-indicator'
-import { StepRoute }     from './step-route'
-import { StepBags }      from './step-bags'
-import { StepSchedule }  from './step-schedule'
-import { StepReview }    from './step-review'
+import { StepIndicator }    from './step-indicator'
+import { StepRoute }        from './step-route'
+import { StepBags }         from './step-bags'
+import { StepSchedule }     from './step-schedule'
+import { StepReview }       from './step-review'
+import { BookingOtpModal }  from './booking-otp-modal'
 import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
 import { calculatePrice } from '@/lib/pricing'
 import type { BookingState } from '@/lib/booking-types'
-import type { User } from '@supabase/supabase-js'
 
 type Action =
   | { type: 'PATCH';     payload: Partial<BookingState> }
@@ -32,50 +32,39 @@ function reducer(state: EngineState, action: Action): EngineState {
   }
 }
 
-interface BookingEngineProps {
-  user?: User | null
-}
-
-export function BookingEngine({ user }: BookingEngineProps = {}) {
+export function BookingEngine() {
   const router = useRouter()
   const [{ step, booking }, dispatch] = useReducer(reducer, INITIAL)
-  const [submitting, setSubmitting]   = useState(false)
+  const [submitting,  setSubmitting]  = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
+  const [showOtpModal, setShowOtpModal] = useState(false)
 
-  // Keep pricing for API payload only — not displayed to user
   const pricing = useMemo(() => calculatePrice(booking), [booking])
 
-  // Pre-fill customer details from the authenticated user
-  useEffect(() => {
-    if (!user) return
-    const prefill: Partial<BookingState> = {}
-    if (user.email && !booking.email) prefill.email = user.email
-    if (user.phone) {
-      // Supabase phone is E.164 format (+91XXXXXXXXXX) — strip +91
-      const local = user.phone.startsWith('+91') ? user.phone.slice(3) : user.phone
-      if (!booking.phone) prefill.phone = local
-    }
-    if (Object.keys(prefill).length > 0) dispatch({ type: 'PATCH', payload: prefill })
-    // Run once on mount only
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user])
-
-  useEffect(() => {
-    window.scrollTo({ top: 0, behavior: 'smooth' })
-  }, [step])
-
   const patch = (payload: Partial<BookingState>) => dispatch({ type: 'PATCH', payload })
-  const next  = () => dispatch({ type: 'NEXT_STEP' })
-  const back  = () => dispatch({ type: 'PREV_STEP' })
+  const next  = () => { dispatch({ type: 'NEXT_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
+  const back  = () => { dispatch({ type: 'PREV_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
-  async function handleBookingSubmit() {
+  // Called when customer clicks "Confirm Booking" on the review page.
+  // Shows the OTP modal instead of submitting immediately.
+  function handleBookingSubmit() {
     setSubmitError(null)
+    setShowOtpModal(true)
+  }
+
+  // Called after OTP is verified successfully.
+  // Submits the booking with the verified mobile number.
+  async function handleOtpVerified(verifiedPhone: string) {
+    setShowOtpModal(false)
     setSubmitting(true)
+
+    const bookingWithPhone: BookingState = { ...booking, phone: verifiedPhone }
+
     try {
       const res = await fetch('/api/bookings', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ booking, pricing }),
+        body:    JSON.stringify({ booking: bookingWithPhone, pricing }),
       })
 
       const data = await res.json()
@@ -84,7 +73,7 @@ export function BookingEngine({ user }: BookingEngineProps = {}) {
       if (typeof window !== 'undefined') {
         sessionStorage.setItem(
           'bagdrop_booking',
-          JSON.stringify({ booking, trackingId: data.trackingId })
+          JSON.stringify({ booking: bookingWithPhone, trackingId: data.trackingId })
         )
       }
 
@@ -96,37 +85,59 @@ export function BookingEngine({ user }: BookingEngineProps = {}) {
   }
 
   return (
-    <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-      <div className="mb-10">
-        <StepIndicator current={step} />
-      </div>
-
-      {submitError && (
-        <div className="mb-6 rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-600">
-          {submitError}
-        </div>
-      )}
-
-      <AnimatePresence mode="wait">
-        {step === 1 && (
-          <StepRoute key="step-route" state={booking} onChange={patch} onNext={next} />
-        )}
-        {step === 2 && (
-          <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
-        )}
-        {step === 3 && (
-          <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
-        )}
-        {step === 4 && (
-          <StepReview
-            key="step-review"
-            state={booking}
-            onChange={patch}
-            onBack={back}
-            onBook={handleBookingSubmit}
+    <>
+      {/* OTP Modal — rendered as a portal-style overlay */}
+      <AnimatePresence>
+        {showOtpModal && (
+          <BookingOtpModal
+            onVerified={handleOtpVerified}
+            onClose={() => setShowOtpModal(false)}
           />
         )}
       </AnimatePresence>
-    </div>
+
+      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
+        <div className="mb-10">
+          <StepIndicator current={step} />
+        </div>
+
+        {(submitError || submitting) && (
+          <div className="mb-6">
+            {submitting && (
+              <div className="flex items-center gap-3 rounded-xl bg-brand-light border border-brand/20 p-4 text-sm text-brand">
+                <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent shrink-0" />
+                Submitting your booking…
+              </div>
+            )}
+            {submitError && (
+              <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-600">
+                {submitError}
+              </div>
+            )}
+          </div>
+        )}
+
+        <AnimatePresence mode="wait">
+          {step === 1 && (
+            <StepRoute key="step-route" state={booking} onChange={patch} onNext={next} />
+          )}
+          {step === 2 && (
+            <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
+          )}
+          {step === 3 && (
+            <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
+          )}
+          {step === 4 && (
+            <StepReview
+              key="step-review"
+              state={booking}
+              onChange={patch}
+              onBack={back}
+              onBook={handleBookingSubmit}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </>
   )
 }

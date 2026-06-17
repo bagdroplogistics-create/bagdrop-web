@@ -7,7 +7,7 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { Button } from '@/components/ui/button'
-import { COVERAGE_CITIES, SERVICE_TYPES, VALID_ROUTES } from '@/lib/constants'
+import { BOOKING_LOCATIONS, SERVICE_TYPES } from '@/lib/constants'
 import type { BookingState, ServiceId, CityId } from '@/lib/booking-types'
 import { isStep1Valid } from '@/lib/booking-types'
 
@@ -37,44 +37,18 @@ const cardVariants = {
 export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
   const valid = isStep1Valid(state)
 
-  // Cities that can be selected as a pickup point
-  const fromCities = COVERAGE_CITIES.filter(c =>
-    VALID_ROUTES.some(r => r.from === c.id)
-  )
-
-  // Default drop cities shown before a pickup is selected
-  const DEFAULT_DROP_IDS: CityId[] = [
-    'mumbai',
-    'mumbai-airport-t2',
-    'delhi',
-    'delhi-airport-t3',
-    'hyderabad-airport',
-    'udaipur',
-    'jaipur',
-    'baroda',
-  ]
-
-  // Always show the 8 default drop cities — regardless of which pickup is selected.
-  const toCities = COVERAGE_CITIES.filter(c => DEFAULT_DROP_IDS.includes(c.id as CityId))
+  // Both dropdowns use the same service locations.
+  // Exclude the current opposite selection to prevent same-city bookings.
+  const fromCities = BOOKING_LOCATIONS.filter(c => c.id !== state.toCity)
+  const toCities   = BOOKING_LOCATIONS.filter(c => c.id !== state.fromCity)
 
   function handleFromChange(cityId: CityId | null) {
-    // Reset toCity if it is no longer valid for the new fromCity
-    const stillValid =
-      cityId && state.toCity
-        ? VALID_ROUTES.some(r => r.from === cityId && r.to === state.toCity)
-        : false
-    onChange({ fromCity: cityId, toCity: stillValid ? state.toCity : null })
+    // If new from matches current to, clear to
+    onChange({ fromCity: cityId, toCity: state.toCity === cityId ? null : state.toCity })
   }
 
   function swapCities() {
-    const swappedFrom = state.toCity
-    const swappedTo   = state.fromCity
-    // Only keep toCity if the swapped pair is a valid route
-    const swapValid =
-      swappedFrom && swappedTo
-        ? VALID_ROUTES.some(r => r.from === swappedFrom && r.to === swappedTo)
-        : false
-    onChange({ fromCity: swappedFrom, toCity: swapValid ? swappedTo : null })
+    onChange({ fromCity: state.toCity, toCity: state.fromCity })
   }
 
   return (

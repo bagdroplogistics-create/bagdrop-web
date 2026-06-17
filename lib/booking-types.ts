@@ -14,10 +14,10 @@ export type ServiceId =
   | 'corporate-travel'
   | 'excess-baggage'
 
-// Free-form HH:MM string (24-hour) — e.g. "14:30"
+// Time slot display string — e.g. "09:00 AM – 12:00 PM"
 export type TimeSlotId = string
 
-export type AddonId = 'packing' | 'insurance' | 'express'
+export type AddonId = 'insurance'
 
 // ─── A single bag selection ─────────────────────────────────
 export interface BagItem {
@@ -117,11 +117,10 @@ export function isStep3Valid(s: BookingState): boolean {
 }
 
 export function isStep4Valid(s: BookingState): boolean {
+  // Phone is verified via OTP at confirmation — only name + email required here
   return !!(
     s.name.trim() &&
     s.email.trim() &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email) &&
-    s.phone.trim() &&
-    /^[6-9]\d{9}$/.test(s.phone.replace(/\s/g, ''))
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)
   )
 }

@@ -1,6 +1,6 @@
 import type { Metadata } from 'next'
-import { BookingHero } from '@/components/booking/booking-hero'
-import { BookingGate } from '@/components/booking/booking-gate'
+import { BookingHero }   from '@/components/booking/booking-hero'
+import { BookingEngine } from '@/components/booking/booking-engine'
 
 export const metadata: Metadata = {
   title: 'Book Luggage Delivery | Bagdrop',
@@ -12,7 +12,7 @@ export default function BookingPage() {
   return (
     <>
       <BookingHero />
-      <BookingGate />
+      <BookingEngine />
     </>
   )
 }
