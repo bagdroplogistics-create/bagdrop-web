@@ -42,15 +42,23 @@ export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
     VALID_ROUTES.some(r => r.from === c.id)
   )
 
-  // All cities that appear as a drop destination in any route
-  const allToIds = Array.from(new Set(VALID_ROUTES.map(r => r.to)))
+  // Default drop cities shown before a pickup is selected
+  const DEFAULT_DROP_IDS: CityId[] = [
+    'mumbai',
+    'mumbai-airport-t2',
+    'delhi',
+    'delhi-airport-t3',
+    'hyderabad-airport',
+    'udaipur',
+    'jaipur',
+    'baroda',
+  ]
 
   // When a pickup is selected → show only valid drops for that pickup.
-  // When no pickup is selected → show all possible drop destinations
-  // so the user can see every available option upfront.
+  // When no pickup is selected → show the curated default drop list.
   const validToIds = state.fromCity
     ? VALID_ROUTES.filter(r => r.from === state.fromCity).map(r => r.to)
-    : allToIds
+    : DEFAULT_DROP_IDS
   const toCities = COVERAGE_CITIES.filter(c => validToIds.includes(c.id as CityId))
 
   function handleFromChange(cityId: CityId | null) {

@@ -64,7 +64,7 @@ export function Navbar() {
                       onMouseLeave={() => setServicesOpen(false)}
                     >
                       <button
-                        className="flex items-center gap-1 rounded-lg px-4 py-2 text-base font-medium text-white/85 transition-colors hover:bg-white/15 hover:text-white"
+                        className="flex items-center gap-1 rounded-lg px-4 py-2 text-lg font-medium text-white/85 transition-colors hover:bg-white/15 hover:text-white"
                         aria-expanded={servicesOpen}
                         aria-haspopup="true"
                       >
@@ -104,7 +104,7 @@ export function Navbar() {
                     <Link
                       href={link.href}
                       className={cn(
-                        'block rounded-lg px-4 py-2 text-base font-medium text-white/85 transition-colors hover:bg-white/15 hover:text-white',
+                        'block rounded-lg px-4 py-2 text-lg font-medium text-white/85 transition-colors hover:bg-white/15 hover:text-white',
                         pathname === link.href && 'text-white font-semibold'
                       )}
                     >
@@ -120,14 +120,14 @@ export function Navbar() {
               {/* Track — white outline */}
               <Link
                 href="/track"
-                className="inline-flex h-9 items-center rounded-lg border border-white/50 px-4 text-base font-semibold text-white transition-all hover:bg-white/15 hover:border-white"
+                className="inline-flex h-9 items-center rounded-lg border border-white/50 px-4 text-lg font-semibold text-white transition-all hover:bg-white/15 hover:border-white"
               >
                 Track Bag
               </Link>
               {/* Book — solid white pill */}
               <Link
                 href="/book"
-                className="inline-flex h-9 items-center rounded-lg bg-white px-4 text-base font-semibold text-brand transition-all hover:bg-white/90 shadow-sm"
+                className="inline-flex h-9 items-center rounded-lg bg-white px-4 text-lg font-semibold text-brand transition-all hover:bg-white/90 shadow-sm"
               >
                 Book Delivery
               </Link>
@@ -161,7 +161,7 @@ export function Navbar() {
                 <React.Fragment key={link.href}>
                   <Link
                     href={link.href}
-                    className="flex items-center justify-between rounded-xl px-4 py-3 text-base font-medium text-text-primary hover:bg-cream transition-colors"
+                    className="flex items-center justify-between rounded-xl px-4 py-3 text-lg font-medium text-text-primary hover:bg-cream transition-colors"
                   >
                     {link.label}
                     {link.hasDropdown && <ChevronDown className="h-4 w-4 text-text-muted" />}
@@ -187,13 +187,13 @@ export function Navbar() {
             <div className="space-y-3 border-t border-border pt-6">
               <Link
                 href="/track"
-                className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-brand text-base font-semibold text-brand transition-colors hover:bg-brand-light"
+                className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-brand text-lg font-semibold text-brand transition-colors hover:bg-brand-light"
               >
                 Track My Bag
               </Link>
               <Link
                 href="/book"
-                className="flex h-12 w-full items-center justify-center rounded-xl bg-brand text-base font-semibold text-white transition-opacity hover:opacity-90"
+                className="flex h-12 w-full items-center justify-center rounded-xl bg-brand text-lg font-semibold text-white transition-opacity hover:opacity-90"
               >
                 Book Delivery
               </Link>

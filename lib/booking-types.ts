@@ -14,7 +14,8 @@ export type ServiceId =
   | 'corporate-travel'
   | 'excess-baggage'
 
-export type TimeSlotId = 'morning' | 'afternoon' | 'evening'
+// Free-form HH:MM string (24-hour) — e.g. "14:30"
+export type TimeSlotId = string
 
 export type AddonId = 'packing' | 'insurance' | 'express'
 

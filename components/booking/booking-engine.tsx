@@ -11,6 +11,7 @@ import { StepReview }    from './step-review'
 import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
 import { calculatePrice } from '@/lib/pricing'
 import type { BookingState } from '@/lib/booking-types'
+import type { User } from '@supabase/supabase-js'
 
 type Action =
   | { type: 'PATCH';     payload: Partial<BookingState> }
@@ -31,7 +32,11 @@ function reducer(state: EngineState, action: Action): EngineState {
   }
 }
 
-export function BookingEngine() {
+interface BookingEngineProps {
+  user?: User | null
+}
+
+export function BookingEngine({ user }: BookingEngineProps = {}) {
   const router = useRouter()
   const [{ step, booking }, dispatch] = useReducer(reducer, INITIAL)
   const [submitting, setSubmitting]   = useState(false)
@@ -39,6 +44,21 @@ export function BookingEngine() {
 
   // Keep pricing for API payload only — not displayed to user
   const pricing = useMemo(() => calculatePrice(booking), [booking])
+
+  // Pre-fill customer details from the authenticated user
+  useEffect(() => {
+    if (!user) return
+    const prefill: Partial<BookingState> = {}
+    if (user.email && !booking.email) prefill.email = user.email
+    if (user.phone) {
+      // Supabase phone is E.164 format (+91XXXXXXXXXX) — strip +91
+      const local = user.phone.startsWith('+91') ? user.phone.slice(3) : user.phone
+      if (!booking.phone) prefill.phone = local
+    }
+    if (Object.keys(prefill).length > 0) dispatch({ type: 'PATCH', payload: prefill })
+    // Run once on mount only
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user])
 
   useEffect(() => {
     window.scrollTo({ top: 0, behavior: 'smooth' })

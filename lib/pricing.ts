@@ -3,7 +3,7 @@
 //
 // ASSUMPTIONS (adjust before launch):
 // • All prices in Indian Rupees (₹)
-// • GST @ 18% applied on subtotal + addons
+// • GST @ 5% applied on subtotal + addons
 // • Multi-bag discount stacks with service multiplier
 // • Route fees are symmetric (Mumbai→Delhi = Delhi→Mumbai)
 // ─────────────────────────────────────────────────────────────
@@ -133,7 +133,7 @@ export function calculatePrice(state: BookingState): PricingBreakdown {
 
   // ── Subtotal, GST, Total
   const subtotal = priceAfterAdjust + addonsTotal
-  const gst      = Math.round(subtotal * 0.18)
+  const gst      = Math.round(subtotal * 0.05)
   const total    = subtotal + gst
 
   return {

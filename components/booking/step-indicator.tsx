@@ -28,7 +28,7 @@ export function StepIndicator({ current }: StepIndicatorProps) {
             <div className="flex flex-col items-center gap-1.5">
               <motion.div
                 className={cn(
-                  'flex h-8 w-8 items-center justify-center rounded-full text-sm font-bold transition-colors duration-300',
+                  'flex h-9 w-9 items-center justify-center rounded-full text-base font-bold transition-colors duration-300',
                   done   && 'bg-brand text-white',
                   active && 'bg-brand text-white ring-4 ring-brand/20',
                   !done && !active && 'bg-border text-text-muted'
@@ -44,7 +44,7 @@ export function StepIndicator({ current }: StepIndicatorProps) {
               </motion.div>
               <span
                 className={cn(
-                  'text-[10px] font-medium hidden sm:block',
+                  'text-base font-medium hidden sm:block',
                   active ? 'text-brand' : done ? 'text-text-secondary' : 'text-text-muted'
                 )}
               >

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
-import { COVERAGE_CITIES, SERVICE_TYPES, BAG_TYPES, ADDON_SERVICES, TIME_SLOTS } from '@/lib/constants'
+import { COVERAGE_CITIES, SERVICE_TYPES, BAG_TYPES, ADDON_SERVICES } from '@/lib/constants'
 import type { BookingState } from '@/lib/booking-types'
 import { isStep4Valid } from '@/lib/booking-types'
 
@@ -27,7 +27,16 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
   const fromCity   = COVERAGE_CITIES.find(c => c.id === state.fromCity)
   const toCity     = COVERAGE_CITIES.find(c => c.id === state.toCity)
   const service    = SERVICE_TYPES.find(s => s.id === state.serviceId)
-  const timeSlot   = TIME_SLOTS.find(t => t.id === state.timeSlotId)
+  // timeSlotId is now a free HH:MM string — format to 12-hour for display
+  const timeSlotDisplay = state.timeSlotId
+    ? (() => {
+        try {
+          const [h, m] = state.timeSlotId.split(':').map(Number)
+          const d = new Date(); d.setHours(h, m)
+          return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true })
+        } catch { return state.timeSlotId }
+      })()
+    : '—'
   const addons     = ADDON_SERVICES.filter(a => state.addonIds.includes(a.id as never))
   const activeBags = state.bags.filter(b => b.quantity > 0)
 
@@ -96,7 +105,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             <SummaryRow icon={Luggage}  label="Service" value={service?.label ?? '—'} />
             <SummaryRow icon={MapPin}   label="Route"   value={(fromCity?.label ?? '—') + ' → ' + (toCity?.label ?? '—')} />
             <SummaryRow icon={Calendar} label="Date"    value={formattedDate || '—'} />
-            <SummaryRow icon={Clock}    label="Time"    value={timeSlot ? timeSlot.label + ' (' + timeSlot.range + ')' : '—'} />
+            <SummaryRow icon={Clock}    label="Time"    value={timeSlotDisplay} />
             {state.flightNumber && (
               <SummaryRow icon={Plane} label="Flight" value={state.flightNumber.toUpperCase()} />
             )}
