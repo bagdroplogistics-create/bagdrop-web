@@ -7,9 +7,9 @@ export async function POST(req: Request) {
   try {
     const { booking, pricing } = await req.json()
 
-    if (!booking?.name || !booking?.email || !booking?.phone) {
+    if (!booking?.name || !booking?.email) {
       return NextResponse.json(
-        { error: 'Name, email, and phone are required' },
+        { error: 'Name and email are required' },
         { status: 400 }
       )
     }
@@ -24,7 +24,8 @@ export async function POST(req: Request) {
 
     const customerName  = booking.name.trim()
     const customerEmail = booking.email.trim().toLowerCase()
-    const customerPhone = booking.phone.trim()
+    const rawPhone      = booking.phone?.replace(/\D/g, '') ?? ''
+    const customerPhone = rawPhone ? '+91' + rawPhone : ''
 
     const trackingId = 'BD-' + Math.random().toString(36).toUpperCase().slice(2, 8)
 

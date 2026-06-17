@@ -117,10 +117,10 @@ export function isStep3Valid(s: BookingState): boolean {
 }
 
 export function isStep4Valid(s: BookingState): boolean {
-  // Phone is verified via OTP at confirmation — only name + email required here
   return !!(
     s.name.trim() &&
     s.email.trim() &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)
+    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email) &&
+    /^[6-9]\d{9}$/.test(s.phone.replace(/\D/g, ''))
   )
 }

@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Luggage, MapPin, Calendar, Clock,
-  Plane, User, Mail, MessageSquare, Send,
+  Plane, User, Mail, Phone, MessageSquare, Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { cn } from '@/lib/utils'
@@ -52,7 +52,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
       <div>
         <h2 className="font-display text-lg font-semibold text-text-primary">Review &amp; confirm</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Fill in your details. You'll verify your mobile number on the next step before we confirm.
+          Fill in your details. We'll send a verification code to your email before confirming.
         </p>
       </div>
 
@@ -70,6 +70,30 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             type="email" placeholder="priya@example.com"
             value={state.email} onChange={v => onChange({ email: v })}
           />
+          <div className="space-y-1.5">
+            <label htmlFor="phone" className="block text-sm font-medium text-text-primary">
+              Mobile number<span className="ml-0.5 text-brand">*</span>
+            </label>
+            <div className="flex gap-2">
+              <div className="flex h-10 shrink-0 select-none items-center rounded-xl border border-border bg-cream px-3 text-sm font-semibold text-text-secondary">
+                🇮🇳 +91
+              </div>
+              <div className="relative flex-1">
+                <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted pointer-events-none" strokeWidth={1.75} />
+                <input
+                  id="phone"
+                  type="tel"
+                  inputMode="numeric"
+                  value={state.phone}
+                  onChange={e => onChange({ phone: e.target.value.replace(/\D/g, '').slice(0, 10) })}
+                  placeholder="98765 43210"
+                  autoComplete="tel-national"
+                  className="input-base pl-10 w-full"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-text-muted">Our team will call on this number to coordinate pickup.</p>
+          </div>
           <FormField
             id="notes" label="Special instructions" icon={MessageSquare}
             type="textarea" placeholder="e.g. Ring doorbell twice, fragile items inside..."
@@ -114,7 +138,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
           </Button>
 
           <p className="text-center text-xs text-text-muted">
-            Mobile verification required at next step &middot; No payment now
+            Email verification required &middot; No payment now
           </p>
         </div>
       </div>
