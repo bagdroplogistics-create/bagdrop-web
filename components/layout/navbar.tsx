@@ -129,7 +129,7 @@ export function Navbar() {
                 href="/book"
                 className="inline-flex h-9 items-center rounded-lg bg-white px-4 text-lg font-semibold text-brand transition-all hover:bg-white/90 shadow-sm"
               >
-                Book Delivery
+                Book Now
               </Link>
             </div>
 
@@ -195,7 +195,7 @@ export function Navbar() {
                 href="/book"
                 className="flex h-12 w-full items-center justify-center rounded-xl bg-brand text-lg font-semibold text-white transition-opacity hover:opacity-90"
               >
-                Book Delivery
+                Book Now
               </Link>
             </div>
           </div>
