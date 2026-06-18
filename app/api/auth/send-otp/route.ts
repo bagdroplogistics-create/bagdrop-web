@@ -26,8 +26,6 @@ async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: bool
   // Strip +91 prefix; Fast2SMS expects 10-digit number
   const digits = mobileNumber.replace(/^\+91/, '').replace(/\D/g, '')
 
-  const message = `${otp} is your Bagdrop OTP. Valid for 10 minutes. Do not share. -Bagdrop`
-
   let data: Record<string, unknown> = {}
   try {
     const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
@@ -37,10 +35,10 @@ async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: bool
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        route:   'q',   // Quick (developer) route — works without DLT registration
-        message,
-        numbers: digits,
-        flash:   0,
+        route:            'otp',  // Smart OTP route — no DLT registration needed
+        variables_values: otp,    // injected into Fast2SMS's OTP template
+        numbers:          digits,
+        flash:            0,
       }),
     })
     data = await res.json().catch(() => ({}))
