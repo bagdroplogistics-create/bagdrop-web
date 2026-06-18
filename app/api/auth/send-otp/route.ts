@@ -20,43 +20,44 @@ function syntheticEmail(e164Phone: string): string {
 async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: boolean; error?: string }> {
   const apiKey = process.env.FAST2SMS_API_KEY
   if (!apiKey) {
-    console.warn('[send-otp] FAST2SMS_API_KEY not set — cannot send SMS')
-    return { ok: false, error: 'SMS service not configured.' }
+    return { ok: false, error: 'FAST2SMS_API_KEY not set' }
   }
 
   // Strip +91 prefix; Fast2SMS expects 10-digit number
   const digits = mobileNumber.replace(/^\+91/, '').replace(/\D/g, '')
 
-  const message = `Your Bagdrop verification code is ${otp}. Valid for 10 minutes. Do not share this code with anyone. - Bagdrop`
+  const message = `${otp} is your Bagdrop OTP. Valid for 10 minutes. Do not share. -Bagdrop`
 
-  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
-    method: 'POST',
-    headers: {
-      authorization: apiKey,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      route:   'q',          // Quick (developer) route — switch to 'dlt' in production
-      message,
-      numbers: digits,
-      flash:   '0',
-    }),
-  })
+  let data: Record<string, unknown> = {}
+  try {
+    const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+      method: 'POST',
+      headers: {
+        authorization: apiKey,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        route:   'q',   // Quick (developer) route — works without DLT registration
+        message,
+        numbers: digits,
+        flash:   0,
+      }),
+    })
+    data = await res.json().catch(() => ({}))
 
-  const data = await res.json().catch(() => ({}))
-
-  if (!res.ok || data.return === false) {
-    const errMsg = data.message ?? JSON.stringify(data)
-    console.error('[send-otp] Fast2SMS error:', errMsg)
-    return {
-      ok: false,
-      error: process.env.NODE_ENV === 'development'
-        ? `SMS failed: ${errMsg}`
-        : 'Failed to send OTP. Please try again.',
+    if (!res.ok || data.return === false) {
+      // data.message is often an array in Fast2SMS responses
+      const msgs = Array.isArray(data.message) ? (data.message as string[]).join(', ') : String(data.message ?? JSON.stringify(data))
+      console.error('[send-otp] Fast2SMS error:', msgs, '| HTTP:', res.status, '| numbers:', digits)
+      return { ok: false, error: msgs }
     }
-  }
 
-  return { ok: true }
+    console.log('[send-otp] Fast2SMS OK:', data)
+    return { ok: true }
+  } catch (err) {
+    console.error('[send-otp] Fast2SMS fetch threw:', err)
+    return { ok: false, error: String(err) }
+  }
 }
 
 export async function POST(req: Request) {
@@ -132,10 +133,15 @@ export async function POST(req: Request) {
 
   // ── Phone: send OTP via Fast2SMS ───────────────────────
   const smsResult = await sendSmsOtp(contact, otp)
+
   if (!smsResult.ok) {
-    return NextResponse.json({ error: smsResult.error }, { status: 500 })
+    // SMS failed (no key, wrong key, provider error, etc.)
+    // Always fall back to on-screen so the customer can still complete their booking.
+    // The smsError field tells the admin why SMS didn't send.
+    console.error('[send-otp] SMS failed, falling back to on-screen OTP. Reason:', smsResult.error)
+    return NextResponse.json({ success: true, otp, fallback: true, smsError: smsResult.error })
   }
 
-  // OTP is delivered via SMS — do NOT expose it in the response
+  // OTP delivered via SMS — do NOT expose it in the response
   return NextResponse.json({ success: true })
 }

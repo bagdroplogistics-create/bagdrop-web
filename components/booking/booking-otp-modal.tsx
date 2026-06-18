@@ -101,6 +101,7 @@ export function BookingOtpModal({ phone, onVerified, onClose }: BookingOtpModalP
   const [status,          setStatus]          = useState<Status>('sending')
   const [error,           setError]           = useState<string | null>(null)
   const [otp,             setOtp]             = useState('')
+  const [shownOtp,        setShownOtp]        = useState<string | null>(null)
   const [resendCountdown, setResendCountdown] = useState(0)
 
   const isLoading = status === 'sending' || status === 'verifying'
@@ -134,6 +135,7 @@ export function BookingOtpModal({ phone, onVerified, onClose }: BookingOtpModalP
     setStatus('sending')
     setError(null)
     setOtp('')
+    setShownOtp(null)
     try {
       const res  = await fetch('/api/auth/send-otp', {
         method:  'POST',
@@ -142,6 +144,8 @@ export function BookingOtpModal({ phone, onVerified, onClose }: BookingOtpModalP
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to send OTP.')
+      // fallback = true means SMS isn't configured — show OTP on screen
+      if (data.otp) setShownOtp(String(data.otp))
       setStatus('ready')
       setResendCountdown(30)
     } catch (err: unknown) {
@@ -266,11 +270,19 @@ export function BookingOtpModal({ phone, onVerified, onClose }: BookingOtpModalP
                 transition={{ duration: 0.2 }}
                 className="space-y-5"
               >
-                {/* SMS hint */}
-                <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-light px-4 py-2.5">
-                  <MessageSquare className="h-4 w-4 text-brand shrink-0" strokeWidth={1.75} />
-                  <span className="text-sm text-brand font-medium">Check your SMS messages</span>
-                </div>
+                {/* On-screen fallback (no SMS provider configured) */}
+                {shownOtp ? (
+                  <div className="flex flex-col items-center gap-1.5 rounded-2xl border-2 border-brand bg-brand-light px-4 py-4">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-brand">Your verification code</p>
+                    <p className="font-mono text-4xl font-black tracking-[0.3em] text-brand">{shownOtp}</p>
+                    <p className="text-[11px] text-text-muted">Enter this code below to confirm</p>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-light px-4 py-2.5">
+                    <MessageSquare className="h-4 w-4 text-brand shrink-0" strokeWidth={1.75} />
+                    <span className="text-sm text-brand font-medium">Check your SMS messages</span>
+                  </div>
+                )}
 
                 {/* 6-box OTP */}
                 <div className="space-y-2">
