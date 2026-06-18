@@ -88,7 +88,7 @@ export function BookingEngine() {
       <AnimatePresence>
         {showOtpModal && (
           <BookingOtpModal
-            email={booking.email}
+            phone={booking.phone}
             onVerified={handleOtpVerified}
             onClose={() => setShowOtpModal(false)}
           />

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Mail, ShieldCheck, RotateCcw, X } from 'lucide-react'
+import { MessageSquare, ShieldCheck, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
 // ── Inline 6-box OTP input ────────────────────────────────────
@@ -87,8 +87,8 @@ function OtpBoxes({
 
 // ── Main modal ────────────────────────────────────────────────
 export interface BookingOtpModalProps {
-  /** Customer email from booking state — OTP is sent here via Resend */
-  email: string
+  /** 10-digit phone from booking state (no +91) */
+  phone: string
   /** Called after OTP is verified — parent then submits the booking */
   onVerified: () => void
   /** Called when the customer closes the modal without verifying */
@@ -97,7 +97,7 @@ export interface BookingOtpModalProps {
 
 type Status = 'sending' | 'ready' | 'verifying' | 'error'
 
-export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalProps) {
+export function BookingOtpModal({ phone, onVerified, onClose }: BookingOtpModalProps) {
   const [status,          setStatus]          = useState<Status>('sending')
   const [error,           setError]           = useState<string | null>(null)
   const [otp,             setOtp]             = useState('')
@@ -105,7 +105,13 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
 
   const isLoading = status === 'sending' || status === 'verifying'
 
-  // Send OTP via Resend immediately when modal mounts
+  // E.164 format for the API
+  const e164 = '+91' + phone.replace(/\D/g, '')
+
+  // Masked display: 98765 43210 → +91 98765 *****
+  const maskedPhone = '+91 ' + phone.slice(0, 5) + ' *****'
+
+  // Generate OTP immediately when modal mounts
   useEffect(() => {
     sendOtp()
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -132,7 +138,7 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
       const res  = await fetch('/api/auth/send-otp', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ type: 'email', contact: email }),
+        body:    JSON.stringify({ type: 'phone', contact: e164 }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Failed to send OTP.')
@@ -152,7 +158,7 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
       const res  = await fetch('/api/auth/verify-otp', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ type: 'email', contact: email, otp }),
+        body:    JSON.stringify({ type: 'phone', contact: e164, otp }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Incorrect or expired code.')
@@ -162,13 +168,6 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
       setError(err instanceof Error ? err.message : 'Verification failed. Please try again.')
       setStatus('ready')
     }
-  }
-
-  // Show masked email: priya@example.com → pr***@example.com
-  function maskEmail(e: string) {
-    const [local, domain] = e.split('@')
-    if (!domain) return e
-    return `${local.slice(0, 2)}***@${domain}`
   }
 
   return (
@@ -208,13 +207,13 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
               <ShieldCheck className="h-7 w-7" strokeWidth={1.75} />
             </div>
             <h2 className="font-display text-xl font-bold text-text-primary">
-              {status === 'sending' ? 'Sending code…' : 'Verify your email'}
+              {status === 'sending' ? 'Sending code…' : 'Verify your mobile'}
             </h2>
             <p className="mt-1.5 text-sm text-text-muted">
               {status === 'sending'
-                ? 'Sending your verification code via email.'
-                : <>We sent a 6-digit code to<br />
-                    <span className="font-semibold text-text-primary">{maskEmail(email)}</span>
+                ? 'Sending a 6-digit OTP to your mobile.'
+                : <>We sent a 6-digit OTP to<br />
+                    <span className="font-semibold text-text-primary">{maskedPhone}</span>
                   </>
               }
             </p>
@@ -236,7 +235,7 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
               </motion.div>
             )}
 
-            {/* Send failed */}
+            {/* Generation failed */}
             {status === 'error' && (
               <motion.div
                 key="send-error"
@@ -267,10 +266,10 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
                 transition={{ duration: 0.2 }}
                 className="space-y-5"
               >
-                {/* Inbox hint */}
+                {/* SMS hint */}
                 <div className="flex items-center justify-center gap-2 rounded-xl bg-brand-light px-4 py-2.5">
-                  <Mail className="h-4 w-4 text-brand shrink-0" strokeWidth={1.75} />
-                  <span className="text-sm text-brand font-medium">Check your inbox &amp; spam folder</span>
+                  <MessageSquare className="h-4 w-4 text-brand shrink-0" strokeWidth={1.75} />
+                  <span className="text-sm text-brand font-medium">Check your SMS messages</span>
                 </div>
 
                 {/* 6-box OTP */}
@@ -312,7 +311,7 @@ export function BookingOtpModal({ email, onVerified, onClose }: BookingOtpModalP
                   className="flex w-full items-center justify-center gap-1.5 text-xs text-text-muted transition-colors hover:text-brand disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <RotateCcw className="h-3 w-3" />
-                  {resendCountdown > 0 ? `Resend code in ${resendCountdown}s` : 'Resend code'}
+                  {resendCountdown > 0 ? `Resend in ${resendCountdown}s` : 'Resend OTP'}
                 </button>
               </motion.div>
             )}

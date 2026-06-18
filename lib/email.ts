@@ -118,6 +118,7 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
     infoRow('Date', dateFormatted) +
     infoRow('Time slot', data.timeSlot || 'To be confirmed') +
     infoRow('Total bags', String(data.totalBags)) +
+    (data.customerPhone ? infoRow('Contact', data.customerPhone) : '') +
     '</table>' +
 
     '<h3 style="margin:0 0 14px;font-size:14px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">What Happens Next</h3>' +

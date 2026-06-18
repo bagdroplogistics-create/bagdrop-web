@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Package, Clock, CheckCircle, Truck, LogOut,
   Search, ChevronDown, RefreshCw, TrendingUp,
-  MapPin, Calendar, Phone, Mail, Hash,
+  MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
 } from 'lucide-react'
 
 interface Booking {
@@ -19,9 +19,12 @@ interface Booking {
   from_city: string
   to_city: string
   pickup_date: string | null
+  pickup_address: string | null
+  drop_address: string | null
   time_slot: string | null
   total_bags: number
   total_amount: number
+  notes: string | null
   created_at: string
 }
 
@@ -84,16 +87,221 @@ function StatusSelect({ id, current, adminKey, onUpdate }: {
   )
 }
 
+// ── Edit Modal ────────────────────────────────────────────────
+interface EditForm {
+  customer_name:  string
+  customer_phone: string
+  customer_email: string
+  total_bags:     string
+  pickup_date:    string
+  pickup_address: string
+  drop_address:   string
+  notes:          string
+}
+
+function EditModal({
+  booking, adminKey, onSaved, onClose,
+}: {
+  booking: Booking
+  adminKey: string
+  onSaved: () => void
+  onClose: () => void
+}) {
+  const [form, setForm] = useState<EditForm>({
+    customer_name:  booking.customer_name,
+    customer_phone: booking.customer_phone?.replace('+91', '') ?? '',
+    customer_email: booking.customer_email ?? '',
+    total_bags:     String(booking.total_bags),
+    pickup_date:    booking.pickup_date?.slice(0, 10) ?? '',
+    pickup_address: booking.pickup_address ?? '',
+    drop_address:   booking.drop_address ?? '',
+    notes:          booking.notes ?? '',
+  })
+  const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
+  function set(key: keyof EditForm, val: string) {
+    setForm(f => ({ ...f, [key]: val }))
+  }
+
+  async function handleSave() {
+    setSaving(true)
+    setSaveError(null)
+    try {
+      const res = await fetch('/api/admin/bookings/' + booking.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({
+          customer_name:  form.customer_name.trim(),
+          customer_phone: form.customer_phone.replace(/\D/g, ''),
+          customer_email: form.customer_email.trim(),
+          total_bags:     Number(form.total_bags) || 1,
+          pickup_date:    form.pickup_date || null,
+          pickup_address: form.pickup_address.trim(),
+          drop_address:   form.drop_address.trim(),
+          notes:          form.notes.trim(),
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Save failed')
+      onSaved()
+    } catch (err: unknown) {
+      setSaveError(err instanceof Error ? err.message : 'Could not save changes')
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto p-4 pt-8">
+      {/* Backdrop */}
+      <div className="fixed inset-0 bg-black/50" onClick={onClose} />
+
+      {/* Modal */}
+      <div className="relative z-10 w-full max-w-lg rounded-2xl border border-gray-200 bg-white shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">Edit Booking</h2>
+            <p className="text-xs text-orange-500 font-mono font-semibold">{booking.tracking_id}</p>
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Form */}
+        <div className="space-y-4 p-6">
+          <div className="grid grid-cols-2 gap-4">
+            {/* Name */}
+            <div className="col-span-2 space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Customer Name</label>
+              <input
+                type="text"
+                value={form.customer_name}
+                onChange={e => set('customer_name', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Phone */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Mobile (10 digits)</label>
+              <div className="flex gap-1.5">
+                <span className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 select-none">+91</span>
+                <input
+                  type="tel"
+                  inputMode="numeric"
+                  value={form.customer_phone}
+                  onChange={e => set('customer_phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                />
+              </div>
+            </div>
+            {/* Email */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Email (optional)</label>
+              <input
+                type="email"
+                value={form.customer_email}
+                onChange={e => set('customer_email', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Bags */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Total Bags</label>
+              <input
+                type="number"
+                min={1}
+                max={99}
+                value={form.total_bags}
+                onChange={e => set('total_bags', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Pickup date */}
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Pickup Date</label>
+              <input
+                type="date"
+                value={form.pickup_date}
+                onChange={e => set('pickup_date', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Pickup address */}
+            <div className="col-span-2 space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Pickup Address</label>
+              <input
+                type="text"
+                value={form.pickup_address}
+                onChange={e => set('pickup_address', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Drop address */}
+            <div className="col-span-2 space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Drop Address</label>
+              <input
+                type="text"
+                value={form.drop_address}
+                onChange={e => set('drop_address', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {/* Notes */}
+            <div className="col-span-2 space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Notes / Instructions</label>
+              <textarea
+                rows={3}
+                value={form.notes}
+                onChange={e => set('notes', e.target.value)}
+                className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+          </div>
+
+          {saveError && (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-600">{saveError}</p>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button
+            onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50 transition-colors"
+          >
+            {saving
+              ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              : <Save className="h-3.5 w-3.5" />
+            }
+            {saving ? 'Saving…' : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ── Dashboard ─────────────────────────────────────────────────
 export default function AdminDashboard() {
   const router = useRouter()
-  const [adminKey, setAdminKey]   = useState('')
-  const [authed, setAuthed]       = useState(false)
-  const [stats, setStats]         = useState<Stats | null>(null)
-  const [bookings, setBookings]   = useState<Booking[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [search, setSearch]       = useState('')
-  const [filter, setFilter]       = useState('all')
-  const [expanded, setExpanded]   = useState<string | null>(null)
+  const [adminKey, setAdminKey]     = useState('')
+  const [authed, setAuthed]         = useState(false)
+  const [stats, setStats]           = useState<Stats | null>(null)
+  const [bookings, setBookings]     = useState<Booking[]>([])
+  const [loading, setLoading]       = useState(true)
+  const [search, setSearch]         = useState('')
+  const [filter, setFilter]         = useState('all')
+  const [expanded, setExpanded]     = useState<string | null>(null)
+  const [editTarget, setEditTarget] = useState<Booking | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -139,6 +347,16 @@ export default function AdminDashboard() {
 
   return (
     <>
+      {/* Edit Modal */}
+      {editTarget && (
+        <EditModal
+          booking={editTarget}
+          adminKey={adminKey}
+          onSaved={() => { setEditTarget(null); fetchData() }}
+          onClose={() => setEditTarget(null)}
+        />
+      )}
+
       {/* Admin header bar — full width */}
       <div className="w-full border-b border-orange-200 bg-orange-50">
         <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4 sm:px-6">
@@ -262,21 +480,34 @@ export default function AdminDashboard() {
                       {expanded === b.id && (
                         <tr className="bg-orange-50/50">
                           <td colSpan={8} className="px-4 py-4">
-                            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                              {[
-                                { icon: <Phone className="h-3.5 w-3.5 text-orange-500" />, label: 'Phone',     val: b.customer_phone },
-                                { icon: <Mail className="h-3.5 w-3.5 text-orange-500" />,  label: 'Email',     val: b.customer_email },
-                                { icon: <Clock className="h-3.5 w-3.5 text-orange-500" />, label: 'Time Slot', val: b.time_slot || 'Not specified' },
-                                { icon: <Hash className="h-3.5 w-3.5 text-orange-500" />,  label: 'Booking ID',val: b.id.slice(0, 8) + '...' },
-                              ].map(r => (
-                                <div key={r.label} className="flex items-start gap-2">
-                                  <span className="mt-0.5">{r.icon}</span>
-                                  <div>
-                                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{r.label}</p>
-                                    <p className="text-sm font-medium text-gray-800">{r.val}</p>
+                            <div className="flex flex-wrap items-start gap-4">
+                              <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4">
+                                {[
+                                  { icon: <Phone className="h-3.5 w-3.5 text-orange-500" />, label: 'Phone',       val: b.customer_phone || '—' },
+                                  { icon: <Mail className="h-3.5 w-3.5 text-orange-500" />,  label: 'Email',       val: b.customer_email || '—' },
+                                  { icon: <Clock className="h-3.5 w-3.5 text-orange-500" />, label: 'Time Slot',   val: b.time_slot || 'Not specified' },
+                                  { icon: <Hash className="h-3.5 w-3.5 text-orange-500" />,  label: 'Booking ID',  val: b.id.slice(0, 8) + '...' },
+                                  ...(b.pickup_address ? [{ icon: <MapPin className="h-3.5 w-3.5 text-orange-500" />, label: 'Pickup', val: b.pickup_address }] : []),
+                                  ...(b.drop_address   ? [{ icon: <MapPin className="h-3.5 w-3.5 text-orange-500" />, label: 'Drop',   val: b.drop_address }] : []),
+                                  ...(b.notes          ? [{ icon: <Calendar className="h-3.5 w-3.5 text-orange-500" />, label: 'Notes', val: b.notes }] : []),
+                                ].map(r => (
+                                  <div key={r.label} className="flex items-start gap-2">
+                                    <span className="mt-0.5 shrink-0">{r.icon}</span>
+                                    <div>
+                                      <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{r.label}</p>
+                                      <p className="text-sm font-medium text-gray-800">{r.val}</p>
+                                    </div>
                                   </div>
-                                </div>
-                              ))}
+                                ))}
+                              </div>
+                              {/* Edit button */}
+                              <button
+                                onClick={e => { e.stopPropagation(); setEditTarget(b) }}
+                                className="flex shrink-0 items-center gap-1.5 rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-600 shadow-sm hover:bg-orange-50 hover:border-orange-400 transition-colors"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                                Edit
+                              </button>
                             </div>
                           </td>
                         </tr>
@@ -289,7 +520,7 @@ export default function AdminDashboard() {
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
-          Click any row to expand details — click again to collapse
+          Click any row to expand details — click Edit to modify booking
         </p>
       </main>
     </>

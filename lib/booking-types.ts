@@ -113,10 +113,7 @@ export function isStep3Valid(s: BookingState): boolean {
 }
 
 export function isStep4Valid(s: BookingState): boolean {
-  return !!(
-    s.name.trim() &&
-    s.email.trim() &&
-    /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email) &&
-    /^[6-9]\d{9}$/.test(s.phone.replace(/\D/g, ''))
-  )
+  const phoneOk = /^[6-9]\d{9}$/.test(s.phone.replace(/\D/g, ''))
+  const emailOk = !s.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)
+  return !!(s.name.trim() && phoneOk && emailOk)
 }

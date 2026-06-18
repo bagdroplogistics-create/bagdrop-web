@@ -14,6 +14,51 @@ function syntheticEmail(e164Phone: string): string {
   return `phone_${e164Phone.replace('+', '')}@auth.bagdrop.in`
 }
 
+// ── Fast2SMS — sends OTP as SMS to Indian mobile numbers ─────
+// API docs: https://docs.fast2sms.com
+// Set FAST2SMS_API_KEY in your environment variables (Vercel → Settings → Env Vars)
+async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: boolean; error?: string }> {
+  const apiKey = process.env.FAST2SMS_API_KEY
+  if (!apiKey) {
+    console.warn('[send-otp] FAST2SMS_API_KEY not set — cannot send SMS')
+    return { ok: false, error: 'SMS service not configured.' }
+  }
+
+  // Strip +91 prefix; Fast2SMS expects 10-digit number
+  const digits = mobileNumber.replace(/^\+91/, '').replace(/\D/g, '')
+
+  const message = `Your Bagdrop verification code is ${otp}. Valid for 10 minutes. Do not share this code with anyone. - Bagdrop`
+
+  const res = await fetch('https://www.fast2sms.com/dev/bulkV2', {
+    method: 'POST',
+    headers: {
+      authorization: apiKey,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      route:   'q',          // Quick (developer) route — switch to 'dlt' in production
+      message,
+      numbers: digits,
+      flash:   '0',
+    }),
+  })
+
+  const data = await res.json().catch(() => ({}))
+
+  if (!res.ok || data.return === false) {
+    const errMsg = data.message ?? JSON.stringify(data)
+    console.error('[send-otp] Fast2SMS error:', errMsg)
+    return {
+      ok: false,
+      error: process.env.NODE_ENV === 'development'
+        ? `SMS failed: ${errMsg}`
+        : 'Failed to send OTP. Please try again.',
+    }
+  }
+
+  return { ok: true }
+}
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => null)
   const { type, contact } = body ?? {}
@@ -22,7 +67,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'type (email|phone) and contact are required.' }, { status: 400 })
   }
 
-  const otp      = generateOtp()
+  const otp       = generateOtp()
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 min
   const authEmail = type === 'email' ? contact.trim().toLowerCase() : syntheticEmail(contact)
 
@@ -76,18 +121,21 @@ export async function POST(req: Request) {
     if (!emailRes.ok) {
       const errBody = await emailRes.json().catch(() => ({}))
       console.error('[send-otp] Resend error:', errBody)
-      // Surface the real Resend message in development; generic in production
       const detail = process.env.NODE_ENV === 'development'
         ? (errBody?.message ?? JSON.stringify(errBody))
         : 'Failed to send email. Please try again.'
       return NextResponse.json({ error: detail }, { status: 500 })
     }
 
-    // Don't expose OTP for email — it's in their inbox
     return NextResponse.json({ success: true })
   }
 
-  // ── Phone: return OTP to display on screen ─────────────
-  // No SMS is sent — the code is shown directly to the customer
-  return NextResponse.json({ success: true, otp })
+  // ── Phone: send OTP via Fast2SMS ───────────────────────
+  const smsResult = await sendSmsOtp(contact, otp)
+  if (!smsResult.ok) {
+    return NextResponse.json({ error: smsResult.error }, { status: 500 })
+  }
+
+  // OTP is delivered via SMS — do NOT expose it in the response
+  return NextResponse.json({ success: true })
 }

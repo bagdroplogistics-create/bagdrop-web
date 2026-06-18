@@ -52,7 +52,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
       <div>
         <h2 className="font-display text-lg font-semibold text-text-primary">Review &amp; confirm</h2>
         <p className="mt-1 text-sm text-text-muted">
-          Fill in your details. We'll send a verification code to your email before confirming.
+          Fill in your details. We'll send a verification code to your mobile number to confirm.
         </p>
       </div>
 
@@ -66,9 +66,10 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             value={state.name} onChange={v => onChange({ name: v })}
           />
           <FormField
-            id="email" label="Email address" icon={Mail} required
+            id="email" label="Email address" icon={Mail}
             type="email" placeholder="priya@example.com"
             value={state.email} onChange={v => onChange({ email: v })}
+            hint="Optional — we'll send booking updates if provided."
           />
           <div className="space-y-1.5">
             <label htmlFor="phone" className="block text-sm font-medium text-text-primary">
@@ -138,7 +139,7 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
           </Button>
 
           <p className="text-center text-xs text-text-muted">
-            Email verification required &middot; No payment now
+            Mobile verification required &middot; No payment now
           </p>
         </div>
       </div>

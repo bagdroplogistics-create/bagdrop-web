@@ -7,9 +7,10 @@ export async function POST(req: Request) {
   try {
     const { booking, pricing } = await req.json()
 
-    if (!booking?.name || !booking?.email) {
+    const rawPhoneCheck = booking?.phone?.replace(/\D/g, '') ?? ''
+    if (!booking?.name || !/^[6-9]\d{9}$/.test(rawPhoneCheck)) {
       return NextResponse.json(
-        { error: 'Name and email are required' },
+        { error: 'Name and a valid 10-digit mobile number are required' },
         { status: 400 }
       )
     }
@@ -23,7 +24,7 @@ export async function POST(req: Request) {
       : (booking.timeSlotId ?? '')
 
     const customerName  = booking.name.trim()
-    const customerEmail = booking.email.trim().toLowerCase()
+    const customerEmail = booking.email?.trim().toLowerCase() ?? ''
     const rawPhone      = booking.phone?.replace(/\D/g, '') ?? ''
     const customerPhone = rawPhone ? '+91' + rawPhone : ''
 
@@ -76,7 +77,7 @@ export async function POST(req: Request) {
     }
 
     Promise.allSettled([
-      sendCustomerConfirmation(emailData),
+      ...(customerEmail ? [sendCustomerConfirmation(emailData)] : []),
       sendAdminNotification(emailData),
     ])
 
