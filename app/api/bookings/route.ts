@@ -62,6 +62,53 @@ export async function POST(req: Request) {
       console.error('[Bookings] Supabase insert error:', dbError)
     }
 
+    // ── Auto-create Lead ────────────────────────────────────────────
+    // Only create a lead if one doesn't already exist for this phone number
+    if (savedBooking && customerPhone) {
+      try {
+        const { data: existingLead } = await supabaseAdmin
+          .from('leads')
+          .select('id')
+          .eq('phone', customerPhone)
+          .limit(1)
+          .single()
+
+        if (!existingLead) {
+          // Generate lead number: BDL-YYYY-NNNN
+          const year = new Date().getFullYear()
+          const { count } = await supabaseAdmin
+            .from('leads')
+            .select('*', { count: 'exact', head: true })
+          const seq = String((count ?? 0) + 1).padStart(4, '0')
+          const leadNumber = `BDL-${year}-${seq}`
+
+          await supabaseAdmin.from('leads').insert({
+            lead_number:      leadNumber,
+            name:             customerName,
+            phone:            customerPhone,
+            email:            customerEmail || null,
+            source:           'website',
+            status:           'new',
+            service_type:     booking.serviceId ?? '',
+            service_interest: booking.serviceId ?? '',
+            from_city:        fromCityLabel,
+            to_city:          toCityLabel,
+            travel_date:      booking.date ?? null,
+            bags_count:       pricing?.totalBags ?? booking.bags ?? 1,
+            notes:            `Auto-created from booking ${trackingId}`,
+            booking_id:       savedBooking.id,
+          })
+          console.log(`[Bookings] Auto-created lead ${leadNumber} for ${customerPhone}`)
+        } else {
+          console.log(`[Bookings] Lead already exists for ${customerPhone} — skipping`)
+        }
+      } catch (leadErr) {
+        // Non-fatal — booking already saved, just log the lead creation failure
+        console.error('[Bookings] Lead auto-create failed (non-fatal):', leadErr)
+      }
+    }
+    // ── End Auto-create Lead ────────────────────────────────────────
+
     const emailData: BookingEmailData = {
       customerName,
       customerEmail,
