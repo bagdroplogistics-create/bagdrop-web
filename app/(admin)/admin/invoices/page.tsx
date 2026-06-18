@@ -186,8 +186,20 @@ export default function InvoicesPage() {
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(inv.invoice_date)}</td>
                       <td className="px-4 py-3">
                         <div className="flex gap-1">
-                          {inv.sent_email     ? <CheckCircle className="h-3.5 w-3.5 text-green-400" title="Email sent" />    : <Clock className="h-3.5 w-3.5 text-gray-300" title="Email not sent" />}
-                          {inv.sent_whatsapp  ? <CheckCircle className="h-3.5 w-3.5 text-green-400" title="WhatsApp sent" /> : <Clock className="h-3.5 w-3.5 text-gray-300" title="WhatsApp not sent" />}
+                          <div title={inv.sent_email ? "Email sent" : "Email not sent"}>
+                            {inv.sent_email ? (
+                                <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                              ) : (
+                                <Clock className="h-3.5 w-3.5 text-gray-300" />
+                              )}
+                            </div>
+                         <div title={inv.sent_whatsapp ? "WhatsApp sent" : "WhatsApp not sent"}>
+                              {inv.sent_whatsapp ? (
+                                <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                              ) : (
+                                <Clock className="h-3.5 w-3.5 text-gray-300" />
+                              )}
+                         </div>
                         </div>
                       </td>
                       <td className="px-4 py-3">
