@@ -35,10 +35,10 @@ async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: bool
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        route:            'otp',  // Smart OTP route — no DLT registration needed
-        variables_values: otp,    // injected into Fast2SMS's OTP template
-        numbers:          digits,
-        flash:            0,
+        route:   'q',                                     // Quick SMS — works without DLT, no min recharge
+        message: `${otp} is your Bagdrop OTP. Valid for 10 minutes. Do not share. -Bagdrop`,
+        numbers: digits,
+        flash:   0,
       }),
     })
     data = await res.json().catch(() => ({}))
