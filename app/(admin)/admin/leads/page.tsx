@@ -1,31 +1,40 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
-  Phone, Mail, MapPin, Calendar, Pencil, Trash2, X, Save,
-  ArrowRight,
+  Phone, Pencil, Trash2, X, Save, Upload, Plane,
+  Package, Calendar, Clock,
 } from 'lucide-react'
 
+// ── Types ────────────────────────────────────────────────────────
 interface Lead {
-  id:               string
-  name:             string
-  phone:            string
-  email:            string | null
-  source:           string
-  service_interest: string | null
-  service_type:     string | null   // same field, kept in sync
-  from_city:        string | null
-  to_city:          string | null
-  travel_date:      string | null
-  bags_count:       number
-  status:           string
-  notes:            string | null
-  assigned_to:      string | null
-  created_at:       string
+  id:                string
+  name:              string
+  phone:             string
+  email:             string | null
+  source:            string
+  service_interest:  string | null
+  service_type:      string | null
+  from_city:         string | null
+  to_city:           string | null
+  travel_date:       string | null
+  pickup_date:       string | null
+  delivery_date:     string | null
+  pickup_time:       string | null
+  bags_count:        number
+  pnr:               string | null
+  flight_number:     string | null
+  flight_time:       string | null
+  flight_ticket_url: string | null
+  status:            string
+  notes:             string | null
+  assigned_to:       string | null
+  created_at:        string
 }
 
+// ── Config ───────────────────────────────────────────────────────
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   new:       { label: 'New',       color: '#2563eb', bg: '#dbeafe' },
   contacted: { label: 'Contacted', color: '#d97706', bg: '#fef3c7' },
@@ -35,11 +44,42 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  manual:   'Manual',
-  website:  'Website',
-  referral: 'Referral',
-  b2b:      'B2B',
+  manual:    'Manual',
+  website:   'Website',
+  referral:  'Referral',
+  b2b:       'B2B',
   'walk-in': 'Walk-in',
+}
+
+const SERVICE_TYPES = [
+  { value: 'airport-to-doorstep', label: 'Airport → Doorstep', needsFlight: true },
+  { value: 'doorstep-to-airport', label: 'Doorstep → Airport', needsFlight: true },
+  { value: 'doorstep-to-doorstep', label: 'Doorstep → Doorstep', needsFlight: false },
+  { value: 'airport-to-airport',   label: 'Airport → Airport',   needsFlight: false },
+]
+
+const PICKUP_TIME_SLOTS = [
+  '06:00 – 08:00',
+  '08:00 – 10:00',
+  '10:00 – 12:00',
+  '12:00 – 14:00',
+  '14:00 – 16:00',
+  '16:00 – 18:00',
+  '18:00 – 20:00',
+  '20:00 – 22:00',
+  '22:00 – 24:00',
+]
+
+function needsFlightInfo(serviceType: string) {
+  return SERVICE_TYPES.find(s => s.value === serviceType)?.needsFlight ?? false
+}
+
+// ── Helpers ──────────────────────────────────────────────────────
+const sel = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white'
+
+function formatDate(d: string | null) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -52,132 +92,371 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
-function formatDate(d: string | null) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-}
-
-// ── Lead Form (create / edit) ────────────────────────────────────
-interface LeadForm {
-  name: string; phone: string; email: string; source: string
-  service_interest: string; from_city: string; to_city: string
-  travel_date: string; bags_count: string; status: string; notes: string
-}
-
-const EMPTY_FORM: LeadForm = {
-  name: '', phone: '', email: '', source: 'manual',
-  service_interest: '', from_city: '', to_city: '',
-  travel_date: '', bags_count: '1', status: 'new', notes: '',
-}
-
-function LeadModal({
-  lead, adminKey, onSaved, onClose,
-}: {
-  lead?: Lead | null
-  adminKey: string
-  onSaved: () => void
-  onClose: () => void
+function Field({ label, value, onChange, placeholder, type = 'text', required }: {
+  label: string; value: string
+  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
+  placeholder?: string; type?: string; required?: boolean
 }) {
-  const [form, setForm] = useState<LeadForm>(
-    lead
-      ? {
-          name: lead.name, phone: lead.phone, email: lead.email ?? '',
-          source: lead.source,
-          service_interest: lead.service_interest ?? lead.service_type ?? '',
-          from_city: lead.from_city ?? '', to_city: lead.to_city ?? '',
-          travel_date: lead.travel_date ? lead.travel_date.split('T')[0] : '',
-          bags_count: String(lead.bags_count),
-          status: lead.status, notes: lead.notes ?? '',
-        }
-      : { ...EMPTY_FORM }
-  )
-  const [saving, setSaving] = useState(false)
-  const [err, setErr]       = useState('')
-
-  const set = (k: keyof LeadForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm(f => ({ ...f, [k]: e.target.value }))
-
-  async function save() {
-    if (!form.name.trim() || !form.phone.trim()) { setErr('Name and phone are required'); return }
-    setSaving(true); setErr('')
-    const url    = lead ? `/api/admin/leads/${lead.id}` : '/api/admin/leads'
-    const method = lead ? 'PATCH' : 'POST'
-    const res = await fetch(url, {
-      method,
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify({ ...form, bags_count: Number(form.bags_count) || 1 }),
-    })
-    if (!res.ok) { const j = await res.json().catch(() => ({})); setErr(j.error ?? 'Save failed'); setSaving(false); return }
-    onSaved()
-  }
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
-        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">{lead ? 'Edit Lead' : 'New Lead'}</h2>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-5 w-5" /></button>
-        </div>
-        <div className="grid grid-cols-2 gap-4 px-6 py-5">
-          <Field label="Full Name *"   value={form.name}   onChange={set('name')}   placeholder="Amit Shah" />
-          <Field label="Phone *"       value={form.phone}  onChange={set('phone')}  placeholder="9876543210" />
-          <Field label="Email"         value={form.email}  onChange={set('email')}  placeholder="amit@email.com" />
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-gray-600">Source</label>
-            <select value={form.source} onChange={set('source')} className={sel}>
-              {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-gray-600">Service Interest</label>
-            <select value={form.service_interest} onChange={set('service_interest')} className={sel}>
-              <option value="">— Select —</option>
-              <option value="airport-to-door">Airport → Doorstep</option>
-              <option value="door-to-airport">Doorstep → Airport</option>
-              <option value="intercity">Intercity</option>
-            </select>
-          </div>
-          <div>
-            <label className="mb-1.5 block text-xs font-semibold text-gray-600">Status</label>
-            <select value={form.status} onChange={set('status')} className={sel}>
-              {Object.entries(STATUS_CONFIG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
-            </select>
-          </div>
-          <Field label="From City"    value={form.from_city}   onChange={set('from_city')}   placeholder="Mumbai" />
-          <Field label="To City"      value={form.to_city}     onChange={set('to_city')}     placeholder="Ahmedabad" />
-          <Field label="Travel Date"  value={form.travel_date} onChange={set('travel_date')} type="date" />
-          <Field label="Bags Count"   value={form.bags_count}  onChange={set('bags_count')}  type="number" placeholder="1" />
-          <div className="col-span-2">
-            <label className="mb-1.5 block text-xs font-semibold text-gray-600">Notes</label>
-            <textarea value={form.notes} onChange={set('notes')} rows={3}
-              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
-              placeholder="Any additional notes..." />
-          </div>
-        </div>
-        {err && <p className="px-6 pb-2 text-xs text-red-500">{err}</p>}
-        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
-          <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">Cancel</button>
-          <button onClick={save} disabled={saving}
-            className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-            <Save className="h-4 w-4" />{saving ? 'Saving…' : 'Save Lead'}
-          </button>
-        </div>
+    <div>
+      <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+        {label}{required && <span className="ml-0.5 text-orange-500">*</span>}
+      </label>
+      <input type={type} value={value} onChange={onChange} placeholder={placeholder} required={required}
+        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+    </div>
+  )
+}
+
+// ── Section Divider ──────────────────────────────────────────────
+function Section({ icon, title, children }: { icon: React.ReactNode; title: string; children: React.ReactNode }) {
+  return (
+    <div className="col-span-2 space-y-3">
+      <div className="flex items-center gap-2 border-b border-gray-100 pb-2 pt-1">
+        <span className="text-orange-500">{icon}</span>
+        <p className="text-xs font-bold uppercase tracking-wider text-gray-500">{title}</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        {children}
       </div>
     </div>
   )
 }
 
-const sel = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white'
+// ── Lead Form Interface ──────────────────────────────────────────
+interface LeadForm {
+  name: string; phone: string; email: string; source: string
+  service_interest: string; from_city: string; to_city: string
+  // New date/time fields
+  travel_date: string; pickup_date: string; delivery_date: string; pickup_time: string
+  bags_count: string
+  // Flight fields (conditional)
+  pnr: string; flight_number: string; flight_time: string; flight_ticket_url: string
+  // Status / notes
+  status: string; notes: string
+}
 
-function Field({ label, value, onChange, placeholder, type = 'text' }: {
-  label: string; value: string; onChange: (e: React.ChangeEvent<HTMLInputElement>) => void
-  placeholder?: string; type?: string
+const EMPTY_FORM: LeadForm = {
+  name: '', phone: '', email: '', source: 'manual',
+  service_interest: '', from_city: '', to_city: '',
+  travel_date: '', pickup_date: '', delivery_date: '', pickup_time: '',
+  bags_count: '1',
+  pnr: '', flight_number: '', flight_time: '', flight_ticket_url: '',
+  status: 'new', notes: '',
+}
+
+// ── Lead Modal ───────────────────────────────────────────────────
+function LeadModal({
+  lead, adminKey, onSaved, onClose,
+}: {
+  lead?: Lead | null; adminKey: string; onSaved: () => void; onClose: () => void
 }) {
+  const fileRef = useRef<HTMLInputElement>(null)
+  const [form, setForm] = useState<LeadForm>(
+    lead
+      ? {
+          name:              lead.name,
+          phone:             lead.phone,
+          email:             lead.email ?? '',
+          source:            lead.source,
+          service_interest:  lead.service_interest ?? lead.service_type ?? '',
+          from_city:         lead.from_city ?? '',
+          to_city:           lead.to_city ?? '',
+          travel_date:       lead.travel_date?.slice(0, 10) ?? '',
+          pickup_date:       lead.pickup_date?.slice(0, 10) ?? '',
+          delivery_date:     lead.delivery_date?.slice(0, 10) ?? '',
+          pickup_time:       lead.pickup_time ?? '',
+          bags_count:        String(lead.bags_count),
+          pnr:               lead.pnr ?? '',
+          flight_number:     lead.flight_number ?? '',
+          flight_time:       lead.flight_time?.slice(0, 16) ?? '',
+          flight_ticket_url: lead.flight_ticket_url ?? '',
+          status:            lead.status,
+          notes:             lead.notes ?? '',
+        }
+      : { ...EMPTY_FORM }
+  )
+  const [saving, setSaving] = useState(false)
+  const [err, setErr]       = useState('')
+  const [pnrMode, setPnrMode] = useState<'text' | 'file'>('text')
+  const [fileName, setFileName] = useState('')
+
+  const set = (k: keyof LeadForm) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const requiresFlight = needsFlightInfo(form.service_interest)
+
+  // Validation
+  function validate() {
+    if (!form.name.trim())         return 'Customer name is required'
+    if (!form.phone.trim())        return 'Phone number is required'
+    if (!form.travel_date)         return 'Travel date is required'
+    if (!form.pickup_date)         return 'Pickup date is required'
+    if (!form.delivery_date)       return 'Delivery date is required'
+    if (!form.pickup_time)         return 'Pickup time slot is required'
+    if (!Number(form.bags_count) || Number(form.bags_count) < 1) return 'Number of bags must be at least 1'
+    if (requiresFlight && !form.pnr.trim() && !form.flight_ticket_url.trim())
+      return 'PNR / flight ticket is required for this service type'
+    if (requiresFlight && !form.flight_time) return 'Flight time is required'
+    return null
+  }
+
+  async function save() {
+    const validationErr = validate()
+    if (validationErr) { setErr(validationErr); return }
+    setSaving(true); setErr('')
+
+    const url    = lead ? `/api/admin/leads/${lead.id}` : '/api/admin/leads'
+    const method = lead ? 'PATCH' : 'POST'
+    const res = await fetch(url, {
+      method,
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({
+        ...form,
+        service_type: form.service_interest,
+        bags_count:   Number(form.bags_count) || 1,
+        // Clear flight fields if service type doesn't need them
+        pnr:               requiresFlight ? (form.pnr.trim() || null) : null,
+        flight_number:     requiresFlight ? (form.flight_number.trim() || null) : null,
+        flight_time:       requiresFlight ? (form.flight_time || null) : null,
+        flight_ticket_url: requiresFlight ? (form.flight_ticket_url.trim() || null) : null,
+      }),
+    })
+    if (!res.ok) {
+      const j = await res.json().catch(() => ({}))
+      setErr(j.error ?? 'Save failed')
+      setSaving(false)
+      return
+    }
+    onSaved()
+  }
+
+  function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    // Store filename as reference — actual file upload would need a separate upload endpoint
+    setForm(f => ({ ...f, flight_ticket_url: file.name }))
+  }
+
   return (
-    <div>
-      <label className="mb-1.5 block text-xs font-semibold text-gray-600">{label}</label>
-      <input type={type} value={value} onChange={onChange} placeholder={placeholder}
-        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
+      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{lead ? 'Edit Lead' : 'New Lead'}</h2>
+            {lead && <p className="text-xs text-gray-400">ID: {lead.id.slice(0, 8)}…</p>}
+          </div>
+          <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition-colors">
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4 px-6 py-5">
+
+          {/* ── Customer Info ── */}
+          <Section icon={<Users className="h-4 w-4" />} title="Customer Information">
+            <Field label="Full Name" required value={form.name}  onChange={set('name')}  placeholder="Amit Shah" />
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Phone<span className="ml-0.5 text-orange-500">*</span>
+              </label>
+              <div className="flex gap-1.5">
+                <span className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 select-none">+91</span>
+                <input type="tel" inputMode="numeric" value={form.phone}
+                  onChange={e => setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, 10) }))}
+                  placeholder="9876543210"
+                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+            </div>
+            <Field label="Email" value={form.email} onChange={set('email')} placeholder="amit@email.com" type="email" />
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Source</label>
+              <select value={form.source} onChange={set('source')} className={sel}>
+                {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              </select>
+            </div>
+          </Section>
+
+          {/* ── Service Details ── */}
+          <Section icon={<Package className="h-4 w-4" />} title="Service Details">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Service Type
+              </label>
+              <select value={form.service_interest} onChange={set('service_interest')} className={sel}>
+                <option value="">— Select service type —</option>
+                {SERVICE_TYPES.map(s => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Status</label>
+              <select value={form.status} onChange={set('status')} className={sel}>
+                {Object.entries(STATUS_CONFIG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+              </select>
+            </div>
+            <Field label="From City" value={form.from_city} onChange={set('from_city')} placeholder="Mumbai" />
+            <Field label="To City"   value={form.to_city}   onChange={set('to_city')}   placeholder="Ahmedabad" />
+          </Section>
+
+          {/* ── Dates & Timing ── */}
+          <Section icon={<Calendar className="h-4 w-4" />} title="Dates &amp; Timing">
+            <Field label="Travel Date"   required value={form.travel_date}   onChange={set('travel_date')}   type="date" />
+            <Field label="Pickup Date"   required value={form.pickup_date}   onChange={set('pickup_date')}   type="date" />
+            <Field label="Delivery Date" required value={form.delivery_date} onChange={set('delivery_date')} type="date" />
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Pickup Time Slot<span className="ml-0.5 text-orange-500">*</span>
+              </label>
+              <select value={form.pickup_time} onChange={set('pickup_time')} className={sel}>
+                <option value="">— Select time slot —</option>
+                {PICKUP_TIME_SLOTS.map(slot => (
+                  <option key={slot} value={slot}>{slot}</option>
+                ))}
+              </select>
+            </div>
+          </Section>
+
+          {/* ── Baggage ── */}
+          <Section icon={<Package className="h-4 w-4" />} title="Baggage">
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Number of Bags<span className="ml-0.5 text-orange-500">*</span>
+              </label>
+              <div className="flex items-center gap-3">
+                {/* Stepper */}
+                <div className="flex items-center rounded-lg border border-gray-200 bg-white">
+                  <button type="button"
+                    onClick={() => setForm(f => ({ ...f, bags_count: String(Math.max(1, Number(f.bags_count) - 1)) }))}
+                    className="flex h-9 w-9 items-center justify-center rounded-l-lg text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-colors text-lg font-bold">
+                    −
+                  </button>
+                  <input type="number" min={1} max={99}
+                    value={form.bags_count}
+                    onChange={e => setForm(f => ({ ...f, bags_count: e.target.value }))}
+                    className="w-14 border-x border-gray-200 py-2 text-center text-sm font-bold text-gray-800 focus:outline-none focus:ring-0" />
+                  <button type="button"
+                    onClick={() => setForm(f => ({ ...f, bags_count: String(Math.min(99, Number(f.bags_count) + 1)) }))}
+                    className="flex h-9 w-9 items-center justify-center rounded-r-lg text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-colors text-lg font-bold">
+                    +
+                  </button>
+                </div>
+                <div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
+                  <span className="font-semibold">Per bag weight limit: 30 KG</span>
+                  <br /><span className="text-orange-500">Each bag allowed up to 30 KG</span>
+                </div>
+              </div>
+            </div>
+          </Section>
+
+          {/* ── Flight Info (conditional) ── */}
+          {requiresFlight && (
+            <Section icon={<Plane className="h-4 w-4" />} title="Flight Information">
+              {/* PNR / Ticket */}
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                  Flight Ticket / PNR<span className="ml-0.5 text-orange-500">*</span>
+                </label>
+                {/* Mode switcher */}
+                <div className="mb-2 flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 w-fit">
+                  <button type="button" onClick={() => setPnrMode('text')}
+                    className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-colors ${
+                      pnrMode === 'text' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>
+                    Enter PNR
+                  </button>
+                  <button type="button" onClick={() => setPnrMode('file')}
+                    className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-colors ${
+                      pnrMode === 'file' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}>
+                    Upload Ticket
+                  </button>
+                </div>
+
+                {pnrMode === 'text' ? (
+                  <input type="text" value={form.pnr} onChange={set('pnr')}
+                    placeholder="e.g. ABC123 or XYZPQR"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono tracking-wider focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                ) : (
+                  <div>
+                    <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png"
+                      onChange={handleFileChange} className="hidden" />
+                    <button type="button" onClick={() => fileRef.current?.click()}
+                      className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-colors">
+                      <Upload className="h-4 w-4" />
+                      {fileName ? fileName : 'Upload PDF / JPG / PNG'}
+                    </button>
+                    {fileName && (
+                      <p className="mt-1 text-xs text-green-600">&#10003; {fileName} selected</p>
+                    )}
+                    <p className="mt-1 text-xs text-gray-400">Accepted: PDF, JPG, PNG</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Flight Time */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                  Flight Date &amp; Time<span className="ml-0.5 text-orange-500">*</span>
+                </label>
+                <input type="datetime-local" value={form.flight_time} onChange={set('flight_time')}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+
+              {/* Flight Number */}
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                  Flight Number
+                  <span className="ml-1 text-[10px] font-normal text-gray-400">(Recommended)</span>
+                </label>
+                <input type="text" value={form.flight_number} onChange={set('flight_number')}
+                  placeholder="e.g. AI-101"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+            </Section>
+          )}
+
+          {/* ── Notes & Status ── */}
+          <div className="col-span-2 space-y-3">
+            <div className="flex items-center gap-2 border-b border-gray-100 pb-2 pt-1">
+              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Notes &amp; Assignment</p>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="col-span-2">
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">Notes</label>
+                <textarea value={form.notes} onChange={set('notes')} rows={3}
+                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  placeholder="Any special instructions or notes…" />
+              </div>
+            </div>
+          </div>
+
+        </div>
+
+        {err && (
+          <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
+            {err}
+          </div>
+        )}
+
+        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+          <button onClick={onClose}
+            className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+            Cancel
+          </button>
+          <button onClick={save} disabled={saving}
+            className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50 transition-colors">
+            {saving
+              ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+              : <Save className="h-4 w-4" />}
+            {saving ? 'Saving…' : 'Save Lead'}
+          </button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -217,6 +496,12 @@ export default function LeadsPage() {
     await fetch(`/api/admin/leads/${id}`, { method: 'DELETE', headers: { 'x-admin-key': adminKey } })
     setDeleting(null)
     fetchLeads()
+  }
+
+  function serviceLabel(lead: Lead) {
+    const s = lead.service_type ?? lead.service_interest
+    if (!s) return '—'
+    return SERVICE_TYPES.find(t => t.value === s)?.label ?? s
   }
 
   if (!authed) return null
@@ -294,32 +579,39 @@ export default function LeadsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Name', 'Phone', 'Service', 'Route', 'Bags', 'Date', 'Source', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
+                    {['Name', 'Phone', 'Service', 'Route', 'Bags', 'Travel Date', 'Pickup Date', 'Pickup Time', 'PNR / Flight', 'Source', 'Status', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {leads.map(lead => (
                     <tr key={lead.id} className="hover:bg-orange-50/30 transition-colors">
-                      <td className="px-4 py-3 font-semibold text-gray-900">{lead.name}</td>
+                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{lead.name}</td>
                       <td className="px-4 py-3 text-gray-600">
                         <a href={`tel:${lead.phone}`} className="flex items-center gap-1 hover:text-orange-500">
                           <Phone className="h-3 w-3" />{lead.phone}
                         </a>
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
-                        {(() => {
-                          const s = lead.service_type ?? lead.service_interest
-                          if (!s) return '—'
-                          return s.replace('airport-to-door','Arpt→Door').replace('door-to-airport','Door→Arpt').replace('intercity','Intercity')
-                        })()}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{serviceLabel(lead)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
                         {lead.from_city && lead.to_city ? `${lead.from_city} → ${lead.to_city}` : '—'}
                       </td>
                       <td className="px-4 py-3 text-center text-gray-700 font-medium">{lead.bags_count}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{formatDate(lead.travel_date)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(lead.travel_date)}</td>
+                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(lead.pickup_date)}</td>
+                      <td className="px-4 py-3 text-xs whitespace-nowrap">
+                        {lead.pickup_time
+                          ? <span className="inline-flex items-center gap-1 text-gray-600"><Clock className="h-3 w-3 text-orange-400" />{lead.pickup_time}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
+                      <td className="px-4 py-3 text-xs">
+                        {lead.pnr
+                          ? <span className="inline-flex items-center gap-1 font-mono text-indigo-600"><Plane className="h-3 w-3" />{lead.pnr}</span>
+                          : lead.flight_number
+                            ? <span className="font-mono text-gray-500">{lead.flight_number}</span>
+                            : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{SOURCE_LABELS[lead.source] ?? lead.source}</td>
                       <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
                       <td className="px-4 py-3">

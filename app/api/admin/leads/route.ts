@@ -52,8 +52,11 @@ export async function POST(req: NextRequest) {
   // service_interest and service_type are kept in sync — accept either field name
   const serviceVal = (body.service_interest || body.service_type || '').trim() || null
 
-  // Convert empty string to null for date column — PostgreSQL rejects ""
-  const travelDate = (body.travel_date ?? '').trim() || null
+  // Convert empty strings to null for date/optional columns — PostgreSQL rejects ""
+  const nullDate = (v: unknown) => (typeof v === 'string' ? v.trim() : '') || null
+
+  // Flight fields are only relevant for airport-related service types
+  const needsFlight = ['airport-to-door', 'door-to-airport', 'airport-to-doorstep', 'doorstep-to-airport'].includes(serviceVal ?? '')
 
   const { data, error } = await supabaseAdmin
     .from('leads')
@@ -66,11 +69,19 @@ export async function POST(req: NextRequest) {
       service_type:     serviceVal,
       from_city:        body.from_city?.trim() || null,
       to_city:          body.to_city?.trim() || null,
-      travel_date:      travelDate,
+      travel_date:      nullDate(body.travel_date),
+      pickup_date:      nullDate(body.pickup_date),
+      delivery_date:    nullDate(body.delivery_date),
+      pickup_time:      body.pickup_time?.trim() || null,
       bags_count:       Number(body.bags_count) || 1,
       status:           body.status ?? 'new',
       notes:            body.notes?.trim() || null,
       assigned_to:      body.assigned_to?.trim() || null,
+      // Flight fields — only store if service type requires them
+      pnr:              needsFlight ? (body.pnr?.trim() || null) : null,
+      flight_number:    needsFlight ? (body.flight_number?.trim() || null) : null,
+      flight_time:      needsFlight ? nullDate(body.flight_time) : null,
+      flight_ticket_url: needsFlight ? (body.flight_ticket_url?.trim() || null) : null,
     })
     .select()
     .single()

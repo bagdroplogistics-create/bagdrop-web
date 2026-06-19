@@ -29,8 +29,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const allowed = [
     'name', 'phone', 'email', 'source', 'service_interest', 'service_type',
-    'from_city', 'to_city', 'travel_date', 'bags_count',
-    'status', 'notes', 'assigned_to', 'converted_booking_id',
+    'from_city', 'to_city', 'travel_date', 'pickup_date', 'delivery_date',
+    'pickup_time', 'bags_count', 'status', 'notes', 'assigned_to',
+    'converted_booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -39,9 +40,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   }
 
   // Convert empty strings to null for date/optional fields
-  const nullableFields = ['travel_date', 'email', 'from_city', 'to_city', 'notes', 'assigned_to', 'converted_booking_id']
+  const nullableFields = [
+    'travel_date', 'pickup_date', 'delivery_date', 'flight_time',
+    'email', 'from_city', 'to_city', 'notes', 'assigned_to',
+    'converted_booking_id', 'pnr', 'flight_number', 'flight_ticket_url', 'pickup_time',
+  ]
   for (const f of nullableFields) {
-    if (f in updates && updates[f] === '') updates[f] = null
+    if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null
   }
 
   // Keep service_interest and service_type in sync
