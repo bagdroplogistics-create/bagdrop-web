@@ -18,6 +18,9 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from('bookings')
     .select('*', { count: 'exact' })
+    // Only show rows that are real bookings — must have a tracking_id (BD-XXXXXX)
+    // This prevents any accidentally trigger-created rows from showing up
+    .not('tracking_id', 'is', null)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
