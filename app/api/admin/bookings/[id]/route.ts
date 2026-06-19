@@ -72,6 +72,13 @@ export async function PATCH(
   }
 
   if (status) {
+    // LOCK: completed bookings cannot have status changed
+    const { data: currentBooking } = await supabaseAdmin
+      .from('bookings').select('status').eq('id', id).single()
+    if (currentBooking?.status === 'completed') {
+      return NextResponse.json({ error: 'Booking is completed and cannot be modified' }, { status: 403 })
+    }
+
     updates.status = status
 
     const { data: existing } = await supabaseAdmin

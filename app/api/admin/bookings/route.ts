@@ -9,6 +9,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const status   = searchParams.get('status')
+  const statuses = searchParams.get('statuses')   // comma-separated list for phase filter
   const search   = searchParams.get('search')
   const page     = parseInt(searchParams.get('page') ?? '1', 10)
   const limit    = parseInt(searchParams.get('limit') ?? '50', 10)
@@ -20,7 +21,10 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (status && status !== 'all') {
+  if (statuses) {
+    // Phase filter: match any of the statuses in the list
+    query = query.in('status', statuses.split(','))
+  } else if (status && status !== 'all') {
     query = query.eq('status', status)
   }
 
