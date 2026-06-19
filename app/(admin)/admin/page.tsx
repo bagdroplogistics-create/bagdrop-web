@@ -517,7 +517,14 @@ export default function AdminDashboard() {
                       <tr onClick={() => setExpanded(expanded === b.id ? null : b.id)}
                         className="cursor-pointer hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-3">
-                          <span className="font-mono text-xs font-bold text-orange-600">{b.tracking_id}</span>
+                          <div className="flex flex-col gap-0.5">
+                            <span className="font-mono text-xs font-bold text-orange-600">{b.tracking_id}</span>
+                            {b.tracking_id?.startsWith('BDA-') && (
+                              <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                                <Users className="h-2.5 w-2.5" /> Lead
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-sm font-semibold text-gray-900">{b.customer_name}</p>

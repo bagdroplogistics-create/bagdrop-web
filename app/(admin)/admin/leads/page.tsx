@@ -5,8 +5,9 @@ import { useRouter } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
-  Package, Calendar, Clock,
+  Package, Calendar, Clock, CheckCircle, ExternalLink,
 } from 'lucide-react'
+import Link from 'next/link'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
@@ -28,6 +29,8 @@ interface Lead {
   flight_number:     string | null
   flight_time:       string | null
   flight_ticket_url: string | null
+  booking_id:        string | null
+  lead_number:       string | null
   status:            string
   notes:             string | null
   assigned_to:       string | null
@@ -176,8 +179,9 @@ function LeadModal({
         }
       : { ...EMPTY_FORM }
   )
-  const [saving, setSaving] = useState(false)
-  const [err, setErr]       = useState('')
+  const [saving, setSaving]   = useState(false)
+  const [err, setErr]         = useState('')
+  const [saved, setSaved]     = useState<{ lead_number: string; tracking_id: string } | null>(null)
   const [pnrMode, setPnrMode] = useState<'text' | 'file'>('text')
   const [fileName, setFileName] = useState('')
 
@@ -222,10 +226,18 @@ function LeadModal({
         flight_ticket_url: requiresFlight ? (form.flight_ticket_url.trim() || null) : null,
       }),
     })
+    const j = await res.json().catch(() => ({}))
     if (!res.ok) {
-      const j = await res.json().catch(() => ({}))
       setErr(j.error ?? 'Save failed')
       setSaving(false)
+      return
+    }
+    // For new leads: show confirmation with lead number + booking tracking ID
+    if (!lead && j.lead_number) {
+      setSaved({ lead_number: j.lead_number, tracking_id: j.tracking_id })
+      setSaving(false)
+      // Auto-close after 3s and refresh parent
+      setTimeout(() => onSaved(), 3000)
       return
     }
     onSaved()
@@ -237,6 +249,48 @@ function LeadModal({
     setFileName(file.name)
     // Store filename as reference — actual file upload would need a separate upload endpoint
     setForm(f => ({ ...f, flight_ticket_url: file.name }))
+  }
+
+  // ── Success screen (after new lead created) ──────────────────────
+  if (saved) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+        <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-2xl text-center">
+          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
+            <CheckCircle className="h-8 w-8 text-green-600" />
+          </div>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Lead Created!</h2>
+          <p className="text-sm text-gray-500 mb-5">The lead and booking pipeline record have been created successfully.</p>
+          <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 mb-5 space-y-3 text-left">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500">Lead Number</span>
+              <span className="font-mono font-bold text-blue-600">{saved.lead_number}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500">Booking / Tracking ID</span>
+              <span className="font-mono font-bold text-orange-600">{saved.tracking_id}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500">Status</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-semibold text-yellow-700">Inquiry</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500">Payment Status</span>
+              <span className="text-xs font-semibold text-gray-600">Pending</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-gray-500">Quote Status</span>
+              <span className="text-xs font-semibold text-gray-600">Not Generated</span>
+            </div>
+          </div>
+          <p className="text-xs text-gray-400 mb-4">Closing automatically in 3 seconds…</p>
+          <button onClick={onSaved}
+            className="w-full rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
+            Go to Dashboard
+          </button>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -579,7 +633,7 @@ export default function LeadsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Name', 'Phone', 'Service', 'Route', 'Bags', 'Travel Date', 'Pickup Date', 'Pickup Time', 'PNR / Flight', 'Source', 'Status', 'Actions'].map(h => (
+                    {['Lead #', 'Name', 'Phone', 'Service', 'Route', 'Bags', 'Travel Date', 'Pickup Date', 'Pickup Time', 'PNR / Flight', 'Source', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -587,6 +641,16 @@ export default function LeadsPage() {
                 <tbody className="divide-y divide-gray-50">
                   {leads.map(lead => (
                     <tr key={lead.id} className="hover:bg-orange-50/30 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="font-mono text-xs font-bold text-blue-600">{lead.lead_number ?? '—'}</span>
+                          {lead.booking_id && (
+                            <Link href="/admin" className="inline-flex items-center gap-0.5 text-[10px] text-orange-500 hover:text-orange-700">
+                              <ExternalLink className="h-2.5 w-2.5" /> View Booking
+                            </Link>
+                          )}
+                        </div>
+                      </td>
                       <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{lead.name}</td>
                       <td className="px-4 py-3 text-gray-600">
                         <a href={`tel:${lead.phone}`} className="flex items-center gap-1 hover:text-orange-500">
