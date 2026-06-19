@@ -45,5 +45,3 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({ bookings: data, total: count, page, limit })
 }
-ge, limit })
-}
