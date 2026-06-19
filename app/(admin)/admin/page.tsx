@@ -27,6 +27,8 @@ interface Booking {
   time_slot: string | null
   total_bags: number
   total_amount: number
+  payment_status: string | null
+  payment_reference: string | null
   notes: string | null
   created_at: string
 }
@@ -335,6 +337,239 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
   )
 }
 
+// ── Quote & Payment Action Panel ─────────────────────────────────
+// Shows contextual actions in the expanded row based on booking status:
+// accepted → build quote | quote_sent → request payment | payment_pending → QR + verify | payment_approved → confirm
+function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
+  booking: Booking; adminKey: string; onUpdate: () => void
+}) {
+  const [basePrice, setBasePrice] = useState('')
+  const [utr, setUtr]             = useState('')
+  const [upiId, setUpiId]         = useState('')
+  const [loading, setLoading]     = useState(false)
+  const [err, setErr]             = useState('')
+  const [msg, setMsg]             = useState('')
+
+  const s = booking.status
+
+  // Fetch UPI ID from settings when we need to show QR
+  useEffect(() => {
+    if (!['accepted', 'quote_sent', 'payment_pending'].includes(s)) return
+    fetch('/api/admin/settings?key=' + adminKey)
+      .then(r => r.json())
+      .then(d => { if (d.settings?.payment_upi) setUpiId(d.settings.payment_upi) })
+      .catch(() => {})
+  }, [s, adminKey])
+
+  // Only show for these 4 statuses
+  if (!['accepted', 'quote_sent', 'payment_pending', 'payment_approved'].includes(s)) return null
+
+  const base  = parseFloat(basePrice) || 0
+  const cgst  = parseFloat((base * 0.025).toFixed(2))
+  const sgst  = parseFloat((base * 0.025).toFixed(2))
+  const total = parseFloat((base + cgst + sgst).toFixed(2))
+
+  async function patchBooking(body: Record<string, unknown>) {
+    setLoading(true); setErr('')
+    const res = await fetch('/api/admin/bookings/' + booking.id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify(body),
+    })
+    const d = await res.json()
+    if (!res.ok) { setErr(d.error ?? 'Failed'); setLoading(false); return false }
+    setLoading(false)
+    onUpdate()
+    return true
+  }
+
+  async function sendQuote() {
+    if (base <= 0) { setErr('Enter a valid base price'); return }
+    // Create quote record
+    await fetch('/api/admin/quotes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({
+        customer_name:  booking.customer_name,
+        customer_phone: booking.customer_phone,
+        customer_email: booking.customer_email,
+        service_type:   booking.service_label,
+        from_city:      booking.from_city,
+        to_city:        booking.to_city,
+        pickup_date:    booking.pickup_date,
+        total_bags:     booking.total_bags,
+        base_price:     base,
+        status:         'sent',
+        notes:          `Booking ${booking.tracking_id}`,
+      }),
+    })
+    // Update booking: set total_amount + advance status
+    await patchBooking({ status: 'quote_sent', total_amount: total })
+  }
+
+  async function requestPayment() {
+    await patchBooking({ status: 'payment_pending' })
+  }
+
+  async function verifyPayment() {
+    if (!utr.trim()) { setErr('Enter UTR / reference number'); return }
+    const ok = await patchBooking({
+      status:            'payment_approved',
+      payment_status:    'paid',
+      payment_method:    'upi',
+      payment_reference: utr.trim(),
+    })
+    if (ok) setMsg('Payment verified! ✓')
+  }
+
+  async function confirmBooking() {
+    await patchBooking({ status: 'confirmed' })
+  }
+
+  const amount = Number(booking.total_amount)
+  const upiLink = `upi://pay?pa=${upiId}&pn=Bagdrop&am=${amount}&cu=INR&tn=${booking.tracking_id}`
+  const upiQrUrl = upiId && amount > 0
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiLink)}`
+    : null
+
+  return (
+    <div className="mt-4 rounded-xl border border-orange-100 bg-white p-4 shadow-sm" onClick={e => e.stopPropagation()}>
+
+      {/* ── ACCEPTED: Build Quote ── */}
+      {s === 'accepted' && (
+        <div>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-orange-400">
+            💼 Create &amp; Send Quote
+          </p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Base Price (₹)</label>
+              <input
+                type="number" min={0} placeholder="e.g. 2000"
+                value={basePrice} onChange={e => setBasePrice(e.target.value)}
+                className="w-40 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              />
+            </div>
+            {base > 0 && (
+              <div className="rounded-xl border border-gray-100 bg-gray-50 px-4 py-2.5">
+                <div className="flex gap-5 text-xs text-gray-500">
+                  <span>CGST 2.5%: <strong className="text-gray-700">₹{cgst.toFixed(2)}</strong></span>
+                  <span>SGST 2.5%: <strong className="text-gray-700">₹{sgst.toFixed(2)}</strong></span>
+                </div>
+                <p className="mt-1 text-lg font-bold text-gray-900">Total: ₹{total.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</p>
+              </div>
+            )}
+            <button onClick={sendQuote} disabled={loading || base <= 0}
+              className="flex items-center gap-1.5 rounded-lg bg-purple-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-purple-700 disabled:opacity-40 transition-colors">
+              <FileText className="h-3.5 w-3.5" />
+              {loading ? 'Sending...' : 'Send Quote →'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* ── QUOTE SENT: Show amount + Request Payment ── */}
+      {s === 'quote_sent' && (
+        <div>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-purple-400">
+            📄 Quote Sent — Request Payment
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="rounded-xl border border-purple-100 bg-purple-50 px-5 py-3">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-purple-500">Quote Amount</p>
+              <p className="text-2xl font-bold text-purple-900">₹{amount.toLocaleString('en-IN')}</p>
+            </div>
+            <div className="space-y-1.5">
+              <p className="text-xs text-gray-500">Customer has received the quote.<br/>Click below to send the payment QR code.</p>
+              <button onClick={requestPayment} disabled={loading}
+                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-40 transition-colors">
+                <CreditCard className="h-3.5 w-3.5" />
+                {loading ? 'Updating...' : 'Request Payment → Send QR'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENT PENDING: QR Code + Verify ── */}
+      {s === 'payment_pending' && (
+        <div>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-amber-500">
+            💳 Awaiting Payment — Share QR with Customer
+          </p>
+          <div className="flex flex-wrap gap-6">
+            {/* QR Code */}
+            <div className="flex flex-col items-center gap-2">
+              {upiQrUrl ? (
+                <>
+                  <img src={upiQrUrl} alt="UPI QR Code"
+                    className="rounded-xl border-2 border-orange-100 shadow-md"
+                    width={180} height={180} />
+                  <p className="text-[11px] font-mono font-bold text-gray-600">{upiId}</p>
+                  <p className="text-sm font-bold text-gray-800">₹{amount.toLocaleString('en-IN')}</p>
+                </>
+              ) : (
+                <div className="flex h-[180px] w-[180px] items-center justify-center rounded-xl border-2 border-dashed border-gray-200 bg-gray-50 text-center text-xs text-gray-400 p-4">
+                  Set UPI ID in<br />Settings → Payment
+                </div>
+              )}
+            </div>
+            {/* Payment verification */}
+            <div className="flex-1 min-w-[220px] space-y-3">
+              <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Share with Customer</p>
+                <p className="text-sm font-mono font-bold text-amber-900 mt-0.5">{upiId || '(UPI not set in Settings)'}</p>
+                <p className="text-sm font-bold text-amber-900">₹{amount.toLocaleString('en-IN')}</p>
+                <p className="text-[10px] text-amber-600 mt-1">Ref: {booking.tracking_id}</p>
+              </div>
+              <div className="space-y-1">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">UTR / Payment Reference No.</label>
+                <input type="text" placeholder="12-digit UTR or reference" value={utr}
+                  onChange={e => setUtr(e.target.value)}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-400" />
+              </div>
+              <button onClick={verifyPayment} disabled={loading || !utr.trim()}
+                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                <CheckCircle className="h-3.5 w-3.5" />
+                {loading ? 'Verifying...' : 'Mark Payment Received ✓'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── PAYMENT APPROVED: Confirm Booking ── */}
+      {s === 'payment_approved' && (
+        <div>
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-green-500">
+            ✅ Payment Verified — Confirm Booking
+          </p>
+          <div className="flex flex-wrap items-center gap-4">
+            <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-5 py-3">
+              <CheckCircle className="h-6 w-6 text-green-600 shrink-0" />
+              <div>
+                <p className="text-sm font-bold text-green-800">Payment Received</p>
+                <p className="text-xs text-green-600">₹{amount.toLocaleString('en-IN')}</p>
+                {booking.payment_reference && (
+                  <p className="text-[10px] font-mono text-green-500 mt-0.5">Ref: {booking.payment_reference}</p>
+                )}
+              </div>
+            </div>
+            <button onClick={confirmBooking} disabled={loading}
+              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40 transition-colors">
+              <CheckCircle className="h-3.5 w-3.5" />
+              {loading ? 'Confirming...' : 'Confirm Booking →'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {err && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs font-semibold text-red-600">{err}</p>}
+      {msg && <p className="mt-3 rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-600">{msg}</p>}
+    </div>
+  )
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
   const [adminKey, setAdminKey]       = useState('')
@@ -406,7 +641,7 @@ export default function AdminDashboard() {
           booking={editTarget}
           adminKey={adminKey}
           onSaved={() => { setEditTarget(null); fetchData() }}
-          onClose={() => setEditTarget(null)}
+                 onClose={() => setEditTarget(null)}
         />
       )}
 
@@ -565,6 +800,8 @@ export default function AdminDashboard() {
                                 <GenerateInvoiceButton bookingId={b.id} adminKey={adminKey} />
                               </div>
                             </div>
+                            {/* Quote & Payment action panel */}
+                            <QuotePaymentPanel booking={b} adminKey={adminKey} onUpdate={fetchData} />
                           </td>
                         </tr>
                       )}
@@ -601,6 +838,11 @@ export default function AdminDashboard() {
         <p className="mt-3 text-center text-xs text-gray-400">
           Click any row to expand full booking details
         </p>
+      </main>
+    </>
+  )
+}
+>
       </main>
     </>
   )

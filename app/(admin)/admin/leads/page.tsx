@@ -354,150 +354,81 @@ function LeadModal({
               </select>
             </div>
             <Field label="From City" value={form.from_city} onChange={set('from_city')} placeholder="Mumbai" />
-            <Field label="To City"   value={form.to_city}   onChange={set('to_city')}   placeholder="Ahmedabad" />
+            <Field label="To City"   value={form.to_city}   onChange={set('to_city')}   placeholder="Delhi" />
           </Section>
 
-          {/* ── Dates & Timing ── */}
-          <Section icon={<Calendar className="h-4 w-4" />} title="Dates &amp; Timing">
-            <Field label="Travel Date"   required value={form.travel_date}   onChange={set('travel_date')}   type="date" />
-            <Field label="Pickup Date"   required value={form.pickup_date}   onChange={set('pickup_date')}   type="date" />
-            <Field label="Delivery Date" required value={form.delivery_date} onChange={set('delivery_date')} type="date" />
+          {/* ── Schedule & Bags ── */}
+          <Section icon={<Calendar className="h-4 w-4" />} title="Schedule & Bags">
+            <Field label="Travel Date"   value={form.travel_date}   onChange={set('travel_date')}   type="date" />
+            <Field label="Pickup Date"   value={form.pickup_date}   onChange={set('pickup_date')}   type="date" />
+            <Field label="Delivery Date" value={form.delivery_date} onChange={set('delivery_date')} type="date" />
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                Pickup Time Slot<span className="ml-0.5 text-orange-500">*</span>
-              </label>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Pickup Time Slot</label>
               <select value={form.pickup_time} onChange={set('pickup_time')} className={sel}>
-                <option value="">— Select time slot —</option>
-                {PICKUP_TIME_SLOTS.map(slot => (
-                  <option key={slot} value={slot}>{slot}</option>
-                ))}
+                <option value="">— Select time —</option>
+                {PICKUP_TIME_SLOTS.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-          </Section>
-
-          {/* ── Baggage ── */}
-          <Section icon={<Package className="h-4 w-4" />} title="Baggage">
-            <div className="col-span-2">
-              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                Number of Bags<span className="ml-0.5 text-orange-500">*</span>
-              </label>
-              <div className="flex items-center gap-3">
-                {/* Stepper */}
-                <div className="flex items-center rounded-lg border border-gray-200 bg-white">
-                  <button type="button"
-                    onClick={() => setForm(f => ({ ...f, bags_count: String(Math.max(1, Number(f.bags_count) - 1)) }))}
-                    className="flex h-9 w-9 items-center justify-center rounded-l-lg text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-colors text-lg font-bold">
-                    −
-                  </button>
-                  <input type="number" min={1} max={99}
-                    value={form.bags_count}
-                    onChange={e => setForm(f => ({ ...f, bags_count: e.target.value }))}
-                    className="w-14 border-x border-gray-200 py-2 text-center text-sm font-bold text-gray-800 focus:outline-none focus:ring-0" />
-                  <button type="button"
-                    onClick={() => setForm(f => ({ ...f, bags_count: String(Math.min(99, Number(f.bags_count) + 1)) }))}
-                    className="flex h-9 w-9 items-center justify-center rounded-r-lg text-gray-500 hover:bg-orange-50 hover:text-orange-500 transition-colors text-lg font-bold">
-                    +
-                  </button>
-                </div>
-                <div className="rounded-lg bg-orange-50 px-3 py-2 text-xs text-orange-700">
-                  <span className="font-semibold">Per bag weight limit: 30 KG</span>
-                  <br /><span className="text-orange-500">Each bag allowed up to 30 KG</span>
-                </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Number of Bags</label>
+              <div className="flex items-center gap-2">
+                <button type="button"
+                  onClick={() => setForm(f => ({ ...f, bags_count: String(Math.max(1, Number(f.bags_count) - 1)) }))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-bold text-lg">−</button>
+                <span className="w-10 text-center text-sm font-bold text-gray-900">{form.bags_count}</span>
+                <button type="button"
+                  onClick={() => setForm(f => ({ ...f, bags_count: String(Number(f.bags_count) + 1) }))}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors font-bold text-lg">+</button>
               </div>
             </div>
           </Section>
 
           {/* ── Flight Info (conditional) ── */}
-          {requiresFlight && (
+          {needsFlightInfo(form.service_interest) && (
             <Section icon={<Plane className="h-4 w-4" />} title="Flight Information">
-              {/* PNR / Ticket */}
-              <div className="col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                  Flight Ticket / PNR<span className="ml-0.5 text-orange-500">*</span>
-                </label>
-                {/* Mode switcher */}
-                <div className="mb-2 flex rounded-lg border border-gray-200 p-0.5 bg-gray-50 w-fit">
-                  <button type="button" onClick={() => setPnrMode('text')}
-                    className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-colors ${
-                      pnrMode === 'text' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}>
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">PNR / Ticket</label>
+                <div className="flex gap-2 mb-2">
+                  <button type="button"
+                    onClick={() => setPnrMode('text')}
+                    className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${pnrMode === 'text' ? 'border-orange-400 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
                     Enter PNR
                   </button>
-                  <button type="button" onClick={() => setPnrMode('file')}
-                    className={`rounded-md px-4 py-1.5 text-xs font-semibold transition-colors ${
-                      pnrMode === 'file' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}>
-                    Upload Ticket
+                  <button type="button"
+                    onClick={() => setPnrMode('file')}
+                    className={`rounded-lg border px-3 py-1 text-xs font-semibold transition-colors ${pnrMode === 'file' ? 'border-orange-400 bg-orange-50 text-orange-600' : 'border-gray-200 text-gray-500 hover:bg-gray-50'}`}>
+                    <Upload className="inline h-3 w-3 mr-1" />Upload Ticket
                   </button>
                 </div>
-
                 {pnrMode === 'text' ? (
-                  <input type="text" value={form.pnr} onChange={set('pnr')}
-                    placeholder="e.g. ABC123 or XYZPQR"
-                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono tracking-wider focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                  <input type="text" value={form.pnr} onChange={set('pnr')} placeholder="6-char PNR"
+                    className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
                 ) : (
-                  <div>
-                    <input ref={fileRef} type="file" accept=".pdf,.jpg,.jpeg,.png"
-                      onChange={handleFileChange} className="hidden" />
-                    <button type="button" onClick={() => fileRef.current?.click()}
-                      className="flex w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-gray-300 px-4 py-3 text-sm text-gray-500 hover:border-orange-400 hover:text-orange-500 transition-colors">
-                      <Upload className="h-4 w-4" />
-                      {fileName ? fileName : 'Upload PDF / JPG / PNG'}
-                    </button>
-                    {fileName && (
-                      <p className="mt-1 text-xs text-green-600">&#10003; {fileName} selected</p>
-                    )}
-                    <p className="mt-1 text-xs text-gray-400">Accepted: PDF, JPG, PNG</p>
+                  <div className="flex items-center justify-center rounded-lg border-2 border-dashed border-gray-200 bg-gray-50 px-3 py-4 text-xs text-gray-400">
+                    <Upload className="mr-1.5 h-4 w-4" /> Click to upload ticket PDF/image
                   </div>
                 )}
               </div>
-
-              {/* Flight Time */}
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                  Flight Date &amp; Time<span className="ml-0.5 text-orange-500">*</span>
-                </label>
-                <input type="datetime-local" value={form.flight_time} onChange={set('flight_time')}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-              </div>
-
-              {/* Flight Number */}
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-gray-600">
-                  Flight Number
-                  <span className="ml-1 text-[10px] font-normal text-gray-400">(Recommended)</span>
-                </label>
-                <input type="text" value={form.flight_number} onChange={set('flight_number')}
-                  placeholder="e.g. AI-101"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm font-mono focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-              </div>
+              <Field label="Flight Number" value={form.flight_number} onChange={set('flight_number')} placeholder="6E 234" />
+              <Field label="Flight Date & Time" value={form.flight_time?.slice(0, 16) ?? ''} onChange={set('flight_time')} type="datetime-local" />
             </Section>
           )}
 
-          {/* ── Notes & Status ── */}
-          <div className="col-span-2 space-y-3">
-            <div className="flex items-center gap-2 border-b border-gray-100 pb-2 pt-1">
-              <p className="text-xs font-bold uppercase tracking-wider text-gray-500">Notes &amp; Assignment</p>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="col-span-2">
-                <label className="mb-1.5 block text-xs font-semibold text-gray-600">Notes</label>
-                <textarea value={form.notes} onChange={set('notes')} rows={3}
-                  className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  placeholder="Any special instructions or notes…" />
-              </div>
-            </div>
+          {/* ── Notes (full width) ── */}
+          <div className="col-span-2">
+            <label className="mb-1.5 block text-xs font-semibold text-gray-600">Notes / Special Instructions</label>
+            <textarea rows={2} value={form.notes} onChange={set('notes')}
+              placeholder="Any special instructions, weight details, fragile items…"
+              className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
-
         </div>
 
+        {/* Footer */}
+        
         {err && (
-          <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">
-            {err}
-          </div>
+          <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">{err}</div>
         )}
-
-        <div className="flex justify-end gap-3 border-t border-gray-100 px-6 py-4">
+        <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
           <button onClick={onClose}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             Cancel
@@ -506,8 +437,8 @@ function LeadModal({
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50 transition-colors">
             {saving
               ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-              : <Save className="h-4 w-4" />}
-            {saving ? 'Saving…' : 'Save Lead'}
+              : <Save className="h-3.5 w-3.5" />}
+            {saving ? 'Saving…' : lead ? 'Save Changes' : 'Create Lead'}
           </button>
         </div>
       </div>
@@ -515,28 +446,31 @@ function LeadModal({
   )
 }
 
-// ── Main Page ────────────────────────────────────────────────────
+// ── Main Page ─────────────────────────────────────────────────────
 export default function LeadsPage() {
-  const router    = useRouter()
+  const router   = useRouter()
   const [adminKey, setAdminKey] = useState('')
-  const [authed,   setAuthed]   = useState(false)
-  const [leads,    setLeads]    = useState<Lead[]>([])
-  const [loading,  setLoading]  = useState(false)
-  const [filter,   setFilter]   = useState('all')
-  const [search,   setSearch]   = useState('')
-  const [modal,    setModal]    = useState<'create' | Lead | null>(null)
+  const [authed, setAuthed]     = useState(false)
+  const [leads, setLeads]       = useState<Lead[]>([])
+  const [loading, setLoading]   = useState(true)
+  const [search, setSearch]     = useState('')
+  const [filter, setFilter]     = useState('all')
+  const [modal, setModal]       = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting] = useState<string | null>(null)
 
   useEffect(() => {
-    const key = sessionStorage.getItem('bagdrop_admin_key')
+    const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
     if (!key) { router.replace('/admin/login'); return }
-    setAdminKey(key); setAuthed(true)
+    setAdminKey(key)
+    setAuthed(true)
   }, [router])
 
   const fetchLeads = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    const qs = `?key=${adminKey}${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
+    let qs = '?key=' + adminKey
+    if (filter !== 'all') qs += '&status=' + filter
+    if (search) qs += '&search=' + encodeURIComponent(search)
     const res = await fetch('/api/admin/leads' + qs)
     if (res.ok) setLeads((await res.json()).leads ?? [])
     setLoading(false)
@@ -545,154 +479,142 @@ export default function LeadsPage() {
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
   async function deleteLead(id: string) {
-    if (!confirm('Delete this lead? This cannot be undone.')) return
+    if (!confirm('Delete this lead? The linked booking will be cancelled.')) return
     setDeleting(id)
-    await fetch(`/api/admin/leads/${id}`, { method: 'DELETE', headers: { 'x-admin-key': adminKey } })
+    await fetch('/api/admin/leads/' + id, {
+      method: 'DELETE',
+      headers: { 'x-admin-key': adminKey },
+    })
     setDeleting(null)
     fetchLeads()
   }
 
-  function serviceLabel(lead: Lead) {
-    const s = lead.service_type ?? lead.service_interest
-    if (!s) return '—'
-    return SERVICE_TYPES.find(t => t.value === s)?.label ?? s
+  function formatDate(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
   if (!authed) return null
 
   return (
     <>
-      {modal && (
+      {modal.open && (
         <LeadModal
-          lead={modal === 'create' ? null : modal as Lead}
+          lead={modal.lead}
           adminKey={adminKey}
-          onSaved={() => { setModal(null); fetchLeads() }}
-          onClose={() => setModal(null)}
+          onClose={() => setModal({ open: false, lead: null })}
+          onSaved={() => { setModal({ open: false, lead: null }); fetchLeads() }}
         />
       )}
 
-      {/* Page header */}
-      <div className="border-b border-gray-100 bg-white px-6 py-4">
+      <div className="border-b border-orange-100 bg-white px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Leads</h1>
-            <p className="mt-0.5 text-sm text-gray-400">{leads.length} total leads</p>
+            <h1 className="text-xl font-bold text-gray-900">Lead Management</h1>
+            <p className="mt-0.5 text-sm text-gray-400">All inquiries — each creates a linked booking automatically</p>
           </div>
-          <button
-            onClick={() => setModal('create')}
-            className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            New Lead
+          <button onClick={() => setModal({ open: true, lead: null })}
+            className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
+            <Plus className="h-4 w-4" /> New Lead
           </button>
         </div>
       </div>
 
-      <div className="px-6 py-6">
+      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
         {/* Filters */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search by name, phone, or email…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm shadow-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
-            />
+            <input type="text" placeholder="Search by name, phone, or email…"
+              value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-700 shadow-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
           <div className="relative">
-            <select
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none"
-            >
-              <option value="all">All Statuses</option>
-              {Object.entries(STATUS_CONFIG).map(([v, c]) => (
-                <option key={v} value={v}>{c.label}</option>
-              ))}
+            <select value={filter} onChange={e => setFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+              <option value="all">All statuses</option>
+              {Object.entries(STATUS_CONFIG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
             </select>
-            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
-          <button onClick={fetchLeads} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm">
+          <button onClick={fetchLeads}
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
         </div>
 
         {/* Table */}
-        <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           {loading ? (
-            <div className="flex items-center justify-center py-16 text-sm text-gray-400">Loading leads…</div>
+            <div className="flex items-center justify-center py-24">
+              <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+            </div>
           ) : leads.length === 0 ? (
-            <div className="flex flex-col items-center justify-center py-16">
-              <Users className="mb-3 h-10 w-10 text-gray-200" />
-              <p className="text-sm text-gray-400">No leads yet. Add your first lead.</p>
+            <div className="py-24 text-center">
+              <p className="text-sm text-gray-400">No leads found</p>
+              <button onClick={() => setModal({ open: true, lead: null })}
+                className="mt-3 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
+                Add First Lead
+              </button>
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Lead #', 'Name', 'Phone', 'Service', 'Route', 'Bags', 'Travel Date', 'Pickup Date', 'Pickup Time', 'PNR / Flight', 'Source', 'Status', 'Actions'].map(h => (
-                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500 whitespace-nowrap">{h}</th>
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Lead #', 'Customer', 'Service', 'Route', 'Status', 'Booking', 'Date', 'Actions'].map(h => (
+                      <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {leads.map(lead => (
-                    <tr key={lead.id} className="hover:bg-orange-50/30 transition-colors">
+                  {leads.map(l => (
+                    <tr key={l.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
-                        <div className="flex flex-col gap-0.5">
-                          <span className="font-mono text-xs font-bold text-blue-600">{lead.lead_number ?? '—'}</span>
-                          {lead.booking_id && (
-                            <Link href="/admin" className="inline-flex items-center gap-0.5 text-[10px] text-orange-500 hover:text-orange-700">
-                              <ExternalLink className="h-2.5 w-2.5" /> View Booking
-                            </Link>
-                          )}
+                        <span className="font-mono text-xs font-bold text-gray-500">{l.lead_number ?? '—'}</span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <p className="text-sm font-semibold text-gray-900">{l.name}</p>
+                        <div className="flex items-center gap-1 text-xs text-gray-400">
+                          <Phone className="h-3 w-3" />{l.phone}
                         </div>
                       </td>
-                      <td className="px-4 py-3 font-semibold text-gray-900 whitespace-nowrap">{lead.name}</td>
-                      <td className="px-4 py-3 text-gray-600">
-                        <a href={`tel:${lead.phone}`} className="flex items-center gap-1 hover:text-orange-500">
-                          <Phone className="h-3 w-3" />{lead.phone}
-                        </a>
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {l.service_interest ?? l.service_type ?? '—'}
                       </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{serviceLabel(lead)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">
-                        {lead.from_city && lead.to_city ? `${lead.from_city} → ${lead.to_city}` : '—'}
+                      <td className="px-4 py-3 text-sm text-gray-600">
+                        {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-center text-gray-700 font-medium">{lead.bags_count}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(lead.travel_date)}</td>
-                      <td className="px-4 py-3 text-gray-500 text-xs whitespace-nowrap">{formatDate(lead.pickup_date)}</td>
-                      <td className="px-4 py-3 text-xs whitespace-nowrap">
-                        {lead.pickup_time
-                          ? <span className="inline-flex items-center gap-1 text-gray-600"><Clock className="h-3 w-3 text-orange-400" />{lead.pickup_time}</span>
-                          : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-xs">
-                        {lead.pnr
-                          ? <span className="inline-flex items-center gap-1 font-mono text-indigo-600"><Plane className="h-3 w-3" />{lead.pnr}</span>
-                          : lead.flight_number
-                            ? <span className="font-mono text-gray-500">{lead.flight_number}</span>
-                            : <span className="text-gray-300">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-gray-500 text-xs">{SOURCE_LABELS[lead.source] ?? lead.source}</td>
-                      <td className="px-4 py-3"><StatusBadge status={lead.status} /></td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button
-                            onClick={() => setModal(lead)}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-orange-50 hover:text-orange-500 transition-colors"
-                            title="Edit"
-                          >
+                        {(() => {
+                          const cfg = STATUS_CONFIG[l.status] ?? { label: l.status, color: '#6b7280', bg: '#f3f4f6' }
+                          return (
+                            <span style={{ color: cfg.color, background: cfg.bg }}
+                              className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold">
+                              {cfg.label}
+                            </span>
+                          )
+                        })()}
+                      </td>
+                      <td className="px-4 py-3">
+                        {l.booking_id ? (
+                          <Link href="/admin"
+                            className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:border-blue-300 transition-colors">
+                            <ExternalLink className="h-3 w-3" /> View Booking
+                          </Link>
+                        ) : (
+                          <span className="text-xs text-gray-400">No booking</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => setModal({ open: true, lead: l })}
+                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button
-                            onClick={() => deleteLead(lead.id)}
-                            disabled={deleting === lead.id}
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-red-50 hover:text-red-500 transition-colors disabled:opacity-40"
-                            title="Delete"
-                          >
+                          <button onClick={() => deleteLead(l.id)} disabled={deleting === l.id}
+                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
                         </div>
@@ -704,7 +626,10 @@ export default function LeadsPage() {
             </div>
           )}
         </div>
-      </div>
+        <p className="mt-3 text-center text-xs text-gray-400">
+          Each new lead automatically creates a linked booking at Inquiry status.
+        </p>
+      </main>
     </>
   )
 }

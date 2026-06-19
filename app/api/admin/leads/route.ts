@@ -77,7 +77,6 @@ export async function POST(req: NextRequest) {
   // Admin-origin bookings use BDA- prefix to distinguish from website bookings (BD-)
   const trackingId = 'BDA-' + Math.random().toString(36).toUpperCase().slice(2, 8)
 
-  // ── Step 3: Build human-readable service label ───────────────────
   const serviceLabelMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',
     'airport-to-door':      'Airport → Doorstep',
@@ -89,12 +88,12 @@ export async function POST(req: NextRequest) {
   }
   const serviceLabel = serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : 'Not Specified'
 
-  // ── Step 4: Create the booking record first (so we get its UUID) ─
+  // ── Step 3: INSERT booking first ─────────────────────────────────
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
     .insert({
       tracking_id:    trackingId,
-      status:         'inquiry',          // first step of the 17-status pipeline
+      status:         'inquiry',
       customer_name:  body.name.trim(),
       customer_phone: normPhone,
       customer_email: body.email?.trim().toLowerCase() || null,
@@ -103,55 +102,62 @@ export async function POST(req: NextRequest) {
       from_city:      body.from_city?.trim() || null,
       to_city:        body.to_city?.trim() || null,
       pickup_date:    nullDate(body.pickup_date),
-      pickup_address: body.pickup_address?.trim() || null,
-      drop_address:   body.drop_address?.trim() || null,
       time_slot:      body.pickup_time?.trim() || null,
       total_bags:     Number(body.bags_count) || 1,
-      total_amount:   0,                  // not priced yet — will be set by quote
+      total_amount:   0,
       currency:       'INR',
-      notes:          body.notes?.trim() || null,
-      flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
       payment_status: 'pending',
-      status_history: [{
-        status:    'inquiry',
-        timestamp: new Date().toISOString(),
-        note:      `Lead created by admin. Lead #${leadNumber}`,
-      }],
+      status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: `Lead #${leadNumber}` }],
     })
     .select()
     .single()
 
-  if (bookingErr) {
-    console.error('[leads POST] booking insert failed:', bookingErr.message)
-    return NextResponse.json({ error: 'Failed to create booking record: ' + bookingErr.message }, { status: 500 })
+  if (bookingErr || !booking) {
+    console.error('[leads POST] booking insert failed:', bookingErr?.message)
+    return NextResponse.json({ error: bookingErr?.message ?? 'Failed to create booking' }, { status: 500 })
   }
 
-  // ── Step 5: Create the lead record, linked to the booking ────────
+  // ── Step 4: INSERT lead linked to that booking ────────────────────
   const { data: lead, error: leadErr } = await supabaseAdmin
     .from('leads')
     .insert({
-      lead_number:       leadNumber,
-      name:              body.name.trim(),
-      phone:             normPhone,
-      email:             body.email?.trim().toLowerCase() || null,
-      source:            body.source ?? 'manual',
-      service_interest:  serviceVal,
-      service_type:      serviceVal,
-      from_city:         body.from_city?.trim() || null,
-      to_city:           body.to_city?.trim() || null,
-      travel_date:       nullDate(body.travel_date),
-      pickup_date:       nullDate(body.pickup_date),
-      delivery_date:     nullDate(body.delivery_date),
-      pickup_time:       body.pickup_time?.trim() || null,
-      bags_count:        Number(body.bags_count) || 1,
-      status:            body.status ?? 'new',
-      notes:             body.notes?.trim() || null,
-      assigned_to:       body.assigned_to?.trim() || null,
-      // Linked booking
-      booking_id:        booking.id,
-      // Flight fields
-      pnr:               needsFlight ? (body.pnr?.trim() || null) : null,
-      flight_number:     needsFlight ? (body.flight_number?.trim() || null) : null,
+      lead_number:      leadNumber,
+      name:             body.name.trim(),
+      phone:            normPhone,
+      email:            body.email?.trim().toLowerCase() || null,
+      source:           body.source ?? 'admin',
+      service_interest: serviceVal,
+      service_type:     serviceVal,
+      from_city:        body.from_city?.trim() || null,
+      to_city:          body.to_city?.trim() || null,
+      travel_date:      nullDate(body.travel_date),
+      pickup_date:      nullDate(body.pickup_date),
+      delivery_date:    nullDate(body.delivery_date),
+      pickup_time:      body.pickup_time?.trim() || null,
+      bags_count:       Number(body.bags_count) || 1,
+      pnr:              needsFlight ? (body.pnr?.trim() || null)           : null,
+      flight_number:    needsFlight ? (body.flight_number?.trim() || null) : null,
+      flight_time:      needsFlight ? nullDate(body.flight_time)           : null,
+      notes:            body.notes?.trim() || null,
+      status:           'new',
+      booking_id:       booking.id,
+    })
+    .select()
+    .single()
+
+  if (leadErr) {
+    // Rollback — delete the booking we just created
+    await supabaseAdmin.from('bookings').delete().eq('id', booking.id)
+    console.error('[leads POST] lead insert failed (booking rolled back):', leadErr.message)
+    return NextResponse.json({ error: leadErr.message }, { status: 500 })
+  }
+
+  return NextResponse.json(
+    { lead, booking, lead_number: leadNumber, tracking_id: trackingId },
+    { status: 201 }
+  )
+}
+null,
       flight_time:       needsFlight ? nullDate(body.flight_time) : null,
       flight_ticket_url: needsFlight ? (body.flight_ticket_url?.trim() || null) : null,
     })

@@ -35,7 +35,7 @@ export async function PATCH(
 
   const {
     status, notes, customer_name, customer_phone, customer_email,
-    total_bags, pickup_date, pickup_address, drop_address,
+    total_bags, total_amount, pickup_date, pickup_address, drop_address,
     payment_status, payment_method, payment_reference,
     approved_without_payment, delivery_date,
   } = body
@@ -46,6 +46,7 @@ export async function PATCH(
 
   const updates: Record<string, unknown> = {}
 
+  if (total_amount         !== undefined) updates.total_amount         = Number(total_amount)
   if (customer_name        !== undefined) updates.customer_name        = customer_name.trim()
   if (customer_phone       !== undefined) {
     const raw = customer_phone.replace(/\D/g, '')

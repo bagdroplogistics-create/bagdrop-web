@@ -74,7 +74,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 })
 
   // ── Sync key fields to the linked booking ────────────────────────
-  // If this lead has a booking_id, keep the booking record in sync
   if (lead.booking_id) {
     const serviceLabelMap: Record<string, string> = {
       'airport-to-doorstep':  'Airport → Doorstep',
@@ -86,7 +85,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'intercity':            'Intercity',
     }
 
-    // Lead status → booking status mapping
     const statusMap: Record<string, string> = {
       new:       'inquiry',
       contacted: 'document_collection',
@@ -97,16 +95,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const bookingUpdates: Record<string, unknown> = {}
 
-    if ('name' in updates)             bookingUpdates.customer_name  = lead.name
-    if ('phone' in updates)            bookingUpdates.customer_phone = lead.phone
-    if ('email' in updates)            bookingUpdates.customer_email = lead.email
-    if ('from_city' in updates)        bookingUpdates.from_city      = lead.from_city
-    if ('to_city' in updates)          bookingUpdates.to_city        = lead.to_city
-    if ('pickup_date' in updates)      bookingUpdates.pickup_date    = lead.pickup_date
-    if ('pickup_time' in updates)      bookingUpdates.time_slot      = lead.pickup_time
-    if ('bags_count' in updates)       bookingUpdates.total_bags     = lead.bags_count
-    if ('notes' in updates)            bookingUpdates.notes          = lead.notes
-    if ('flight_number' in updates)    bookingUpdates.flight_number  = lead.flight_number
+    if ('name' in updates)          bookingUpdates.customer_name  = lead.name
+    if ('phone' in updates)         bookingUpdates.customer_phone = lead.phone
+    if ('email' in updates)         bookingUpdates.customer_email = lead.email
+    if ('from_city' in updates)     bookingUpdates.from_city      = lead.from_city
+    if ('to_city' in updates)       bookingUpdates.to_city        = lead.to_city
+    if ('pickup_date' in updates)   bookingUpdates.pickup_date    = lead.pickup_date
+    if ('pickup_time' in updates)   bookingUpdates.time_slot      = lead.pickup_time
+    if ('bags_count' in updates)    bookingUpdates.total_bags     = lead.bags_count
+    if ('notes' in updates)         bookingUpdates.notes          = lead.notes
+    if ('flight_number' in updates) bookingUpdates.flight_number  = lead.flight_number
 
     if ('service_type' in updates || 'service_interest' in updates) {
       const sType = lead.service_type ?? lead.service_interest ?? ''
@@ -114,9 +112,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       bookingUpdates.service_label = serviceLabelMap[sType] ?? sType
     }
 
-    // Sync lead status → booking status (only move forward, not backward)
+    // Sync lead status → booking status (only advance, never regress)
     if ('status' in updates && body.status in statusMap) {
-      // Fetch current booking status to avoid stepping backward
       const { data: currentBooking } = await supabaseAdmin
         .from('bookings')
         .select('status, status_history')
@@ -129,11 +126,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up',
         'in_transit', 'out_for_delivery', 'delivered', 'completed', 'cancelled',
       ]
-      const newBookingStatus  = statusMap[body.status]
-      const currentIdx        = bookingStatusOrder.indexOf(currentBooking?.status ?? 'inquiry')
-      const newIdx            = bookingStatusOrder.indexOf(newBookingStatus)
+      const newBookingStatus = statusMap[body.status]
+      const currentIdx       = bookingStatusOrder.indexOf(currentBooking?.status ?? 'inquiry')
+      const newIdx           = bookingStatusOrder.indexOf(newBookingStatus)
 
-      // Only advance the booking status, don't regress it
       if (newIdx > currentIdx || body.status === 'lost') {
         bookingUpdates.status = newBookingStatus
         const history = currentBooking?.status_history ?? []
@@ -167,7 +163,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
   const { id } = await params
 
-  // Fetch lead to check for linked booking
+  // Fetch lead to check for linked booking before deletion
   const { data: lead } = await supabaseAdmin
     .from('leads')
     .select('booking_id')
@@ -182,12 +178,25 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // If lead had an admin-created booking (BDA- prefix), cancel it rather than delete
-  // (preserves audit trail; hard delete only if explicitly needed)
+  // If lead had an admin-created booking (BDA- prefix), cancel it rather than hard-delete
   if (lead?.booking_id) {
     const { data: booking } = await supabaseAdmin
       .from('bookings')
       .select('tracking_id')
+      .eq('id', lead.booking_id)
+      .single()
+
+    if (booking?.tracking_id?.startsWith('BDA-')) {
+      await supabaseAdmin
+        .from('bookings')
+        .update({ status: 'cancelled', notes: 'Lead deleted by admin' })
+        .eq('id', lead.booking_id)
+    }
+  }
+
+  return NextResponse.json({ success: true })
+}
+
       .eq('id', lead.booking_id)
       .single()
 
