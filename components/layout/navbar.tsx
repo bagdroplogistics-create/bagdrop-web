@@ -127,7 +127,7 @@ export function Navbar() {
               {/* Book — solid white pill */}
               <Link
                 href="/book"
-                className="inline-flex h-9 items-center rounded-lg bg-white px-4 text-lg font-semibold text-brand transition-all hover:bg-white/90 shadow-sm"
+                className="inline-flex h-9 items-center rounded-lg bg-white px-4 text-lg font-semibold text-brand transition-all hover:bg-white/90 shadow-sm" onClick={() => { if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') { ;(window as any).gtag('event', 'conversion', { send_to: 'AW-17917128565/RUFPCJCb0IkcEPXext9C' }) } }}
               >
                 Book Now
               </Link>
