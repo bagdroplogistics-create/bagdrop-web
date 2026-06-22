@@ -3,6 +3,7 @@ import { GeistSans } from 'geist/font/sans'
 import { GeistMono } from 'geist/font/mono'
 import { Inter } from 'next/font/google'
 import { cn } from '@/lib/utils'
+import Script from 'next/script'
 import './globals.css'
 
 const inter = Inter({
@@ -94,6 +95,21 @@ export default function RootLayout({
         'scroll-smooth'
       )}
     >
+      <head>
+        <Script
+          async
+          src="https://www.googletagmanager.com/gtag/js?id=AW-17917128565"
+          strategy="afterInteractive"
+        />
+        <Script id="gtag-init" strategy="afterInteractive">
+          {`
+            window.dataLayer = window.dataLayer || [];
+            function gtag(){dataLayer.push(arguments);}
+            gtag('js', new Date());
+            gtag('config', 'AW-17917128565');
+          `}
+        </Script>
+      </head>
       <body
         className={cn(
           'min-h-screen bg-cream font-sans antialiased',
