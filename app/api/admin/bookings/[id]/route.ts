@@ -96,6 +96,13 @@ export async function PATCH(
       await autoCreateInvoice(id, existing)
     }
 
+    // Auto-create a draft quote when booking is accepted (so it appears in Quotes tab)
+    if (status === 'accepted' && existing) {
+      autoCreateDraftQuote(id, existing).catch(err =>
+        console.error('[booking patch] draft quote auto-create error:', err)
+      )
+    }
+
     if (existing) {
       notifyBookingStatus({
         customerName:  existing.customer_name,
@@ -185,4 +192,47 @@ async function autoCreateInvoice(bookingId: string, booking: Record<string, unkn
 
   if (error) console.error('[autoCreateInvoice] insert failed:', error.message)
   else console.log(`[autoCreateInvoice] created ${invNum} for booking ${bookingId} — ₹${total}`)
+}
+
+// ── Auto-create draft quote when booking is accepted ──────────────
+async function autoCreateDraftQuote(bookingId: string, booking: Record<string, unknown>) {
+  // Skip if quote already exists for this booking
+  const { data: existing } = await supabaseAdmin
+    .from('quotes')
+    .select('id')
+    .eq('booking_id', bookingId)
+    .maybeSingle()
+  if (existing) return
+
+  const year   = new Date().getFullYear()
+  const prefix = `BDQ-${year}-`
+  const { count } = await supabaseAdmin
+    .from('quotes')
+    .select('*', { count: 'exact', head: true })
+    .like('quote_number', `${prefix}%`)
+
+  const seq         = String((count ?? 0) + 1).padStart(4, '0')
+  const quoteNumber = `${prefix}${seq}`
+
+  const { error } = await supabaseAdmin.from('quotes').insert({
+    quote_number:   quoteNumber,
+    booking_id:     bookingId,
+    customer_name:  booking.customer_name  as string,
+    customer_phone: booking.customer_phone as string,
+    customer_email: (booking.customer_email as string) ?? null,
+    service_type:   ((booking.service_label || booking.service_type || 'Baggage Delivery') as string),
+    from_city:      booking.from_city as string,
+    to_city:        booking.to_city   as string,
+    pickup_date:    (booking.pickup_date as string) ?? null,
+    total_bags:     Number(booking.total_bags ?? 1),
+    base_price:     0,
+    cgst:           0,
+    sgst:           0,
+    total_amount:   0,
+    status:         'draft',
+    version:        1,
+  })
+
+  if (error) console.error('[autoCreateDraftQuote] failed:', error.message)
+  else console.log(`[autoCreateDraftQuote] created ${quoteNumber} for booking ${bookingId}`)
 }

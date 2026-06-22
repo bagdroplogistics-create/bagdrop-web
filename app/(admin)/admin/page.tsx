@@ -385,15 +385,18 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
 
   async function sendQuote() {
     if (base <= 0) { setErr('Enter a valid base price'); return }
-    // Create quote record
-    await fetch('/api/admin/quotes', {
+    setLoading(true); setErr('')
+
+    // Step 1: Create quote record + send email
+    const qRes = await fetch('/api/admin/quotes', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
+        booking_id:     booking.id,
         customer_name:  booking.customer_name,
         customer_phone: booking.customer_phone,
         customer_email: booking.customer_email,
-        service_type:   booking.service_label,
+        service_type:   booking.service_label || 'Baggage Delivery',
         from_city:      booking.from_city,
         to_city:        booking.to_city,
         pickup_date:    booking.pickup_date,
@@ -403,8 +406,21 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
         notes:          `Booking ${booking.tracking_id}`,
       }),
     })
-    // Update booking: set total_amount + advance status
+    const qData = await qRes.json()
+    if (!qRes.ok) {
+      setErr('Quote creation failed: ' + (qData.error ?? 'Unknown error'))
+      setLoading(false)
+      return
+    }
+
+    // Step 2: Only advance booking status if quote was created successfully
+    const emailSent = qData.email_sent === true
     await patchBooking({ status: 'quote_sent', total_amount: total })
+    if (emailSent) {
+      setMsg(`Quote ${qData.quote?.quote_number ?? ''} created & emailed to ${booking.customer_email} ✓`)
+    } else {
+      setMsg(`Quote ${qData.quote?.quote_number ?? ''} created. No email sent (customer email not set or email service unavailable).`)
+    }
   }
 
   async function requestPayment() {

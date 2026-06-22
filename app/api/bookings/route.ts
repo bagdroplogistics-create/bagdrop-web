@@ -48,11 +48,36 @@ export async function POST(req: Request) {
         time_slot:      timeSlotLabel,
         flight_number:  booking.flightNumber   ?? null,
         total_bags:     pricing?.totalBags     ?? booking.bags ?? 1,
-        bag_details:    booking.bagDetails     ?? null,
+        bag_details:    (() => {
+          const base = booking.bagDetails ?? null
+          const hasWedding = Array.isArray(booking.bags)
+            ? booking.bags.some((b: { type: string }) => b.type === 'wedding')
+            : false
+          if (!hasWedding) return base
+          return {
+            ...(typeof base === 'object' && base !== null ? base : {}),
+            weddingGuests:              booking.weddingGuests              ?? null,
+            weddingEventType:           booking.weddingEventType           ?? null,
+            weddingEventDate:           booking.weddingEventDate           ?? null,
+            weddingPickupLocation:      booking.weddingPickupLocation      ?? null,
+            weddingDropLocation:        booking.weddingDropLocation        ?? null,
+            weddingSpecialInstructions: booking.weddingSpecialInstructions ?? null,
+          }
+        })(),
         total_amount:   pricing?.total         ?? 0,
         currency:       'INR',
         add_ons:        pricing?.addOns        ?? null,
-        notes:          booking.notes          ?? null,
+        notes: (() => {
+          const parts: string[] = []
+          if (booking.notes?.trim()) parts.push(booking.notes.trim())
+          if (booking.weddingEventType) {
+            parts.push(`[Wedding] Event: ${booking.weddingEventType}`)
+            if (booking.weddingGuests)    parts.push(`Guests: ${booking.weddingGuests}`)
+            if (booking.weddingEventDate) parts.push(`Event date: ${booking.weddingEventDate}`)
+            if (booking.weddingSpecialInstructions) parts.push(`Notes: ${booking.weddingSpecialInstructions}`)
+          }
+          return parts.length ? parts.join(' | ') : null
+        })(),
         status_history: [{ status: 'pending', timestamp: new Date().toISOString(), note: 'Booking request received' }],
       })
       .select()

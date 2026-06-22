@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Phone, Trash2, Eye, Send, CheckCircle, Edit2, X, Save,
+  Mail, MessageCircle, Download, CreditCard, Copy,
 } from 'lucide-react'
 import Link from 'next/link'
 import { getRoleFromSession, can } from '@/lib/roles'
@@ -13,6 +14,7 @@ import type { AdminRole } from '@/lib/admin-auth'
 interface Quote {
   id:             string
   quote_number:   string
+  booking_id:     string | null
   customer_name:  string
   customer_phone: string
   customer_email: string | null
@@ -218,7 +220,20 @@ function EditQuoteModal({ quote, adminKey, onSaved, onClose }: {
 function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
   quote: Quote; adminKey: string; onClose: () => void; onEdit: () => void; onUpdated: () => void
 }) {
-  const [updating, setUpdating] = useState(false)
+  const [updating,  setUpdating]  = useState(false)
+  const [sending,   setSending]   = useState<'email' | 'whatsapp' | null>(null)
+  const [upiId,     setUpiId]     = useState('')
+  const [copied,    setCopied]    = useState(false)
+  const [actionMsg, setActionMsg] = useState('')
+
+  // Fetch UPI ID from settings when quote is sent (payment step)
+  useEffect(() => {
+    if (quote.status !== 'sent') return
+    fetch('/api/admin/settings?key=' + adminKey)
+      .then(r => r.json())
+      .then(d => { if (d.settings?.payment_upi) setUpiId(d.settings.payment_upi) })
+      .catch(() => {})
+  }, [quote.status, adminKey])
 
   async function changeStatus(status: string) {
     setUpdating(true)
@@ -232,9 +247,47 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
     onClose()
   }
 
+  async function sendToCustomer(channel: 'email' | 'whatsapp') {
+    setSending(channel)
+    setActionMsg('')
+    const res = await fetch(`/api/admin/quotes/${quote.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({
+        status:         'sent',
+        send_email:     channel === 'email',
+        send_whatsapp:  channel === 'whatsapp',
+      }),
+    })
+    const d = await res.json()
+    setSending(null)
+    if (!res.ok) { setActionMsg('Error: ' + (d.error ?? 'Failed')); return }
+    const sent = channel === 'email' ? d.email_sent : d.whatsapp_sent
+    setActionMsg(sent
+      ? `✓ Quote sent via ${channel === 'email' ? 'Email' : 'WhatsApp'} successfully!`
+      : `Quote marked as Sent. ${channel === 'email' ? 'Email' : 'WhatsApp'} service not configured.`
+    )
+    onUpdated()
+  }
+
+  const hasPrice  = quote.total_amount > 0
+  const amount    = Number(quote.total_amount)
+  const upiLink   = upiId && amount > 0
+    ? `upi://pay?pa=${upiId}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
+    : null
+  const upiQrUrl  = upiLink
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiLink)}`
+    : null
+
+  function copyUpi() {
+    if (!upiId) return
+    navigator.clipboard.writeText(upiId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
+      <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden">
+        {/* Header */}
         <div className="flex items-start justify-between border-b border-gray-100 px-6 py-4">
           <div>
             <p className="text-xs font-semibold uppercase tracking-widest text-orange-500">Quote · v{quote.version ?? 1}</p>
@@ -245,19 +298,24 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
             <button onClick={onClose}><X className="h-4 w-4 text-gray-400 hover:text-gray-600" /></button>
           </div>
         </div>
-        <div className="px-6 py-5 space-y-4">
+
+        <div className="px-6 py-5 space-y-5 max-h-[75vh] overflow-y-auto">
+
+          {/* Customer */}
           <div className="rounded-xl bg-gray-50 px-4 py-3">
             <p className="text-xs font-semibold text-gray-400 mb-1">Customer</p>
             <p className="font-semibold text-gray-900">{quote.customer_name}</p>
             <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><Phone className="h-3 w-3" /> {quote.customer_phone}</p>
-            {quote.customer_email && <p className="text-xs text-gray-400 mt-0.5">{quote.customer_email}</p>}
+            {quote.customer_email && <p className="text-xs text-gray-400 mt-0.5">✉ {quote.customer_email}</p>}
           </div>
+
+          {/* Service Details */}
           <div className="grid grid-cols-2 gap-3">
             {[
-              { label: 'Service', value: quote.service_type },
-              { label: 'Route',   value: `${quote.from_city} → ${quote.to_city}` },
-              { label: 'Bags',    value: String(quote.total_bags) },
-              { label: 'Date',    value: fmtDate(quote.pickup_date) },
+              { label: 'Service',   value: quote.service_type },
+              { label: 'Route',     value: `${quote.from_city} → ${quote.to_city}` },
+              { label: 'Bags',      value: String(quote.total_bags) },
+              { label: 'Date',      value: fmtDate(quote.pickup_date) },
             ].map(f => (
               <div key={f.label} className="rounded-lg border border-gray-100 px-3 py-2">
                 <p className="text-xs text-gray-400">{f.label}</p>
@@ -265,35 +323,137 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
               </div>
             ))}
           </div>
+
+          {/* Pricing */}
           <div className="rounded-xl border border-orange-100 bg-orange-50 px-4 py-3 space-y-1 text-sm">
-            <div className="flex justify-between text-gray-600"><span>Base</span><span>{fmtRs(quote.base_price)}</span></div>
+            <div className="flex justify-between text-gray-600"><span>Base Price</span><span>{fmtRs(quote.base_price)}</span></div>
             <div className="flex justify-between text-gray-500 text-xs"><span>CGST 2.5%</span><span>{fmtRs(quote.cgst)}</span></div>
             <div className="flex justify-between text-gray-500 text-xs"><span>SGST 2.5%</span><span>{fmtRs(quote.sgst)}</span></div>
-            <div className="flex justify-between border-t border-orange-200 pt-2 font-bold text-gray-900"><span>Total</span><span className="text-orange-600">{fmtRs(quote.total_amount)}</span></div>
+            <div className="flex justify-between border-t border-orange-200 pt-2 font-bold text-gray-900">
+              <span>Total Amount</span><span className="text-orange-600">{fmtRs(quote.total_amount)}</span>
+            </div>
           </div>
-          {quote.notes && <p className="text-sm text-gray-600">{quote.notes}</p>}
+
+          {quote.notes && (
+            <div className="rounded-lg bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+              <span className="font-semibold">Notes: </span>{quote.notes}
+            </div>
+          )}
+
+          {/* ── Send to Customer ── */}
+          {hasPrice && (
+            <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-500">Send Quote to Customer</p>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={() => sendToCustomer('email')}
+                  disabled={sending !== null || !quote.customer_email}
+                  title={!quote.customer_email ? 'No email on file' : ''}
+                  className="flex items-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-40 transition-colors">
+                  <Mail className="h-3.5 w-3.5" />
+                  {sending === 'email' ? 'Sending…' : 'Send via Email'}
+                </button>
+                <button
+                  onClick={() => sendToCustomer('whatsapp')}
+                  disabled={sending !== null}
+                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-40 transition-colors">
+                  <MessageCircle className="h-3.5 w-3.5" />
+                  {sending === 'whatsapp' ? 'Sending…' : 'Send via WhatsApp'}
+                </button>
+                <button
+                  onClick={() => window.open(`/admin/quotes/${quote.id}/print`, '_blank')}
+                  className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
+                  <Download className="h-3.5 w-3.5" />
+                  Download PDF
+                </button>
+              </div>
+              {actionMsg && (
+                <p className={`mt-2 text-xs font-semibold ${actionMsg.startsWith('✓') ? 'text-green-600' : 'text-orange-600'}`}>
+                  {actionMsg}
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* ── Payment Request (shown when quote is sent) ── */}
+          {(quote.status === 'sent' || quote.status === 'accepted') && hasPrice && (
+            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-amber-600">
+                <CreditCard className="h-3.5 w-3.5 inline mr-1" />
+                Request Payment — {fmtRs(quote.total_amount)}
+              </p>
+              <div className="flex flex-wrap gap-5">
+                {/* UPI QR */}
+                <div className="flex flex-col items-center gap-2">
+                  {upiQrUrl ? (
+                    <>
+                      <img src={upiQrUrl} alt="UPI QR" className="rounded-xl border-2 border-amber-200 shadow-sm" width={160} height={160} />
+                      <p className="text-[10px] font-mono text-gray-500">Scan to Pay</p>
+                    </>
+                  ) : (
+                    <div className="flex h-[160px] w-[160px] items-center justify-center rounded-xl border-2 border-dashed border-amber-200 bg-white text-center text-xs text-gray-400 p-3">
+                      Set UPI ID in<br/>Settings → Payment
+                    </div>
+                  )}
+                </div>
+                {/* Payment details */}
+                <div className="flex-1 min-w-[180px] space-y-3">
+                  {upiId && (
+                    <div className="rounded-lg bg-white border border-amber-200 px-3 py-2.5">
+                      <p className="text-[10px] font-semibold text-amber-600 uppercase">UPI ID</p>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <p className="font-mono text-sm font-bold text-gray-800">{upiId}</p>
+                        <button onClick={copyUpi} className="rounded p-1 hover:bg-amber-100">
+                          <Copy className="h-3 w-3 text-amber-600" />
+                        </button>
+                      </div>
+                      {copied && <p className="text-[10px] text-green-600 mt-0.5">Copied!</p>}
+                    </div>
+                  )}
+                  {upiLink && (
+                    <a href={upiLink}
+                      className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
+                      <CreditCard className="h-3.5 w-3.5" />
+                      Pay ₹{amount.toLocaleString('en-IN')} via UPI
+                    </a>
+                  )}
+                  <div className="rounded-lg bg-white border border-amber-200 px-3 py-2">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Reference</p>
+                    <p className="font-mono text-xs font-bold text-gray-700">{quote.quote_number}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
         </div>
-        <div className="flex flex-wrap justify-end gap-2 border-t border-gray-100 px-6 py-4">
-          <button onClick={onEdit}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
-            <Edit2 className="h-3.5 w-3.5" /> Edit
-          </button>
-          {quote.status === 'draft' && (
-            <button onClick={() => changeStatus('sent')} disabled={updating}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-500 px-4 py-2 text-sm font-semibold text-white hover:bg-blue-600 disabled:opacity-50">
-              <Send className="h-3.5 w-3.5" /> Mark Sent
+
+        {/* Footer Actions */}
+        <div className="flex flex-wrap justify-between gap-2 border-t border-gray-100 px-6 py-4 bg-white">
+          <div className="flex gap-2">
+            <button onClick={onEdit}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50">
+              <Edit2 className="h-3.5 w-3.5" /> Edit Quote
             </button>
-          )}
-          {quote.status === 'sent' && (
-            <button onClick={() => changeStatus('accepted')} disabled={updating}
-              className="flex items-center gap-1.5 rounded-lg bg-green-500 px-4 py-2 text-sm font-semibold text-white hover:bg-green-600 disabled:opacity-50">
-              <CheckCircle className="h-3.5 w-3.5" /> Mark Accepted
+            <button onClick={() => window.open(`/admin/quotes/${quote.id}/print`, '_blank')}
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">
+              <Eye className="h-3.5 w-3.5" /> Preview PDF
             </button>
-          )}
-          <button onClick={() => window.open(`/admin/quotes/${quote.id}/print`, '_blank')}
-            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">
-            <Eye className="h-3.5 w-3.5" /> Print / PDF
-          </button>
+          </div>
+          <div className="flex gap-2">
+            {quote.status === 'draft' && !hasPrice && (
+              <button onClick={onEdit}
+                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+                <Send className="h-3.5 w-3.5" /> Set Price & Send
+              </button>
+            )}
+            {quote.status === 'sent' && (
+              <button onClick={() => changeStatus('accepted')} disabled={updating}
+                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50">
+                <CheckCircle className="h-3.5 w-3.5" /> Mark Accepted
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>

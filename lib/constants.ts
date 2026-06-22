@@ -63,12 +63,13 @@ export const SERVICE_TYPES = [
 
 // ─── Bag Types ──────────────────────────────────────────────
 export type BagTypeId =
-  | 'cabin'
-  | 'medium'
-  | 'large'
-  | 'oversized'
-  | 'sports'
+  | 'travel'
   | 'wedding'
+  | 'cabin'     // legacy — kept for existing booking data
+  | 'medium'    // legacy
+  | 'large'     // legacy
+  | 'oversized' // legacy
+  | 'sports'    // legacy
 
 export const BAG_TYPES: Record<
   BagTypeId,
@@ -82,6 +83,25 @@ export const BAG_TYPES: Record<
     svgPath: string
   }
 > = {
+  travel: {
+    id: 'travel',
+    label: 'Travel Bag',
+    description: 'Suitcases, trolleys, backpacks',
+    dimensions: 'All standard sizes',
+    maxWeight: 'Up to 32 kg',
+    basePrice: 699,
+    svgPath: '/icons/bags/medium.svg',
+  },
+  wedding: {
+    id: 'wedding',
+    label: 'Wedding Luggage',
+    description: 'Garment bags, wedding attire & décor',
+    dimensions: 'All sizes',
+    maxWeight: 'Up to 20 kg per piece',
+    basePrice: 1499,
+    svgPath: '/icons/bags/wedding.svg',
+  },
+  // ── Legacy types — not shown in booking form ────────────────
   cabin: {
     id: 'cabin',
     label: 'Cabin Bag',
@@ -126,15 +146,6 @@ export const BAG_TYPES: Record<
     maxWeight: 'Up to 30 kg',
     basePrice: 999,
     svgPath: '/icons/bags/sports.svg',
-  },
-  wedding: {
-    id: 'wedding',
-    label: 'Wedding Luggage',
-    description: 'Garment bags, wedding attire',
-    dimensions: 'All sizes',
-    maxWeight: 'Up to 20 kg',
-    basePrice: 1499,
-    svgPath: '/icons/bags/wedding.svg',
   },
 }
 
@@ -240,10 +251,10 @@ export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
 // ─── Time Slots ──────────────────────────────────────────────
 // Displayed in 12-hour AM/PM format. The `id` is stored in timeSlotId on BookingState.
 export const TIME_SLOTS = [
-  { id: '09:00 AM – 12:00 PM', label: 'Morning',   range: '09:00 AM – 12:00 PM' },
-  { id: '12:00 PM – 03:00 PM', label: 'Afternoon', range: '12:00 PM – 03:00 PM' },
-  { id: '03:00 PM – 06:00 PM', label: 'Evening',   range: '03:00 PM – 06:00 PM' },
-  { id: '06:00 PM – 12:00 AM', label: 'Night',     range: '06:00 PM – 12:00 AM' },
+  { id: '06:00 AM – 01:00 PM', label: 'Morning',   range: '6:00 AM – 1:00 PM' },
+  { id: '01:00 PM – 05:00 PM', label: 'Afternoon', range: '1:00 PM – 5:00 PM' },
+  { id: '05:00 PM – 08:00 PM', label: 'Evening',   range: '5:00 PM – 8:00 PM' },
+  { id: '08:00 PM – 06:00 AM', label: 'Night',     range: '8:00 PM – 6:00 AM' },
 ] as const
 
 // ─── Trust Metrics ───────────────────────────────────────────
@@ -267,7 +278,7 @@ export const ADDON_SERVICES = [
     id: 'insurance',
     label: 'Insurance Upgrade',
     description: 'Extended coverage up to Rs. 50,000',
-    price: 199,
+    price: 299,
     icon: 'shield-check',
   },
 ] as const

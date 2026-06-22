@@ -19,6 +19,17 @@ export type TimeSlotId = string
 
 export type AddonId = 'insurance'
 
+// ─── Wedding event types ─────────────────────────────────────
+export const WEDDING_EVENT_TYPES = [
+  'Wedding',
+  'Reception',
+  'Engagement',
+  'Destination Wedding',
+  'Other',
+] as const
+
+export type WeddingEventType = (typeof WEDDING_EVENT_TYPES)[number]
+
 // ─── A single bag selection ─────────────────────────────────
 export interface BagItem {
   type: BagTypeId
@@ -43,6 +54,14 @@ export interface BookingState {
   flightNumber:    string
   flightDateTime:  string   // ISO for airport-delivery
 
+  // Step 2b — Wedding-specific fields (populated when wedding bag is selected)
+  weddingGuests:              number | null
+  weddingEventType:           WeddingEventType | ''
+  weddingEventDate:           string   // 'YYYY-MM-DD'
+  weddingPickupLocation:      string
+  weddingDropLocation:        string
+  weddingSpecialInstructions: string
+
   // Add-ons (collected in step 3)
   addonIds:    AddonId[]
 
@@ -64,6 +83,12 @@ export const INITIAL_BOOKING_STATE: BookingState = {
   dropAddress:     '',
   flightNumber:    '',
   flightDateTime:  '',
+  weddingGuests:              null,
+  weddingEventType:           '',
+  weddingEventDate:           '',
+  weddingPickupLocation:      '',
+  weddingDropLocation:        '',
+  weddingSpecialInstructions: '',
   addonIds:        [],
   name:            '',
   email:           '',
@@ -105,7 +130,19 @@ export function isStep1Valid(s: BookingState): boolean {
 }
 
 export function isStep2Valid(s: BookingState): boolean {
-  return s.bags.length > 0 && s.bags.some(b => b.quantity > 0)
+  if (!s.bags.length || !s.bags.some(b => b.quantity > 0)) return false
+  // If wedding bags are selected, require all mandatory wedding fields
+  const hasWedding = s.bags.some(b => b.type === 'wedding' && b.quantity > 0)
+  if (hasWedding) {
+    return !!(
+      s.weddingGuests && s.weddingGuests > 0 &&
+      s.weddingEventType &&
+      s.weddingEventDate &&
+      s.weddingPickupLocation.trim() &&
+      s.weddingDropLocation.trim()
+    )
+  }
+  return true
 }
 
 export function isStep3Valid(s: BookingState): boolean {
