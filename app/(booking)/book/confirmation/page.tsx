@@ -20,6 +20,12 @@ const trackingId = params.get('id') ?? ''
 const [booking, setBooking] = useState<any>(null)
 
 useEffect(() => {
+           // Fire Google Ads conversion when booking is confirmed
+           if (typeof window !== 'undefined' && typeof (window as any).gtag === 'function') {
+                        ;(window as any).gtag('event', 'conversion', {
+                                       send_to: 'AW-17917128565/RUFPCJCb0IkcEPXext9C',
+                        })
+           }
 try {
 const raw = sessionStorage.getItem('bagdrop_booking')
 if (raw) setBooking(JSON.parse(raw))
