@@ -157,19 +157,3 @@ export async function POST(req: NextRequest) {
     { status: 201 }
   )
 }
-null,
-      flight_time:       needsFlight ? nullDate(body.flight_time) : null,
-      flight_ticket_url: needsFlight ? (body.flight_ticket_url?.trim() || null) : null,
-    })
-    .select()
-    .single()
-
-  if (leadErr) {
-    // Roll back the booking we just created to avoid orphans
-    await supabaseAdmin.from('bookings').delete().eq('id', booking.id)
-    console.error('[leads POST] lead insert failed:', leadErr.message)
-    return NextResponse.json({ error: 'Failed to create lead: ' + leadErr.message }, { status: 500 })
-  }
-
-  return NextResponse.json({ lead, booking, lead_number: leadNumber, tracking_id: trackingId }, { status: 201 })
-}
