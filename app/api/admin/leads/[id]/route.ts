@@ -196,20 +196,3 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   return NextResponse.json({ success: true })
 }
-
-      .eq('id', lead.booking_id)
-      .single()
-
-    if (booking?.tracking_id?.startsWith('BDA-')) {
-      await supabaseAdmin
-        .from('bookings')
-        .update({
-          status: 'cancelled',
-          notes:  'Lead deleted by admin',
-        })
-        .eq('id', lead.booking_id)
-    }
-  }
-
-  return NextResponse.json({ success: true })
-}
