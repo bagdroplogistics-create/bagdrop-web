@@ -9,7 +9,7 @@ const FAQS = [
   {
     question: 'How far in advance do I need to book?',
     answer:
-      'We recommend booking at least 72 hours in advance for airport pickups and intercity deliveries. Same-day service may be available in select cities — check at checkout.',
+      'We recommend booking at least 24 hours in advance for airport pickups and intercity deliveries. Same-day service may be available in select cities — check at checkout.',
   },
   {
     question: 'What happens if my bag is damaged or lost?',
@@ -19,7 +19,7 @@ const FAQS = [
   {
     question: 'Which cities do you currently operate in?',
     answer:
-      'We operate from Mumbai (BOM), Delhi (DEL), and Ahmedabad (AMD) airports with door-to-door service across Gujarat and Maharashtra. We also offer airport service in Goa (GOI). More cities are being added — check coverage at booking.',
+      'We operate in 50+ cities across India, with more cities launching soon.',
   },
   {
     question: 'Can I track my bag in real time?',

@@ -9,7 +9,7 @@ const FAQS = [
   {
     category: 'Booking',
     items: [
-      { q: 'How far in advance do I need to book?', a: 'We recommend at least 72 hours for airport pickups and intercity. Same-day may be available in select cities — check at checkout.' },
+      { q: 'How far in advance do I need to book?', a: 'We recommend at least 24 hours for airport pickups and intercity. Same-day may be available in select cities — check at checkout.' },
       { q: 'Can I change or cancel my booking?', a: 'Yes. Contact us on WhatsApp at least 6 hours before your pickup slot. Cancellations made more than 24 hours in advance are fully refunded.' },
       { q: 'How do I book for multiple people or a group?', a: 'Use our Group / Wedding booking option. You can add up to 30 bags in a single booking. For larger volumes, contact us for a custom quote.' },
     ],
@@ -17,7 +17,7 @@ const FAQS = [
   {
     category: 'Pickup & Delivery',
     items: [
-      { q: 'What happens on the day of pickup?', a: 'Our executive will call you 30 minutes before arrival.' },
+      { q: 'What happens on the day of pickup?', a: 'Our executive will coordinate with you.' },
       { q: 'What if I\'m not home for pickup?', a: 'You can authorize someone else to hand over your bags. Contact us in advance so we can update the booking.' },
       { q: 'Do you deliver to hotels?', a: 'Absolutely. Hotels are one of our most common delivery addresses. We coordinate with the front desk to ensure seamless handover.' },
     ],
@@ -41,7 +41,7 @@ const FAQS = [
   {
     category: 'Coverage',
     items: [
-      { q: 'Which cities do you operate in?', a: 'Currently: Mumbai (BOM), Delhi (DEL), Ahmedabad (AMD), and Goa (GOI). Door-to-door across Gujarat and Maharashtra. More cities launching soon.' },
+      { q: 'Which cities do you operate in?', a: 'We operate in 50+ cities across India, with more cities launching soon.' },
       { q: 'Do you handle international shipments?', a: 'Not yet. We are India-domestic only. International service is on our roadmap for 2026.' },
       { q: 'Can you handle sports equipment or oversized bags?', a: 'Yes — golf bags, surfboards, bicycle boxes, strollers. Select Oversized at checkout. Weight must be under 50 kg per item.' },
     ],

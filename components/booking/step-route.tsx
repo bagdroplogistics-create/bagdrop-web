@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   PlaneLanding, Home, Heart, GraduationCap, Briefcase, Package,
@@ -10,6 +11,8 @@ import { Button } from '@/components/ui/button'
 import { BOOKING_LOCATIONS, SERVICE_TYPES } from '@/lib/constants'
 import type { BookingState, ServiceId, CityId } from '@/lib/booking-types'
 import { isStep1Valid } from '@/lib/booking-types'
+
+const OTHERS_VALUE = '__others__'
 
 const SERVICE_ICONS: Record<ServiceId, React.ElementType> = {
   'airport-delivery':    PlaneLanding,
@@ -37,19 +40,52 @@ const cardVariants = {
 export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
   const valid = isStep1Valid(state)
 
+  // Track whether "Others" is selected for each dropdown
+  const [fromOthers, setFromOthers] = useState(false)
+  const [toOthers,   setToOthers]   = useState(false)
+
   // Both dropdowns use the same service locations.
   // Exclude the current opposite selection to prevent same-city bookings.
-  const fromCities = BOOKING_LOCATIONS.filter(c => c.id !== state.toCity)
-  const toCities   = BOOKING_LOCATIONS.filter(c => c.id !== state.fromCity)
+  const knownCityIds = BOOKING_LOCATIONS.map(c => c.id as string)
+  const fromCities   = BOOKING_LOCATIONS.filter(c => c.id !== state.toCity)
+  const toCities     = BOOKING_LOCATIONS.filter(c => c.id !== state.fromCity)
 
-  function handleFromChange(cityId: CityId | null) {
-    // If new from matches current to, clear to
-    onChange({ fromCity: cityId, toCity: state.toCity === cityId ? null : state.toCity })
+  function handleFromChange(value: string) {
+    if (value === OTHERS_VALUE) {
+      setFromOthers(true)
+      onChange({ fromCity: null })
+    } else {
+      setFromOthers(false)
+      const cityId = value as CityId || null
+      onChange({ fromCity: cityId, toCity: state.toCity === cityId ? null : state.toCity })
+    }
+  }
+
+  function handleToChange(value: string) {
+    if (value === OTHERS_VALUE) {
+      setToOthers(true)
+      onChange({ toCity: null })
+    } else {
+      setToOthers(false)
+      onChange({ toCity: value as CityId || null })
+    }
   }
 
   function swapCities() {
+    const wasFromOthers = fromOthers
+    const wasToOthers   = toOthers
+    setFromOthers(wasToOthers)
+    setToOthers(wasFromOthers)
     onChange({ fromCity: state.toCity, toCity: state.fromCity })
   }
+
+  // Determine dropdown display value
+  const fromSelectValue = fromOthers
+    ? OTHERS_VALUE
+    : (knownCityIds.includes(state.fromCity ?? '') ? (state.fromCity ?? '') : '')
+  const toSelectValue = toOthers
+    ? OTHERS_VALUE
+    : (knownCityIds.includes(state.toCity ?? '') ? (state.toCity ?? '') : '')
 
   return (
     <motion.div
@@ -125,15 +161,26 @@ export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
             </label>
             <select
               id="from-city"
-              value={state.fromCity ?? ''}
-              onChange={e => handleFromChange(e.target.value as CityId || null)}
+              value={fromSelectValue}
+              onChange={e => handleFromChange(e.target.value)}
               className="input-base"
             >
               <option value="">Select pickup location</option>
               {fromCities.map(c => (
                 <option key={c.id} value={c.id}>{c.label}</option>
               ))}
+              <option value={OTHERS_VALUE}>Others</option>
             </select>
+            {fromOthers && (
+              <input
+                type="text"
+                autoFocus
+                placeholder="Enter your city or location"
+                value={state.fromCity ?? ''}
+                onChange={e => onChange({ fromCity: e.target.value as CityId || null })}
+                className="input-base mt-2"
+              />
+            )}
           </div>
 
           {/* Swap button */}
@@ -154,15 +201,26 @@ export function StepRoute({ state, onChange, onNext }: StepRouteProps) {
             </label>
             <select
               id="to-city"
-              value={state.toCity ?? ''}
-              onChange={e => onChange({ toCity: e.target.value as CityId || null })}
+              value={toSelectValue}
+              onChange={e => handleToChange(e.target.value)}
               className="input-base"
             >
               <option value="">Select drop location</option>
               {toCities.map(c => (
                 <option key={c.id} value={c.id}>{c.label}</option>
               ))}
+              <option value={OTHERS_VALUE}>Others</option>
             </select>
+            {toOthers && (
+              <input
+                type="text"
+                autoFocus
+                placeholder="Enter your city or location"
+                value={state.toCity ?? ''}
+                onChange={e => onChange({ toCity: e.target.value as CityId || null })}
+                className="input-base mt-2"
+              />
+            )}
           </div>
         </div>
 
