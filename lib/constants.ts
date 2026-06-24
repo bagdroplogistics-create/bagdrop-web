@@ -25,6 +25,13 @@ export const SERVICE_TYPES = [
     icon: 'plane-landing',
   },
   {
+    id: 'excess-baggage',
+    label: 'Excess Baggage',
+    description: 'Ship it cheaper than the airline charges.',
+    href: '/excess-baggage',
+    icon: 'package',
+  },
+  {
     id: 'door-to-door',
     label: 'Door-to-Door',
     description: 'From your home to any destination.',
@@ -39,13 +46,6 @@ export const SERVICE_TYPES = [
     icon: 'heart',
   },
   {
-    id: 'student-relocation',
-    label: 'Student Relocation',
-    description: 'Skip the airline fees when you move.',
-    href: '/student-relocation',
-    icon: 'graduation-cap',
-  },
-  {
     id: 'corporate-travel',
     label: 'Corporate Travel',
     description: 'Volume rates and dedicated support.',
@@ -53,11 +53,11 @@ export const SERVICE_TYPES = [
     icon: 'briefcase',
   },
   {
-    id: 'excess-baggage',
-    label: 'Excess Baggage',
-    description: 'Ship it cheaper than the airline charges.',
-    href: '/excess-baggage',
-    icon: 'package',
+    id: 'student-relocation',
+    label: 'Student Relocation',
+    description: 'Skip the airline fees when you move.',
+    href: '/student-relocation',
+    icon: 'graduation-cap',
   },
 ] as const
 
