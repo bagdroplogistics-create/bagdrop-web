@@ -429,17 +429,82 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
 
   async function verifyPayment() {
     if (!utr.trim()) { setErr('Enter UTR / reference number'); return }
+    setLoading(true); setErr(''); setMsg('')
+
+    // Step 1 — Mark payment paid on booking
     const ok = await patchBooking({
       status:            'payment_approved',
       payment_status:    'paid',
       payment_method:    'upi',
       payment_reference: utr.trim(),
     })
-    if (ok) setMsg('Payment verified! ✓')
+    if (!ok) { setLoading(false); return }
+
+    // Step 2 — Auto-generate invoice + email to customer
+    let invoiceNumber = ''
+    let emailSent     = false
+    try {
+      const invRes = await fetch('/api/admin/invoices', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_id: booking.id, send_email: true }),
+      })
+      const invData = await invRes.json()
+      invoiceNumber = invData.invoice?.invoice_number ?? ''
+      emailSent     = invData.email_sent === true
+    } catch { /* non-critical — booking still confirmed */ }
+
+    // Step 3 — Auto-confirm booking
+    await patchBooking({ status: 'confirmed' })
+
+    const parts = ['✅ Payment received!']
+    if (invoiceNumber) parts.push(`Invoice ${invoiceNumber} generated.`)
+    if (emailSent)     parts.push(`Sent to ${booking.customer_email}.`)
+    else if (invoiceNumber) parts.push('Email not sent (no email on file).')
+    parts.push('Booking confirmed.')
+    setMsg(parts.join(' '))
+    setLoading(false)
   }
 
   async function confirmBooking() {
     await patchBooking({ status: 'confirmed' })
+  }
+
+  function sharePaymentWhatsApp() {
+    const phone   = booking.customer_phone.replace(/\D/g, '')
+    const e164    = phone.startsWith('91') ? phone : '91' + phone
+    const message = [
+      `Dear ${booking.customer_name},`,
+      ``,
+      `Your Bagdrop quote for *${booking.from_city} → ${booking.to_city}* is ready.`,
+      ``,
+      `*Amount to Pay: ₹${Number(booking.total_amount).toLocaleString('en-IN')}*`,
+      ``,
+      `Pay via UPI:`,
+      `*UPI ID:* ${upiId}`,
+      `*Amount:* ₹${Number(booking.total_amount).toLocaleString('en-IN')}`,
+      `*Reference:* ${booking.tracking_id}`,
+      ``,
+      `After payment, please share the UTR/transaction ID with us to confirm your booking.`,
+      ``,
+      `_Bagdrop — Travel Light, Arrive Stress-Free_`,
+    ].join('\n')
+    window.open(`https://wa.me/${e164}?text=${encodeURIComponent(message)}`, '_blank')
+  }
+
+  async function sharePaymentEmail() {
+    if (!booking.customer_email) { setErr('No email address on this booking.'); return }
+    setLoading(true); setErr('')
+    try {
+      const res = await fetch('/api/admin/bookings/' + booking.id, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ send_payment_email: true }),
+      })
+      if (res.ok) setMsg(`Payment request emailed to ${booking.customer_email} ✓`)
+      else        setErr('Could not send email. Check Resend config.')
+    } catch { setErr('Error sending email.') }
+    setLoading(false)
   }
 
   const amount = Number(booking.total_amount)
@@ -531,24 +596,48 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
               )}
             </div>
             {/* Payment verification */}
-            <div className="flex-1 min-w-[220px] space-y-3">
+            <div className="flex-1 min-w-[240px] space-y-3">
+              {/* UPI details card */}
               <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600">Share with Customer</p>
-                <p className="text-sm font-mono font-bold text-amber-900 mt-0.5">{upiId || '(UPI not set in Settings)'}</p>
-                <p className="text-sm font-bold text-amber-900">₹{amount.toLocaleString('en-IN')}</p>
-                <p className="text-[10px] text-amber-600 mt-1">Ref: {booking.tracking_id}</p>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 mb-1">Payment Details</p>
+                <p className="text-sm font-mono font-bold text-amber-900">{upiId || '(Set UPI in Settings)'}</p>
+                <p className="text-lg font-bold text-amber-900">₹{amount.toLocaleString('en-IN')}</p>
+                <p className="text-[10px] text-amber-600 mt-0.5">Ref: {booking.tracking_id}</p>
               </div>
+
+              {/* Share buttons */}
+              <div className="space-y-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Send Payment Request To Customer</p>
+                <div className="flex gap-2">
+                  <button onClick={sharePaymentWhatsApp} disabled={!upiId}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:opacity-40 transition-colors">
+                    <span>📲</span> WhatsApp
+                  </button>
+                  <button onClick={sharePaymentEmail} disabled={loading || !booking.customer_email || !upiId}
+                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors">
+                    <span>📧</span> Email
+                  </button>
+                </div>
+                {!booking.customer_email && (
+                  <p className="text-[10px] text-gray-400">No email on file — WhatsApp only.</p>
+                )}
+              </div>
+
+              {/* UTR entry */}
               <div className="space-y-1">
                 <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">UTR / Payment Reference No.</label>
                 <input type="text" placeholder="12-digit UTR or reference" value={utr}
                   onChange={e => setUtr(e.target.value)}
                   className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-green-400 focus:outline-none focus:ring-1 focus:ring-green-400" />
               </div>
+
+              {/* Verify button */}
               <button onClick={verifyPayment} disabled={loading || !utr.trim()}
-                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
                 <CheckCircle className="h-3.5 w-3.5" />
-                {loading ? 'Verifying...' : 'Mark Payment Received ✓'}
+                {loading ? 'Processing...' : 'Mark Payment Received → Auto-Confirm'}
               </button>
+              <p className="text-[10px] text-gray-400 text-center">This will generate the invoice, email it to the customer, and confirm the booking automatically.</p>
             </div>
           </div>
         </div>
@@ -813,7 +902,10 @@ export default function AdminDashboard() {
                                   <Pencil className="h-3.5 w-3.5" />
                                   {STATUS_CONFIG[b.status]?.locked ? 'View Details' : 'Edit'}
                                 </button>
-                                <GenerateInvoiceButton bookingId={b.id} adminKey={adminKey} />
+                                {/* Show Generate Invoice only after payment is received */}
+                                {(['confirmed','pickup_scheduled','picked_up','in_transit','out_for_delivery','delivered','completed'].includes(b.status) && b.payment_status === 'paid') && (
+                                  <GenerateInvoiceButton bookingId={b.id} adminKey={adminKey} />
+                                )}
                               </div>
                             </div>
                             {/* Quote & Payment action panel */}

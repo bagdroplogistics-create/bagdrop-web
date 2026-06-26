@@ -9,10 +9,10 @@ export const SITE = {
   tagline: 'Travel Light. Arrive Stress-Free.',
   description:
     'Premium luggage delivery for airports, weddings, relocations, and intercity travel across India.',
-  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '919000000000',
-  email: 'hello@bagdrop.co',
-  supportEmail: 'support@bagdrop.co',
-  phone: '+91 90000 00000', // update with real number
+  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP_NUMBER ?? '916357115711',
+  email: 'info@bagdrop.co',
+  supportEmail: 'info@bagdrop.co',
+  phone: '+91 63571 15711',
 } as const
 
 // ─── Service Types ──────────────────────────────────────────

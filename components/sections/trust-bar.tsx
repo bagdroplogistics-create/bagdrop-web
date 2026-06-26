@@ -1,33 +1,51 @@
 'use client'
 
 import * as React from 'react'
-import { motion, useInView, useMotionValue, useSpring, useTransform } from 'framer-motion'
+import { motion } from 'framer-motion'
 
 // ─── Animated counter ─────────────────────────────────────────
 
 interface CounterProps {
   to: number
   decimals?: number
-  prefix?: string
   suffix?: string
-  duration?: number
 }
 
-function AnimatedCounter({ to, decimals = 0, prefix = '', suffix = '', duration = 1800 }: CounterProps) {
+function AnimatedCounter({ to, decimals = 0, suffix = '' }: CounterProps) {
   const ref = React.useRef<HTMLSpanElement>(null)
-  const isInView = useInView(ref, { once: true, margin: '-60px' })
-  const motionValue = useMotionValue(0)
-  const spring = useSpring(motionValue, { duration, bounce: 0 })
-  const display = useTransform(spring, (current) => {
-    const formatted = current.toFixed(decimals)
-    return `${prefix}${Number(formatted).toLocaleString('en-IN')}${suffix}`
-  })
+  // Initialize to final value so SSR + first paint always shows the real number
+  const [value, setValue] = React.useState(to)
+  const animated = React.useRef(false)
 
   React.useEffect(() => {
-    if (isInView) motionValue.set(to)
-  }, [isInView, motionValue, to])
+    if (animated.current || !ref.current) return
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (!entry.isIntersecting) return
+        animated.current = true
+        observer.disconnect()
+        const duration = 1800
+        const startTime = performance.now()
+        setValue(0)
+        function tick(now: number) {
+          const elapsed = now - startTime
+          const t = Math.min(elapsed / duration, 1)
+          // Cubic ease-out
+          const eased = 1 - Math.pow(1 - t, 3)
+          setValue(eased * to)
+          if (t < 1) requestAnimationFrame(tick)
+          else setValue(to)
+        }
+        requestAnimationFrame(tick)
+      },
+      { rootMargin: '-60px' }
+    )
+    observer.observe(ref.current)
+    return () => observer.disconnect()
+  }, [to])
 
-  return <motion.span ref={ref}>{display}</motion.span>
+  const display = `${Number(value.toFixed(decimals)).toLocaleString('en-IN')}${suffix}`
+  return <span ref={ref}>{display}</span>
 }
 
 // ─── Metrics ──────────────────────────────────────────────────

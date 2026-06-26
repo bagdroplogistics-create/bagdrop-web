@@ -68,6 +68,18 @@ export async function PATCH(
     if (approved_without_payment) updates.payment_status = 'approved_pending'
   }
 
+  // ── Special: send payment request email to customer ──────────────
+  if (body.send_payment_email) {
+    const { data: bk } = await supabaseAdmin.from('bookings').select('*').eq('id', id).single()
+    if (bk && bk.customer_email) {
+      const { data: cfg } = await supabaseAdmin.from('settings').select('value').eq('key', 'payment_upi').maybeSingle()
+      const upiId  = cfg?.value ?? ''
+      const amount = Number(bk.total_amount ?? 0)
+      await sendPaymentRequestEmail({ booking: bk, upiId, amount })
+    }
+    return NextResponse.json({ sent: true })
+  }
+
   if (Object.keys(updates).length === 0 && !status) {
     return NextResponse.json({ error: 'No fields provided to update' }, { status: 400 })
   }
@@ -235,4 +247,69 @@ async function autoCreateDraftQuote(bookingId: string, booking: Record<string, u
 
   if (error) console.error('[autoCreateDraftQuote] failed:', error.message)
   else console.log(`[autoCreateDraftQuote] created ${quoteNumber} for booking ${bookingId}`)
+}
+
+// ── Send payment request email to customer ────────────────────────
+async function sendPaymentRequestEmail(p: {
+  booking: Record<string, unknown>; upiId: string; amount: number
+}) {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey || !p.booking.customer_email) return
+
+  const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 })
+  const upiLink = `upi://pay?pa=${p.upiId}&pn=Bagdrop&am=${p.amount}&cu=INR&tn=${p.booking.tracking_id}`
+  const qrUrl   = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 0">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:580px">
+<tr><td style="background:#FF6300;padding:28px 32px">
+  <p style="margin:0;font-size:26px;font-weight:700;color:#fff">Bagdrop</p>
+  <p style="margin:4px 0 0;font-size:13px;color:#ffe0cc">Baggage Delivered. Journey Simplified.</p>
+</td></tr>
+<tr><td style="padding:32px">
+  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${p.booking.customer_name}</strong>,</p>
+  <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6">
+    Your Bagdrop quote for <strong>${p.booking.from_city} → ${p.booking.to_city}</strong> has been prepared.
+    Please complete your payment to confirm the booking.
+  </p>
+  <div style="background:#fff7f0;border:2px solid #ffedd5;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
+    <p style="margin:0 0 4px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a3412">Amount to Pay</p>
+    <p style="margin:0 0 20px;font-size:36px;font-weight:700;color:#FF6300">${fmt(p.amount)}</p>
+    ${p.upiId ? `<img src="${qrUrl}" alt="UPI QR Code" width="180" height="180" style="border-radius:8px;border:1px solid #e5e7eb;margin-bottom:14px" />
+    <p style="margin:0 0 4px;font-size:13px;font-weight:700;color:#374151">Scan & Pay via UPI</p>
+    <p style="margin:0 0 4px;font-size:14px;font-family:monospace;font-weight:700;color:#FF6300">${p.upiId}</p>
+    <p style="margin:0;font-size:11px;color:#9ca3af">Reference: ${p.booking.tracking_id}</p>` : ''}
+  </div>
+  <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin-bottom:24px">
+    <p style="margin:0;font-size:13px;color:#15803d;line-height:1.65">
+      After payment, please <strong>share the UTR / transaction ID</strong> on WhatsApp or reply to this email.
+      Your booking will be confirmed within minutes.
+    </p>
+  </div>
+  <p style="margin:0;font-size:14px;color:#374151">
+    📞 <a href="tel:+919876543210" style="color:#FF6300;text-decoration:none">+91 98765 43210</a> &nbsp;
+    📧 <a href="mailto:info@bagdrop.co" style="color:#FF6300;text-decoration:none">info@bagdrop.co</a>
+  </p>
+</td></tr>
+<tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:18px 32px;text-align:center">
+  <p style="margin:0;font-size:12px;color:#9ca3af">© ${new Date().getFullYear()} Bagdrop Logistics Solutions Pvt. Ltd.</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`
+
+  try {
+    await fetch('https://api.resend.com/emails', {
+      method:  'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from:    'Bagdrop <info@bagdrop.co>',
+        to:      p.booking.customer_email as string,
+        subject: `Complete Your Payment — ${fmt(p.amount)} | Bagdrop Booking ${p.booking.tracking_id}`,
+        html,
+      }),
+    })
+  } catch (e) { console.error('[sendPaymentRequestEmail]', e) }
 }

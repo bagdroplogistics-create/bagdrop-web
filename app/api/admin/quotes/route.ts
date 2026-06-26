@@ -3,15 +3,27 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 
 // ── Quote number: BDQ-YYYY-NNNN ──────────────────────────────────
+// Uses MAX of existing quote numbers (not COUNT) so deletions never cause collisions.
 async function nextQuoteNumber(): Promise<string> {
   const year   = new Date().getFullYear()
   const prefix = `BDQ-${year}-`
-  const { count } = await supabaseAdmin
+
+  const { data } = await supabaseAdmin
     .from('quotes')
-    .select('*', { count: 'exact', head: true })
+    .select('quote_number')
     .like('quote_number', `${prefix}%`)
-  const seq = String((count ?? 0) + 1).padStart(4, '0')
-  return `${prefix}${seq}`
+    .order('quote_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let nextSeq = 1
+  if (data?.quote_number) {
+    const lastPart = data.quote_number.split('-').pop()
+    const lastNum  = parseInt(lastPart ?? '0', 10)
+    if (!isNaN(lastNum)) nextSeq = lastNum + 1
+  }
+
+  return `${prefix}${String(nextSeq).padStart(4, '0')}`
 }
 
 export async function GET(req: NextRequest) {
@@ -124,14 +136,24 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── INSERT: new quote ──
-  const quoteNumber = await nextQuoteNumber()
+  // ── INSERT: new quote (retry up to 3× on quote_number collision) ──
+  let data: Record<string, unknown> | null = null
+  let error: { message: string; code?: string } | null = null
 
-  const { data, error } = await supabaseAdmin
-    .from('quotes')
-    .insert({ quote_number: quoteNumber, lead_id: body.lead_id ?? null, ...quoteFields })
-    .select()
-    .single()
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const quoteNumber = await nextQuoteNumber()
+    const result = await supabaseAdmin
+      .from('quotes')
+      .insert({ quote_number: quoteNumber, lead_id: body.lead_id ?? null, ...quoteFields })
+      .select()
+      .single()
+
+    data  = result.data as Record<string, unknown> | null
+    error = result.error as { message: string; code?: string } | null
+
+    // 23505 = unique_violation — retry with a fresh number
+    if (!error || (error as { code?: string }).code !== '23505') break
+  }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
@@ -145,7 +167,8 @@ export async function POST(req: NextRequest) {
   if (sendStatus === 'sent' && quoteFields.customer_email) {
     email_sent = await sendQuoteEmail({
       to: quoteFields.customer_email, customerName: quoteFields.customer_name,
-      quoteNumber, serviceType: quoteFields.service_type,
+      quoteNumber: (data as Record<string, unknown>)?.quote_number as string ?? '',
+      serviceType: quoteFields.service_type,
       fromCity: quoteFields.from_city, toCity: quoteFields.to_city,
       pickupDate: quoteFields.pickup_date, totalBags: quoteFields.total_bags,
       basePrice, cgst, sgst, totalAmount, notes: quoteFields.notes,

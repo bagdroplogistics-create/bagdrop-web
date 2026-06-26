@@ -96,7 +96,7 @@ export default function FaqPage() {
           <h3 className="font-display text-xl font-bold text-white">Still have questions?</h3>
           <p className="mt-2 text-white/75">We're one WhatsApp away.</p>
           <div className="mt-6 flex flex-wrap justify-center gap-4">
-            <a href="https://wa.me/919000000000" target="_blank" rel="noopener noreferrer"
+            <a href="https://wa.me/916357115711" target="_blank" rel="noopener noreferrer"
                className="rounded-xl bg-white px-6 py-3 font-bold text-brand hover:opacity-90 transition-opacity">
               WhatsApp Us
             </a>
