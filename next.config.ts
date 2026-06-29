@@ -4,7 +4,7 @@ const nextConfig: NextConfig = {
   reactStrictMode: true,
 
   // Razorpay SDK is a Node-only package — prevent Turbopack from bundling it
-  serverExternalPackages: ['razorpay'],
+  serverExternalPackages: ['razorpay', '@react-pdf/renderer'],
 
   images: {
     remotePatterns: [

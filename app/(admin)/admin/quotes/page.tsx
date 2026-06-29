@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Phone, Trash2, Eye, Send, CheckCircle, Edit2, X, Save,
-  Mail, MessageCircle, Download, CreditCard, Copy,
+  Mail, MessageCircle, Download,
 } from 'lucide-react'
 import Link from 'next/link'
 import { getRoleFromSession, can } from '@/lib/roles'
@@ -222,18 +222,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
 }) {
   const [updating,  setUpdating]  = useState(false)
   const [sending,   setSending]   = useState<'email' | 'whatsapp' | null>(null)
-  const [upiId,     setUpiId]     = useState('')
-  const [copied,    setCopied]    = useState(false)
   const [actionMsg, setActionMsg] = useState('')
-
-  // Fetch UPI ID from settings when quote is sent (payment step)
-  useEffect(() => {
-    if (quote.status !== 'sent') return
-    fetch('/api/admin/settings?key=' + adminKey)
-      .then(r => r.json())
-      .then(d => { if (d.settings?.payment_upi) setUpiId(d.settings.payment_upi) })
-      .catch(() => {})
-  }, [quote.status, adminKey])
 
   async function changeStatus(status: string) {
     setUpdating(true)
@@ -313,19 +302,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
     onUpdated()
   }
 
-  const hasPrice  = quote.total_amount > 0
-  const amount    = Number(quote.total_amount)
-  const upiLink   = upiId && amount > 0
-    ? `upi://pay?pa=${upiId}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
-    : null
-  const upiQrUrl  = upiLink
-    ? `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(upiLink)}`
-    : null
-
-  function copyUpi() {
-    if (!upiId) return
-    navigator.clipboard.writeText(upiId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
-  }
+  const hasPrice = quote.total_amount > 0
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
@@ -418,56 +395,6 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
             </div>
           )}
 
-          {/* ── Payment Request (shown when quote is sent) ── */}
-          {(quote.status === 'sent' || quote.status === 'accepted') && hasPrice && (
-            <div className="rounded-xl border border-amber-100 bg-amber-50 p-4">
-              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-amber-600">
-                <CreditCard className="h-3.5 w-3.5 inline mr-1" />
-                Request Payment — {fmtRs(quote.total_amount)}
-              </p>
-              <div className="flex flex-wrap gap-5">
-                {/* UPI QR */}
-                <div className="flex flex-col items-center gap-2">
-                  {upiQrUrl ? (
-                    <>
-                      <img src={upiQrUrl} alt="UPI QR" className="rounded-xl border-2 border-amber-200 shadow-sm" width={160} height={160} />
-                      <p className="text-[10px] font-mono text-gray-500">Scan to Pay</p>
-                    </>
-                  ) : (
-                    <div className="flex h-[160px] w-[160px] items-center justify-center rounded-xl border-2 border-dashed border-amber-200 bg-white text-center text-xs text-gray-400 p-3">
-                      Set UPI ID in<br/>Settings → Payment
-                    </div>
-                  )}
-                </div>
-                {/* Payment details */}
-                <div className="flex-1 min-w-[180px] space-y-3">
-                  {upiId && (
-                    <div className="rounded-lg bg-white border border-amber-200 px-3 py-2.5">
-                      <p className="text-[10px] font-semibold text-amber-600 uppercase">UPI ID</p>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <p className="font-mono text-sm font-bold text-gray-800">{upiId}</p>
-                        <button onClick={copyUpi} className="rounded p-1 hover:bg-amber-100">
-                          <Copy className="h-3 w-3 text-amber-600" />
-                        </button>
-                      </div>
-                      {copied && <p className="text-[10px] text-green-600 mt-0.5">Copied!</p>}
-                    </div>
-                  )}
-                  {upiLink && (
-                    <a href={upiLink}
-                      className="flex items-center gap-2 rounded-lg bg-orange-500 px-3 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
-                      <CreditCard className="h-3.5 w-3.5" />
-                      Pay ₹{amount.toLocaleString('en-IN')} via UPI
-                    </a>
-                  )}
-                  <div className="rounded-lg bg-white border border-amber-200 px-3 py-2">
-                    <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Reference</p>
-                    <p className="font-mono text-xs font-bold text-gray-700">{quote.quote_number}</p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
 
         </div>
 

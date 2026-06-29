@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { Document, Page, Text, View, StyleSheet, pdf, Font } from '@react-pdf/renderer'
+import { Document, Page, Text, View, StyleSheet, pdf } from '@react-pdf/renderer'
 import React from 'react'
 
 // ── Helpers ────────────────────────────────────────────────────────
@@ -359,7 +359,10 @@ export async function POST(
   // 2. Generate PDF buffer
   let pdfBuffer: Buffer
   try {
-    const pdfDoc = pdf(React.createElement(QuotePDF, { q: quote }))
+    // Call QuotePDF as a plain function to get the Document ReactElement,
+    // then cast — pdf() needs ReactElement<DocumentProps> but TS infers component props
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const pdfDoc = pdf(QuotePDF({ q: quote }) as any)
     const blob   = await pdfDoc.toBlob()
     const arr    = await blob.arrayBuffer()
     pdfBuffer    = Buffer.from(arr)
