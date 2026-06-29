@@ -250,23 +250,44 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
   async function sendToCustomer(channel: 'email' | 'whatsapp') {
     setSending(channel)
     setActionMsg('')
+
+    // Mark quote as sent in DB
     const res = await fetch(`/api/admin/quotes/${quote.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
-        status:         'sent',
-        send_email:     channel === 'email',
-        send_whatsapp:  channel === 'whatsapp',
+        status:        'sent',
+        send_email:    channel === 'email',
+        send_whatsapp: channel === 'whatsapp',
       }),
     })
     const d = await res.json()
     setSending(null)
     if (!res.ok) { setActionMsg('Error: ' + (d.error ?? 'Failed')); return }
-    const sent = channel === 'email' ? d.email_sent : d.whatsapp_sent
-    setActionMsg(sent
-      ? `✓ Quote sent via ${channel === 'email' ? 'Email' : 'WhatsApp'} successfully!`
-      : `Quote marked as Sent. ${channel === 'email' ? 'Email' : 'WhatsApp'} service not configured.`
-    )
+
+    if (channel === 'whatsapp') {
+      // Build wa.me link — opens WhatsApp with the message pre-filled
+      const digits  = quote.customer_phone.replace(/\D/g, '')
+      const e164    = digits.startsWith('91') ? digits : '91' + digits
+      const total   = Number(quote.total_amount)
+      const msg =
+        `Hi ${quote.customer_name}! 🧳\n\n` +
+        `Your Bagdrop service quote is ready.\n\n` +
+        `📋 Quote: *${quote.quote_number}*\n` +
+        `🗺️ Route: ${quote.from_city} → ${quote.to_city}\n` +
+        `💼 Bags: ${quote.total_bags}\n` +
+        `💰 Total: *₹${total.toLocaleString('en-IN')}*\n\n` +
+        `To confirm your booking, reply here or call +91 63571 15711.\n\n` +
+        `_Bagdrop — Baggage Delivered. Journey Simplified._`
+      window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+      setActionMsg('✓ WhatsApp opened — send the pre-filled message to the customer.')
+    } else {
+      const sent = d.email_sent
+      setActionMsg(sent
+        ? '✓ Quote sent via Email successfully!'
+        : 'Quote marked as Sent. Email service not configured.'
+      )
+    }
     onUpdated()
   }
 
