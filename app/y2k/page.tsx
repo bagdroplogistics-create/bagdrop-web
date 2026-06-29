@@ -225,12 +225,13 @@ function FallingPetals() {
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')!
+    const cvs = canvas as HTMLCanvasElement   // non-null alias for closures
+    const ctx = cvs.getContext('2d')!
 
     // Resize canvas to match parent
     const resize = () => {
-      canvas.width  = canvas.offsetWidth
-      canvas.height = canvas.offsetHeight
+      cvs.width  = cvs.offsetWidth
+      cvs.height = cvs.offsetHeight
     }
     resize()
     window.addEventListener('resize', resize)
@@ -263,8 +264,8 @@ function FallingPetals() {
 
     function makePetal(fromTop = false): Petal {
       return {
-        x:        Math.random() * canvas.width,
-        y:        fromTop ? -20 - Math.random() * canvas.height * 0.4 : Math.random() * canvas.height,
+        x:        Math.random() * cvs.width,
+        y:        fromTop ? -20 - Math.random() * cvs.height * 0.4 : Math.random() * cvs.height,
         w:        8  + Math.random() * 10,
         h:        4  + Math.random() * 5,
         rot:      Math.random() * Math.PI * 2,
@@ -305,7 +306,7 @@ function FallingPetals() {
     }
 
     function frame() {
-      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.clearRect(0, 0, cvs.width, cvs.height)
 
       for (const p of petals) {
         p.tick++
@@ -316,7 +317,7 @@ function FallingPetals() {
         drawPetal(p)
 
         // Reset when petal exits bottom
-        if (p.y > canvas.height + 20) {
+        if (p.y > cvs.height + 20) {
           Object.assign(p, makePetal(true))
         }
       }
