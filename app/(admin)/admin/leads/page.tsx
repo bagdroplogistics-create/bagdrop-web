@@ -232,11 +232,10 @@ function LeadModal({
       setSaving(false)
       return
     }
-    // For new leads: show confirmation with lead number + booking tracking ID
+    // For new leads: show confirmation with lead number
     if (!lead && j.lead_number) {
-      setSaved({ lead_number: j.lead_number, tracking_id: j.tracking_id })
+      setSaved({ lead_number: j.lead_number, tracking_id: null })
       setSaving(false)
-      // Auto-close after 3s and refresh parent
       setTimeout(() => onSaved(), 3000)
       return
     }
@@ -260,33 +259,25 @@ function LeadModal({
             <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
           <h2 className="text-xl font-bold text-gray-900 mb-1">Lead Created!</h2>
-          <p className="text-sm text-gray-500 mb-5">The lead and booking pipeline record have been created successfully.</p>
+          <p className="text-sm text-gray-500 mb-5">Lead has been saved. Create a quote from the Quotes tab to send pricing to this customer.</p>
           <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 mb-5 space-y-3 text-left">
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500">Lead Number</span>
               <span className="font-mono font-bold text-blue-600">{saved.lead_number}</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500">Booking / Tracking ID</span>
-              <span className="font-mono font-bold text-orange-600">{saved.tracking_id}</span>
-            </div>
-            <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500">Status</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-semibold text-yellow-700">Inquiry</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-semibold text-yellow-700">New Lead</span>
             </div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500">Payment Status</span>
-              <span className="text-xs font-semibold text-gray-600">Pending</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500">Quote Status</span>
-              <span className="text-xs font-semibold text-gray-600">Not Generated</span>
+              <span className="text-xs font-semibold text-gray-500">Next Step</span>
+              <span className="text-xs font-semibold text-orange-600">Create & Send Quote →</span>
             </div>
           </div>
           <p className="text-xs text-gray-400 mb-4">Closing automatically in 3 seconds…</p>
           <button onClick={onSaved}
             className="w-full rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
-            Go to Dashboard
+            Back to Leads
           </button>
         </div>
       </div>
@@ -479,7 +470,7 @@ export default function LeadsPage() {
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
   async function deleteLead(id: string) {
-    if (!confirm('Delete this lead? The linked booking will be cancelled.')) return
+    if (!confirm('Delete this lead? This cannot be undone.')) return
     setDeleting(id)
     await fetch('/api/admin/leads/' + id, {
       method: 'DELETE',
@@ -511,7 +502,7 @@ export default function LeadsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Lead Management</h1>
-            <p className="mt-0.5 text-sm text-gray-400">All inquiries — each creates a linked booking automatically</p>
+            <p className="mt-0.5 text-sm text-gray-400">Capture prospects — send a quote to convert to a booking</p>
           </div>
           <button onClick={() => setModal({ open: true, lead: null })}
             className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
@@ -597,14 +588,10 @@ export default function LeadsPage() {
                         })()}
                       </td>
                       <td className="px-4 py-3">
-                        {l.booking_id ? (
-                          <Link href="/admin"
-                            className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:border-blue-300 transition-colors">
-                            <ExternalLink className="h-3 w-3" /> View Booking
-                          </Link>
-                        ) : (
-                          <span className="text-xs text-gray-400">No booking</span>
-                        )}
+                        <Link href="/admin/quotes/new"
+                          className="inline-flex items-center gap-1 rounded-lg border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:border-orange-300 transition-colors">
+                          <ExternalLink className="h-3 w-3" /> Create Quote
+                        </Link>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
                       <td className="px-4 py-3">
@@ -627,7 +614,7 @@ export default function LeadsPage() {
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
-          Each new lead automatically creates a linked booking at Inquiry status.
+          Leads are prospects only. A booking is created automatically when a quote is accepted and payment is confirmed.
         </p>
       </main>
     </>

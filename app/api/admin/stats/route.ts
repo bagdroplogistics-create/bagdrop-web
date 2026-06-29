@@ -9,9 +9,9 @@ export async function GET(req: NextRequest) {
 
   const [total, newInquiries, inProgress, inTransit, completedRes, revenueRes] = await Promise.all([
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }),
-    // New inquiries: inquiry + document_collection + pending + review
+    // New inquiries: pending (from quotes) + inquiry + document_collection + review
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
-      .in('status', ['inquiry', 'document_collection', 'pending', 'review']),
+      .in('status', ['pending', 'inquiry', 'document_collection', 'review']),
     // In progress: accepted → confirmed → pickup stages
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
       .in('status', ['accepted', 'quote_sent', 'payment_pending', 'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up']),

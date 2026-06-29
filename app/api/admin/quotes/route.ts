@@ -136,6 +136,50 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Auto-create a booking so the quote shows in Dashboard/Bookings ──
+  const trackingId = 'BDQ-' + Math.random().toString(36).toUpperCase().slice(2, 8)
+
+  const serviceLabelMap: Record<string, string> = {
+    'airport-to-door':      'Airport → Doorstep',
+    'airport-to-doorstep':  'Airport → Doorstep',
+    'door-to-airport':      'Doorstep → Airport',
+    'doorstep-to-airport':  'Doorstep → Airport',
+    'intercity':            'Intercity',
+  }
+  const serviceLabel = serviceLabelMap[quoteFields.service_type] ?? quoteFields.service_type
+
+  const bookingStatus = sendStatus === 'sent' ? 'quote_sent' : 'pending'
+
+  const { data: newBooking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .insert({
+      tracking_id:    trackingId,
+      status:         bookingStatus,
+      customer_name:  quoteFields.customer_name,
+      customer_phone: quoteFields.customer_phone,
+      customer_email: quoteFields.customer_email,
+      service_type:   quoteFields.service_type,
+      service_label:  serviceLabel,
+      from_city:      quoteFields.from_city,
+      to_city:        quoteFields.to_city,
+      pickup_date:    quoteFields.pickup_date,
+      time_slot:      quoteFields.time_slot,
+      total_bags:     quoteFields.total_bags,
+      total_amount:   totalAmount,
+      currency:       'INR',
+      notes:          quoteFields.notes,
+      status_history: [{ status: bookingStatus, timestamp: new Date().toISOString(), note: 'Auto-created from quote' }],
+    })
+    .select('id')
+    .single()
+
+  if (bookingErr || !newBooking) {
+    console.error('[quotes POST] booking creation failed:', bookingErr?.message)
+    // Non-fatal — still create the quote without a booking link
+  }
+
+  const linkedBookingId = newBooking?.id ?? null
+
   // ── INSERT: new quote (retry up to 3× on quote_number collision) ──
   let data: Record<string, unknown> | null = null
   let error: { message: string; code?: string } | null = null
@@ -144,23 +188,22 @@ export async function POST(req: NextRequest) {
     const quoteNumber = await nextQuoteNumber()
     const result = await supabaseAdmin
       .from('quotes')
-      .insert({ quote_number: quoteNumber, lead_id: body.lead_id ?? null, ...quoteFields })
+      .insert({
+        quote_number: quoteNumber,
+        lead_id:      body.lead_id ?? null,
+        ...quoteFields,
+        booking_id:   linkedBookingId,   // link quote ↔ booking
+      })
       .select()
       .single()
 
     data  = result.data as Record<string, unknown> | null
     error = result.error as { message: string; code?: string } | null
 
-    // 23505 = unique_violation — retry with a fresh number
     if (!error || (error as { code?: string }).code !== '23505') break
   }
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-
-  // Sync booking status when quote is sent
-  if (sendStatus === 'sent' && bookingId) {
-    await supabaseAdmin.from('bookings').update({ status: 'quote_sent', total_amount: totalAmount }).eq('id', bookingId)
-  }
 
   // Send email
   let email_sent = false
@@ -175,7 +218,7 @@ export async function POST(req: NextRequest) {
     })
   }
 
-  return NextResponse.json({ quote: data, action: 'created', email_sent }, { status: 201 })
+  return NextResponse.json({ quote: data, booking_id: linkedBookingId, tracking_id: trackingId, action: 'created', email_sent }, { status: 201 })
 }
 
 // ── Send quote email via Resend ───────────────────────────────────

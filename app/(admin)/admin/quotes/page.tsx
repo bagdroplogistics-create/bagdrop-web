@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Phone, Trash2, Eye, Send, CheckCircle, Edit2, X, Save,
-  Mail, MessageCircle, Download,
+  Mail, MessageCircle, Download, CreditCard, Copy, ExternalLink,
 } from 'lucide-react'
 import Link from 'next/link'
 import { getRoleFromSession, can } from '@/lib/roles'
@@ -221,8 +221,19 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
   quote: Quote; adminKey: string; onClose: () => void; onEdit: () => void; onUpdated: () => void
 }) {
   const [updating,  setUpdating]  = useState(false)
-  const [sending,   setSending]   = useState<'email' | 'whatsapp' | null>(null)
+  const [sending,   setSending]   = useState<'email' | 'whatsapp' | 'payment' | null>(null)
   const [actionMsg, setActionMsg] = useState('')
+  const [upiId,     setUpiId]     = useState('')
+  const [copied,    setCopied]    = useState(false)
+
+  // Fetch UPI ID once when quote is in sent/accepted state
+  useEffect(() => {
+    if (quote.status !== 'sent' && quote.status !== 'accepted') return
+    fetch('/api/admin/settings?key=' + adminKey)
+      .then(r => r.json())
+      .then(d => { if (d.settings?.payment_upi) setUpiId(d.settings.payment_upi) })
+      .catch(() => {})
+  }, [quote.status, adminKey])
 
   async function changeStatus(status: string) {
     setUpdating(true)
@@ -303,6 +314,44 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
   }
 
   const hasPrice = quote.total_amount > 0
+  const amount   = Number(quote.total_amount)
+  const upiLink  = upiId && amount > 0
+    ? `upi://pay?pa=${upiId}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
+    : null
+  const upiQrUrl = upiLink
+    ? `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`
+    : null
+
+  function copyUpi() {
+    if (!upiId) return
+    navigator.clipboard.writeText(upiId).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000) })
+  }
+
+  async function sendPaymentLink() {
+    setSending('payment')
+    setActionMsg('')
+    const digits    = quote.customer_phone.replace(/\D/g, '')
+    const e164      = digits.startsWith('91') ? digits : '91' + digits
+    const upi       = upiId || 'BAGDROP1717@IOB'
+    const qrData    = upiLink ?? `upi://pay?pa=${upi}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
+    const qrImgUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`
+    const msg =
+      `Hi ${quote.customer_name}! 🧳\n\n` +
+      `Your Bagdrop quote *${quote.quote_number}* is ready for payment.\n\n` +
+      `💰 *Amount Due: ₹${amount.toLocaleString('en-IN')}*\n\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n` +
+      `💳 *Pay via UPI*\n` +
+      `UPI ID: *${upi}*\n` +
+      (upiLink ? `📲 Tap to Pay: ${upiLink}\n` : '') +
+      `\n📷 *Scan QR Code to Pay:*\n${qrImgUrl}\n` +
+      `━━━━━━━━━━━━━━━━━━━━\n\n` +
+      `Reference: ${quote.quote_number}\n\n` +
+      `Once payment is done, reply with a screenshot and we will confirm your booking.\n\n` +
+      `_Bagdrop — Baggage Delivered. Journey Simplified._`
+    window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+    setSending(null)
+    setActionMsg('✓ Payment request opened in WhatsApp — send to customer.')
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
@@ -395,6 +444,67 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
             </div>
           )}
 
+          {/* ── Payment Request — shown after quote is sent ── */}
+          {(quote.status === 'sent' || quote.status === 'accepted') && hasPrice && (
+            <div className="rounded-xl border border-green-100 bg-green-50 p-4">
+              <p className="mb-3 text-xs font-bold uppercase tracking-widest text-green-700 flex items-center gap-1.5">
+                <CreditCard className="h-3.5 w-3.5" />
+                Request Payment — {fmtRs(quote.total_amount)}
+              </p>
+
+              <div className="flex flex-wrap gap-5 items-start">
+                {/* QR Code */}
+                <div className="flex flex-col items-center gap-2">
+                  {upiQrUrl ? (
+                    <>
+                      <img src={upiQrUrl} alt="UPI QR" width={160} height={160}
+                        className="rounded-xl border-2 border-green-200 shadow-sm bg-white p-1" />
+                      <p className="text-[10px] font-mono text-gray-500">Scan to Pay · {upiId}</p>
+                    </>
+                  ) : (
+                    <div className="flex h-[160px] w-[160px] items-center justify-center rounded-xl border-2 border-dashed border-green-200 bg-white text-center text-xs text-gray-400 p-3">
+                      Set UPI ID in<br/>Settings → Payment
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div className="flex-1 min-w-[180px] space-y-3">
+                  {upiId && (
+                    <div className="rounded-lg bg-white border border-green-200 px-3 py-2.5">
+                      <p className="text-[10px] font-semibold text-green-700 uppercase">UPI ID</p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="font-mono text-sm font-bold text-gray-800">{upiId}</p>
+                        <button onClick={copyUpi} title="Copy" className="rounded p-1 hover:bg-green-100 transition-colors">
+                          <Copy className="h-3.5 w-3.5 text-green-600" />
+                        </button>
+                      </div>
+                      {copied && <p className="text-[10px] text-green-600 mt-0.5">✓ Copied!</p>}
+                    </div>
+                  )}
+
+                  <div className="rounded-lg bg-white border border-green-200 px-3 py-2">
+                    <p className="text-[10px] font-semibold text-gray-500 uppercase mb-1">Amount</p>
+                    <p className="text-lg font-black text-green-700">{fmtRs(quote.total_amount)}</p>
+                    <p className="text-[10px] text-gray-400">Ref: {quote.quote_number}</p>
+                  </div>
+
+                  {/* Send payment link via WhatsApp */}
+                  <button
+                    onClick={sendPaymentLink}
+                    disabled={sending === 'payment'}
+                    className="flex w-full items-center justify-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors">
+                    <ExternalLink className="h-3.5 w-3.5" />
+                    {sending === 'payment' ? 'Opening…' : 'Send Payment Request via WhatsApp'}
+                  </button>
+                </div>
+              </div>
+
+              {actionMsg && actionMsg.includes('Payment') && (
+                <p className="mt-2 text-xs font-semibold text-green-700">{actionMsg}</p>
+              )}
+            </div>
+          )}
 
         </div>
 

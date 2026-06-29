@@ -471,25 +471,39 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
   }
 
   function sharePaymentWhatsApp() {
-    const phone   = booking.customer_phone.replace(/\D/g, '')
-    const e164    = phone.startsWith('91') ? phone : '91' + phone
+    const phone      = booking.customer_phone.replace(/\D/g, '')
+    const e164       = phone.startsWith('91') ? phone : '91' + phone
+    const upi        = upiId || 'BAGDROP1717@IOB'
+    const upiDeepLink = `upi://pay?pa=${upi}&pn=Bagdrop&am=${amount}&cu=INR&tn=${booking.tracking_id}`
+    const qrImgUrl   = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiDeepLink)}`
     const message = [
-      `Dear ${booking.customer_name},`,
+      `Hi ${booking.customer_name}! 🧳`,
       ``,
-      `Your Bagdrop quote for *${booking.from_city} → ${booking.to_city}* is ready.`,
+      `Your Bagdrop quote for *${booking.from_city} → ${booking.to_city}* is ready for payment.`,
       ``,
-      `*Amount to Pay: ₹${Number(booking.total_amount).toLocaleString('en-IN')}*`,
+      `💰 *Amount Due: ₹${amount.toLocaleString('en-IN')}*`,
       ``,
-      `Pay via UPI:`,
-      `*UPI ID:* ${upiId}`,
-      `*Amount:* ₹${Number(booking.total_amount).toLocaleString('en-IN')}`,
-      `*Reference:* ${booking.tracking_id}`,
+      `━━━━━━━━━━━━━━━━━━━━`,
+      `💳 *Pay via UPI*`,
+      `UPI ID: *${upi}*`,
+      `📲 Tap to Pay: ${upiDeepLink}`,
       ``,
-      `After payment, please share the UTR/transaction ID with us to confirm your booking.`,
+      `📷 *Scan QR Code to Pay:*`,
+      qrImgUrl,
+      `━━━━━━━━━━━━━━━━━━━━`,
       ``,
-      `_Bagdrop — Travel Light, Arrive Stress-Free_`,
+      `Reference: ${booking.tracking_id}`,
+      ``,
+      `Once payment is done, reply with a screenshot and we will confirm your booking.`,
+      ``,
+      `_Bagdrop — Baggage Delivered. Journey Simplified._`,
     ].join('\n')
     window.open(`https://wa.me/${e164}?text=${encodeURIComponent(message)}`, '_blank')
+  }
+
+  async function sendPaymentRequestViaWhatsApp() {
+    await patchBooking({ status: 'payment_pending' })
+    sharePaymentWhatsApp()
   }
 
   async function sharePaymentEmail() {
@@ -549,7 +563,7 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
         </div>
       )}
 
-      {/* ── QUOTE SENT: Show amount + Request Payment ── */}
+      {/* ── QUOTE SENT: Show amount + Request Payment via WhatsApp ── */}
       {s === 'quote_sent' && (
         <div>
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-purple-400">
@@ -560,12 +574,25 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
               <p className="text-[10px] font-semibold uppercase tracking-wide text-purple-500">Quote Amount</p>
               <p className="text-2xl font-bold text-purple-900">₹{amount.toLocaleString('en-IN')}</p>
             </div>
-            <div className="space-y-1.5">
-              <p className="text-xs text-gray-500">Customer has received the quote.<br/>Click below to send the payment QR code.</p>
+            {/* QR preview */}
+            {upiQrUrl && (
+              <div className="flex flex-col items-center gap-1">
+                <img src={upiQrUrl} alt="UPI QR" width={100} height={100}
+                  className="rounded-xl border border-purple-100 shadow-sm" />
+                <p className="text-[10px] font-mono text-gray-500">{upiId}</p>
+              </div>
+            )}
+            <div className="space-y-2">
+              <p className="text-xs text-gray-500">Customer has received the quote. Send payment request with QR code via WhatsApp.</p>
+              <button onClick={sendPaymentRequestViaWhatsApp} disabled={loading || !upiId}
+                className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                <span>📲</span>
+                {loading ? 'Updating...' : 'Send Payment Request via WhatsApp'}
+              </button>
               <button onClick={requestPayment} disabled={loading}
-                className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-40 transition-colors">
-                <CreditCard className="h-3.5 w-3.5" />
-                {loading ? 'Updating...' : 'Request Payment → Send QR'}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                <CreditCard className="h-3 w-3" />
+                {loading ? '...' : 'Mark as Payment Pending (no WhatsApp)'}
               </button>
             </div>
           </div>
@@ -608,16 +635,14 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
               {/* Share buttons */}
               <div className="space-y-2">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Send Payment Request To Customer</p>
-                <div className="flex gap-2">
-                  <button onClick={sharePaymentWhatsApp} disabled={!upiId}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-100 disabled:opacity-40 transition-colors">
-                    <span>📲</span> WhatsApp
-                  </button>
-                  <button onClick={sharePaymentEmail} disabled={loading || !booking.customer_email || !upiId}
-                    className="flex flex-1 items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors">
-                    <span>📧</span> Email
-                  </button>
-                </div>
+                <button onClick={sharePaymentWhatsApp} disabled={!upiId}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                  <span>📲</span> Send Payment Request via WhatsApp
+                </button>
+                <button onClick={sharePaymentEmail} disabled={loading || !booking.customer_email || !upiId}
+                  className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-700 hover:bg-blue-100 disabled:opacity-40 transition-colors">
+                  <span>📧</span> Send via Email
+                </button>
                 {!booking.customer_email && (
                   <p className="text-[10px] text-gray-400">No email on file — WhatsApp only.</p>
                 )}

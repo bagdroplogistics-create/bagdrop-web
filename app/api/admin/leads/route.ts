@@ -86,74 +86,7 @@ export async function POST(req: NextRequest) {
   const leadSeq = String((leadCount ?? 0) + 1).padStart(4, '0')
   const leadNumber = `BDL-${year}-${leadSeq}`
 
-  // Generate Tracking ID
-  const trackingId =
-    'BDA-' + Math.random().toString(36).toUpperCase().slice(2, 8)
-
-  const serviceLabelMap: Record<string, string> = {
-    'airport-to-doorstep': 'Airport → Doorstep',
-    'airport-to-door': 'Airport → Doorstep',
-    'doorstep-to-airport': 'Doorstep → Airport',
-    'door-to-airport': 'Doorstep → Airport',
-    'doorstep-to-doorstep': 'Doorstep → Doorstep',
-    'airport-to-airport': 'Airport → Airport',
-    intercity: 'Intercity',
-  }
-
-  const serviceLabel = serviceVal
-    ? serviceLabelMap[serviceVal] ?? serviceVal
-    : 'Not Specified'
-
-  // Create Booking First
-  const { data: booking, error: bookingErr } = await supabaseAdmin
-    .from('bookings')
-    .insert({
-      tracking_id: trackingId,
-      status: 'inquiry',
-      customer_name: body.name.trim(),
-      customer_phone: normPhone,
-      customer_email: body.email?.trim()?.toLowerCase() || null,
-
-      service_type: serviceVal ?? '',
-      service_label: serviceLabel,
-
-      from_city: body.from_city?.trim() || null,
-      to_city: body.to_city?.trim() || null,
-
-      pickup_date: nullDate(body.pickup_date),
-      time_slot: body.pickup_time?.trim() || null,
-
-      total_bags: Number(body.bags_count) || 1,
-      total_amount: 0,
-      currency: 'INR',
-      payment_status: 'pending',
-
-      status_history: [
-        {
-          status: 'inquiry',
-          timestamp: new Date().toISOString(),
-          note: `Lead #${leadNumber}`,
-        },
-      ],
-    })
-    .select()
-    .single()
-
-  if (bookingErr || !booking) {
-    console.error(
-      '[leads POST] booking insert failed:',
-      bookingErr?.message
-    )
-
-    return NextResponse.json(
-      {
-        error: bookingErr?.message ?? 'Failed to create booking',
-      },
-      { status: 500 }
-    )
-  }
-
-  // Create Lead
+  // Create Lead (no auto-booking — booking is created only when quote is accepted)
   const { data: lead, error: leadErr } = await supabaseAdmin
     .from('leads')
     .insert({
@@ -198,38 +131,17 @@ export async function POST(req: NextRequest) {
       notes: body.notes?.trim() || null,
 
       status: 'new',
-
-      booking_id: booking.id,
     })
     .select()
     .single()
 
   if (leadErr) {
-    await supabaseAdmin
-      .from('bookings')
-      .delete()
-      .eq('id', booking.id)
-
-    console.error(
-      '[leads POST] lead insert failed (booking rolled back):',
-      leadErr.message
-    )
-
-    return NextResponse.json(
-      {
-        error: leadErr.message,
-      },
-      { status: 500 }
-    )
+    console.error('[leads POST] lead insert failed:', leadErr.message)
+    return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 
   return NextResponse.json(
-    {
-      lead,
-      booking,
-      lead_number: leadNumber,
-      tracking_id: trackingId,
-    },
+    { lead, lead_number: leadNumber },
     { status: 201 }
   )
 }

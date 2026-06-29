@@ -29,7 +29,7 @@ export default function NewQuotePage() {
   const [authed,   setAuthed]   = useState(false)
   const [saving,   setSaving]   = useState(false)
   const [err,      setErr]      = useState('')
-  const [saved,    setSaved]    = useState<{ id: string; quote_number: string } | null>(null)
+  const [saved,    setSaved]    = useState<{ id: string; quote_number: string; tracking_id: string | null } | null>(null)
 
   // Form fields
   const [customerName,  setCustomerName]  = useState('')
@@ -92,8 +92,8 @@ export default function NewQuotePage() {
       return
     }
 
-    const { quote } = await res.json()
-    setSaved({ id: quote.id, quote_number: quote.quote_number })
+    const j = await res.json()
+    setSaved({ id: j.quote.id, quote_number: j.quote.quote_number, tracking_id: j.tracking_id ?? null })
   }
 
   if (!authed) return null
@@ -105,7 +105,10 @@ export default function NewQuotePage() {
           <FileText className="h-8 w-8 text-green-500" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900 mb-1">Quote Created!</h2>
-        <p className="text-gray-500 mb-6">{saved.quote_number} has been saved.</p>
+        <p className="text-gray-500 mb-2">{saved.quote_number} has been saved and added to the booking pipeline.</p>
+        {saved.tracking_id && (
+          <p className="text-xs font-mono text-orange-500 mb-6">Booking ID: {saved.tracking_id}</p>
+        )}
         <div className="flex gap-3">
           <button
             onClick={() => setSaved(null)}
