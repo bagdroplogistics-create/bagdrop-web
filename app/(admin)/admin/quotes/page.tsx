@@ -251,25 +251,35 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
     setSending(channel)
     setActionMsg('')
 
-    // Mark quote as sent in DB
-    const res = await fetch(`/api/admin/quotes/${quote.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify({
-        status:        'sent',
-        send_email:    channel === 'email',
-        send_whatsapp: channel === 'whatsapp',
-      }),
-    })
-    const d = await res.json()
-    setSending(null)
-    if (!res.ok) { setActionMsg('Error: ' + (d.error ?? 'Failed')); return }
-
     if (channel === 'whatsapp') {
-      // Build wa.me link — opens WhatsApp with the message pre-filled
-      const digits  = quote.customer_phone.replace(/\D/g, '')
-      const e164    = digits.startsWith('91') ? digits : '91' + digits
-      const total   = Number(quote.total_amount)
+      // Step 1: Generate PDF and upload to Supabase Storage
+      setActionMsg('⏳ Generating PDF…')
+      let pdfUrl = ''
+      try {
+        const uploadRes = await fetch(`/api/admin/quotes/${quote.id}/upload-pdf`, {
+          method: 'POST',
+          headers: { 'x-admin-key': adminKey },
+        })
+        const uploadData = await uploadRes.json()
+        if (!uploadRes.ok) throw new Error(uploadData.error ?? 'Upload failed')
+        pdfUrl = uploadData.url
+      } catch (err) {
+        setSending(null)
+        setActionMsg('Error generating PDF: ' + (err instanceof Error ? err.message : 'Unknown error'))
+        return
+      }
+
+      // Step 2: Mark quote as sent
+      await fetch(`/api/admin/quotes/${quote.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ status: 'sent' }),
+      })
+
+      // Step 3: Open WhatsApp with PDF download link in message
+      const digits = quote.customer_phone.replace(/\D/g, '')
+      const e164   = digits.startsWith('91') ? digits : '91' + digits
+      const total  = Number(quote.total_amount)
       const msg =
         `Hi ${quote.customer_name}! 🧳\n\n` +
         `Your Bagdrop service quote is ready.\n\n` +
@@ -277,17 +287,29 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
         `🗺️ Route: ${quote.from_city} → ${quote.to_city}\n` +
         `💼 Bags: ${quote.total_bags}\n` +
         `💰 Total: *₹${total.toLocaleString('en-IN')}*\n\n` +
+        `📄 *Download your quote PDF:*\n${pdfUrl}\n\n` +
         `To confirm your booking, reply here or call +91 63571 15711.\n\n` +
         `_Bagdrop — Baggage Delivered. Journey Simplified._`
       window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
-      setActionMsg('✓ WhatsApp opened — send the pre-filled message to the customer.')
-    } else {
-      const sent = d.email_sent
-      setActionMsg(sent
-        ? '✓ Quote sent via Email successfully!'
-        : 'Quote marked as Sent. Email service not configured.'
-      )
+      setSending(null)
+      setActionMsg('✓ WhatsApp opened — send the pre-filled message with PDF link to the customer.')
+      onUpdated()
+      return
     }
+
+    // Email flow
+    const res = await fetch(`/api/admin/quotes/${quote.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ status: 'sent', send_email: true }),
+    })
+    const d = await res.json()
+    setSending(null)
+    if (!res.ok) { setActionMsg('Error: ' + (d.error ?? 'Failed')); return }
+    setActionMsg(d.email_sent
+      ? '✓ Quote sent via Email successfully!'
+      : 'Quote marked as Sent. Email service not configured.'
+    )
     onUpdated()
   }
 
