@@ -181,7 +181,7 @@ function LeadModal({
   )
   const [saving, setSaving]   = useState(false)
   const [err, setErr]         = useState('')
-  const [saved, setSaved]     = useState<{ lead_number: string; tracking_id: string } | null>(null)
+  const [saved, setSaved]     = useState<{ lead_number: string; tracking_id: string | null } | null>(null)
   const [pnrMode, setPnrMode] = useState<'text' | 'file'>('text')
   const [fileName, setFileName] = useState('')
 
