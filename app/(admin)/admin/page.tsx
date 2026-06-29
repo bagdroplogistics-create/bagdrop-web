@@ -431,7 +431,7 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
     if (!utr.trim()) { setErr('Enter UTR / reference number'); return }
     setLoading(true); setErr(''); setMsg('')
 
-    // Step 1 — Mark payment paid on booking
+    // Mark payment received — moves to payment_approved
     const ok = await patchBooking({
       status:            'payment_approved',
       payment_status:    'paid',
@@ -440,7 +440,14 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
     })
     if (!ok) { setLoading(false); return }
 
-    // Step 2 — Auto-generate invoice + email to customer
+    setMsg('✅ Payment marked as received! Now generate the invoice and confirm the booking below.')
+    setLoading(false)
+  }
+
+  async function generateInvoiceAndConfirm() {
+    setLoading(true); setErr(''); setMsg('')
+
+    // Step 1 — Generate invoice + email to customer
     let invoiceNumber = ''
     let emailSent     = false
     try {
@@ -452,16 +459,15 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
       const invData = await invRes.json()
       invoiceNumber = invData.invoice?.invoice_number ?? ''
       emailSent     = invData.email_sent === true
-    } catch { /* non-critical — booking still confirmed */ }
+    } catch { /* non-critical */ }
 
-    // Step 3 — Auto-confirm booking
+    // Step 2 — Confirm booking
     await patchBooking({ status: 'confirmed' })
 
-    const parts = ['✅ Payment received!']
+    const parts = ['🎉 Booking confirmed!']
     if (invoiceNumber) parts.push(`Invoice ${invoiceNumber} generated.`)
-    if (emailSent)     parts.push(`Sent to ${booking.customer_email}.`)
-    else if (invoiceNumber) parts.push('Email not sent (no email on file).')
-    parts.push('Booking confirmed.')
+    if (emailSent)       parts.push(`Sent to ${booking.customer_email}.`)
+    else if (invoiceNumber) parts.push('(No email on file — not sent.)')
     setMsg(parts.join(' '))
     setLoading(false)
   }
@@ -668,28 +674,41 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
         </div>
       )}
 
-      {/* ── PAYMENT APPROVED: Confirm Booking ── */}
+      {/* ── PAYMENT APPROVED: Generate Invoice + Confirm ── */}
       {s === 'payment_approved' && (
         <div>
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-green-500">
-            ✅ Payment Verified — Confirm Booking
+            ✅ Payment Received — Generate Invoice &amp; Confirm Booking
           </p>
-          <div className="flex flex-wrap items-center gap-4">
+          <div className="flex flex-wrap items-start gap-4">
+            {/* Payment summary card */}
             <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-5 py-3">
               <CheckCircle className="h-6 w-6 text-green-600 shrink-0" />
               <div>
                 <p className="text-sm font-bold text-green-800">Payment Received</p>
                 <p className="text-xs text-green-600">₹{amount.toLocaleString('en-IN')}</p>
                 {booking.payment_reference && (
-                  <p className="text-[10px] font-mono text-green-500 mt-0.5">Ref: {booking.payment_reference}</p>
+                  <p className="text-[10px] font-mono text-green-500 mt-0.5">UTR: {booking.payment_reference}</p>
                 )}
               </div>
             </div>
-            <button onClick={confirmBooking} disabled={loading}
-              className="flex items-center gap-1.5 rounded-lg bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40 transition-colors">
-              <CheckCircle className="h-3.5 w-3.5" />
-              {loading ? 'Confirming...' : 'Confirm Booking →'}
-            </button>
+            {/* Action card */}
+            <div className="flex-1 rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
+              <div>
+                <p className="text-sm font-bold text-blue-800">Next Step: Generate &amp; Send Invoice</p>
+                <p className="text-xs text-blue-600 mt-0.5">
+                  This will generate an invoice, email it to the customer{booking.customer_email ? ` (${booking.customer_email})` : ''}, and confirm their booking with Bagdrop.
+                </p>
+              </div>
+              <button onClick={generateInvoiceAndConfirm} disabled={loading}
+                className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40 transition-colors">
+                <Receipt className="h-4 w-4" />
+                {loading ? 'Processing...' : 'Generate Invoice & Confirm Booking →'}
+              </button>
+              {!booking.customer_email && (
+                <p className="text-[10px] text-blue-400">⚠ No email on file — invoice will be generated but not emailed.</p>
+              )}
+            </div>
           </div>
         </div>
       )}
