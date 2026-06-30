@@ -25,7 +25,7 @@ const FAQS = [
   {
     category: 'Tracking & Insurance',
     items: [
-      { q: 'Can I track my bag in real time?', a: 'Yes. You receive a live tracking link via WhatsApp and email as soon as your bag is collected.(Coming Soon)' },
+      { q: 'Can I track my bag in real time?', a: 'Yes. You receive status updates via WhatsApp and email at every stage — pickup confirmed, in transit, and delivered.' },
       { q: 'What if my bag is damaged or lost?', a: 'You can buy up to ₹50,000 premium coverage at checkout for high-value items.' },
       { q: 'Is my bag safe during transit?', a: 'Your bag is sealed, photographed, and documented at pickup. We use dedicated vehicles.' },
     ],

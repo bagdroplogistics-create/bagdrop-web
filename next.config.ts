@@ -42,7 +42,15 @@ const nextConfig: NextConfig = {
   },
 
   async redirects() {
-    return []
+    return [
+      // [ESCALATE TO BEIS] — Old blog slug exposed strategic partnership target.
+      // Renamed slug + 301 permanent redirect to preserve any inbound links.
+      {
+        source:      '/blog/adani-airports-partnership-opportunity',
+        destination: '/blog/airport-integrated-baggage-services',
+        permanent:   true,
+      },
+    ]
   },
 }
 

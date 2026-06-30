@@ -45,7 +45,7 @@ const POSTS = [
     image:     'https://images.unsplash.com/photo-1519225421980-715cb0215aed?w=800&q=80&auto=format&fit=crop&crop=top',
   },
   {
-    slug:      'adani-airports-partnership-opportunity',
+    slug:      'airport-integrated-baggage-services',
     tag:       'Aviation Infrastructure',
     date:      'April 2025',
     readTime:  '7 min read',
@@ -58,8 +58,8 @@ const POSTS = [
     tag:       'Student Travel',
     date:      'March 2025',
     readTime:  '4 min read',
-    title:     'The Complete Guide to Shipping Your Bags When Moving Abroad for Studies',
-    excerpt:   'Moving from India to the UK, US, Canada, or Australia for your Masters? Airlines will charge you Rs. 8,000–15,000 for the extra bags. Bagdrop ships them door-to-door for significantly less. Here\'s everything you need to know.',
+    title:     'Moving Cities for College? Here\'s How to Ship Your Bags Without the Stress',
+    excerpt:   'Relocating from Mumbai to Pune, Delhi to Bengaluru, or any city across India for your studies? Instead of hauling bags on a train or paying excess charges, Bagdrop picks up from your home and delivers to your hostel or PG — door to door, across India.',
     image:     'https://images.unsplash.com/photo-1541339907198-e08756dedf3f?w=800&q=80&auto=format&fit=crop',
   },
 ]

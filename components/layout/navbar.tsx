@@ -117,13 +117,6 @@ export function Navbar() {
 
             {/* ── Desktop CTAs ── */}
             <div className="hidden items-center gap-3 md:flex">
-              {/* Track — white outline */}
-              <Link
-                href="/track"
-                className="inline-flex h-9 items-center rounded-lg border border-white/50 px-4 text-lg font-semibold text-white transition-all hover:bg-white/15 hover:border-white"
-              >
-                Track Bag
-              </Link>
               {/* Book — solid white pill */}
               <Link
                 href="/book"
@@ -185,12 +178,6 @@ export function Navbar() {
             </div>
 
             <div className="space-y-3 border-t border-border pt-6">
-              <Link
-                href="/track"
-                className="flex h-12 w-full items-center justify-center rounded-xl border-2 border-brand text-lg font-semibold text-brand transition-colors hover:bg-brand-light"
-              >
-                Track My Bag
-              </Link>
               <Link
                 href="/book"
                 className="flex h-12 w-full items-center justify-center rounded-xl bg-brand text-lg font-semibold text-white transition-opacity hover:opacity-90"
