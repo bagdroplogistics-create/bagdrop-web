@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Save, IndianRupee, FileText } from 'lucide-react'
 import Link from 'next/link'
@@ -32,7 +32,7 @@ function Label({ text }: { text: string }) {
 const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400'
 const selCls   = inputCls + ' bg-white'
 
-export default function NewQuotePage() {
+function NewQuoteForm() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const leadId       = searchParams.get('lead_id') // set when coming from a lead row
@@ -328,5 +328,13 @@ export default function NewQuotePage() {
         </div>
       </div>
     </>
+  )
+}
+
+export default function NewQuotePage() {
+  return (
+    <Suspense>
+      <NewQuoteForm />
+    </Suspense>
   )
 }
