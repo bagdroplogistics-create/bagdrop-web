@@ -148,7 +148,7 @@ export async function POST(req: NextRequest) {
   }
   const serviceLabel = serviceLabelMap[quoteFields.service_type] ?? quoteFields.service_type
 
-  const bookingStatus = sendStatus === 'sent' ? 'quote_sent' : 'pending'
+  const bookingStatus = sendStatus === 'sent' ? 'quote_sent' : 'quote_created'
 
   const { data: newBooking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
@@ -168,7 +168,7 @@ export async function POST(req: NextRequest) {
       total_amount:   totalAmount,
       currency:       'INR',
       notes:          quoteFields.notes,
-      status_history: [{ status: bookingStatus, timestamp: new Date().toISOString(), note: 'Auto-created from quote' }],
+      status_history: [{ from: null, to: bookingStatus, timestamp: new Date().toISOString(), changed_by: 'system', note: 'Auto-created from quote' }],
     })
     .select('id')
     .single()

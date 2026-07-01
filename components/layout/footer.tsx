@@ -35,7 +35,7 @@ const FOOTER_LINKS = {
     { label: 'Blog',          href: '/blog' },
   ],
   Support: [
-    { label: 'Track My Bag',  href: '/track' },
+    { label: 'Contact Us',    href: '/contact' },
     { label: 'FAQ',           href: '/faq' },
     { label: 'WhatsApp Us',   href: 'https://wa.me/916357115711', external: true },
     { label: 'Refund Policy', href: '/refund-policy' },

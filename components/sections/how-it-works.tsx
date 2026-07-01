@@ -22,8 +22,8 @@ const STEPS = [
   },
   {
     number:      '03',
-    label:       'Track',
-    description: 'Follow your bags live from pickup to delivery. Share the link with anyone.',
+    label:       'Updates',
+    description: 'Receive WhatsApp and email updates at every stage — pickup, in transit, and delivered.',
     Icon:        MapPin,
     color:       'text-brand',
     bgColor:     'bg-brand-light',

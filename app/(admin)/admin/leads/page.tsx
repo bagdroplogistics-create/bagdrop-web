@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
-  Package, Calendar, Clock, CheckCircle, ExternalLink,
+  Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -29,6 +29,8 @@ interface Lead {
   flight_number:     string | null
   flight_time:       string | null
   flight_ticket_url: string | null
+  pickup_address:    string | null
+  drop_address:      string | null
   booking_id:        string | null
   lead_number:       string | null
   status:            string
@@ -130,6 +132,8 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
 interface LeadForm {
   name: string; phone: string; email: string; source: string
   service_interest: string; from_city: string; to_city: string
+  // Address fields
+  pickup_address: string; drop_address: string
   // New date/time fields
   travel_date: string; pickup_date: string; delivery_date: string; pickup_time: string
   bags_count: string
@@ -142,6 +146,7 @@ interface LeadForm {
 const EMPTY_FORM: LeadForm = {
   name: '', phone: '', email: '', source: 'manual',
   service_interest: '', from_city: '', to_city: '',
+  pickup_address: '', drop_address: '',
   travel_date: '', pickup_date: '', delivery_date: '', pickup_time: '',
   bags_count: '1',
   pnr: '', flight_number: '', flight_time: '', flight_ticket_url: '',
@@ -165,6 +170,8 @@ function LeadModal({
           service_interest:  lead.service_interest ?? lead.service_type ?? '',
           from_city:         lead.from_city ?? '',
           to_city:           lead.to_city ?? '',
+          pickup_address:    lead.pickup_address ?? '',
+          drop_address:      lead.drop_address ?? '',
           travel_date:       lead.travel_date?.slice(0, 10) ?? '',
           pickup_date:       lead.pickup_date?.slice(0, 10) ?? '',
           delivery_date:     lead.delivery_date?.slice(0, 10) ?? '',
@@ -217,8 +224,10 @@ function LeadModal({
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
         ...form,
-        service_type: form.service_interest,
-        bags_count:   Number(form.bags_count) || 1,
+        service_type:   form.service_interest,
+        bags_count:     Number(form.bags_count) || 1,
+        pickup_address: form.pickup_address.trim() || null,
+        drop_address:   form.drop_address.trim() || null,
         // Clear flight fields if service type doesn't need them
         pnr:               requiresFlight ? (form.pnr.trim() || null) : null,
         flight_number:     requiresFlight ? (form.flight_number.trim() || null) : null,
@@ -348,6 +357,22 @@ function LeadModal({
             <Field label="To City"   value={form.to_city}   onChange={set('to_city')}   placeholder="Delhi" />
           </Section>
 
+          {/* ── Address Details ── */}
+          <Section icon={<MapPin className="h-4 w-4" />} title="Address Details">
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Pickup Address</label>
+              <input type="text" value={form.pickup_address} onChange={set('pickup_address')}
+                placeholder="e.g. 42, Marine Drive, Mumbai 400002"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            </div>
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Drop Address</label>
+              <input type="text" value={form.drop_address} onChange={set('drop_address')}
+                placeholder="e.g. 15, Alkapuri, Vadodara 390007"
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            </div>
+          </Section>
+
           {/* ── Schedule & Bags ── */}
           <Section icon={<Calendar className="h-4 w-4" />} title="Schedule & Bags">
             <Field label="Travel Date"   value={form.travel_date}   onChange={set('travel_date')}   type="date" />
@@ -361,7 +386,10 @@ function LeadModal({
               </select>
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold text-gray-600">Number of Bags</label>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Number of Bags
+                <span className="ml-1.5 font-normal text-gray-400 normal-case">(Up to 30 kg per bag)</span>
+              </label>
               <div className="flex items-center gap-2">
                 <button type="button"
                   onClick={() => setForm(f => ({ ...f, bags_count: String(Math.max(1, Number(f.bags_count) - 1)) }))}
@@ -506,7 +534,7 @@ export default function LeadsPage() {
           </div>
           <button onClick={() => setModal({ open: true, lead: null })}
             className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
-            <Plus className="h-4 w-4" /> New Lead
+            <Plus className="h-4 w-4" /> New Quote
           </button>
         </div>
       </div>
@@ -553,7 +581,7 @@ export default function LeadsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Lead #', 'Customer', 'Service', 'Route', 'Status', 'Booking', 'Date', 'Actions'].map(h => (
+                    {['Lead #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -575,6 +603,15 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {l.source ? (
+                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                            {SOURCE_LABELS[l.source] ?? l.source}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-gray-400">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {(() => {

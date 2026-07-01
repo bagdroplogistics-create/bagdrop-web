@@ -30,7 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const allowed = [
     'name', 'phone', 'email', 'source', 'service_interest', 'service_type',
     'from_city', 'to_city', 'travel_date', 'pickup_date', 'delivery_date',
-    'pickup_time', 'bags_count', 'status', 'notes', 'assigned_to',
+    'pickup_time', 'pickup_address', 'drop_address', 'bags_count', 'status', 'notes', 'assigned_to',
     'converted_booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
   ]
 
@@ -44,6 +44,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'travel_date', 'pickup_date', 'delivery_date', 'flight_time',
     'email', 'from_city', 'to_city', 'notes', 'assigned_to',
     'converted_booking_id', 'pnr', 'flight_number', 'flight_ticket_url', 'pickup_time',
+    'pickup_address', 'drop_address',
   ]
   for (const f of nullableFields) {
     if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null
@@ -100,11 +101,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ('email' in updates)         bookingUpdates.customer_email = lead.email
     if ('from_city' in updates)     bookingUpdates.from_city      = lead.from_city
     if ('to_city' in updates)       bookingUpdates.to_city        = lead.to_city
-    if ('pickup_date' in updates)   bookingUpdates.pickup_date    = lead.pickup_date
-    if ('pickup_time' in updates)   bookingUpdates.time_slot      = lead.pickup_time
-    if ('bags_count' in updates)    bookingUpdates.total_bags     = lead.bags_count
-    if ('notes' in updates)         bookingUpdates.notes          = lead.notes
-    if ('flight_number' in updates) bookingUpdates.flight_number  = lead.flight_number
+    if ('pickup_date' in updates)    bookingUpdates.pickup_date    = lead.pickup_date
+    if ('pickup_time' in updates)    bookingUpdates.time_slot      = lead.pickup_time
+    if ('pickup_address' in updates) bookingUpdates.pickup_address = lead.pickup_address
+    if ('drop_address' in updates)   bookingUpdates.drop_address   = lead.drop_address
+    if ('bags_count' in updates)     bookingUpdates.total_bags     = lead.bags_count
+    if ('notes' in updates)          bookingUpdates.notes          = lead.notes
+    if ('flight_number' in updates)  bookingUpdates.flight_number  = lead.flight_number
 
     if ('service_type' in updates || 'service_interest' in updates) {
       const sType = lead.service_type ?? lead.service_interest ?? ''

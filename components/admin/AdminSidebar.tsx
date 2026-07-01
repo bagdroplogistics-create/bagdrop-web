@@ -22,7 +22,6 @@ const NAV = [
     items: [
       { label: 'Leads',      href: '/admin/leads',     icon: Users       },
       { label: 'Customers',  href: '/admin/customers', icon: UserCheck   },
-      { label: 'Quotes',     href: '/admin/quotes',    icon: FileText    },
       { label: 'Invoices',   href: '/admin/invoices',  icon: Receipt     },
       { label: 'Payments',   href: '/admin/payments',  icon: CreditCard  },
     ],

@@ -22,9 +22,9 @@ const FAQS = [
       'We operate in 50+ cities across India, with more cities launching soon.',
   },
   {
-    question: 'Can I track my bag in real time?',
+    question: 'How will I know the status of my bag?',
     answer:
-      'Yes. Once your booking is confirmed, you receive a live tracking link via WhatsApp and email. You can share this link with anyone — family, hotel reception, or your event coordinator.(Coming Soon)',
+      'You receive WhatsApp and email updates at every stage — pickup confirmed, in transit, and out for delivery. Our team is also reachable on WhatsApp for any real-time updates.',
   },
   {
     question: 'What types of bags can you handle?',
@@ -113,7 +113,7 @@ export function FaqSection() {
                 Contact us →
               </Link>
               <a
-                href="https://wa.me/919000000000"
+                href="https://wa.me/916357115711"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="block text-brand hover:underline font-medium text-base"

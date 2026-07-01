@@ -96,12 +96,18 @@ export async function PATCH(
 
     const { data: existing } = await supabaseAdmin
       .from('bookings')
-      .select('status_history, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+      .select('status, status_history, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
       .eq('id', id)
       .single()
 
     const history = existing?.status_history ?? []
-    history.push({ status, timestamp: new Date().toISOString(), note: notes ?? null })
+    history.push({
+      from:       existing?.status ?? null,
+      to:         status,
+      timestamp:  new Date().toISOString(),
+      changed_by: role,
+      note:       notes ?? null,
+    })
     updates.status_history = history
 
     if (status === 'delivered' && existing) {

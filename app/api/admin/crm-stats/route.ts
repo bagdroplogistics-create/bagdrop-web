@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
   const now        = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
-  const [leadsRes, quotesRes, revenueRes, customersRes] = await Promise.all([
+  const today = new Date().toISOString().split('T')[0]
+
+  const [leadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
     // Total leads count
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
 
@@ -27,11 +29,12 @@ export async function GET(req: NextRequest) {
       .in('status', ['confirmed', 'picked_up', 'in_transit', 'delivered'])
       .gte('created_at', monthStart),
 
-    // Active customers = unique phones in bookings (not cancelled)
+    // Today's dispatch: bookings with pickup_date = today, not cancelled/completed
     supabaseAdmin
       .from('bookings')
-      .select('customer_phone', { count: 'exact' })
-      .neq('status', 'cancelled'),
+      .select('*', { count: 'exact', head: true })
+      .eq('pickup_date', today)
+      .not('status', 'in', '(cancelled,completed)'),
   ])
 
   const revenue = (revenueRes.data ?? []).reduce(
@@ -39,15 +42,10 @@ export async function GET(req: NextRequest) {
     0
   )
 
-  // Count unique customers by phone
-  const uniquePhones = new Set(
-    (customersRes.data ?? []).map(b => b.customer_phone)
-  )
-
   return NextResponse.json({
-    total_leads:      leadsRes.count     ?? 0,
-    pending_quotes:   quotesRes.count    ?? 0,
-    active_customers: uniquePhones.size,
+    total_leads:        leadsRes.count    ?? 0,
+    pending_quotes:     quotesRes.count   ?? 0,
+    today_dispatch:     dispatchRes.count ?? 0,
     revenue_this_month: revenue,
   })
 }

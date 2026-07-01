@@ -116,13 +116,6 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       transition={{ delay: 0.45, duration: 0.4 }}
     >
       <Button variant="primary" size="lg" asChild>
-        <Link href="/track">
-          Track My Bag
-          <ArrowRight className="h-4 w-4" />
-        </Link>
-      </Button>
-
-      <Button variant="secondary" size="lg" asChild>
         <a
           href={`https://wa.me/916357115711?text=Hi! My Bagdrop booking ID is ${trackingId}. Can you confirm my booking?`}
           target="_blank"
@@ -131,6 +124,13 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
           <MessageCircle className="h-4 w-4" />
           WhatsApp Us
         </a>
+      </Button>
+
+      <Button variant="secondary" size="lg" asChild>
+        <Link href="/">
+          Back to Home
+          <ArrowRight className="h-4 w-4" />
+        </Link>
       </Button>
     </motion.div>
 

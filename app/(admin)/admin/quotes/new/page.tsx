@@ -6,14 +6,23 @@ import { ArrowLeft, Save, IndianRupee, FileText } from 'lucide-react'
 import Link from 'next/link'
 
 const SERVICE_TYPES = [
-  { value: 'airport-to-door', label: 'Airport → Doorstep' },
-  { value: 'door-to-airport', label: 'Doorstep → Airport' },
-  { value: 'intercity',       label: 'Intercity' },
+  { value: 'airport-to-doorstep',  label: 'Airport → Doorstep'  },
+  { value: 'doorstep-to-airport',  label: 'Doorstep → Airport'  },
+  { value: 'doorstep-to-doorstep', label: 'Doorstep → Doorstep' },
+  { value: 'airport-to-airport',   label: 'Airport → Airport'   },
+]
+
+const SOURCE_OPTIONS = [
+  { value: 'manual',   label: 'Manual'   },
+  { value: 'website',  label: 'Website'  },
+  { value: 'referral', label: 'Referral' },
+  { value: 'b2b',      label: 'B2B'      },
+  { value: 'walk-in',  label: 'Walk-in'  },
 ]
 
 const CITIES = [
   'Mumbai', 'Delhi', 'Ahmedabad', 'Surat', 'Pune', 'Vadodara',
-  'Rajkot', 'Gandhinagar', 'NashNash', 'Nagpur', 'Goa (Panaji)',
+  'Rajkot', 'Gandhinagar', 'Nashik', 'Nagpur', 'Goa (Panaji)',
 ]
 
 function Label({ text }: { text: string }) {
@@ -35,14 +44,17 @@ export default function NewQuotePage() {
   const [customerName,  setCustomerName]  = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerEmail, setCustomerEmail] = useState('')
-  const [serviceType,   setServiceType]   = useState('airport-to-door')
+  const [source,        setSource]        = useState('manual')
+  const [serviceType,   setServiceType]   = useState('airport-to-doorstep')
   const [fromCity,      setFromCity]      = useState('')
   const [toCity,        setToCity]        = useState('')
   const [pickupDate,    setPickupDate]    = useState('')
+  const [deliveryDate,  setDeliveryDate]  = useState('')
+  const [pickupAddress, setPickupAddress] = useState('')
+  const [dropAddress,   setDropAddress]   = useState('')
   const [timeSlot,      setTimeSlot]      = useState('')
   const [totalBags,     setTotalBags]     = useState('1')
   const [basePrice,     setBasePrice]     = useState('')
-  const [validUntil,    setValidUntil]    = useState('')
   const [notes,         setNotes]         = useState('')
 
   // GST auto-calc
@@ -72,15 +84,18 @@ export default function NewQuotePage() {
         customer_name:  customerName.trim(),
         customer_phone: customerPhone.trim(),
         customer_email: customerEmail.trim() || null,
+        source:         source || null,
         service_type:   serviceType,
         from_city:      fromCity,
         to_city:        toCity,
         pickup_date:    pickupDate || null,
+        delivery_date:  deliveryDate || null,
+        pickup_address: pickupAddress.trim() || null,
+        drop_address:   dropAddress.trim() || null,
         time_slot:      timeSlot.trim() || null,
         total_bags:     parseInt(totalBags) || 1,
         base_price:     base,
         status,
-        valid_until:    validUntil || null,
         notes:          notes.trim() || null,
       }),
     })
@@ -160,9 +175,15 @@ export default function NewQuotePage() {
                   <Label text="Phone *" />
                   <input className={inputCls} placeholder="9876543210" value={customerPhone} onChange={e => setCustomerPhone(e.target.value)} />
                 </div>
-                <div className="col-span-2">
+                <div className="col-span-2 sm:col-span-1">
                   <Label text="Email" />
                   <input className={inputCls} placeholder="amit@email.com" type="email" value={customerEmail} onChange={e => setCustomerEmail(e.target.value)} />
+                </div>
+                <div className="col-span-2 sm:col-span-1">
+                  <Label text="Source" />
+                  <select className={selCls} value={source} onChange={e => setSource(e.target.value)}>
+                    {SOURCE_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+                  </select>
                 </div>
               </div>
             </section>
@@ -196,12 +217,27 @@ export default function NewQuotePage() {
                   <input type="date" className={inputCls} value={pickupDate} onChange={e => setPickupDate(e.target.value)} />
                 </div>
                 <div>
+                  <Label text="Delivery Date" />
+                  <input type="date" className={inputCls} value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+                </div>
+                <div>
                   <Label text="Time Slot" />
                   <input className={inputCls} placeholder="e.g. 10:00 AM – 12:00 PM" value={timeSlot} onChange={e => setTimeSlot(e.target.value)} />
                 </div>
                 <div>
-                  <Label text="Number of Bags" />
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                    Number of Bags
+                    <span className="ml-1.5 font-normal text-gray-400 normal-case">(Up to 30 kg per bag)</span>
+                  </label>
                   <input type="number" min="1" className={inputCls} value={totalBags} onChange={e => setTotalBags(e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <Label text="Pickup Address" />
+                  <input type="text" className={inputCls} placeholder="e.g. 42, Marine Drive, Mumbai 400002" value={pickupAddress} onChange={e => setPickupAddress(e.target.value)} />
+                </div>
+                <div className="col-span-2">
+                  <Label text="Drop Address" />
+                  <input type="text" className={inputCls} placeholder="e.g. 15, Alkapuri, Vadodara 390007" value={dropAddress} onChange={e => setDropAddress(e.target.value)} />
                 </div>
               </div>
             </section>
@@ -261,14 +297,6 @@ export default function NewQuotePage() {
                   <span className="text-orange-600 text-base">₹{total.toLocaleString('en-IN')}</span>
                 </div>
               </div>
-            </section>
-
-            {/* Valid Until */}
-            <section className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-gray-400">Validity</h2>
-              <Label text="Valid Until" />
-              <input type="date" className={inputCls} value={validUntil} onChange={e => setValidUntil(e.target.value)} />
-              <p className="mt-1.5 text-xs text-gray-400">Leave blank for no expiry</p>
             </section>
 
             {/* Actions */}

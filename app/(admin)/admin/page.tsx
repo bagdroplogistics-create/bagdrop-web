@@ -6,7 +6,7 @@ import {
   Package, Clock, CheckCircle, Truck,
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
-  Users, FileText, UserCheck, IndianRupee, Receipt, Lock,
+  Users, FileText, IndianRupee, Receipt, Lock,
   FileCheck, CreditCard, AlertCircle,
 } from 'lucide-react'
 import Link from 'next/link'
@@ -48,10 +48,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   inquiry:             { label: 'Inquiry',            color: '#92400e', bg: '#fef3c7', icon: <AlertCircle className="h-3 w-3" /> },
   document_collection: { label: 'Docs Collection',    color: '#7c3aed', bg: '#ede9fe', icon: <FileText className="h-3 w-3" /> },
   pending:             { label: 'Pending Review',      color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
-  review:              { label: 'Under Review',        color: '#2563eb', bg: '#dbeafe', icon: <FileCheck className="h-3 w-3" /> },
   accepted:            { label: 'Accepted',            color: '#0891b2', bg: '#cffafe', icon: <CheckCircle className="h-3 w-3" /> },
   rejected:            { label: 'Rejected',            color: '#dc2626', bg: '#fee2e2', icon: <X className="h-3 w-3" /> },
   // Phase 2: Quote & Payment
+  quote_created:       { label: 'Quote Created',       color: '#4f46e5', bg: '#eef2ff', icon: <FileCheck className="h-3 w-3" /> },
   quote_sent:          { label: 'Quote Sent',          color: '#6d28d9', bg: '#ede9fe', icon: <FileText className="h-3 w-3" /> },
   payment_pending:     { label: 'Payment Pending',     color: '#d97706', bg: '#fef3c7', icon: <CreditCard className="h-3 w-3" /> },
   payment_approved:    { label: 'Admin Approved',      color: '#059669', bg: '#d1fae5', icon: <CheckCircle className="h-3 w-3" /> },
@@ -68,8 +68,8 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
 }
 
 const WORKFLOW_PHASES = [
-  { label: 'Inquiry',     statuses: ['inquiry','document_collection','pending','review','accepted','rejected'] },
-  { label: 'Quote & Pay', statuses: ['quote_sent','payment_pending','payment_approved'] },
+  { label: 'Inquiry',     statuses: ['inquiry','document_collection','pending','accepted','rejected'] },
+  { label: 'Quote & Pay', statuses: ['quote_created','quote_sent','payment_pending','payment_approved'] },
   { label: 'Operations',  statuses: ['confirmed','pickup_scheduled','picked_up','in_transit','out_for_delivery'] },
   { label: 'Closed',      statuses: ['delivered','completed','cancelled'] },
 ]
@@ -354,15 +354,15 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
 
   // Fetch UPI ID from settings when we need to show QR
   useEffect(() => {
-    if (!['accepted', 'quote_sent', 'payment_pending'].includes(s)) return
+    if (!['quote_created', 'accepted', 'quote_sent', 'payment_pending'].includes(s)) return
     fetch('/api/admin/settings?key=' + adminKey)
       .then(r => r.json())
       .then(d => { if (d.settings?.payment_upi) setUpiId(d.settings.payment_upi) })
       .catch(() => {})
   }, [s, adminKey])
 
-  // Only show for these 4 statuses
-  if (!['accepted', 'quote_sent', 'payment_pending', 'payment_approved'].includes(s)) return null
+  // Only show for these statuses
+  if (!['quote_created', 'accepted', 'quote_sent', 'payment_pending', 'payment_approved'].includes(s)) return null
 
   const base  = parseFloat(basePrice) || 0
   const cgst  = parseFloat((base * 0.025).toFixed(2))
@@ -536,11 +536,11 @@ function QuotePaymentPanel({ booking, adminKey, onUpdate }: {
   return (
     <div className="mt-4 rounded-xl border border-orange-100 bg-white p-4 shadow-sm" onClick={e => e.stopPropagation()}>
 
-      {/* ── ACCEPTED: Build Quote ── */}
-      {s === 'accepted' && (
+      {/* ── QUOTE CREATED / ACCEPTED: Build Quote ── */}
+      {(s === 'quote_created' || s === 'accepted') && (
         <div>
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-orange-400">
-            💼 Create &amp; Send Quote
+            {s === 'quote_created' ? '📝 Quote Created — Set Price & Send' : '💼 Create & Send Quote'}
           </p>
           <div className="flex flex-wrap items-end gap-3">
             <div className="space-y-1">
@@ -732,7 +732,7 @@ export default function AdminDashboard() {
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [editTarget, setEditTarget]   = useState<Booking | null>(null)
   const [crmStats, setCrmStats]       = useState<{
-    total_leads: number; pending_quotes: number; active_customers: number; revenue_this_month: number
+    total_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number
   } | null>(null)
 
   useEffect(() => {
@@ -818,8 +818,8 @@ export default function AdminDashboard() {
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
             { label: 'Total Leads',       value: crmStats?.total_leads ?? '—',      icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe', href: '/admin/leads' },
-            { label: 'Active Customers',  value: crmStats?.active_customers ?? '—', icon: <UserCheck className="h-4 w-4" />,   color: '#16a34a', bg: '#dcfce7', href: '/admin/customers' },
-            { label: 'Pending Quotes',    value: crmStats?.pending_quotes ?? '—',   icon: <FileText className="h-4 w-4" />,    color: '#7c3aed', bg: '#ede9fe', href: '/admin/quotes' },
+            { label: "Today's Dispatch",  value: crmStats?.today_dispatch ?? '—',   icon: <Package className="h-4 w-4" />,     color: '#7c3aed', bg: '#ede9fe', href: '/admin' },
+            { label: 'Pending Quotes',    value: crmStats?.pending_quotes ?? '—',   icon: <FileText className="h-4 w-4" />,    color: '#ea580c', bg: '#ffedd5', href: '/admin/leads' },
             {
               label: 'Revenue This Month',
               value: crmStats
@@ -890,7 +890,7 @@ export default function AdminDashboard() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Tracking', 'Customer', 'Route', 'Service', 'Date', 'Bags', 'Status', 'Change Status'].map(h => (
+                    {['Tracking', 'Customer', 'Route', 'Source', 'Service', 'Date', 'Bags', 'Status', 'Change Status'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -917,6 +917,20 @@ export default function AdminDashboard() {
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {b.from_city} &rarr; {b.to_city}
                         </td>
+                        <td className="px-4 py-3">
+                          {(() => {
+                            const tid = b.tracking_id ?? ''
+                            const src = tid.startsWith('BDA-') ? { label: 'Lead', color: '#2563eb', bg: '#dbeafe' }
+                                      : tid.startsWith('BDQ-') ? { label: 'Quote', color: '#7c3aed', bg: '#ede9fe' }
+                                      : { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
+                            return (
+                              <span style={{ color: src.color, background: src.bg }}
+                                className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
+                                {src.label}
+                              </span>
+                            )
+                          })()}
+                        </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{b.service_label}</td>
                         <td className="px-4 py-3 text-sm text-gray-600">{formatDate(b.pickup_date)}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{b.total_bags}</td>
@@ -927,7 +941,7 @@ export default function AdminDashboard() {
                       </tr>
                       {expanded === b.id && (
                         <tr className="bg-orange-50/40">
-                          <td colSpan={8} className="px-4 py-4">
+                          <td colSpan={9} className="px-4 py-4">
                             <div className="flex flex-wrap items-start gap-4">
                               <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4">
                                 <DetailRow icon={<Phone className="h-3.5 w-3.5 text-orange-500" />}       label="Phone"      val={b.customer_phone || 'Not provided'} />

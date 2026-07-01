@@ -18,7 +18,7 @@ const SLIDES = [
     headline2: 'Arrive Stress-Free.',
     body: 'We pick up your bags from home and deliver them straight to the airport — or vice versa. No queues. No trolleys. No hassle.',
     cta1: { label: 'Book Airport Delivery', href: '/book' },
-    cta2: { label: 'Track My Bag', href: '/track' },
+    cta2: { label: 'Get a Quote', href: '/book' },
   },
   {
     id: 'wedding',

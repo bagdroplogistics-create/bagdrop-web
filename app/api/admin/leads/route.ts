@@ -110,6 +110,9 @@ export async function POST(req: NextRequest) {
 
       pickup_time: body.pickup_time?.trim() || null,
 
+      pickup_address: body.pickup_address?.trim() || null,
+      drop_address:   body.drop_address?.trim() || null,
+
       bags_count: Number(body.bags_count) || 1,
 
       pnr: needsFlight
