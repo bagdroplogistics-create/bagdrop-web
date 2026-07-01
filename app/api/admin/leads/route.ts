@@ -76,17 +76,89 @@ export async function POST(req: NextRequest) {
     ? '+91' + rawPhone.replace(/^91/, '')
     : body.phone.trim()
 
-  // Generate Lead Number
+  // Generate Lead Number — use max existing to avoid collision when records are deleted
   const year = new Date().getFullYear()
 
-  const { count: leadCount } = await supabaseAdmin
+  const { data: lastLead } = await supabaseAdmin
     .from('leads')
-    .select('*', { count: 'exact', head: true })
+    .select('lead_number')
+    .like('lead_number', `BDL-${year}-%`)
+    .order('lead_number', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  const leadSeq = String((leadCount ?? 0) + 1).padStart(4, '0')
-  const leadNumber = `BDL-${year}-${leadSeq}`
+  let nextSeq = 1
+  if (lastLead?.lead_number) {
+    const parts = lastLead.lead_number.split('-')
+    const last = parseInt(parts[parts.length - 1], 10)
+    if (!isNaN(last)) nextSeq = last + 1
+  }
 
-  // Create Lead (no auto-booking — booking is created only when quote is accepted)
+  const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+
+  // ── Generate Tracking ID for the linked booking (BDA- prefix = admin/lead origin) ──
+  const { data: lastBooking } = await supabaseAdmin
+    .from('bookings')
+    .select('tracking_id')
+    .like('tracking_id', 'BDA-%')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  let bookingSeq = 1
+  if (lastBooking?.tracking_id) {
+    const parts = lastBooking.tracking_id.split('-')
+    const last = parseInt(parts[parts.length - 1], 10)
+    if (!isNaN(last)) bookingSeq = last + 1
+  }
+  const trackingId = `BDA-${String(bookingSeq).padStart(4, '0')}`
+
+  const serviceLabelMap: Record<string, string> = {
+    'airport-to-doorstep':  'Airport → Doorstep',
+    'airport-to-door':      'Airport → Doorstep',
+    'doorstep-to-airport':  'Doorstep → Airport',
+    'door-to-airport':      'Doorstep → Airport',
+    'doorstep-to-doorstep': 'Doorstep → Doorstep',
+    'airport-to-airport':   'Airport → Airport',
+  }
+
+  // ── Auto-create linked booking so it appears in Dashboard and Bookings tab ──
+  const { data: booking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .insert({
+      tracking_id:    trackingId,
+      customer_name:  body.name.trim(),
+      customer_phone: normPhone,
+      customer_email: body.email?.trim()?.toLowerCase() || null,
+      service_type:   serviceVal,
+      service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : null,
+      from_city:      body.from_city?.trim() || null,
+      to_city:        body.to_city?.trim() || null,
+      pickup_date:    nullDate(body.pickup_date),
+      delivery_date:  nullDate(body.delivery_date),
+      time_slot:      body.pickup_time?.trim() || null,
+      pickup_address: body.pickup_address?.trim() || null,
+      drop_address:   body.drop_address?.trim() || null,
+      total_bags:     Number(body.bags_count) || 1,
+      flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
+      notes:          body.notes?.trim() || null,
+      status:         'inquiry',
+      status_history: [{
+        from:       null,
+        to:         'inquiry',
+        timestamp:  new Date().toISOString(),
+        changed_by: 'system',
+        note:       `Auto-created from lead ${leadNumber}`,
+      }],
+    })
+    .select()
+    .single()
+
+  if (bookingErr) {
+    console.error('[leads POST] booking insert failed (non-fatal):', bookingErr.message)
+  }
+
+  // ── Create Lead and link it to the booking ──
   const { data: lead, error: leadErr } = await supabaseAdmin
     .from('leads')
     .insert({
@@ -134,6 +206,9 @@ export async function POST(req: NextRequest) {
       notes: body.notes?.trim() || null,
 
       status: 'new',
+
+      // Link to the auto-created booking
+      booking_id: booking?.id ?? null,
     })
     .select()
     .single()
@@ -143,8 +218,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 
+  // Back-link booking → lead
+  if (booking?.id) {
+    await supabaseAdmin
+      .from('bookings')
+      .update({ lead_id: lead.id })
+      .eq('id', booking.id)
+  }
+
   return NextResponse.json(
-    { lead, lead_number: leadNumber },
+    { lead, lead_number: leadNumber, tracking_id: trackingId },
     { status: 201 }
   )
 }

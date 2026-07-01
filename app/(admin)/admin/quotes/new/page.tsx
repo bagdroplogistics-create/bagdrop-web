@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Save, IndianRupee, FileText } from 'lucide-react'
 import Link from 'next/link'
 
@@ -33,7 +33,9 @@ const inputCls = 'w-full rounded-lg border border-gray-200 px-3 py-2.5 text-sm f
 const selCls   = inputCls + ' bg-white'
 
 export default function NewQuotePage() {
-  const router = useRouter()
+  const router       = useRouter()
+  const searchParams = useSearchParams()
+  const leadId       = searchParams.get('lead_id') // set when coming from a lead row
   const [adminKey, setAdminKey] = useState('')
   const [authed,   setAuthed]   = useState(false)
   const [saving,   setSaving]   = useState(false)
@@ -97,6 +99,9 @@ export default function NewQuotePage() {
         base_price:     base,
         status,
         notes:          notes.trim() || null,
+        // If opened from a lead row, pass lead_id so the API reuses
+        // the existing BDA booking instead of creating a duplicate BDQ one.
+        lead_id:        leadId || null,
       }),
     })
     setSaving(false)

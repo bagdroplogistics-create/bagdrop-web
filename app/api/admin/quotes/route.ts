@@ -97,88 +97,148 @@ export async function POST(req: NextRequest) {
     booking_id:     bookingId,
   }
 
-  // ── UPSERT: if booking_id provided, update existing quote instead of inserting ──
-  if (bookingId) {
-    const { data: existing } = await supabaseAdmin
-      .from('quotes')
-      .select('id, quote_number, version')
-      .eq('booking_id', bookingId)
+  const serviceLabelMap: Record<string, string> = {
+    'airport-to-door':       'Airport → Doorstep',
+    'airport-to-doorstep':   'Airport → Doorstep',
+    'door-to-airport':       'Doorstep → Airport',
+    'doorstep-to-airport':   'Doorstep → Airport',
+    'doorstep-to-doorstep':  'Doorstep → Doorstep',
+    'airport-to-airport':    'Airport → Airport',
+    'intercity':             'Intercity',
+  }
+  const serviceLabel  = serviceLabelMap[quoteFields.service_type] ?? quoteFields.service_type
+  const bookingStatus = sendStatus === 'sent' ? 'quote_sent' : 'quote_created'
+
+  // ── Resolve which booking to link to ────────────────────────────────────────
+  // Priority: booking_id (direct) > lead_id (via lead.booking_id)
+  // In BOTH cases we UPDATE the existing booking — never create a duplicate.
+  let linkedBookingId: string | null = bookingId  // may be null
+  let trackingId = ''
+
+  // If booking_id not supplied directly, try to derive it from lead_id
+  if (!linkedBookingId && body.lead_id) {
+    const { data: lead } = await supabaseAdmin
+      .from('leads')
+      .select('booking_id')
+      .eq('id', body.lead_id)
       .maybeSingle()
 
-    if (existing) {
+    if (lead?.booking_id) linkedBookingId = lead.booking_id
+  }
+
+  // ── If we have an existing booking, check for an existing quote to upsert ──
+  if (linkedBookingId) {
+    const { data: existingQuote } = await supabaseAdmin
+      .from('quotes')
+      .select('id, quote_number, version')
+      .eq('booking_id', linkedBookingId)
+      .maybeSingle()
+
+    // Fetch booking for history + tracking_id
+    const { data: existingBooking } = await supabaseAdmin
+      .from('bookings')
+      .select('tracking_id, status, status_history')
+      .eq('id', linkedBookingId)
+      .maybeSingle()
+
+    trackingId = existingBooking?.tracking_id ?? ''
+    const history = (existingBooking?.status_history ?? []) as object[]
+    history.push({
+      from:       existingBooking?.status ?? null,
+      to:         bookingStatus,
+      timestamp:  new Date().toISOString(),
+      changed_by: 'system',
+      note:       'Status updated when quote was created/sent',
+    })
+
+    // Always update the existing booking — never create a second one
+    await supabaseAdmin.from('bookings').update({
+      status:         bookingStatus,
+      total_amount:   totalAmount,
+      service_type:   quoteFields.service_type,
+      service_label:  serviceLabel,
+      pickup_date:    quoteFields.pickup_date,
+      time_slot:      quoteFields.time_slot,
+      total_bags:     quoteFields.total_bags,
+      notes:          quoteFields.notes,
+      status_history: history,
+    }).eq('id', linkedBookingId)
+
+    if (existingQuote) {
+      // UPDATE the quote (new version)
       const { data, error } = await supabaseAdmin
         .from('quotes')
-        .update({ ...quoteFields, version: ((existing.version ?? 1) as number) + 1 })
-        .eq('id', existing.id)
+        .update({ ...quoteFields, booking_id: linkedBookingId, version: ((existingQuote.version ?? 1) as number) + 1 })
+        .eq('id', existingQuote.id)
         .select()
         .single()
 
       if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-      // Sync booking status when quote is sent
-      if (sendStatus === 'sent') {
-        await supabaseAdmin.from('bookings').update({ status: 'quote_sent', total_amount: totalAmount }).eq('id', bookingId)
-      }
-
-      // Send email
       let email_sent = false
       if (sendStatus === 'sent' && quoteFields.customer_email) {
         email_sent = await sendQuoteEmail({
           to: quoteFields.customer_email, customerName: quoteFields.customer_name,
-          quoteNumber: existing.quote_number, serviceType: quoteFields.service_type,
+          quoteNumber: existingQuote.quote_number, serviceType: quoteFields.service_type,
           fromCity: quoteFields.from_city, toCity: quoteFields.to_city,
           pickupDate: quoteFields.pickup_date, totalBags: quoteFields.total_bags,
           basePrice, cgst, sgst, totalAmount, notes: quoteFields.notes,
         })
       }
 
-      return NextResponse.json({ quote: data, action: 'updated', email_sent }, { status: 200 })
+      return NextResponse.json({ quote: data, booking_id: linkedBookingId, tracking_id: trackingId, action: 'updated', email_sent }, { status: 200 })
     }
+
+    // No existing quote yet — INSERT a new quote linked to the existing booking
+    // (fall through to the INSERT block below with linkedBookingId already set)
   }
 
-  // ── Auto-create a booking so the quote shows in Dashboard/Bookings ──
-  const trackingId = 'BDQ-' + Math.random().toString(36).toUpperCase().slice(2, 8)
+  // ── No lead (or lead had no booking) → create a fresh BDQ booking ──
+  if (!linkedBookingId) {
+    const { data: lastBDQ } = await supabaseAdmin
+      .from('bookings')
+      .select('tracking_id')
+      .like('tracking_id', 'BDQ-%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  const serviceLabelMap: Record<string, string> = {
-    'airport-to-door':      'Airport → Doorstep',
-    'airport-to-doorstep':  'Airport → Doorstep',
-    'door-to-airport':      'Doorstep → Airport',
-    'doorstep-to-airport':  'Doorstep → Airport',
-    'intercity':            'Intercity',
+    let bdqSeq = 1
+    if (lastBDQ?.tracking_id) {
+      const parts = lastBDQ.tracking_id.split('-')
+      const last = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(last)) bdqSeq = last + 1
+    }
+    trackingId = `BDQ-${String(bdqSeq).padStart(4, '0')}`
+
+    const { data: newBooking, error: bookingErr } = await supabaseAdmin
+      .from('bookings')
+      .insert({
+        tracking_id:    trackingId,
+        status:         bookingStatus,
+        customer_name:  quoteFields.customer_name,
+        customer_phone: quoteFields.customer_phone,
+        customer_email: quoteFields.customer_email,
+        service_type:   quoteFields.service_type,
+        service_label:  serviceLabel,
+        from_city:      quoteFields.from_city,
+        to_city:        quoteFields.to_city,
+        pickup_date:    quoteFields.pickup_date,
+        time_slot:      quoteFields.time_slot,
+        total_bags:     quoteFields.total_bags,
+        total_amount:   totalAmount,
+        currency:       'INR',
+        notes:          quoteFields.notes,
+        status_history: [{ from: null, to: bookingStatus, timestamp: new Date().toISOString(), changed_by: 'system', note: 'Auto-created from quote' }],
+      })
+      .select('id')
+      .single()
+
+    if (bookingErr || !newBooking) {
+      console.error('[quotes POST] booking creation failed:', bookingErr?.message)
+    }
+    linkedBookingId = newBooking?.id ?? null
   }
-  const serviceLabel = serviceLabelMap[quoteFields.service_type] ?? quoteFields.service_type
-
-  const bookingStatus = sendStatus === 'sent' ? 'quote_sent' : 'quote_created'
-
-  const { data: newBooking, error: bookingErr } = await supabaseAdmin
-    .from('bookings')
-    .insert({
-      tracking_id:    trackingId,
-      status:         bookingStatus,
-      customer_name:  quoteFields.customer_name,
-      customer_phone: quoteFields.customer_phone,
-      customer_email: quoteFields.customer_email,
-      service_type:   quoteFields.service_type,
-      service_label:  serviceLabel,
-      from_city:      quoteFields.from_city,
-      to_city:        quoteFields.to_city,
-      pickup_date:    quoteFields.pickup_date,
-      time_slot:      quoteFields.time_slot,
-      total_bags:     quoteFields.total_bags,
-      total_amount:   totalAmount,
-      currency:       'INR',
-      notes:          quoteFields.notes,
-      status_history: [{ from: null, to: bookingStatus, timestamp: new Date().toISOString(), changed_by: 'system', note: 'Auto-created from quote' }],
-    })
-    .select('id')
-    .single()
-
-  if (bookingErr || !newBooking) {
-    console.error('[quotes POST] booking creation failed:', bookingErr?.message)
-    // Non-fatal — still create the quote without a booking link
-  }
-
-  const linkedBookingId = newBooking?.id ?? null
 
   // ── INSERT: new quote (retry up to 3× on quote_number collision) ──
   let data: Record<string, unknown> | null = null

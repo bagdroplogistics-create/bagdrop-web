@@ -199,10 +199,10 @@ function LeadModal({
 
   // Validation
   function validate() {
-    if (!form.name.trim())         return 'Customer name is required'
-    if (!form.phone.trim())        return 'Phone number is required'
-    if (!form.travel_date)         return 'Travel date is required'
-    if (!form.pickup_date)         return 'Pickup date is required'
+    if (!form.name.trim())                       return 'Customer name is required'
+    if (!form.phone.trim())                      return 'Phone number is required'
+    if (requiresFlight && !form.travel_date)     return 'Travel date is required'
+    if (!form.pickup_date)                       return 'Pickup date is required'
     if (!form.delivery_date)       return 'Delivery date is required'
     if (!form.pickup_time)         return 'Pickup time slot is required'
     if (!Number(form.bags_count) || Number(form.bags_count) < 1) return 'Number of bags must be at least 1'
@@ -267,26 +267,26 @@ function LeadModal({
           <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
             <CheckCircle className="h-8 w-8 text-green-600" />
           </div>
-          <h2 className="text-xl font-bold text-gray-900 mb-1">Lead Created!</h2>
-          <p className="text-sm text-gray-500 mb-5">Lead has been saved. Create a quote from the Quotes tab to send pricing to this customer.</p>
+          <h2 className="text-xl font-bold text-gray-900 mb-1">Quote Created!</h2>
+          <p className="text-sm text-gray-500 mb-5">Quote saved and added to the booking pipeline. Set pricing and send it to the customer.</p>
           <div className="rounded-xl bg-gray-50 border border-gray-100 p-4 mb-5 space-y-3 text-left">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-gray-500">Lead Number</span>
+              <span className="text-xs font-semibold text-gray-500">Quote Number</span>
               <span className="font-mono font-bold text-blue-600">{saved.lead_number}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500">Status</span>
-              <span className="inline-flex items-center gap-1 rounded-full bg-yellow-50 px-2.5 py-0.5 text-xs font-semibold text-yellow-700">New Lead</span>
+              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-blue-700">New Quote</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-gray-500">Next Step</span>
-              <span className="text-xs font-semibold text-orange-600">Create & Send Quote →</span>
+              <span className="text-xs font-semibold text-orange-600">Set Price & Send Quote →</span>
             </div>
           </div>
           <p className="text-xs text-gray-400 mb-4">Closing automatically in 3 seconds…</p>
           <button onClick={onSaved}
             className="w-full rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
-            Back to Leads
+            Back to Quotes
           </button>
         </div>
       </div>
@@ -295,12 +295,12 @@ function LeadModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4 pt-8">
-      <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl">
+      <div className="w-full max-w-4xl rounded-2xl bg-white shadow-2xl">
 
         {/* Header */}
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
           <div>
-            <h2 className="text-lg font-bold text-gray-900">{lead ? 'Edit Lead' : 'New Lead'}</h2>
+            <h2 className="text-lg font-bold text-gray-900">{lead ? 'Edit Quote' : 'New Quote'}</h2>
             {lead && <p className="text-xs text-gray-400">ID: {lead.id.slice(0, 8)}…</p>}
           </div>
           <button onClick={onClose} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 transition-colors">
@@ -375,7 +375,9 @@ function LeadModal({
 
           {/* ── Schedule & Bags ── */}
           <Section icon={<Calendar className="h-4 w-4" />} title="Schedule & Bags">
-            <Field label="Travel Date"   value={form.travel_date}   onChange={set('travel_date')}   type="date" />
+            {requiresFlight && (
+              <Field label="Travel Date" value={form.travel_date} onChange={set('travel_date')} type="date" />
+            )}
             <Field label="Pickup Date"   value={form.pickup_date}   onChange={set('pickup_date')}   type="date" />
             <Field label="Delivery Date" value={form.delivery_date} onChange={set('delivery_date')} type="date" />
             <div>
@@ -457,7 +459,7 @@ function LeadModal({
             {saving
               ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
               : <Save className="h-3.5 w-3.5" />}
-            {saving ? 'Saving…' : lead ? 'Save Changes' : 'Create Lead'}
+            {saving ? 'Saving…' : lead ? 'Save Changes' : 'Create Quote'}
           </button>
         </div>
       </div>
@@ -529,7 +531,7 @@ export default function LeadsPage() {
       <div className="border-b border-orange-100 bg-white px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Lead Management</h1>
+            <h1 className="text-xl font-bold text-gray-900">Quote Management</h1>
             <p className="mt-0.5 text-sm text-gray-400">Capture prospects — send a quote to convert to a booking</p>
           </div>
           <button onClick={() => setModal({ open: true, lead: null })}
@@ -570,10 +572,10 @@ export default function LeadsPage() {
             </div>
           ) : leads.length === 0 ? (
             <div className="py-24 text-center">
-              <p className="text-sm text-gray-400">No leads found</p>
+              <p className="text-sm text-gray-400">No quotes found</p>
               <button onClick={() => setModal({ open: true, lead: null })}
                 className="mt-3 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
-                Add First Lead
+                Add First Quote
               </button>
             </div>
           ) : (
@@ -581,7 +583,7 @@ export default function LeadsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Lead #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -625,10 +627,17 @@ export default function LeadsPage() {
                         })()}
                       </td>
                       <td className="px-4 py-3">
-                        <Link href="/admin/quotes/new"
-                          className="inline-flex items-center gap-1 rounded-lg border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:border-orange-300 transition-colors">
-                          <ExternalLink className="h-3 w-3" /> Create Quote
-                        </Link>
+                        {l.booking_id ? (
+                          <Link href={`/admin?highlight=${l.booking_id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-green-100 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:border-green-300 transition-colors">
+                            <ExternalLink className="h-3 w-3" /> View Booking
+                          </Link>
+                        ) : (
+                          <Link href={`/admin/quotes/new?lead_id=${l.id}`}
+                            className="inline-flex items-center gap-1 rounded-lg border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:border-orange-300 transition-colors">
+                            <ExternalLink className="h-3 w-3" /> Create Quote
+                          </Link>
+                        )}
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
                       <td className="px-4 py-3">
@@ -651,7 +660,7 @@ export default function LeadsPage() {
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
-          Leads are prospects only. A booking is created automatically when a quote is accepted and payment is confirmed.
+          Each new quote automatically creates a booking entry visible in the Dashboard and Bookings tab.
         </p>
       </main>
     </>
