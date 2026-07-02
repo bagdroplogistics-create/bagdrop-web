@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage,
+  ChevronRight, Menu, X, Luggage, Truck,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -14,7 +14,8 @@ const NAV = [
   {
     group: 'Operations',
     items: [
-      { label: 'Dashboard & Bookings', href: '/admin', icon: LayoutDashboard },
+      { label: 'Dashboard & Bookings', href: '/admin',             icon: LayoutDashboard },
+      { label: 'Trip Sheets',          href: '/admin/trip-sheets', icon: Truck           },
     ],
   },
   {

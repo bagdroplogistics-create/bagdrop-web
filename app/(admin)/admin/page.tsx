@@ -734,6 +734,10 @@ export default function AdminDashboard() {
   const [crmStats, setCrmStats]       = useState<{
     total_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number
   } | null>(null)
+  const [tripStats, setTripStats]     = useState<{
+    total: number; active: number; delivered: number
+    totalIncome: number; totalExpense: number; netProfit: number
+  } | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -753,14 +757,27 @@ export default function AdminDashboard() {
       if (phase) qs += '&statuses=' + phase.statuses.join(',')
     }
     if (search) qs += '&search=' + encodeURIComponent(search)
-    const [sr, br, cr] = await Promise.all([
+    const [sr, br, cr, tr] = await Promise.all([
       fetch('/api/admin/stats?key=' + adminKey),
       fetch('/api/admin/bookings' + qs),
       fetch('/api/admin/crm-stats?key=' + adminKey),
+      fetch('/api/admin/trip-sheets?limit=200&key=' + adminKey),
     ])
     if (sr.ok) setStats(await sr.json())
     if (br.ok) setBookings((await br.json()).bookings ?? [])
     if (cr.ok) setCrmStats(await cr.json())
+    if (tr.ok) {
+      const td = await tr.json()
+      const sheets = td.trip_sheets ?? []
+      setTripStats({
+        total:        sheets.length,
+        active:       sheets.filter((s: Record<string,string>) => !['completed','cancelled','delivered'].includes(s.status)).length,
+        delivered:    sheets.filter((s: Record<string,string>) => ['delivered','completed'].includes(s.status)).length,
+        totalIncome:  sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_income  || 0), 0),
+        totalExpense: sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_expense || 0), 0),
+        netProfit:    sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.net_profit    || 0), 0),
+      })
+    }
     setLoading(false)
   }, [adminKey, filter, phaseFilter, search])
 
@@ -837,6 +854,30 @@ export default function AdminDashboard() {
               <p className="mt-2 text-xl font-bold text-gray-900">{c.value}</p>
             </Link>
           ))}
+        </div>
+
+        {/* Trip Operations quick stats */}
+        <div className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Trip Operations</p>
+            <Link href="/admin/trip-sheets" className="text-xs font-semibold text-orange-500 hover:text-orange-600">View all →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: 'Total Trips',   value: tripStats?.total ?? '—',    color: '#f97316', bg: '#fff7ed' },
+              { label: 'Active Trips',  value: tripStats?.active ?? '—',   color: '#2563eb', bg: '#dbeafe' },
+              { label: 'Delivered',     value: tripStats?.delivered ?? '—', color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Total Income',  value: tripStats ? '₹' + tripStats.totalIncome.toLocaleString('en-IN')  : '—', color: '#16a34a', bg: '#f0fdf4' },
+              { label: 'Total Expense', value: tripStats ? '₹' + tripStats.totalExpense.toLocaleString('en-IN') : '—', color: '#dc2626', bg: '#fef2f2' },
+              { label: 'Net Profit',    value: tripStats ? (tripStats.netProfit >= 0 ? '₹' : '-₹') + Math.abs(tripStats.netProfit).toLocaleString('en-IN') : '—', color: (tripStats?.netProfit ?? 0) >= 0 ? '#16a34a' : '#dc2626', bg: (tripStats?.netProfit ?? 0) >= 0 ? '#f0fdf4' : '#fef2f2' },
+            ].map(c => (
+              <Link key={c.label} href="/admin/trip-sheets"
+                className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{c.label}</p>
+                <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
+              </Link>
+            ))}
+          </div>
         </div>
 
         {/* Workflow phase filter pills */}
