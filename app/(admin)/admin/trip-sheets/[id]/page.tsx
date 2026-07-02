@@ -796,14 +796,15 @@ function PLRow({ label, value, bold = false, color = 'text-gray-700' }: {
 }
 
 // ── Page wrapper (Suspense for useSearchParams) ───────────────
-export default function TripSheetPage({ params }: { params: { id: string } }) {
+export default async function TripSheetPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   return (
     <Suspense fallback={
       <div className="flex h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
       </div>
     }>
-      <TripSheetDetail id={params.id} />
+      <TripSheetDetail id={id} />
     </Suspense>
   )
 }
