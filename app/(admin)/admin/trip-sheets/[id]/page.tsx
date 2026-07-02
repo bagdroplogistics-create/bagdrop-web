@@ -80,7 +80,7 @@ interface StatusEvent {
 
 // ── Lookups ────────────────────────────────────────────────────
 const TRIP_STATUS: Record<string, { label: string; color: string; bg: string }> = {
-  created:          { label: 'Created',           color: '#6b7280', bg: '#f3f4f6' },
+  created:          { label: 'Confirm Trip',       color: '#2563eb', bg: '#dbeafe' },
   pickup_assigned:  { label: 'Pickup Assigned',   color: '#d97706', bg: '#fef3c7' },
   picked_up:        { label: 'Picked Up',         color: '#7c3aed', bg: '#ede9fe' },
   in_transit:       { label: 'In Transit',        color: '#2563eb', bg: '#dbeafe' },
@@ -154,7 +154,8 @@ function TripSheetDetail({ id }: { id: string }) {
 
   // Edit form state
   const [editForm, setEditForm] = useState({
-    status: '', vendor: '', driver_name: '', vehicle_number: '',
+    status: 'created', mode: '', payment_status: 'RECEIVED', undertaking_status: 'RECEIVED',
+    vendor: '', driver_name: '', vehicle_number: '',
     consignment_number: '', luggage_code: '', cloak_room_number: '',
     pickup_person: '', pickup_contact: '', delivery_person: '', delivery_contact: '',
     notes: '', remarks: '',
@@ -189,7 +190,10 @@ function TripSheetDetail({ id }: { id: string }) {
       const { trip_sheet } = await res.json()
       setSheet(trip_sheet)
       setEditForm({
-        status:             trip_sheet.status             ?? '',
+        status:             trip_sheet.status              ?? 'created',
+        mode:               trip_sheet.mode               ?? '',
+        payment_status:     trip_sheet.payment_status     ?? 'RECEIVED',
+        undertaking_status: trip_sheet.undertaking_status ?? 'RECEIVED',
         vendor:             trip_sheet.vendor             ?? '',
         driver_name:        trip_sheet.driver_name        ?? '',
         vehicle_number:     trip_sheet.vehicle_number     ?? '',
@@ -430,19 +434,76 @@ function TripSheetDetail({ id }: { id: string }) {
 
         {/* ── TAB: Edit / Status ── */}
         {tab === 'edit' && (
-          <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-            <h3 className="mb-5 text-sm font-bold text-gray-700">Edit Trip Sheet</h3>
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div>
-                <label className="mb-1 block text-xs font-semibold text-gray-500">Status</label>
-                <div className="relative">
-                  <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
-                    className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
-                    {Object.entries(TRIP_STATUS).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
-                  </select>
-                  <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          <div className="space-y-5">
+
+            {/* Section 1: Key status fields (matches Excel header) */}
+            <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
+              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-blue-500">Trip Status &amp; Mode</p>
+              <div className="grid gap-4 sm:grid-cols-4">
+                {/* Trip Status */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-500">Trip Status</label>
+                  <div className="relative">
+                    <select value={editForm.status} onChange={e => setEditForm(f => ({ ...f, status: e.target.value }))}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                      {Object.entries(TRIP_STATUS).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  </div>
+                </div>
+
+                {/* Mode */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-500">Mode</label>
+                  <div className="relative">
+                    <select value={editForm.mode} onChange={e => setEditForm(f => ({ ...f, mode: e.target.value }))}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                      <option value="">Select mode</option>
+                      <option value="BY ROAD">BY ROAD</option>
+                      <option value="BY AIR">BY AIR</option>
+                      <option value="BY RAIL">BY RAIL</option>
+                      <option value="BY SEA">BY SEA</option>
+                      <option value="COURIER">COURIER</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  </div>
+                </div>
+
+                {/* Payment Status */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-500">Payment Status</label>
+                  <div className="relative">
+                    <select value={editForm.payment_status} onChange={e => setEditForm(f => ({ ...f, payment_status: e.target.value }))}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                      <option value="RECEIVED">RECEIVED</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="PARTIAL">PARTIAL</option>
+                      <option value="REFUNDED">REFUNDED</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  </div>
+                </div>
+
+                {/* Undertaking Status */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-500">Undertaking Status</label>
+                  <div className="relative">
+                    <select value={editForm.undertaking_status} onChange={e => setEditForm(f => ({ ...f, undertaking_status: e.target.value }))}
+                      className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                      <option value="RECEIVED">RECEIVED</option>
+                      <option value="PENDING">PENDING</option>
+                      <option value="NOT REQUIRED">NOT REQUIRED</option>
+                    </select>
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  </div>
                 </div>
               </div>
+            </div>
+
+            {/* Section 2: Operational fields */}
+            <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+              <p className="mb-4 text-xs font-bold uppercase tracking-widest text-gray-400">Operations</p>
+              <div className="grid gap-4 sm:grid-cols-2">
               <Field label="Vendor"             value={editForm.vendor}             onChange={v => setEditForm(f => ({ ...f, vendor: v }))} />
               <Field label="Driver Name"        value={editForm.driver_name}        onChange={v => setEditForm(f => ({ ...f, driver_name: v }))} />
               <Field label="Vehicle No."        value={editForm.vehicle_number}     onChange={v => setEditForm(f => ({ ...f, vehicle_number: v }))} />
@@ -457,27 +518,28 @@ function TripSheetDetail({ id }: { id: string }) {
               <Field label="Discount"           value={editForm.discount}           onChange={v => setEditForm(f => ({ ...f, discount: v }))} type="number" />
               <Field label="Tax Amount"         value={editForm.tax_amount}         onChange={v => setEditForm(f => ({ ...f, tax_amount: v }))} type="number" />
             </div>
-            <div className="mt-4">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Notes</label>
-              <textarea value={editForm.notes} rows={2} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            </div>
-            <div className="mt-4">
-              <label className="mb-1 block text-xs font-semibold text-gray-500">Remarks</label>
-              <textarea value={editForm.remarks} rows={2} onChange={e => setEditForm(f => ({ ...f, remarks: e.target.value }))}
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            </div>
-            <div className="mt-5 flex items-center gap-3">
-              <button onClick={saveEdit} disabled={saving}
-                className="flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors">
-                <Save className="h-4 w-4" />
-                {saving ? 'Saving…' : 'Save Changes'}
-              </button>
-              {saveMsg && (
-                <span className={`text-sm font-semibold ${saveMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
-                  {saveMsg}
-                </span>
-              )}
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-semibold text-gray-500">Notes</label>
+                <textarea value={editForm.notes} rows={2} onChange={e => setEditForm(f => ({ ...f, notes: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+              <div className="mt-4">
+                <label className="mb-1 block text-xs font-semibold text-gray-500">Remarks</label>
+                <textarea value={editForm.remarks} rows={2} onChange={e => setEditForm(f => ({ ...f, remarks: e.target.value }))}
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+              <div className="mt-5 flex items-center gap-3">
+                <button onClick={saveEdit} disabled={saving}
+                  className="flex items-center gap-2 rounded-xl bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors">
+                  <Save className="h-4 w-4" />
+                  {saving ? 'Saving…' : 'Save Changes'}
+                </button>
+                {saveMsg && (
+                  <span className={`text-sm font-semibold ${saveMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>
+                    {saveMsg}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         )}

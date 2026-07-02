@@ -31,7 +31,8 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
   const allowed = [
-    'status', 'vendor', 'driver_name', 'vehicle_number', 'consignment_number',
+    'status', 'mode', 'payment_status', 'undertaking_status',
+    'vendor', 'driver_name', 'vehicle_number', 'consignment_number',
     'luggage_code', 'cloak_room_number', 'pickup_person', 'pickup_contact',
     'delivery_person', 'delivery_contact', 'notes', 'remarks',
     'additional_charges', 'discount', 'tax_amount',
