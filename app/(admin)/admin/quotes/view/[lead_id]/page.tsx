@@ -7,6 +7,7 @@ import {
   CheckCircle, Clock, AlertCircle, Send,
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
+  RotateCcw,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -163,6 +164,14 @@ const STATUS_ORDER = [
   'out_for_delivery', 'delivered', 'trip_created', 'completed',
 ]
 
+const NO_BACK_STATUSES = new Set(['completed', 'cancelled', 'rejected'])
+
+function getPreviousStatus(current: string): string | null {
+  const idx = STATUS_ORDER.indexOf(current)
+  if (idx <= 0) return null
+  return STATUS_ORDER[idx - 1]
+}
+
 const STATUS_LABEL: Record<string, string> = {
   quote_created:    'Quote Created',
   quote_sent:       'Quote Sent',
@@ -223,6 +232,10 @@ export default function QuoteViewPage() {
   const [rejectReason, setRejectReason]         = useState('')
   const [rejectComment, setRejectComment]       = useState('')
   const [showRejectForm, setShowRejectForm]     = useState(false)
+
+  // Back button state
+  const [backOpen, setBackOpen]     = useState(false)
+  const [backReason, setBackReason] = useState('')
 
   // ── Load data ─────────────────────────────────────────────────────
 
@@ -503,6 +516,17 @@ export default function QuoteViewPage() {
   async function doMarkDelivered()     { await patchBooking('mark_delivered',     { status: 'delivered' }) }
   async function doMarkCompleted()     { await patchBooking('mark_completed',     { status: 'completed' }) }
 
+  async function doMoveBack() {
+    if (!booking) return
+    const prev = getPreviousStatus(booking.status)
+    if (!prev) return
+    const ok = await patchBooking('move_back', {
+      status: prev,
+      reason: backReason.trim() || 'Status reverted by admin',
+    })
+    if (ok) { setBackOpen(false); setBackReason('') }
+  }
+
   // ── Render ────────────────────────────────────────────────────────
 
   if (loading) return (
@@ -527,9 +551,68 @@ export default function QuoteViewPage() {
   const grandTotal  = lead.quote_total      ?? (subtotal + taxTotal)
   const quoteDate   = lead.quote_date       ?? lead.created_at
 
+  // Back button computed values
+  const prevStatus = booking ? getPreviousStatus(booking.status) : null
+  const canGoBack  = !!(prevStatus && booking && !NO_BACK_STATUSES.has(booking.status))
+  const prevLabel  = prevStatus ? (STATUS_LABEL[prevStatus] ?? prevStatus) : ''
+  const curLabel   = booking ? (STATUS_LABEL[booking.status] ?? booking.status) : ''
 
   return (
     <>
+      {/* ── Back confirmation modal ── */}
+      {backOpen && prevStatus && booking && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => { setBackOpen(false); setBackReason('') }} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-5 py-4">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="h-4 w-4 text-amber-500" />
+                <h3 className="text-sm font-bold text-gray-800">Move Back to Previous Step?</h3>
+              </div>
+              <p className="mt-1 text-xs text-gray-500">This will revert the booking status and log the change.</p>
+            </div>
+            <div className="px-5 py-4 space-y-3">
+              <div className="flex items-center gap-3 rounded-lg bg-gray-50 px-3 py-2.5">
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_COLOR[booking.status] ?? 'bg-gray-100 text-gray-600'}`}>{curLabel}</span>
+                <span className="text-xs text-gray-400">→</span>
+                <span className={`rounded-full px-2.5 py-0.5 text-xs font-bold ${STATUS_COLOR[prevStatus] ?? 'bg-gray-100 text-gray-600'}`}>{prevLabel}</span>
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-gray-600">Reason (optional)</label>
+                <input
+                  type="text"
+                  autoFocus
+                  value={backReason}
+                  onChange={e => setBackReason(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && doMoveBack()}
+                  placeholder="e.g. Customer requested change"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-amber-400"
+                />
+              </div>
+              {actionError && acting === null && (
+                <p className="text-xs text-red-600 font-medium">{actionError}</p>
+              )}
+            </div>
+            <div className="flex gap-2 border-t border-gray-100 px-5 py-4">
+              <button
+                onClick={doMoveBack}
+                disabled={!!acting}
+                className="flex flex-1 items-center justify-center gap-2 rounded-lg bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40"
+              >
+                {acting === 'move_back' ? <Loader2 className="h-4 w-4 animate-spin" /> : <RotateCcw className="h-4 w-4" />}
+                {acting === 'move_back' ? 'Reverting…' : 'Confirm Revert'}
+              </button>
+              <button
+                onClick={() => { setBackOpen(false); setBackReason('') }}
+                className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ── Print-only styles ── */}
       <style>{`
         @media print {
@@ -835,9 +918,20 @@ export default function QuoteViewPage() {
                       {booking.tracking_id} · {booking.customer_email ?? lead.email ?? lead.phone}
                     </p>
                   </div>
-                  <span className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_COLOR[booking.status] ?? 'bg-gray-100 text-gray-600'}`}>
-                    {STATUS_LABEL[booking.status] ?? booking.status}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {canGoBack && (
+                      <button
+                        onClick={() => setBackOpen(true)}
+                        className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 transition-colors"
+                      >
+                        <RotateCcw className="h-3.5 w-3.5" />
+                        Previous Step
+                      </button>
+                    )}
+                    <span className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_COLOR[booking.status] ?? 'bg-gray-100 text-gray-600'}`}>
+                      {STATUS_LABEL[booking.status] ?? booking.status}
+                    </span>
+                  </div>
                 </div>
               </div>
 

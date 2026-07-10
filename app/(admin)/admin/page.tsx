@@ -7,7 +7,7 @@ import {
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
-  FileCheck, CreditCard, Receipt, Download, ArrowUpDown, ArrowLeft, ArrowRight,
+  FileCheck, CreditCard, Receipt, Download, ArrowUpDown, ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -1024,120 +1024,6 @@ const STATUS_ORDER = [
   'completed',
 ] as const
 
-// Statuses that are terminal — cannot be moved back (or forward via Back btn)
-const NO_BACK_STATUSES = new Set(['completed', 'cancelled'])
-
-function getPreviousStatus(current: string): string | null {
-  const idx = STATUS_ORDER.indexOf(current as (typeof STATUS_ORDER)[number])
-  if (idx <= 0) return null
-  return STATUS_ORDER[idx - 1]
-}
-
-function BackStatusButton({ booking, adminKey, onUpdate }: {
-  booking: Booking; adminKey: string; onUpdate: () => void
-}) {
-  const [open, setOpen]       = useState(false)
-  const [reason, setReason]   = useState('')
-  const [loading, setLoading] = useState(false)
-  const [err, setErr]         = useState('')
-
-  const prevStatus = getPreviousStatus(booking.status)
-  const isLocked   = STATUS_CONFIG[booking.status]?.locked === true
-  const isTerminal = NO_BACK_STATUSES.has(booking.status)
-  const canGoBack  = !!prevStatus && !isLocked && !isTerminal
-
-  async function handleBack() {
-    if (!prevStatus) return
-    setLoading(true); setErr('')
-    const res = await fetch('/api/admin/bookings/' + booking.id, {
-      method:  'PATCH',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body:    JSON.stringify({
-        status: prevStatus,
-        reason: reason.trim() || 'Status reverted by admin',
-      }),
-    })
-    if (!res.ok) {
-      const d = await res.json()
-      setErr(d.error ?? 'Failed to update')
-      setLoading(false)
-      return
-    }
-    setOpen(false); setReason(''); setLoading(false)
-    onUpdate()
-  }
-
-  return (
-    <>
-      <button
-        onClick={() => canGoBack && setOpen(true)}
-        disabled={!canGoBack}
-        title={!canGoBack ? (isLocked ? 'Booking is locked' : !prevStatus ? 'Already at first stage' : 'Cannot go back') : `Move back to ${STATUS_CONFIG[prevStatus ?? '']?.label ?? prevStatus}`}
-        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 shadow-sm hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors"
-      >
-        <ArrowLeft className="h-3.5 w-3.5" />
-        Move Back
-      </button>
-
-      {open && prevStatus && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="fixed inset-0 bg-black/50" onClick={() => { setOpen(false); setReason('') }} />
-          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl">
-            <div className="border-b border-gray-100 px-6 py-4">
-              <h3 className="text-base font-bold text-gray-900">Move Booking Back</h3>
-              <p className="mt-0.5 text-xs text-gray-400 font-mono">{booking.tracking_id}</p>
-            </div>
-            <div className="px-6 py-4 space-y-4">
-              <div className="flex items-center gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
-                <div className="shrink-0 text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-500 mb-1">From</p>
-                  <StatusBadge status={booking.status} />
-                </div>
-                <ArrowLeft className="h-4 w-4 text-amber-400 shrink-0" />
-                <div className="shrink-0 text-center">
-                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-500 mb-1">To</p>
-                  <StatusBadge status={prevStatus} />
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                Are you sure you want to revert this booking to the previous workflow stage? This action will be logged in the status history.
-              </p>
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
-                  Reason <span className="font-normal normal-case text-gray-400">(optional)</span>
-                </label>
-                <input
-                  type="text"
-                  value={reason}
-                  onChange={e => setReason(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && !loading && handleBack()}
-                  placeholder="e.g. Payment not confirmed, need to re-verify"
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  autoFocus
-                />
-              </div>
-              {err && <p className="text-xs text-red-500 font-medium">{err}</p>}
-            </div>
-            <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
-              <button onClick={() => { setOpen(false); setReason('') }}
-                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
-              </button>
-              <button onClick={handleBack} disabled={loading}
-                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50 transition-colors">
-                {loading
-                  ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                  : <ArrowLeft className="h-3.5 w-3.5" />}
-                {loading ? 'Moving...' : 'Confirm & Move Back'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  )
-}
-
 const SORT_OPTIONS = [
   { value: 'newest',    label: 'Newest First' },
   { value: 'oldest',   label: 'Oldest First' },
@@ -1519,7 +1405,7 @@ export default function AdminDashboard() {
                                 {b.notes          && <DetailRow icon={<Calendar className="h-3.5 w-3.5 text-orange-500" />} label="Notes"    val={b.notes} />}
                               </div>
 
-                              {/* ── Right panel: Workflow + Actions ── */}
+                              {/* —— Right panel: Workflow + Actions —— */}
                               <div className="flex shrink-0 flex-col gap-3 min-w-[220px]">
 
                                 {/* Workflow actions */}
@@ -1527,7 +1413,6 @@ export default function AdminDashboard() {
                                   <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Workflow</p>
                                   <div className="flex items-center gap-2 flex-wrap">
                                     <StatusSelect id={b.id} current={b.status} adminKey={adminKey} onUpdate={fetchData} />
-                                    <BackStatusButton booking={b} adminKey={adminKey} onUpdate={fetchData} />
                                   </div>
                                 </div>
 
