@@ -73,6 +73,44 @@ export async function PATCH(
   if (rejection_comment !== undefined) updates.rejection_comment = rejection_comment ?? null
   if (status === 'rejected' && !updates.rejected_at) updates.rejected_at = new Date().toISOString()
 
+  // ── Special: send quote email to customer (side-effect, status still updates) ──
+  if (body.send_quote_email) {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings')
+      .select('customer_email, customer_name, total_amount, tracking_id, from_city, to_city, service_type, service_label, total_bags, pickup_date')
+      .eq('id', id)
+      .single()
+
+    if (bk?.customer_email) {
+      const { data: lead } = await supabaseAdmin
+        .from('leads')
+        .select('quote_number, quote_total, quote_subtotal, quote_tax, quote_notes, name, bags_count')
+        .eq('booking_id', id)
+        .maybeSingle()
+
+      const totalAmount = Number(lead?.quote_total ?? bk.total_amount ?? 0)
+      const baseAmount  = parseFloat((lead?.quote_subtotal ?? totalAmount / 1.05).toFixed(2))
+      const taxAmount   = parseFloat((lead?.quote_tax      ?? totalAmount - baseAmount).toFixed(2))
+      const cgst        = parseFloat((taxAmount / 2).toFixed(2))
+      const sgst        = parseFloat((taxAmount / 2).toFixed(2))
+
+      await sendQuoteEmail({
+        to:           bk.customer_email,
+        customerName: bk.customer_name ?? lead?.name ?? 'Customer',
+        quoteNumber:  lead?.quote_number ?? bk.tracking_id ?? '',
+        serviceType:  (bk.service_label ?? bk.service_type ?? 'Baggage Delivery') as string,
+        fromCity:     (bk.from_city ?? '') as string,
+        toCity:       (bk.to_city   ?? '') as string,
+        pickupDate:   (bk.pickup_date ?? null) as string | null,
+        totalBags:    Number(bk.total_bags ?? lead?.bags_count ?? 1),
+        basePrice:    baseAmount,
+        cgst, sgst, totalAmount,
+        notes:        (lead?.quote_notes ?? null) as string | null,
+      })
+    }
+    // Don't return early — let status update to quote_sent continue below
+  }
+
   // ── Special: send payment request email to customer ──────────────
   if (body.send_payment_email) {
     const { data: bk } = await supabaseAdmin.from('bookings').select('*').eq('id', id).single()
@@ -323,4 +361,80 @@ async function sendPaymentRequestEmail(p: {
       }),
     })
   } catch (e) { console.error('[sendPaymentRequestEmail]', e) }
+}
+
+// ── Send quote email via Resend ────────────────────────────────────────────────
+async function sendQuoteEmail(p: {
+  to: string; customerName: string; quoteNumber: string; serviceType: string
+  fromCity: string; toCity: string; pickupDate: string | null; totalBags: number
+  basePrice: number; cgst: number; sgst: number; totalAmount: number; notes: string | null
+}): Promise<void> {
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) { console.warn('[bookings] RESEND_API_KEY not set'); return }
+
+  const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 })
+  const pickupLine = p.pickupDate
+    ? new Date(p.pickupDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    : 'To be confirmed'
+
+  const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+<body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f9fafb;padding:32px 0">
+<tr><td align="center">
+<table width="580" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.08);max-width:580px">
+<tr><td style="background:#FF6300;padding:28px 32px">
+  <p style="margin:0;font-size:26px;font-weight:700;color:#fff">Bagdrop</p>
+  <p style="margin:4px 0 0;font-size:13px;color:#ffe0cc">Baggage Delivered. Journey Simplified.</p>
+</td></tr>
+<tr><td style="padding:32px">
+  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${p.customerName}</strong>,</p>
+  <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6">
+    Thank you for choosing Bagdrop! Your quote for <strong>${p.fromCity} → ${p.toCity}</strong> is ready.
+  </p>
+  <div style="background:#fff7f0;border:2px solid #ffedd5;border-radius:12px;padding:20px;margin-bottom:24px">
+    <p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a3412">Quote Summary</p>
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Quote No.</td><td align="right" style="font-size:13px;font-weight:700;color:#111827">${p.quoteNumber}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Service</td><td align="right" style="font-size:13px;color:#111827">${p.serviceType}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Route</td><td align="right" style="font-size:13px;color:#111827">${p.fromCity} → ${p.toCity}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Pickup Date</td><td align="right" style="font-size:13px;color:#111827">${pickupLine}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Bags</td><td align="right" style="font-size:13px;color:#111827">${p.totalBags}</td></tr>
+      <tr><td colspan="2" style="border-top:1px solid #e5e7eb;padding-top:10px"></td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Base Amount</td><td align="right" style="font-size:13px;color:#111827">${fmt(p.basePrice)}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">CGST (2.5%)</td><td align="right" style="font-size:13px;color:#111827">${fmt(p.cgst)}</td></tr>
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">SGST (2.5%)</td><td align="right" style="font-size:13px;color:#111827">${fmt(p.sgst)}</td></tr>
+      <tr><td style="font-size:15px;font-weight:700;color:#111827;padding:8px 0 0">Total</td><td align="right" style="font-size:18px;font-weight:700;color:#FF6300;padding-top:8px">${fmt(p.totalAmount)}</td></tr>
+    </table>
+  </div>
+  ${p.notes ? `<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 16px;margin-bottom:24px"><p style="margin:0;font-size:13px;color:#15803d">${p.notes}</p></div>` : ''}
+  <p style="margin:0 0 8px;font-size:14px;color:#374151">To confirm your booking, please reply to this email or contact us:</p>
+  <p style="margin:0;font-size:14px;color:#374151">
+    📞 <a href="tel:+916357115711" style="color:#FF6300;text-decoration:none">+91 63571 15711</a> &nbsp;
+    📧 <a href="mailto:info@bagdrop.co" style="color:#FF6300;text-decoration:none">info@bagdrop.co</a>
+  </p>
+</td></tr>
+<tr><td style="background:#f9fafb;border-top:1px solid #e5e7eb;padding:18px 32px;text-align:center">
+  <p style="margin:0;font-size:12px;color:#9ca3af">© ${new Date().getFullYear()} Bagdrop Logistics Solutions Pvt. Ltd.</p>
+</td></tr>
+</table></td></tr></table>
+</body></html>`
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method:  'POST',
+      headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from:    'Bagdrop <info@bagdrop.co>',
+        to:      p.to,
+        subject: `Your Bagdrop Quote ${p.quoteNumber} — ${p.fromCity} → ${p.toCity} | ${fmt(p.totalAmount)}`,
+        html,
+      }),
+    })
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}))
+      console.error('[sendQuoteEmail] Resend error:', err)
+    } else {
+      console.log('[sendQuoteEmail] sent to', p.to)
+    }
+  } catch (e) { console.error('[sendQuoteEmail]', e) }
 }
