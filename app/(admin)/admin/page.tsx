@@ -7,7 +7,7 @@ import {
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
-  FileCheck, CreditCard, Receipt, Download, ArrowUpDown,
+  FileCheck, CreditCard, Receipt, Download, ArrowUpDown, ArrowLeft, ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -35,6 +35,13 @@ interface Booking {
   rejection_reason?: string | null
   rejection_comment?: string | null
   source?: string | null
+  status_history?: Array<{
+    from: string | null
+    to: string
+    timestamp: string
+    changed_by: string
+    note: string | null
+  }> | null
 }
 
 interface Stats {
@@ -995,6 +1002,142 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
   )
 }
 
+// ── Workflow back-navigation ─────────────────────────────────────
+// Linear "happy-path" order. Terminal/branch statuses are excluded.
+const STATUS_ORDER = [
+  'inquiry',
+  'quote_created',
+  'quote_sent',
+  'accepted',
+  'payment_pending',
+  'payment_received',
+  'payment_approved',
+  'confirmed',
+  'invoice_generated',
+  'invoice_sent',
+  'pickup_scheduled',
+  'picked_up',
+  'in_transit',
+  'out_for_delivery',
+  'delivered',
+  'trip_created',
+  'completed',
+] as const
+
+// Statuses that are terminal — cannot be moved back (or forward via Back btn)
+const NO_BACK_STATUSES = new Set(['completed', 'cancelled'])
+
+function getPreviousStatus(current: string): string | null {
+  const idx = STATUS_ORDER.indexOf(current as (typeof STATUS_ORDER)[number])
+  if (idx <= 0) return null
+  return STATUS_ORDER[idx - 1]
+}
+
+function BackStatusButton({ booking, adminKey, onUpdate }: {
+  booking: Booking; adminKey: string; onUpdate: () => void
+}) {
+  const [open, setOpen]       = useState(false)
+  const [reason, setReason]   = useState('')
+  const [loading, setLoading] = useState(false)
+  const [err, setErr]         = useState('')
+
+  const prevStatus = getPreviousStatus(booking.status)
+  const isLocked   = STATUS_CONFIG[booking.status]?.locked === true
+  const isTerminal = NO_BACK_STATUSES.has(booking.status)
+  const canGoBack  = !!prevStatus && !isLocked && !isTerminal
+
+  async function handleBack() {
+    if (!prevStatus) return
+    setLoading(true); setErr('')
+    const res = await fetch('/api/admin/bookings/' + booking.id, {
+      method:  'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body:    JSON.stringify({
+        status: prevStatus,
+        reason: reason.trim() || 'Status reverted by admin',
+      }),
+    })
+    if (!res.ok) {
+      const d = await res.json()
+      setErr(d.error ?? 'Failed to update')
+      setLoading(false)
+      return
+    }
+    setOpen(false); setReason(''); setLoading(false)
+    onUpdate()
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => canGoBack && setOpen(true)}
+        disabled={!canGoBack}
+        title={!canGoBack ? (isLocked ? 'Booking is locked' : !prevStatus ? 'Already at first stage' : 'Cannot go back') : `Move back to ${STATUS_CONFIG[prevStatus ?? '']?.label ?? prevStatus}`}
+        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 shadow-sm hover:bg-amber-50 hover:border-amber-300 hover:text-amber-700 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-white disabled:hover:border-gray-200 disabled:hover:text-gray-600 transition-colors"
+      >
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Move Back
+      </button>
+
+      {open && prevStatus && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => { setOpen(false); setReason('') }} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-2xl">
+            <div className="border-b border-gray-100 px-6 py-4">
+              <h3 className="text-base font-bold text-gray-900">Move Booking Back</h3>
+              <p className="mt-0.5 text-xs text-gray-400 font-mono">{booking.tracking_id}</p>
+            </div>
+            <div className="px-6 py-4 space-y-4">
+              <div className="flex items-center gap-3 rounded-xl border border-amber-100 bg-amber-50 px-4 py-3">
+                <div className="shrink-0 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-500 mb-1">From</p>
+                  <StatusBadge status={booking.status} />
+                </div>
+                <ArrowLeft className="h-4 w-4 text-amber-400 shrink-0" />
+                <div className="shrink-0 text-center">
+                  <p className="text-[10px] font-bold uppercase tracking-wide text-amber-500 mb-1">To</p>
+                  <StatusBadge status={prevStatus} />
+                </div>
+              </div>
+              <p className="text-sm text-gray-600">
+                Are you sure you want to revert this booking to the previous workflow stage? This action will be logged in the status history.
+              </p>
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">
+                  Reason <span className="font-normal normal-case text-gray-400">(optional)</span>
+                </label>
+                <input
+                  type="text"
+                  value={reason}
+                  onChange={e => setReason(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && !loading && handleBack()}
+                  placeholder="e.g. Payment not confirmed, need to re-verify"
+                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  autoFocus
+                />
+              </div>
+              {err && <p className="text-xs text-red-500 font-medium">{err}</p>}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-gray-100 px-6 py-4">
+              <button onClick={() => { setOpen(false); setReason('') }}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button onClick={handleBack} disabled={loading}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                {loading
+                  ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />
+                  : <ArrowLeft className="h-3.5 w-3.5" />}
+                {loading ? 'Moving...' : 'Confirm & Move Back'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  )
+}
+
 const SORT_OPTIONS = [
   { value: 'newest',    label: 'Newest First' },
   { value: 'oldest',   label: 'Oldest First' },
@@ -1362,9 +1505,11 @@ export default function AdminDashboard() {
                       </tr>
                       {expanded === b.id && (
                         <tr className="bg-orange-50/40">
-                          <td colSpan={8} className="px-4 py-4">
+                          <td colSpan={8} className="px-4 py-5">
                             <div className="flex flex-wrap items-start gap-4">
-                              <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4">
+
+                              {/* ── Booking details grid ── */}
+                              <div className="grid flex-1 grid-cols-2 gap-4 sm:grid-cols-4 min-w-0">
                                 <DetailRow icon={<Phone className="h-3.5 w-3.5 text-orange-500" />}       label="Phone"      val={b.customer_phone || 'Not provided'} />
                                 <DetailRow icon={<Mail className="h-3.5 w-3.5 text-orange-500" />}        label="Email"      val={b.customer_email || 'Not provided'} />
                                 <DetailRow icon={<Clock className="h-3.5 w-3.5 text-orange-500" />}       label="Time Slot"  val={b.time_slot || 'Not specified'} />
@@ -1373,20 +1518,69 @@ export default function AdminDashboard() {
                                 {b.drop_address   && <DetailRow icon={<MapPin className="h-3.5 w-3.5 text-orange-500" />}   label="Drop"     val={b.drop_address} />}
                                 {b.notes          && <DetailRow icon={<Calendar className="h-3.5 w-3.5 text-orange-500" />} label="Notes"    val={b.notes} />}
                               </div>
-                              <div className="flex shrink-0 flex-col gap-2">
-                                <button
-                                  onClick={e => { e.stopPropagation(); setEditTarget(b) }}
-                                  className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-600 shadow-sm hover:bg-orange-50 hover:border-orange-400 transition-colors">
-                                  <Pencil className="h-3.5 w-3.5" />
-                                  {STATUS_CONFIG[b.status]?.locked ? 'View Details' : 'Edit'}
-                                </button>
-                                <Link
-                                  href="/admin/leads"
-                                  onClick={e => e.stopPropagation()}
-                                  className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
-                                  <FileText className="h-3.5 w-3.5" />
-                                  Manage in Leads →
-                                </Link>
+
+                              {/* ── Right panel: Workflow + Actions ── */}
+                              <div className="flex shrink-0 flex-col gap-3 min-w-[220px]">
+
+                                {/* Workflow actions */}
+                                <div className="rounded-xl border border-orange-100 bg-white p-3 shadow-sm space-y-2" onClick={e => e.stopPropagation()}>
+                                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Workflow</p>
+                                  <div className="flex items-center gap-2 flex-wrap">
+                                    <StatusSelect id={b.id} current={b.status} adminKey={adminKey} onUpdate={fetchData} />
+                                    <BackStatusButton booking={b} adminKey={adminKey} onUpdate={fetchData} />
+                                  </div>
+                                </div>
+
+                                {/* General actions */}
+                                <div className="flex flex-col gap-2">
+                                  <button
+                                    onClick={e => { e.stopPropagation(); setEditTarget(b) }}
+                                    className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs font-semibold text-orange-600 shadow-sm hover:bg-orange-50 hover:border-orange-400 transition-colors">
+                                    <Pencil className="h-3.5 w-3.5" />
+                                    {STATUS_CONFIG[b.status]?.locked ? 'View Details' : 'Edit Booking'}
+                                  </button>
+                                  <Link
+                                    href="/admin/leads"
+                                    onClick={e => e.stopPropagation()}
+                                    className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
+                                    <FileText className="h-3.5 w-3.5" />
+                                    Manage in Leads →
+                                  </Link>
+                                </div>
+
+                                {/* Status history — last 4 entries */}
+                                {b.status_history && b.status_history.length > 0 && (
+                                  <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Status History</p>
+                                    <ol className="space-y-1.5">
+                                      {[...b.status_history].reverse().slice(0, 4).map((h, i) => (
+                                        <li key={i} className="flex flex-col gap-0.5">
+                                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
+                                            {h.from && (
+                                              <span style={{ color: STATUS_CONFIG[h.from]?.color ?? '#6b7280', background: STATUS_CONFIG[h.from]?.bg ?? '#f3f4f6' }}
+                                                className="rounded px-1.5 py-0.5 font-semibold text-[9px]">
+                                                {STATUS_CONFIG[h.from]?.label ?? h.from}
+                                              </span>
+                                            )}
+                                            {h.from && <ArrowRight className="h-2.5 w-2.5 text-gray-300 shrink-0" />}
+                                            <span style={{ color: STATUS_CONFIG[h.to]?.color ?? '#6b7280', background: STATUS_CONFIG[h.to]?.bg ?? '#f3f4f6' }}
+                                              className="rounded px-1.5 py-0.5 font-semibold text-[9px]">
+                                              {STATUS_CONFIG[h.to]?.label ?? h.to}
+                                            </span>
+                                          </div>
+                                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
+                                            <span>{new Date(h.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} {new Date(h.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
+                                            {h.changed_by && <span className="text-gray-300">·</span>}
+                                            {h.changed_by && <span className="capitalize">{h.changed_by}</span>}
+                                          </div>
+                                          {h.note && h.note !== 'Status reverted by admin' && (
+                                            <p className="text-[10px] text-gray-400 italic truncate max-w-[200px]">{h.note}</p>
+                                          )}
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                )}
                               </div>
                             </div>
                           </td>

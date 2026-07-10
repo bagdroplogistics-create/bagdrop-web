@@ -39,6 +39,7 @@ export async function PATCH(
     payment_status, payment_method, payment_reference,
     approved_without_payment, delivery_date,
     rejection_reason, rejection_comment,
+    reason,   // status-change reason (goes only into history, not booking notes)
   } = body
 
   if (approved_without_payment && role !== 'admin') {
@@ -110,7 +111,7 @@ export async function PATCH(
       to:         status,
       timestamp:  new Date().toISOString(),
       changed_by: role,
-      note:       notes ?? null,
+      note:       reason ?? notes ?? null,   // reason takes priority; falls back to notes
     })
     updates.status_history = history
 
