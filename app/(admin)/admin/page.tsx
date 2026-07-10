@@ -1405,16 +1405,8 @@ export default function AdminDashboard() {
                                 {b.notes          && <DetailRow icon={<Calendar className="h-3.5 w-3.5 text-orange-500" />} label="Notes"    val={b.notes} />}
                               </div>
 
-                              {/* —— Right panel: Workflow + Actions —— */}
-                              <div className="flex shrink-0 flex-col gap-3 min-w-[220px]">
-
-                                {/* Workflow actions */}
-                                <div className="rounded-xl border border-orange-100 bg-white p-3 shadow-sm space-y-2" onClick={e => e.stopPropagation()}>
-                                  <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400">Workflow</p>
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <StatusSelect id={b.id} current={b.status} adminKey={adminKey} onUpdate={fetchData} />
-                                  </div>
-                                </div>
+                              {/* —— Right panel: Actions only —— */}
+                              <div className="flex shrink-0 flex-col gap-3 min-w-[160px]">
 
                                 {/* General actions */}
                                 <div className="flex flex-col gap-2">
@@ -1432,40 +1424,6 @@ export default function AdminDashboard() {
                                     Manage in Leads →
                                   </Link>
                                 </div>
-
-                                {/* Status history — last 4 entries */}
-                                {b.status_history && b.status_history.length > 0 && (
-                                  <div className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-                                    <p className="text-[10px] font-bold uppercase tracking-widest text-gray-400 mb-2">Status History</p>
-                                    <ol className="space-y-1.5">
-                                      {[...b.status_history].reverse().slice(0, 4).map((h, i) => (
-                                        <li key={i} className="flex flex-col gap-0.5">
-                                          <div className="flex items-center gap-1 text-[10px] text-gray-500">
-                                            {h.from && (
-                                              <span style={{ color: STATUS_CONFIG[h.from]?.color ?? '#6b7280', background: STATUS_CONFIG[h.from]?.bg ?? '#f3f4f6' }}
-                                                className="rounded px-1.5 py-0.5 font-semibold text-[9px]">
-                                                {STATUS_CONFIG[h.from]?.label ?? h.from}
-                                              </span>
-                                            )}
-                                            {h.from && <ArrowRight className="h-2.5 w-2.5 text-gray-300 shrink-0" />}
-                                            <span style={{ color: STATUS_CONFIG[h.to]?.color ?? '#6b7280', background: STATUS_CONFIG[h.to]?.bg ?? '#f3f4f6' }}
-                                              className="rounded px-1.5 py-0.5 font-semibold text-[9px]">
-                                              {STATUS_CONFIG[h.to]?.label ?? h.to}
-                                            </span>
-                                          </div>
-                                          <div className="flex items-center gap-1.5 text-[10px] text-gray-400">
-                                            <span>{new Date(h.timestamp).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })} {new Date(h.timestamp).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}</span>
-                                            {h.changed_by && <span className="text-gray-300">·</span>}
-                                            {h.changed_by && <span className="capitalize">{h.changed_by}</span>}
-                                          </div>
-                                          {h.note && h.note !== 'Status reverted by admin' && (
-                                            <p className="text-[10px] text-gray-400 italic truncate max-w-[200px]">{h.note}</p>
-                                          )}
-                                        </li>
-                                      ))}
-                                    </ol>
-                                  </div>
-                                )}
                               </div>
                             </div>
                           </td>
