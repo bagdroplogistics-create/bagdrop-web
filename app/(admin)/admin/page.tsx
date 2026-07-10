@@ -7,7 +7,7 @@ import {
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
-  FileCheck, CreditCard, Receipt, Download,
+  FileCheck, CreditCard, Receipt, Download, ArrowUpDown,
 } from 'lucide-react'
 import Link from 'next/link'
 
@@ -31,6 +31,7 @@ interface Booking {
   payment_reference: string | null
   notes: string | null
   created_at: string
+  updated_at?: string | null
   rejection_reason?: string | null
   rejection_comment?: string | null
   source?: string | null
@@ -994,6 +995,30 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
   )
 }
 
+const SORT_OPTIONS = [
+  { value: 'newest',    label: 'Newest First' },
+  { value: 'oldest',   label: 'Oldest First' },
+  { value: 'date_desc',label: 'Date (Newest → Oldest)' },
+  { value: 'date_asc', label: 'Date (Oldest → Newest)' },
+  { value: 'updated',  label: 'Recently Updated' },
+  { value: 'name_asc', label: 'Customer Name (A–Z)' },
+  { value: 'name_desc',label: 'Customer Name (Z–A)' },
+]
+
+function sortBookings(arr: Booking[], sortBy: string): Booking[] {
+  return [...arr].sort((a, b) => {
+    switch (sortBy) {
+      case 'oldest':    return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      case 'date_desc': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+      case 'date_asc':  return new Date(a.created_at).getTime() - new Date(b.created_at).getTime()
+      case 'updated':   return new Date(b.updated_at ?? b.created_at).getTime() - new Date(a.updated_at ?? a.created_at).getTime()
+      case 'name_asc':  return (a.customer_name ?? '').localeCompare(b.customer_name ?? '')
+      case 'name_desc': return (b.customer_name ?? '').localeCompare(a.customer_name ?? '')
+      default:          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime() // newest
+    }
+  })
+}
+
 export default function AdminDashboard() {
   const router = useRouter()
   const [adminKey, setAdminKey]       = useState('')
@@ -1004,6 +1029,7 @@ export default function AdminDashboard() {
   const [search, setSearch]           = useState('')
   const [filter, setFilter]           = useState('all')
   const [phaseFilter, setPhaseFilter] = useState('all')
+  const [sort, setSort]               = useState('newest')
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [editTarget, setEditTarget]   = useState<Booking | null>(null)
   const [crmStats, setCrmStats]       = useState<{
@@ -1020,7 +1046,15 @@ export default function AdminDashboard() {
     if (!key) { router.replace('/admin/login'); return }
     setAdminKey(key)
     setAuthed(true)
+    // Restore sort preference
+    const savedSort = sessionStorage.getItem('bagdrop_dashboard_sort')
+    if (savedSort) setSort(savedSort)
   }, [router])
+
+  function handleSortChange(val: string) {
+    setSort(val)
+    sessionStorage.setItem('bagdrop_dashboard_sort', val)
+  }
 
   const fetchData = useCallback(async () => {
     if (!adminKey) return
@@ -1235,7 +1269,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* Search + status filter */}
+        {/* Search + status filter + sort */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
@@ -1250,6 +1284,14 @@ export default function AdminDashboard() {
               {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
                 <option key={val} value={val}>{cfg.label}</option>
               ))}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
+          <div className="relative">
+            <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+            <select value={sort} onChange={e => handleSortChange(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+              {SORT_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
@@ -1278,7 +1320,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {bookings.map(b => (
+                  {sortBookings(bookings, sort).map(b => (
                     <Fragment key={b.id}>
                       <tr onClick={() => setExpanded(expanded === b.id ? null : b.id)}
                         className="cursor-pointer hover:bg-gray-50 transition-colors">
