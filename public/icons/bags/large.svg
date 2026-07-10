@@ -1,0 +1,23 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Large suitcase">
+  <!-- Handle bar -->
+  <rect x="33" y="4" width="34" height="5" rx="2.5" fill="#FF6300"/>
+  <!-- Telescoping handle -->
+  <line x1="40" y1="9" x2="40" y2="20" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <line x1="60" y1="9" x2="60" y2="20" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Body (wider) -->
+  <rect x="8" y="20" width="84" height="75" rx="10" fill="white" stroke="#545454" stroke-width="2"/>
+  <!-- Zipper inset -->
+  <rect x="13" y="25" width="74" height="65" rx="8" fill="none" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- 3 bands — middle band orange -->
+  <line x1="8" y1="41" x2="92" y2="41" stroke="#EAEAEA" stroke-width="1.5"/>
+  <line x1="8" y1="59" x2="92" y2="59" stroke="#FF6300" stroke-width="2.5"/>
+  <line x1="8" y1="77" x2="92" y2="77" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Lock -->
+  <rect x="44" y="64" width="12" height="8" rx="2" fill="none" stroke="#545454" stroke-width="1.5"/>
+  <path d="M46.5 64 Q46.5 60 50 60 Q53.5 60 53.5 64" stroke="#545454" stroke-width="1.5" fill="none" stroke-linecap="round"/>
+  <!-- Spinner wheels (4) -->
+  <circle cx="17" cy="91" r="4" fill="#EAEAEA" stroke="#545454" stroke-width="1.5"/>
+  <circle cx="83" cy="91" r="4" fill="#EAEAEA" stroke="#545454" stroke-width="1.5"/>
+  <circle cx="17" cy="91" r="1.5" fill="#FF6300"/>
+  <circle cx="83" cy="91" r="1.5" fill="#FF6300"/>
+</svg>

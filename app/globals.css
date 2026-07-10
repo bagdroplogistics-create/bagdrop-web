@@ -1,0 +1,149 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ─────────────────────────────────────────────────────────────
+   CSS CUSTOM PROPERTIES — Bagdrop Design Tokens
+   These mirror the Tailwind config so Shadcn UI components
+   (which use CSS vars) get the correct brand styling.
+───────────────────────────────────────────────────────────── */
+@layer base {
+  :root {
+    /* Shadcn-compatible token names */
+    --background:         250 250 248;   /* cream #FAFAF8 */
+    --foreground:         11 20 38;      /* text-primary #0B1426 */
+
+    --card:               255 255 255;
+    --card-foreground:    11 20 38;
+
+    --popover:            255 255 255;
+    --popover-foreground: 11 20 38;
+
+    --primary:            255 99 0;      /* brand #FF6300 */
+    --primary-foreground: 255 255 255;
+
+    --secondary:          255 243 236;   /* brand-light #FFF3EC */
+    --secondary-foreground: 255 99 0;
+
+    --muted:              250 250 248;   /* cream */
+    --muted-foreground:   116 116 116;   /* neutral-mid */
+
+    --accent:             200 169 110;   /* gold #C8A96E */
+    --accent-foreground:  11 20 38;
+
+    --destructive:        220 38 38;     /* error */
+    --destructive-foreground: 255 255 255;
+
+    --border:             234 234 234;   /* #EAEAEA */
+    --input:              212 212 212;   /* border-strong */
+    --ring:               255 99 0;      /* brand orange */
+
+    --radius:             0.75rem;       /* 12px = rounded-lg */
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   BASE RESETS
+───────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  body {
+    @apply bg-cream text-text-primary font-sans;
+    font-feature-settings: "kern" 1, "liga" 1, "calt" 1;
+  }
+
+  /* Headings use Geist display font */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display font-semibold text-text-primary;
+  }
+
+  /* Focus ring — consistent brand orange */
+  :focus-visible {
+    @apply outline-none ring-2 ring-brand ring-offset-2;
+  }
+
+  /* Selection colour */
+  ::selection {
+    background-color: rgba(255, 99, 0, 0.15);
+    color: #0B1426;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   UTILITY CLASSES
+───────────────────────────────────────────────────────────── */
+@layer utilities {
+  /* Section container — consistent horizontal padding */
+  .section-container {
+    @apply mx-auto max-w-content px-4 sm:px-6 lg:px-8;
+  }
+
+  /* Section spacing */
+  .section-padding {
+    @apply py-16 md:py-20 lg:py-24;
+  }
+
+  /* Eyebrow label — "HOW IT WORKS", "WHY BAGDROP" etc. */
+  .eyebrow {
+    @apply font-sans text-xs font-semibold tracking-[0.1em] uppercase text-brand;
+  }
+
+  /* Gradient text — used sparingly for hero headlines */
+  .text-gradient {
+    @apply bg-gradient-to-r from-brand to-[#FF9A3C] bg-clip-text text-transparent;
+  }
+
+  /* Dark section overlay helper */
+  .dark-section {
+    @apply bg-midnight text-text-inverse;
+  }
+
+  /* Smooth image loading */
+  .img-smooth {
+    @apply transition-opacity duration-300;
+  }
+
+  /* Hide scrollbar but keep scrollable */
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+   COMPONENT LAYER — shared patterns
+───────────────────────────────────────────────────────────── */
+@layer components {
+  /* Navbar backdrop blur */
+  .nav-blur {
+    @apply bg-white/95 backdrop-blur-md;
+  }
+
+  /* Card base — used throughout */
+  .card-base {
+    @apply rounded-xl border border-border bg-surface p-6 shadow-sm
+           transition-all duration-200
+           hover:shadow-md hover:-translate-y-0.5;
+  }
+
+  /* Input base */
+  .input-base {
+    @apply h-12 w-full rounded-lg border border-border-strong bg-white px-4
+           text-base text-text-primary placeholder:text-text-muted
+           focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20
+           transition-colors duration-150;
+  }
+}

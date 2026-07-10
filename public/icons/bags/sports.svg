@@ -1,0 +1,22 @@
+<svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" fill="none" role="img" aria-label="Sports equipment bag">
+  <!-- Duffel body (horizontal oval/cylinder) -->
+  <rect x="9" y="28" width="82" height="46" rx="23" fill="white" stroke="#545454" stroke-width="2"/>
+  <!-- End cap lines -->
+  <line x1="25" y1="28" x2="25" y2="74" stroke="#EAEAEA" stroke-width="1.5"/>
+  <line x1="75" y1="28" x2="75" y2="74" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Top zip line -->
+  <path d="M25 28 Q50 22 75 28" stroke="#545454" stroke-width="1.5" stroke-linecap="round"/>
+  <!-- Zip pull (orange) -->
+  <circle cx="50" cy="25" r="3" fill="#FF6300"/>
+  <!-- Top handles -->
+  <path d="M37 28 C37 17 44 15 50 18 C56 15 63 17 63 28" stroke="#545454" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- Shoulder strap anchors (orange tabs) -->
+  <rect x="9" y="45" width="7" height="10" rx="2" fill="#FF6300"/>
+  <rect x="84" y="45" width="7" height="10" rx="2" fill="#FF6300"/>
+  <!-- Center zip divider -->
+  <line x1="9" y1="51" x2="91" y2="51" stroke="#EAEAEA" stroke-width="1"/>
+  <!-- Front pocket -->
+  <rect x="29" y="56" width="42" height="14" rx="4" fill="none" stroke="#EAEAEA" stroke-width="1.5"/>
+  <!-- Pocket zip pull -->
+  <circle cx="50" cy="56" r="2" fill="#FF6300"/>
+</svg>
