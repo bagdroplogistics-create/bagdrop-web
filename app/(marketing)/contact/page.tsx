@@ -8,6 +8,8 @@ export default function ContactPage() {
   const [loading, setLoading]     = React.useState(false)
   const [submitted, setSubmitted] = React.useState(false)
   const [error, setError]         = React.useState('')
+  const [hp, setHp]               = React.useState('')          // honeypot
+  const loadTs                    = React.useRef(Date.now())    // page-load timestamp
 
   function update(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
@@ -21,7 +23,7 @@ export default function ContactPage() {
       const res = await fetch('/api/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        body: JSON.stringify({ ...form, _hp: hp, _ts: loadTs.current }),
       })
       if (res.ok) { setSubmitted(true) }
       else { setError('Something went wrong. Please WhatsApp us directly.') }
@@ -201,6 +203,13 @@ export default function ContactPage() {
                 <>
                   <h2 className="font-display text-xl font-bold text-text-primary mb-6">Send us a message</h2>
                   <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* Honeypot — hidden from humans, bots fill it automatically */}
+                    <div style={{ position: 'absolute', left: '-9999px', top: '-9999px' }} aria-hidden="true">
+                      <input
+                        type="text" name="website" tabIndex={-1} autoComplete="off"
+                        value={hp} onChange={e => setHp(e.target.value)}
+                      />
+                    </div>
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <label className="mb-1.5 block text-sm font-medium text-text-secondary">Name *</label>

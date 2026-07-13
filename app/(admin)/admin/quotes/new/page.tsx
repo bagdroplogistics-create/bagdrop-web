@@ -334,9 +334,13 @@ function QuotePageInner() {
     itemsFromPricing.current = false
   }
 
-  const subtotal = lineItems.reduce((s, r) => s + r.qty * r.rate, 0)
-  const taxAmt   = subtotal * 0.05
-  const total    = subtotal + taxAmt
+  const [discountPct, setDiscountPct] = useState(0)
+
+  const subtotal    = lineItems.reduce((s, r) => s + r.qty * r.rate, 0)
+  const discountAmt = parseFloat((subtotal * discountPct / 100).toFixed(2))
+  const taxableAmt  = subtotal - discountAmt
+  const taxAmt      = taxableAmt * 0.05
+  const total       = taxableAmt + taxAmt
 
   // ── Save lead changes (Edit mode) ────────────────────────────────────
   async function saveLeadChanges() {
@@ -430,6 +434,7 @@ function QuotePageInner() {
     if (customerIdNo.trim())  payload.customer_id_no   = customerIdNo.trim()
     if (bagsPickupTag.trim()) payload.bags_pickup_tag  = bagsPickupTag.trim()
     if (mgasCode.trim())      payload.mgas_code        = mgasCode.trim()
+    if (discountPct > 0)      payload.discount_pct     = discountPct
 
     const res = await fetch('/api/admin/zoho/generate-quote', {
       method: 'POST',
@@ -840,6 +845,24 @@ function QuotePageInner() {
                   <tr className="border-t border-gray-200 text-xs text-gray-500">
                     <td colSpan={4} className="pt-2 pr-2 text-right">Sub Total</td>
                     <td className="pt-2 px-2 text-right">{subtotal.toLocaleString('en-IN')}</td>
+                    <td></td>
+                  </tr>
+                  <tr className="text-xs text-gray-500">
+                    <td colSpan={3} className="pr-2 text-right">Discount</td>
+                    <td className="px-2">
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number" min="0" max="100" step="0.5"
+                          value={discountPct}
+                          onChange={e => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                          className="w-14 rounded border border-gray-200 px-1.5 py-0.5 text-right text-xs focus:outline-none focus:ring-1 focus:ring-orange-300"
+                        />
+                        <span>%</span>
+                      </div>
+                    </td>
+                    <td className="px-2 text-right text-red-500">
+                      {discountAmt > 0 ? `-${discountAmt.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '0.00'}
+                    </td>
                     <td></td>
                   </tr>
                   <tr className="text-xs text-gray-500">

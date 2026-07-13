@@ -150,6 +150,7 @@ export async function POST(req: NextRequest) {
     from_city:            fromCityOverride,
     to_city:              toCityOverride,
     bags_count:           bagsCountOverride,
+    discount_pct:         discountPct,
   } = body as {
     lead_id:               string
     agent_name?:           string
@@ -168,6 +169,7 @@ export async function POST(req: NextRequest) {
     from_city?:            string
     to_city?:              string
     bags_count?:           number
+    discount_pct?:         number
   }
 
   // ── Fetch lead ────────────────────────────────────────────────────
@@ -227,9 +229,12 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Calculate totals ──────────────────────────────────────────────
-  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0)
-  const taxAmt   = Math.round(subtotal * GST_PCT) / 100
-  const total    = Math.round((subtotal + taxAmt) * 100) / 100
+  const subtotal     = lineItems.reduce((s, i) => s + i.amount, 0)
+  const discountRate = Math.min(100, Math.max(0, Number(discountPct ?? 0)))
+  const discountAmt  = parseFloat((subtotal * discountRate / 100).toFixed(2))
+  const taxableAmt   = subtotal - discountAmt
+  const taxAmt       = Math.round(taxableAmt * GST_PCT) / 100
+  const total        = Math.round((taxableAmt + taxAmt) * 100) / 100
 
   // ── Internal quote number ─────────────────────────────────────────
   const quoteNumber = deriveQuoteNumber(lead.lead_number)
@@ -241,6 +246,8 @@ export async function POST(req: NextRequest) {
     quote_line_items:     lineItems,
     quote_total:          total,
     quote_subtotal:       subtotal,
+    quote_discount_pct:   discountRate > 0 ? discountRate : null,
+    quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
     quote_tax:            taxAmt,
     quote_date:           today,
     // Clear any old Zoho fields — we no longer push to Zoho
@@ -354,6 +361,8 @@ export async function POST(req: NextRequest) {
     estimate_id:      null,
     total,
     subtotal,
+    discount_pct:     discountRate,
+    discount_amt:     discountAmt,
     tax:              taxAmt,
     line_items:       lineItems,
     sent_to_customer: sentToCustomer,
