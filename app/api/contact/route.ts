@@ -4,9 +4,35 @@ const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
 const ADMIN      = 'info@bagdrop.co'
 
+// ── Competitor / suspicious domain blocklist ──────────────────────
+// Submissions from these domains are silently swallowed.
+// They see "success" but we never receive the message.
+const BLOCKED_DOMAINS = [
+  'flymyluggage.com',
+  'flymyluggage.in',
+  'luggageforward.com',
+  'sendmybag.com',
+  'airportr.com',
+]
+
+// Keywords that flag a submission as competitor intelligence-gathering.
+// We block silently AND log an alert so you know who's watching.
+const COMPETITOR_KEYWORDS = [
+  'flymyluggage', 'fly my luggage',
+  'luggage forward', 'luggageforward',
+  'send my bag', 'sendmybag',
+  'airportr',
+  'competitor', 'pricing research', 'market research',
+]
+
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { name, email, phone, subject, message, _hp, _ts } = body
+
+  // Capture submitter IP for pattern tracking
+  const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
+           ?? req.headers.get('x-real-ip')
+           ?? 'unknown'
 
   // ── Bot protection ──────────────────────────────────────────────
   // 1. Honeypot: if the hidden field is filled, silently succeed (fool the bot)
@@ -36,6 +62,21 @@ export async function POST(req: Request) {
   if (!/^[\p{L}\s'\-\.]{2,60}$/u.test(name.trim())) {
     return NextResponse.json({ error: 'Invalid name' }, { status: 400 })
   }
+
+  // ── Competitor / domain block ────────────────────────────────────
+  const emailDomain = (email as string).split('@')[1]?.toLowerCase() ?? ''
+  if (BLOCKED_DOMAINS.some(d => emailDomain === d || emailDomain.endsWith('.' + d))) {
+    console.warn(`[Contact] BLOCKED — competitor domain: ${email}`)
+    return NextResponse.json({ success: true })   // silent block
+  }
+
+  const combined = `${name} ${email} ${message}`.toLowerCase()
+  const matchedKeyword = COMPETITOR_KEYWORDS.find(kw => combined.includes(kw))
+  if (matchedKeyword) {
+    console.warn(`[Contact] COMPETITOR INTELLIGENCE ATTEMPT — keyword "${matchedKeyword}" | from: ${email} | msg: ${message.slice(0, 120)}`)
+    // Still block silently — they get "success" but we never receive it
+    return NextResponse.json({ success: true })
+  }
   // ────────────────────────────────────────────────────────────────
 
   const apiKey = process.env.RESEND_API_KEY
@@ -51,6 +92,9 @@ export async function POST(req: Request) {
     '<p><strong>Subject:</strong> ' + (subject || 'Not specified') + '</p>',
     '<p><strong>Message:</strong></p>',
     '<p>' + message.replace(/\n/g, '<br/>') + '</p>',
+    '<hr/>',
+    '<p style="color:#888;font-size:12px"><strong>IP Address:</strong> ' + ip + ' &nbsp;|&nbsp; <strong>Time:</strong> ' + new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }) + ' IST</p>',
+    '<p style="color:#888;font-size:12px">If this looks like a competitor inquiry, search this IP in your logs to find repeat submissions.</p>',
   ].join('')
 
   await fetch(RESEND_API, {
