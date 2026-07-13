@@ -16,6 +16,13 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/student-relocation`,        lastModified: now, changeFrequency: 'monthly', priority: 0.85 },
     { url: `${base}/corporate-travel`,          lastModified: now, changeFrequency: 'monthly', priority: 0.80 },
 
+    // City landing pages — location SEO
+    { url: `${base}/vadodara`,                    lastModified: now, changeFrequency: 'monthly', priority: 0.92 },
+    { url: `${base}/mumbai`,                      lastModified: now, changeFrequency: 'monthly', priority: 0.92 },
+    { url: `${base}/ahmedabad`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.92 },
+    { url: `${base}/delhi`,                       lastModified: now, changeFrequency: 'monthly', priority: 0.92 },
+    { url: `${base}/goa`,                         lastModified: now, changeFrequency: 'monthly', priority: 0.90 },
+
     // Info pages
     { url: `${base}/faq`,                       lastModified: now, changeFrequency: 'monthly', priority: 0.75 },
     { url: `${base}/about`,                     lastModified: now, changeFrequency: 'monthly', priority: 0.65 },
