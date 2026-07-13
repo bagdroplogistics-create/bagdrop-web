@@ -219,6 +219,8 @@ export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
   { from: 'baroda',           to: 'mumbai-airport-t2' },
   { from: 'baroda',           to: 'mumbai' },
   { from: 'baroda',           to: 'delhi-airport-t3' },
+  { from: 'baroda',           to: 'udaipur' },
+  { from: 'udaipur',          to: 'baroda' },
 
   // Ahmedabad routes
   { from: 'ahmedabad',        to: 'bangalore' },
@@ -243,6 +245,10 @@ export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
   // Mumbai routes
   { from: 'mumbai',           to: 'udaipur' },
   { from: 'mumbai',           to: 'jaipur' },
+
+  // Udaipur routes (return legs)
+  { from: 'udaipur',          to: 'mumbai' },
+  { from: 'udaipur',          to: 'delhi-airport-t3' },
 
   // Nadiad routes
   { from: 'nadiad',           to: 'mumbai-airport-t2' },
