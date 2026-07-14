@@ -28,7 +28,7 @@ const J = {
 // ─────────────────────────────────────────────────────────────
 const HERO_SLIDES = [
   {
-    bg:   'https://plain-apac-prod-public.komododecks.com/202606/11/HknjydMBieL05anJkDic/image.png',
+    bg:   '/images/wedding-slide1.jpg',
     label:'OFFICIAL WEDDING LUGGAGE PARTNER',
     loc:  'Taj Lake Palace · Udaipur · December 2026',
     h1a:  'Arrive Stress-Free.',
@@ -36,7 +36,7 @@ const HERO_SLIDES = [
     sub:  "Exclusive luggage delivery service for Yashna & Yash's destination wedding. We collect from your city — your bags arrive at the palace before you do.",
   },
   {
-    bg:   'https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=1920&q=85&auto=format&fit=crop',
+    bg:   '/images/wedding-slide2.jpg',
     label:'OFFICIAL WEDDING LUGGAGE PARTNER',
     loc:  'Taj Lake Palace · Udaipur · December 2026',
     h1a:  'Premium Concierge for',
@@ -377,7 +377,7 @@ export default function Y2KPage() {
         .promo-slide.active { opacity:1; z-index:1; }
         .promo-slide.inactive { opacity:0; z-index:0; }
         .promo-slide__bg { position:absolute; inset:0; background-size:cover; background-position:center; }
-        .promo-slide__overlay { position:absolute; inset:0; background:rgba(14,6,8,0.55); }
+        .promo-slide__overlay { position:absolute; inset:0; background:rgba(14,6,8,0.62); }
         .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
         .promo-slide__badge { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d4a843; border-radius:30px; padding:5px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#d4a843; margin-bottom:14px; }
         .promo-slide__loc { font-family:'Montserrat',sans-serif; font-size:14px; color:rgba(255,255,255,0.6); letter-spacing:0.5px; margin-bottom:18px; }
