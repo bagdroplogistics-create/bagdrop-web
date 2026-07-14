@@ -165,10 +165,12 @@ export interface QuotePDFProps {
   pickupAddress: string | null
   dropAddress:   string | null
   // Items
-  lineItems: { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[]
-  subtotal:  number
-  tax:       number
-  total:     number
+  lineItems:   { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[]
+  subtotal:    number
+  discountAmt?: number | null
+  discountPct?: number | null
+  tax:         number
+  total:       number
   // Notes / Terms
   notes: string | null
   terms: string | null
@@ -326,6 +328,14 @@ export default function QuotePDF(p: QuotePDFProps) {
           {/* Totals */}
           <View style={s.totalsBox}>
             <View style={s.totRow}><Text style={s.totKey}>Sub Total</Text><Text style={s.totVal}>{fmtRs(p.subtotal)}</Text></View>
+            {(p.discountAmt ?? 0) > 0 && (
+              <View style={s.totRow}>
+                <Text style={[s.totKey, { color: '#dc2626' }]}>
+                  {p.discountPct ? `Discount (${p.discountPct}%)` : 'Discount'}
+                </Text>
+                <Text style={[s.totVal, { color: '#dc2626' }]}>− {fmtRs(p.discountAmt!)}</Text>
+              </View>
+            )}
             <View style={s.totRow}><Text style={s.totKey}>CGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(p.tax / 2)}</Text></View>
             <View style={s.totRow}><Text style={s.totKey}>SGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(p.tax / 2)}</Text></View>
             <View style={[s.totRow, s.totDivider]}>
@@ -370,18 +380,4 @@ export default function QuotePDF(p: QuotePDFProps) {
           <View style={s.ftLeft}>
             <Text style={s.ftCo}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</Text>
             <Text style={s.ftLine}>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</Text>
-            <Text style={s.ftLine}>GSTIN: 24BDMPS7461P1ZM  ·  CIN: U63090GJ2023PTC142601</Text>
-            <Text style={s.ftLine}>📞 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
-          </View>
-          <View style={s.ftRight}>
-            <View style={s.sigLine}>
-              <Text style={s.sigText}>Authorized Signatory</Text>
-              <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>
-            </View>
-          </View>
-        </View>
-
-      </Page>
-    </Document>
-  )
-}
+            <Text style={s.ftLine}>GSTIN: 24BDMPS7461P1ZM  ·  CIN: U63090G

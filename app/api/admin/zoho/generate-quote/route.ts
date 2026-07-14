@@ -151,6 +151,8 @@ export async function POST(req: NextRequest) {
     to_city:              toCityOverride,
     bags_count:           bagsCountOverride,
     discount_pct:         discountPct,
+    discount_type:        discountType,
+    discount_fixed_amt:   discountFixedAmt,
   } = body as {
     lead_id:               string
     agent_name?:           string
@@ -170,6 +172,8 @@ export async function POST(req: NextRequest) {
     to_city?:              string
     bags_count?:           number
     discount_pct?:         number
+    discount_type?:        'pct' | 'fixed'
+    discount_fixed_amt?:   number
   }
 
   // ── Fetch lead ────────────────────────────────────────────────────
@@ -229,12 +233,24 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Calculate totals ──────────────────────────────────────────────
-  const subtotal     = lineItems.reduce((s, i) => s + i.amount, 0)
-  const discountRate = Math.min(100, Math.max(0, Number(discountPct ?? 0)))
-  const discountAmt  = parseFloat((subtotal * discountRate / 100).toFixed(2))
-  const taxableAmt   = subtotal - discountAmt
-  const taxAmt       = Math.round(taxableAmt * GST_PCT) / 100
-  const total        = Math.round((taxableAmt + taxAmt) * 100) / 100
+  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0)
+
+  let discountRate: number
+  let discountAmt: number
+
+  if (discountType === 'fixed') {
+    // Fixed rupee amount discount
+    discountAmt  = Math.min(Math.max(0, Number(discountFixedAmt ?? 0)), subtotal)
+    discountRate = 0   // no stored percentage for fixed discounts
+  } else {
+    // Percentage discount (default)
+    discountRate = Math.min(100, Math.max(0, Number(discountPct ?? 0)))
+    discountAmt  = parseFloat((subtotal * discountRate / 100).toFixed(2))
+  }
+
+  const taxableAmt = subtotal - discountAmt
+  const taxAmt     = Math.round(taxableAmt * GST_PCT) / 100
+  const total      = Math.round((taxableAmt + taxAmt) * 100) / 100
 
   // ── Internal quote number ─────────────────────────────────────────
   const quoteNumber = deriveQuoteNumber(lead.lead_number)
@@ -246,7 +262,7 @@ export async function POST(req: NextRequest) {
     quote_line_items:     lineItems,
     quote_total:          total,
     quote_subtotal:       subtotal,
-    quote_discount_pct:   discountRate > 0 ? discountRate : null,
+    quote_discount_pct:   (discountType !== 'fixed' && discountRate > 0) ? discountRate : null,
     quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
     quote_tax:            taxAmt,
     quote_date:           today,
@@ -327,6 +343,8 @@ export async function POST(req: NextRequest) {
         deliveryDate:  deliveryDateOverride ?? lead.delivery_date ?? null,
         lineItems:     lineItems.map(i => ({ name: i.name, quantity: i.quantity, rate: i.rate, amount: i.amount })),
         subtotal,
+        discountAmt:   discountAmt > 0 ? discountAmt : null,
+        discountPct:   (discountType !== 'fixed' && discountRate > 0) ? discountRate : null,
         tax:           taxAmt,
         total,
         notes:         customer_notes ?? lead.notes ?? null,
@@ -346,26 +364,4 @@ export async function POST(req: NextRequest) {
   // ── If email was successfully sent, advance booking to quote_sent ───
   // This ensures the workflow panel shows Step 4 (accept/reject) immediately,
   // instead of requiring a redundant second click of "Send Quote" in the workflow.
-  if (sentToCustomer && lead.booking_id) {
-    await supabaseAdmin
-      .from('bookings')
-      .update({ status: 'quote_sent' })
-      .eq('id', lead.booking_id)
-    console.log(`[generate-quote] Booking ${lead.booking_id} advanced to quote_sent (email sent)`)
-  }
-
-  return NextResponse.json({
-    success:          true,
-    quote_number:     quoteNumber,
-    estimate_number:  quoteNumber,   // frontend compatibility
-    estimate_id:      null,
-    total,
-    subtotal,
-    discount_pct:     discountRate,
-    discount_amt:     discountAmt,
-    tax:              taxAmt,
-    line_items:       lineItems,
-    sent_to_customer: sentToCustomer,
-    zoho_url:         null,
-  })
-}
+  if (sentToCustomer && lead.b

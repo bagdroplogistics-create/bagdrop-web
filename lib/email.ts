@@ -314,6 +314,8 @@ export interface QuoteEmailData {
   deliveryDate?:   string | null
   lineItems:       { name: string; quantity: number; rate: number; amount: number }[]
   subtotal:        number
+  discountAmt?:    number | null
+  discountPct?:    number | null
   tax:             number
   total:           number
   notes?:          string | null
@@ -373,6 +375,11 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
     // Totals
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
     '<tr><td style="padding:6px 0;font-size:13px;color:#666;text-align:right;padding-right:8px;">Sub Total</td><td style="padding:6px 0;font-size:13px;color:#333;text-align:right;width:120px;">' + fmt(data.subtotal) + '</td></tr>' +
+    ((data.discountAmt ?? 0) > 0
+      ? '<tr><td style="padding:6px 0;font-size:13px;color:#dc2626;text-align:right;padding-right:8px;">' +
+        (data.discountPct ? 'Discount (' + data.discountPct + '%)' : 'Discount') +
+        '</td><td style="padding:6px 0;font-size:13px;color:#dc2626;font-weight:700;text-align:right;">−' + fmt(data.discountAmt!) + '</td></tr>'
+      : '') +
     '<tr><td style="padding:6px 0;font-size:13px;color:#666;text-align:right;padding-right:8px;">GST 5% (CGST 2.5% + SGST 2.5%)</td><td style="padding:6px 0;font-size:13px;color:#333;text-align:right;">' + fmt(data.tax) + '</td></tr>' +
     '<tr style="border-top:2px solid #eee;"><td style="padding:10px 0 6px;font-size:15px;font-weight:800;color:#111;text-align:right;padding-right:8px;">Total</td><td style="padding:10px 0 6px;font-size:18px;font-weight:900;color:' + BRAND + ';text-align:right;">' + fmt(data.total) + '</td></tr>' +
     '</table>' +
@@ -416,17 +423,4 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 // Routes should migrate to sendInquiryNotification instead.
 
 export async function sendAdminNotification(data: BookingEmailData) {
-  await sendInquiryNotification({
-    inquiryNumber:  data.trackingId,
-    source:         'website',
-    customerName:   data.customerName,
-    customerPhone:  data.customerPhone,
-    customerEmail:  data.customerEmail,
-    serviceType:    data.serviceLabel,
-    fromCity:       data.fromCity,
-    toCity:         data.toCity,
-    bagsCount:      data.totalBags,
-    travelDate:     data.date,
-    submittedAt:    new Date().toISOString(),
-  })
-}
+  await sendInquiryN

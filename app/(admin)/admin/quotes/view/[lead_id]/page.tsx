@@ -41,18 +41,20 @@ interface Lead {
   flight_time: string | null
   notes: string | null
   // Internal quote fields
-  quote_number: string | null
-  quote_line_items: LineItem[] | null
-  quote_total: number | null
-  quote_subtotal: number | null
-  quote_tax: number | null
-  quote_date: string | null
-  quote_expiry_date: string | null
-  quote_notes: string | null
-  quote_terms: string | null
-  quote_subject: string | null
-  salesperson_name: string | null
-  agent_name: string | null
+  quote_number:       string | null
+  quote_line_items:   LineItem[] | null
+  quote_total:        number | null
+  quote_subtotal:     number | null
+  quote_discount_pct: number | null
+  quote_discount_amt: number | null
+  quote_tax:          number | null
+  quote_date:         string | null
+  quote_expiry_date:  string | null
+  quote_notes:        string | null
+  quote_terms:        string | null
+  quote_subject:      string | null
+  salesperson_name:   string | null
+  agent_name:         string | null
   // Compat
   zoho_estimate_number: string | null
   booking_id: string | null
@@ -314,10 +316,12 @@ export default function QuoteViewPage() {
           dropAddress:   lead.drop_address,
           lineItems,
           subtotal,
-          tax:      taxTotal,
-          total:    grandTotal,
-          notes:    lead.quote_notes ?? lead.notes,
-          terms:    lead.quote_terms,
+          discountAmt:  lead.quote_discount_amt ?? undefined,
+          discountPct:  lead.quote_discount_pct ?? undefined,
+          tax:          taxTotal,
+          total:        grandTotal,
+          notes:        lead.quote_notes ?? lead.notes,
+          terms:        lead.quote_terms,
         })
       ).toBlob()
 
@@ -831,6 +835,16 @@ export default function QuoteViewPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
                   <span>Sub Total</span><span>{fmtRs(subtotal)}</span>
                 </div>
+                {(lead.quote_discount_amt ?? 0) > 0 && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#dc2626', fontWeight: 700, marginBottom: '6px' }}>
+                    <span>
+                      {lead.quote_discount_pct
+                        ? `Discount (${lead.quote_discount_pct}%)`
+                        : 'Discount'}
+                    </span>
+                    <span>− {fmtRs(lead.quote_discount_amt!)}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
                   <span>CGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
@@ -1404,24 +1418,4 @@ export default function QuoteViewPage() {
                     <p className="text-xs text-gray-400 mt-0.5">Generate and email an invoice to the customer</p>
                   </div>
                   <button
-                    onClick={() => booking?.id && generateAndSendInvoice(booking.id, !!booking.customer_email)}
-                    disabled={genInvoice}
-                    className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors"
-                  >
-                    <FileText className="h-4 w-4" /> Generate Invoice
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!booking && !loading && (
-          <div className="no-print mx-auto mt-6 max-w-3xl rounded-xl border border-gray-200 bg-white px-6 py-5 text-center shadow-sm">
-            <p className="text-sm text-gray-500">No booking linked to this lead yet.</p>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
+                    onClick={() => booki

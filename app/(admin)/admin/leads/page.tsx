@@ -39,6 +39,8 @@ interface Lead {
   created_at:           string
   zoho_estimate_id:     string | null
   zoho_estimate_number: string | null
+  quote_discount_pct:   number | null
+  quote_discount_amt:   number | null
   updated_at?:          string | null
 }
 
@@ -790,11 +792,21 @@ export default function LeadsPage() {
                             </Link>
                           )}
                           {l.zoho_estimate_number ? (
-                            <Link href={`/admin/quotes/view/${l.id}`}
-                              className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 transition-colors">
-                              <ExternalLink className="h-3 w-3" />
-                              {l.zoho_estimate_number}
-                            </Link>
+                            <div className="flex flex-col gap-1">
+                              <Link href={`/admin/quotes/view/${l.id}`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 transition-colors">
+                                <ExternalLink className="h-3 w-3" />
+                                {l.zoho_estimate_number}
+                              </Link>
+                              {(l.quote_discount_amt ?? 0) > 0 && (
+                                <span className="inline-flex items-center rounded-full bg-red-50 border border-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                                  {l.quote_discount_pct
+                                    ? `−${l.quote_discount_pct}%`
+                                    : `−₹${Number(l.quote_discount_amt).toLocaleString('en-IN')}`
+                                  } discount
+                                </span>
+                              )}
+                            </div>
                           ) : (
                             <Link href={`/admin/quotes/new?lead_id=${l.id}`}
                               className="inline-flex items-center gap-1 rounded-lg border border-orange-100 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-600 hover:border-orange-300 transition-colors">
@@ -810,23 +822,4 @@ export default function LeadsPage() {
                             className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <button onClick={() => deleteLead(l.id)} disabled={deleting === l.id}
-                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
-        <p className="mt-3 text-center text-xs text-gray-400">
-          Each new quote automatically creates a booking entry visible in the Dashboard and Bookings tab.
-        </p>
-      </main>
-    </>
-  )
-}
+                          <bu

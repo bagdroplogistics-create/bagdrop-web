@@ -334,10 +334,14 @@ function QuotePageInner() {
     itemsFromPricing.current = false
   }
 
-  const [discountPct, setDiscountPct] = useState(0)
+  const [discountType,  setDiscountType]  = useState<'pct' | 'fixed'>('pct')
+  const [discountPct,   setDiscountPct]   = useState(0)
+  const [discountFixed, setDiscountFixed] = useState(0)
 
   const subtotal    = lineItems.reduce((s, r) => s + r.qty * r.rate, 0)
-  const discountAmt = parseFloat((subtotal * discountPct / 100).toFixed(2))
+  const discountAmt = discountType === 'fixed'
+    ? Math.min(Math.max(0, discountFixed), subtotal)
+    : parseFloat((subtotal * discountPct / 100).toFixed(2))
   const taxableAmt  = subtotal - discountAmt
   const taxAmt      = taxableAmt * 0.05
   const total       = taxableAmt + taxAmt
@@ -434,7 +438,13 @@ function QuotePageInner() {
     if (customerIdNo.trim())  payload.customer_id_no   = customerIdNo.trim()
     if (bagsPickupTag.trim()) payload.bags_pickup_tag  = bagsPickupTag.trim()
     if (mgasCode.trim())      payload.mgas_code        = mgasCode.trim()
-    if (discountPct > 0)      payload.discount_pct     = discountPct
+    if (discountType === 'pct' && discountPct > 0) {
+      payload.discount_pct  = discountPct
+      payload.discount_type = 'pct'
+    } else if (discountType === 'fixed' && discountFixed > 0) {
+      payload.discount_fixed_amt = discountFixed
+      payload.discount_type      = 'fixed'
+    }
 
     const res = await fetch('/api/admin/zoho/generate-quote', {
       method: 'POST',
@@ -851,13 +861,35 @@ function QuotePageInner() {
                     <td colSpan={3} className="pr-2 text-right">Discount</td>
                     <td className="px-2">
                       <div className="flex items-center justify-end gap-1">
-                        <input
-                          type="number" min="0" max="100" step="0.5"
-                          value={discountPct}
-                          onChange={e => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
-                          className="w-14 rounded border border-gray-200 px-1.5 py-0.5 text-right text-xs focus:outline-none focus:ring-1 focus:ring-orange-300"
-                        />
-                        <span>%</span>
+                        {/* Type toggle */}
+                        <div className="flex rounded border border-gray-200 overflow-hidden text-[10px] font-semibold">
+                          <button type="button"
+                            onClick={() => setDiscountType('pct')}
+                            className={`px-1.5 py-0.5 transition-colors ${discountType === 'pct' ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                            %
+                          </button>
+                          <button type="button"
+                            onClick={() => setDiscountType('fixed')}
+                            className={`px-1.5 py-0.5 transition-colors ${discountType === 'fixed' ? 'bg-orange-500 text-white' : 'bg-white text-gray-500 hover:bg-gray-50'}`}>
+                            ₹
+                          </button>
+                        </div>
+                        {discountType === 'pct' ? (
+                          <input
+                            type="number" min="0" max="100" step="0.5"
+                            value={discountPct}
+                            onChange={e => setDiscountPct(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                            className="w-14 rounded border border-gray-200 px-1.5 py-0.5 text-right text-xs focus:outline-none focus:ring-1 focus:ring-orange-300"
+                          />
+                        ) : (
+                          <input
+                            type="number" min="0" step="1"
+                            value={discountFixed || ''}
+                            placeholder="0"
+                            onChange={e => setDiscountFixed(Math.max(0, parseFloat(e.target.value) || 0))}
+                            className="w-20 rounded border border-gray-200 px-1.5 py-0.5 text-right text-xs focus:outline-none focus:ring-1 focus:ring-orange-300"
+                          />
+                        )}
                       </div>
                     </td>
                     <td className="px-2 text-right text-red-500">
@@ -935,46 +967,4 @@ function QuotePageInner() {
             {deliveryDate && <div><p className="text-xs text-gray-400">Delivery</p><p className="text-xs font-semibold">{deliveryDate}</p></div>}
             <div><p className="text-xs text-gray-400">Salesperson</p><p className="font-semibold">{salesperson}</p></div>
             <div><p className="text-xs text-gray-400">Items</p><p className="font-semibold">{lineItems.length} row{lineItems.length !== 1 ? 's' : ''}</p></div>
-            <div className="border-t border-gray-100 pt-3">
-              <p className="text-xs text-gray-400">Estimated Total</p>
-              <p className="text-xl font-black text-orange-600">{lineItems.length > 0 ? rupees(total) : '—'}</p>
-              <p className="text-xs text-gray-400">incl. 5% GST</p>
-            </div>
-
-            {isEdit && (
-              <button onClick={saveLeadChanges} disabled={saving}
-                className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
-                {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Changes</>}
-              </button>
-            )}
-
-            <button onClick={generate} disabled={generating}
-              className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> Generate Quote</>}
-            </button>
-
-            <div className="pt-2 space-y-1 text-xs text-gray-400">
-              <p className="font-semibold text-gray-500">Auto-set by system:</p>
-              <p>✓ Payment Status: Pending</p>
-              <p>✓ Undertaking: Pending</p>
-              <p>✓ Scan &amp; Pay QR</p>
-            </div>
-          </div>
-        </div>
-      </div>
-    </>
-  )
-}
-
-// ── Suspense wrapper (required by Next.js 15 for useSearchParams) ───────
-export default function GenerateQuotePage() {
-  return (
-    <Suspense fallback={
-      <div className="flex min-h-screen items-center justify-center">
-        <Loader2 className="h-7 w-7 animate-spin text-orange-400" />
-      </div>
-    }>
-      <QuotePageInner />
-    </Suspense>
-  )
-}
+            <div clas
