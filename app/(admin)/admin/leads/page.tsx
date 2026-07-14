@@ -822,4 +822,23 @@ export default function LeadsPage() {
                             className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
-                          <bu
+                          <button onClick={() => deleteLead(l.id)} disabled={deleting === l.id}
+                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+        <p className="mt-3 text-center text-xs text-gray-400">
+          Each new quote automatically creates a booking entry visible in the Dashboard and Bookings tab.
+        </p>
+      </main>
+    </>
+  )
+}

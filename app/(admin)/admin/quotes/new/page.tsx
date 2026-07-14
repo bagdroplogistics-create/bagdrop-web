@@ -967,4 +967,52 @@ function QuotePageInner() {
             {deliveryDate && <div><p className="text-xs text-gray-400">Delivery</p><p className="text-xs font-semibold">{deliveryDate}</p></div>}
             <div><p className="text-xs text-gray-400">Salesperson</p><p className="font-semibold">{salesperson}</p></div>
             <div><p className="text-xs text-gray-400">Items</p><p className="font-semibold">{lineItems.length} row{lineItems.length !== 1 ? 's' : ''}</p></div>
-            <div clas
+            <div className="border-t border-gray-100 pt-3">
+              <p className="text-xs text-gray-400">Estimated Total</p>
+              <p className="text-xl font-black text-orange-600">{lineItems.length > 0 ? rupees(total) : '—'}</p>
+              {discountAmt > 0 && (
+                <p className="text-xs font-semibold text-red-500">
+                  Discount: −{rupees(discountAmt)}
+                  {discountType === 'pct' ? ` (${discountPct}%)` : ' (fixed)'}
+                </p>
+              )}
+              <p className="text-xs text-gray-400">incl. 5% GST</p>
+            </div>
+
+            {isEdit && (
+              <button onClick={saveLeadChanges} disabled={saving}
+                className="flex w-full items-center justify-center gap-2 rounded-lg bg-blue-600 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-50">
+                {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Changes</>}
+              </button>
+            )}
+
+            <button onClick={generate} disabled={generating}
+              className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> Generate Quote</>}
+            </button>
+
+            <div className="pt-2 space-y-1 text-xs text-gray-400">
+              <p className="font-semibold text-gray-500">Auto-set by system:</p>
+              <p>✓ Payment Status: Pending</p>
+              <p>✓ Undertaking: Pending</p>
+              <p>✓ Scan &amp; Pay QR</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  )
+}
+
+// ── Suspense wrapper (required by Next.js 15 for useSearchParams) ───────
+export default function GenerateQuotePage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <Loader2 className="h-7 w-7 animate-spin text-orange-400" />
+      </div>
+    }>
+      <QuotePageInner />
+    </Suspense>
+  )
+}

@@ -364,4 +364,26 @@ export async function POST(req: NextRequest) {
   // ── If email was successfully sent, advance booking to quote_sent ───
   // This ensures the workflow panel shows Step 4 (accept/reject) immediately,
   // instead of requiring a redundant second click of "Send Quote" in the workflow.
-  if (sentToCustomer && lead.b
+  if (sentToCustomer && lead.booking_id) {
+    await supabaseAdmin
+      .from('bookings')
+      .update({ status: 'quote_sent' })
+      .eq('id', lead.booking_id)
+    console.log(`[generate-quote] Booking ${lead.booking_id} advanced to quote_sent (email sent)`)
+  }
+
+  return NextResponse.json({
+    success:          true,
+    quote_number:     quoteNumber,
+    estimate_number:  quoteNumber,   // frontend compatibility
+    estimate_id:      null,
+    total,
+    subtotal,
+    discount_pct:     discountRate,
+    discount_amt:     discountAmt,
+    tax:              taxAmt,
+    line_items:       lineItems,
+    sent_to_customer: sentToCustomer,
+    zoho_url:         null,
+  })
+}

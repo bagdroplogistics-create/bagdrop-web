@@ -423,4 +423,17 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 // Routes should migrate to sendInquiryNotification instead.
 
 export async function sendAdminNotification(data: BookingEmailData) {
-  await sendInquiryN
+  await sendInquiryNotification({
+    inquiryNumber:  data.trackingId,
+    source:         'website',
+    customerName:   data.customerName,
+    customerPhone:  data.customerPhone,
+    customerEmail:  data.customerEmail,
+    serviceType:    data.serviceLabel,
+    fromCity:       data.fromCity,
+    toCity:         data.toCity,
+    bagsCount:      data.totalBags,
+    travelDate:     data.date,
+    submittedAt:    new Date().toISOString(),
+  })
+}
