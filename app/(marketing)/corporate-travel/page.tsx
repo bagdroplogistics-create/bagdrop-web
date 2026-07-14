@@ -48,3 +48,4 @@ export default function CorporateTravelPage() {
       ctaBody="Set up a corporate account in 24 hours. Volume pricing from day one."
     />
   )
+}

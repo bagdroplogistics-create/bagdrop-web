@@ -1455,4 +1455,91 @@ export default function AdminDashboard() {
                 {sortedBookings.length > 0 ? (
                   <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{sortedBookings.length}</strong> bookings</span>
                 ) : (
-                  <span>0 bookings</span
+                  <span>0 bookings</span>
+                )}
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Right: page buttons */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === totalPages || (n >= page - 2 && n <= page + 2))
+                    .map((n, idx, arr) => (
+                      <Fragment key={n}>
+                        {idx > 0 && arr[idx - 1] !== n - 1 && (
+                          <span className="px-1 text-xs text-gray-400">…</span>
+                        )}
+                        <button
+                          onClick={() => setPage(n)}
+                          className={`min-w-[32px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            page === n
+                              ? 'border-orange-400 bg-orange-500 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      </Fragment>
+                    ))}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+            </>
+          )}
+        </div>
+
+        {/* Workflow reference strip */}
+        <div className="mt-6 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
+          <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">Booking Workflow</p>
+          <div className="flex flex-wrap items-center gap-1.5 text-xs">
+            {Object.entries(STATUS_CONFIG).map(([key, cfg], i, arr) => (
+              <Fragment key={key}>
+                <span style={{ color: cfg.color, background: cfg.bg }}
+                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold">
+                  {cfg.icon}{cfg.label}
+                  {cfg.locked && <Lock className="h-2.5 w-2.5" />}
+                </span>
+                {i < arr.length - 1 && <span className="text-gray-300">&rarr;</span>}
+              </Fragment>
+            ))}
+          </div>
+          <p className="mt-2 flex items-center gap-1 text-xs text-gray-400">
+            <Lock className="h-3 w-3 text-green-700" />
+            <span className="font-semibold text-green-700">Completed</span>
+            &nbsp;status is locked &mdash; no further changes allowed.
+          </p>
+        </div>
+
+        <p className="mt-3 text-center text-xs text-gray-400">
+          Click any row to expand full booking details
+        </p>
+      </main>
+    </>
+  )
+}
