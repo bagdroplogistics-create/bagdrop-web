@@ -1069,6 +1069,8 @@ export default function AdminDashboard() {
     totalIncome: number; totalExpense: number; netProfit: number
   } | null>(null)
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -1137,6 +1139,9 @@ export default function AdminDashboard() {
 
   useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
 
+  // Reset to page 1 whenever filters, search, or sort changes
+  useEffect(() => { setPage(1) }, [filter, phaseFilter, search, sort, pageSize])
+
   function formatDate(d: string | null) {
     if (!d) return '—'
     return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -1151,6 +1156,13 @@ export default function AdminDashboard() {
     { label: 'In Transit',     value: stats?.in_transit ?? 0,    icon: <Truck className="h-5 w-5" />,       color: '#0891b2', bg: '#cffafe' },
     { label: 'Delivered',      value: stats?.delivered ?? 0,     icon: <TrendingUp className="h-5 w-5" />,  color: '#16a34a', bg: '#dcfce7' },
   ]
+
+  // ── Pagination derived values ──────────────────────────────────
+  const sortedBookings = sortBookings(bookings, sort)
+  const totalPages     = Math.max(1, Math.ceil(sortedBookings.length / pageSize))
+  const pagedBookings  = sortedBookings.slice((page - 1) * pageSize, page * pageSize)
+  const showingFrom    = sortedBookings.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo      = Math.min(page * pageSize, sortedBookings.length)
 
   const phases = ['all', ...WORKFLOW_PHASES.map(p => p.label)]
 
@@ -1339,6 +1351,7 @@ export default function AdminDashboard() {
           ) : bookings.length === 0 ? (
             <div className="py-24 text-center text-sm text-gray-400">No bookings found</div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
@@ -1349,7 +1362,7 @@ export default function AdminDashboard() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sortBookings(bookings, sort).map(b => (
+                  {pagedBookings.map(b => (
                     <Fragment key={b.id}>
                       <tr onClick={() => setExpanded(expanded === b.id ? null : b.id)}
                         className="cursor-pointer hover:bg-gray-50 transition-colors">
@@ -1434,6 +1447,70 @@ export default function AdminDashboard() {
                 </tbody>
               </table>
             </div>
+
+            {/* ── Pagination controls ── */}
+            <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
+              {/* Left: count + page size selector */}
+              <div className="flex items-center gap-3 text-sm text-gray-500">
+                {sortedBookings.length > 0 ? (
+                  <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{sortedBookings.length}</strong> bookings</span>
+                ) : (
+                  <span>0 bookings</span>
+                )}
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Right: page buttons */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === totalPages || (n >= page - 2 && n <= page + 2))
+                    .map((n, idx, arr) => (
+                      <Fragment key={n}>
+                        {idx > 0 && arr[idx - 1] !== n - 1 && (
+                          <span className="px-1 text-xs text-gray-400">…</span>
+                        )}
+                        <button
+                          onClick={() => setPage(n)}
+                          className={`min-w-[32px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            page === n
+                              ? 'border-orange-400 bg-orange-500 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      </Fragment>
+                    ))}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+            </>
           )}
         </div>
 
