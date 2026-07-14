@@ -59,8 +59,8 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       </h1>
 
       <p className="mt-3 text-base text-text-secondary">
-        Our team will call you within <strong>30 minutes</strong> to
-        confirm your booking. A confirmation email has been sent to{' '}
+        Our team will contact you shortly to confirm your pickup details.
+        A confirmation email has been sent to{' '}
         <strong>{customerEmail}</strong>.
       </p>
 
@@ -68,7 +68,7 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
         <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white border border-border px-5 py-3 shadow-sm">
           <Package className="h-4 w-4 text-brand" strokeWidth={1.75} />
           <span className="text-sm text-text-muted">
-            Your Booking ID:
+            Booking ID:
           </span>
           <span className="font-mono text-sm font-bold text-brand tracking-widest">
             {trackingId}
@@ -93,10 +93,10 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       </h2>
 
       {[
-        'Our team will call you within 30 minutes to confirm pickup details.',
+        'Our team will contact you shortly to confirm your pickup details.',
         'A Bagdrop executive will arrive at your address at the scheduled time.',
-        'Your bags are photographed, sealed, and tracked throughout the journey.',
-        'Live updates will be sent to your phone and email until delivery.',
+        'Your bags are photographed, sealed, and insured for the journey.',
+        'WhatsApp and email updates will be sent at every stage of your delivery.',
       ].map((text, i) => (
         <div key={i} className="flex items-start gap-3">
           <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-brand-light text-xs font-bold text-brand">

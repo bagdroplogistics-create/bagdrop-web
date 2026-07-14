@@ -90,7 +90,7 @@ const FEATURES = [
   { icon:'🧳', title:'Door-to-Door Delivery', desc:'Picked up and delivered right to your hotel or the venue.' },
   { icon:'⚡', title:'Fast & Reliable',        desc:'Quick, assured transit every time.' },
   { icon:'🔒', title:'Safety of Goods',        desc:'Secure handling from start to finish.' },
-  { icon:'📍', title:'Live Tracking',           desc:'WhatsApp updates from pickup to delivery.' },
+  { icon:'📲', title:'WhatsApp Updates',         desc:'WhatsApp and email updates from pickup to delivery.' },
 ]
 
 const HOW_IT_WORKS = [

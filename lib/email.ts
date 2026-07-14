@@ -81,7 +81,7 @@ function baseTemplate(body: string) {
     '<p style="margin:0;font-size:11px;color:#aaa;">Bagdrop &middot; Premium Baggage Infrastructure &middot; India<br/>' +
     '<a href="https://bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">bagdrop.co</a>' +
     ' &middot; ' +
-    '<a href="mailto:support@bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">support@bagdrop.co</a>' +
+    '<a href="mailto:info@bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">info@bagdrop.co</a>' +
     '</p></td></tr>' +
     '</table></td></tr></table>' +
     '</body></html>'
@@ -251,10 +251,10 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
   const dateFormatted = formatDate(data.date) ?? data.date
 
   const steps = [
-    'Our team will call you within 30 minutes to confirm your pickup details.',
+    'Our team will contact you shortly to confirm your pickup details.',
     'A Bagdrop representative will arrive at your location at the scheduled time.',
     'Your bags are sealed, photographed, and insured for the journey.',
-    'Live tracking updates will be sent to this email and via WhatsApp.',
+    'WhatsApp and email updates will be sent at every stage of your delivery.',
   ]
 
   const stepsHtml = steps.map((step, i) =>
@@ -271,9 +271,9 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
     '<p style="margin:0 0 28px;font-size:15px;color:#555;">Hi ' + data.customerName + ', we have received your booking request and our team will contact you shortly to confirm.</p>' +
 
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:16px 20px;margin-bottom:28px;text-align:center;">' +
-    '<p style="margin:0;font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;">Tracking ID</p>' +
+    '<p style="margin:0;font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
     '<p style="margin:4px 0 0;font-size:28px;font-weight:900;color:' + BRAND + ';letter-spacing:2px;">' + data.trackingId + '</p>' +
-    '<p style="margin:6px 0 0;font-size:12px;color:#888;">Track your bags at <a href="https://bagdrop.co/track" style="color:' + BRAND + ';">bagdrop.co/track</a></p>' +
+    '<p style="margin:6px 0 0;font-size:12px;color:#888;">Please quote this ID when contacting us on WhatsApp or email.</p>' +
     '</div>' +
 
     '<h3 style="margin:0 0 12px;font-size:13px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Booking Summary</h3>' +
@@ -292,13 +292,13 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
     '</table>' +
 
     '<div style="text-align:center;margin-bottom:20px;">' +
-    '<a href="https://bagdrop.co/track?id=' + data.trackingId + '" style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">Track My Bags</a>' +
+    '<a href="https://wa.me/916357115711?text=Hi! My Bagdrop Booking ID is ' + data.trackingId + '. Can you confirm my booking?" style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">WhatsApp Us</a>' +
     '</div>' +
 
-    '<p style="margin:20px 0 0;font-size:12px;color:#aaa;text-align:center;">Questions? WhatsApp us or email <a href="mailto:support@bagdrop.co" style="color:' + BRAND + ';">support@bagdrop.co</a></p>'
+    '<p style="margin:20px 0 0;font-size:12px;color:#aaa;text-align:center;">Questions? WhatsApp us or email <a href="mailto:info@bagdrop.co" style="color:' + BRAND + ';">info@bagdrop.co</a></p>'
 
   if (!data.customerEmail) return
-  await sendEmail(data.customerEmail, 'Booking Confirmed — ' + data.trackingId + ' | Bagdrop', baseTemplate(body), data.trackingId)
+  await sendEmail(data.customerEmail, 'Booking Confirmed | Bagdrop', baseTemplate(body), data.trackingId)
 }
 
 // ── Quote Email (to customer) ─────────────────────────────────────────

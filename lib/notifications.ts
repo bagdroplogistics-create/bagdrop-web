@@ -116,7 +116,7 @@ async function sendEmail(
             <h2>Bagdrop</h2>
             <p>Hi ${data.customerName},</p>
             <p>${body}</p>
-            <p>Tracking ID: <strong>${data.trackingId}</strong></p>
+            <p>Booking ID: <strong>${data.trackingId}</strong></p>
           </div>
         `,
       }),

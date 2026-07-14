@@ -14,9 +14,9 @@ const REASONS = [
   {
     Icon:        Radio,
     stat:        '100%',
-    statLabel:   'of deliveries tracked live',
-    title:       'Real-time tracking',
-    description: 'Every bag gets a live tracking link the moment it leaves your hands. Share it with family, hotel, or your wedding planner.',
+    statLabel:   'WhatsApp & email updates',
+    title:       'Always in the loop',
+    description: 'You get WhatsApp and email updates at every stage — pickup confirmed, in transit, and delivered. Bag tracking coming soon.',
   },
   {
     Icon:        ShieldCheck,

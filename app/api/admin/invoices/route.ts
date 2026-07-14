@@ -198,7 +198,7 @@ async function sendInvoiceEmail(p: {
       <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#FF6300;font-family:monospace">${p.invoiceNumber}</p>
     </div>
     <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:12px 20px;flex:1;min-width:140px">
-      <p style="margin:0;font-size:10px;color:#14532d;font-weight:700;text-transform:uppercase;letter-spacing:1px">Tracking ID</p>
+      <p style="margin:0;font-size:10px;color:#14532d;font-weight:700;text-transform:uppercase;letter-spacing:1px">Booking ID</p>
       <p style="margin:4px 0 0;font-size:18px;font-weight:700;color:#16a34a;font-family:monospace">${p.trackingId}</p>
     </div>
   </div>

@@ -3,7 +3,7 @@ import Script from 'next/script'
 
 export const metadata: Metadata = {
   title: 'FAQ — Excess Baggage Delivery Service Questions Answered | Bagdrop',
-  description: 'Common questions about Bagdrop\'s excess baggage & luggage delivery service — pricing, pickup, tracking, coverage, and how much you save vs airline fees.',
+  description: 'Common questions about Bagdrop\'s excess baggage & luggage delivery service — pricing, pickup, coverage, and how much you save vs airline fees.',
   alternates: {
     canonical: 'https://bagdrop.co/faq',
   },
@@ -27,9 +27,9 @@ const FAQS = [
     ],
   },
   {
-    category: 'Tracking & Insurance',
+    category: 'Updates & Insurance',
     items: [
-      { q: 'Can I track my bag?', a: 'Yes. You receive status updates via WhatsApp and email at every stage — pickup confirmed, in transit, and delivered. A live bag tracking link is coming soon.' },
+      { q: 'Can I track my bag?', a: 'You receive WhatsApp and email updates at every stage — pickup confirmed, in transit, and delivered. Live bag tracking will be available soon.' },
       { q: 'What if my bag is damaged or lost?', a: 'You can buy up to ₹50,000 premium coverage at checkout for high-value items.' },
       { q: 'Is my bag safe during transit?', a: 'Your bag is sealed, photographed, and documented at pickup. We use dedicated vehicles.' },
     ],

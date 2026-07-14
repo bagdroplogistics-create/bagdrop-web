@@ -36,7 +36,7 @@ export default function CorporateTravelPage() {
       steps={[
         { number: '01', title: 'Set up account', desc: 'Contact us to set up a corporate account. Takes 24 hours. Monthly billing enabled.' },
         { number: '02', title: 'Book per trip', desc: 'Your team books directly via our website or WhatsApp. All billed to the company account.' },
-        { number: '03', title: 'We handle logistics', desc: 'Pickup, transit, tracking — all managed by your dedicated account manager.' },
+        { number: '03', title: 'We handle logistics', desc: 'Pickup, transit, and updates — all managed by your dedicated account manager.' },
         { number: '04', title: 'Monthly invoice', desc: 'Single consolidated GST invoice at month end. No per-trip payment friction.' },
       ]}
       faqs={[

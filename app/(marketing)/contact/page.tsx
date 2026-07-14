@@ -191,7 +191,7 @@ export default function ContactPage() {
                     <CheckCircle2 className="h-8 w-8 text-green-600" />
                   </div>
                   <h3 className="font-display text-xl font-bold text-text-primary">Message Sent!</h3>
-                  <p className="mt-2 text-text-secondary">{"We'll get back to you within 30 minutes during business hours."}</p>
+                  <p className="mt-2 text-text-secondary">{"Our team will contact you shortly."}</p>
                   <button
                     onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', subject: '', message: '' }) }}
                     className="mt-6 text-sm font-semibold text-brand hover:underline"
