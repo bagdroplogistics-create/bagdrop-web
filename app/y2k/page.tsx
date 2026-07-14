@@ -29,24 +29,27 @@ const J = {
 const HERO_SLIDES = [
   {
     bg:   'https://plain-apac-prod-public.komododecks.com/202606/11/HknjydMBieL05anJkDic/image.png',
-    label:'for your journey',
-    h1a:  'Travel Light,',
-    h1b:  'Arrive in Style',
-    sub:  'Exclusive luggage concierge for Yashna & Yash\'s wedding.',
+    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
+    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    h1a:  'Arrive Stress-Free.',
+    h1b:  'Celebrate Fully.',
+    sub:  "Exclusive luggage delivery service for Yashna & Yash's destination wedding. We collect from your city — your bags arrive at the palace before you do.",
   },
   {
     bg:   'https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=1920&q=85&auto=format&fit=crop',
-    label:'wedding concierge',
-    h1a:  'Skip the',
-    h1b:  'Baggage Hassle',
-    sub:  'We deliver your bags directly to Taj Lake Palace, Udaipur.',
+    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
+    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    h1a:  'Premium Concierge for',
+    h1b:  'Weddings & Events.',
+    sub:  'We pick up from your doorstep across India and deliver directly to the venue — before you arrive.',
   },
   {
     bg:   '/images/wedding-slide.jpg',
-    label:'exclusive service',
-    h1a:  'Your Luggage,',
-    h1b:  'Our Responsibility',
-    sub:  'White-glove baggage handling for every guest attending #Y2K.',
+    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
+    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    h1a:  'We Handle the Bags.',
+    h1b:  'You Make Memories.',
+    sub:  'White-glove baggage handling for every guest joining Yashna & Yash at Taj Lake Palace, Udaipur.',
   },
 ]
 
@@ -54,7 +57,7 @@ const FEATURES = [
   { icon:'🧳', title:'Door-to-Door',     desc:'Picked up and delivered right to your hotel or venue.' },
   { icon:'🔒', title:'Safe & Secured',   desc:'Photographed, sealed, and insured at pickup.' },
   { icon:'📲', title:'WhatsApp Updates', desc:'Real-time updates from pickup to palace delivery.' },
-  { icon:'⚡', title:'Confirmed in 2h',  desc:'Our team confirms your slot within 2 hours of booking.' },
+  { icon:'📞', title:'We Call You Back',  desc:'Our team will call you shortly to confirm your booking.' },
 ]
 
 // ─────────────────────────────────────────────────────────────
@@ -230,6 +233,24 @@ function Reveal({ children, delay=0 }: { children: React.ReactNode; delay?: numb
   )
 }
 
+function CountUp({ to, suffix='', duration=1800 }: { to: number; suffix?: string; duration?: number }) {
+  const [val, setVal] = useState(0)
+  const { ref, vis }  = useReveal()
+  useEffect(() => {
+    if (!vis) return
+    let start: number | null = null
+    const step = (ts: number) => {
+      if (!start) start = ts
+      const progress = Math.min((ts - start) / duration, 1)
+      const eased = 1 - Math.pow(1 - progress, 3)
+      setVal(Math.round(eased * to))
+      if (progress < 1) requestAnimationFrame(step)
+    }
+    requestAnimationFrame(step)
+  }, [vis, to, duration])
+  return <span ref={ref}>{val}{suffix}</span>
+}
+
 // ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
@@ -237,7 +258,7 @@ export default function Y2KPage() {
   const cd = useCountdown(WEDDING_DATE)
   const [slide, setSlide] = useState(0)
   const [step, setStep]   = useState(1)
-  const [form, setForm]   = useState({ name:'', phone:'', email:'', arrivalCity:'', arrivalAirport:'', arrivalDate:'', arrivalTime:'', flightNumber:'', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', roomNumber:'', deliveryTime:'' })
+  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Lake Palace, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', roomNumber:'', deliveryTime:'' })
   const [busy, setBusy]   = useState(false)
   const [done, setDone]   = useState(false)
   const [trackId, setTrackId] = useState('')
@@ -256,7 +277,9 @@ export default function Y2KPage() {
       if (!form.name.trim()) { setErr('Please enter your full name.'); return }
       if (!/^[6-9]\d{9}$/.test(d)) { setErr('Enter a valid 10-digit Indian mobile number.'); return }
     }
-    if (step===2&&!form.arrivalCity.trim()) { setErr('Please enter your arrival city.'); return }
+    if (step===2&&!form.pickupCity.trim()) { setErr('Please enter your pickup city.'); return }
+    if (step===2&&!form.pickupAddress.trim()) { setErr('Please enter your pickup address.'); return }
+    if (step===2&&!form.pickupDate) { setErr('Please select a pickup date.'); return }
     if (step===3&&(!form.bags||Number(form.bags)<1)) { setErr('Please enter number of bags.'); return }
     setErr(''); setStep(s=>Math.min(s+1,4))
     document.getElementById('book')?.scrollIntoView({behavior:'smooth',block:'start'})
@@ -273,17 +296,16 @@ export default function Y2KPage() {
         body:JSON.stringify({
           name:form.name, phone:digits, email:form.email,
           bags:form.bags, guests:'1',
-          pickupAddress:form.arrivalAirport||form.arrivalCity,
-          pickupTime:form.arrivalTime||form.deliveryTime,
-          deliveryAddress:'Taj Lake Palace, Udaipur',
+          pickupAddress:`${form.pickupAddress}, ${form.pickupCity}`,
+          pickupTime:form.pickupTime||form.deliveryTime,
+          deliveryAddress:form.weddingVenue||'Taj Lake Palace, Udaipur',
           requests:[
-            form.flightNumber?`Flight: ${form.flightNumber}`:'',
             form.bagSize?`Bag size: ${form.bagSize}`:'',
             form.hotelName?`Hotel: ${form.hotelName}${form.roomNumber?', Room '+form.roomNumber:''}`:'',
             form.deliveryTime?`Delivery slot: ${form.deliveryTime}`:'',
             form.specialInstructions,
           ].filter(Boolean).join(' · '),
-          arrivalDate:form.arrivalDate,
+          arrivalDate:form.pickupDate,
         }),
       })
       const d=await res.json()
@@ -311,12 +333,12 @@ export default function Y2KPage() {
       <div className="ty" style={{ maxWidth:520 }}>
         <p style={{ fontSize:64, marginBottom:16 }}>💍</p>
         <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:'clamp(48px,10vw,72px)', color:J.pink, margin:'0 0 12px', lineHeight:1 }}>Thank You!</p>
-        <p style={{ fontSize:16, color:'rgba(255,255,255,0.65)', lineHeight:1.8, marginBottom:20 }}>Your Wedding Luggage Concierge request for <strong style={{color:'#fff'}}>Yashna & Yash · #Y2K</strong> has been received. Our team will reach you within 2 hours.</p>
+        <p style={{ fontSize:16, color:'rgba(255,255,255,0.65)', lineHeight:1.8, marginBottom:20 }}>Your Wedding Luggage Concierge request for <strong style={{color:'#fff'}}>Yashna & Yash · #Y2K</strong> has been received. Our team will call you shortly to confirm your slot.</p>
         {trackId&&<div style={{ border:`1px solid ${J.pink}`, padding:'16px 32px', display:'inline-block', marginBottom:20 }}><p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pink, margin:0 }}>{trackId}</p><p style={{ fontSize:11, color:'rgba(255,255,255,0.4)', margin:'4px 0 0', textTransform:'uppercase', letterSpacing:'0.2em' }}>Your Reference</p></div>}
         <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:48, color:J.pink, margin:'8px 0 4px' }}>#Y2K</p>
         <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.2em' }}>Tag your wedding journey</p>
         <div style={{ marginTop:40, display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
-          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',arrivalCity:'',arrivalAirport:'',arrivalDate:'',arrivalTime:'',flightNumber:'',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',roomNumber:'',deliveryTime:''});setTrackId('') }}
+          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Lake Palace, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',roomNumber:'',deliveryTime:''});setTrackId('') }}
             style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:J.pink, color:'#fff', border:'none', padding:'14px 32px', cursor:'pointer' }}>
             Book Another Guest
           </button>
@@ -337,15 +359,16 @@ export default function Y2KPage() {
         *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
         @keyframes heroSlide { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
-        .hero-slide-in { animation:heroSlide 0.9s ease forwards; }
+        .hero-slide-in { animation:heroSlide 0.9s ease forwards; display:flex; flex-direction:column; align-items:center; text-align:center; width:100%; }
 
-        .header-top { background:#111111; padding:9px 15px; display:flex; align-items:center; justify-content:space-between; }
+        .header-top { background:#111111; padding:9px 15px; display:flex; align-items:center; justify-content:center; }
         .header-main { border-bottom:1px solid rgba(17,17,17,0.1); padding:0 15px; }
-        .header-inner { max-width:1170px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:84px; gap:24px; }
+        .header-inner { max-width:1170px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:120px; gap:24px; }
         .header-nav { display:flex; gap:36px; list-style:none; }
         .header-nav a { font-size:15px; font-weight:600; color:#111; text-decoration:none; text-transform:uppercase; letter-spacing:0.6px; transition:color 0.2s; }
         .header-nav a:hover { color:${J.pink}; }
-        .header-logo { font-family:'Sulphur Point',sans-serif; font-size:34px; font-weight:700; color:#111; text-decoration:none; letter-spacing:-0.5px; }
+        .header-logo { display:flex; align-items:center; text-decoration:none; }
+        .header-logo img { height:116px; width:auto; display:inline-block; }
 
         .container { max-width:1170px; margin:0 auto; padding:0 15px; }
 
@@ -354,21 +377,30 @@ export default function Y2KPage() {
         .promo-slide.active { opacity:1; z-index:1; }
         .promo-slide.inactive { opacity:0; z-index:0; }
         .promo-slide__bg { position:absolute; inset:0; background-size:cover; background-position:center; }
-        .promo-slide__overlay { position:absolute; inset:0; background:linear-gradient(to right, rgba(17,17,17,0.65) 0%, rgba(17,17,17,0.3) 60%, transparent 100%); }
-        .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; }
-        .promo-slide__suptitle { font-weight:700; font-size:15px; text-transform:uppercase; color:${J.pink}; margin-bottom:22px; display:flex; align-items:center; gap:8px; letter-spacing:1px; }
-        .promo-slide__h1 { font-family:'Sulphur Point',sans-serif; font-size:clamp(62px,8.5vw,108px); line-height:105%; color:#fff; font-weight:700; margin-bottom:20px; }
+        .promo-slide__overlay { position:absolute; inset:0; background:rgba(14,6,8,0.55); }
+        .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
+        .promo-slide__badge { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d4a843; border-radius:30px; padding:5px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#d4a843; margin-bottom:14px; }
+        .promo-slide__loc { font-family:'Montserrat',sans-serif; font-size:14px; color:rgba(255,255,255,0.6); letter-spacing:0.5px; margin-bottom:18px; }
+        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(62px,8.5vw,108px); line-height:105%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
         .promo-slide__h1 em { font-style:italic; font-weight:400; display:block; }
-        .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:36px; }
+        .promo-slide__h1 em.em-gold { color:#d4a843; }
+        .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
+        .hero-couple-card { display:inline-flex; flex-direction:column; gap:5px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:14px; padding:12px 24px; margin-bottom:26px; align-items:center; }
+        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:16px; color:#fff; font-weight:700; }
+        .hero-couple-name .nc-hashtag { color:#d4a843; }
+        .hero-couple-meta { font-size:12px; color:rgba(255,255,255,0.62); }
+        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:2px 8px; color:#d4a843; font-weight:700; font-size:12px; letter-spacing:0.3px; }
+        .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
 
         .logos-bar { border-top:1px solid rgba(17,17,17,0.08); border-bottom:1px solid rgba(17,17,17,0.08); padding:18px 0; }
         .logos-inner { max-width:1170px; margin:0 auto; padding:0 15px; display:flex; align-items:center; justify-content:space-around; flex-wrap:wrap; gap:16px; }
-        .logo-badge { font-family:'Sulphur Point',sans-serif; font-size:16px; font-weight:700; color:rgba(17,17,17,0.72); letter-spacing:0.5px; text-transform:uppercase; }
+        .logo-badge { font-family:'Sulphur Point',sans-serif; font-size:16px; font-weight:900; color:rgba(17,17,17,0.88); letter-spacing:0.5px; text-transform:uppercase; }
 
         /* ── BOOKING SECTION ── */
-        .book-grid { display:grid; grid-template-columns:1fr 1fr; min-height:100vh; }
-        .book-left { background:${J.dark}; padding:64px 56px; display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; }
-        .book-right { background:#faf7f8; padding:64px 56px; display:flex; flex-direction:column; justify-content:center; }
+        .book-section { background:#f2eff0; padding:80px 15px; }
+        .book-grid { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; box-shadow:0 24px 80px rgba(14,6,8,0.13); overflow:hidden; border-radius:6px; }
+        .book-left { background:${J.dark}; padding:56px 48px; display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; }
+        .book-right { background:#faf7f8; padding:56px 48px; display:flex; flex-direction:column; justify-content:center; }
         .book-form-card { background:#fff; padding:40px; border:1px solid rgba(17,17,17,0.08); box-shadow:0 8px 40px rgba(17,17,17,0.06); }
 
         .step-indicator { display:flex; align-items:center; gap:0; margin-bottom:32px; }
@@ -396,32 +428,36 @@ export default function Y2KPage() {
         .gift-banner { position:relative; padding:80px 0; overflow:hidden; }
         .gift-banner__bg { position:absolute; inset:0; background-size:cover; background-position:center; background-attachment:fixed; }
         .gift-banner__overlay { position:absolute; inset:0; background:rgba(17,17,17,0.72); }
-        .gift-banner__content { position:relative; z-index:2; max-width:700px; }
-        .gift-banner__h2 { font-family:'Sulphur Point',sans-serif; font-size:clamp(36px,5.5vw,60px); line-height:110%; color:#fff; margin:16px 0 32px; }
-        .gift-banner__h2 em { font-style:italic; font-weight:300; }
+        .gift-banner__content { position:relative; z-index:2; max-width:700px; margin:0 auto; text-align:center; }
+        .gift-banner__h2 { font-family:'Georgia',serif; font-size:clamp(36px,5.5vw,60px); line-height:110%; color:#fff; font-weight:400; margin:16px 0 32px; }
+        .gift-banner__h2 em { font-style:italic; font-weight:400; }
+        .countdown { justify-content:center; }
 
-        .footer { position:relative; overflow:hidden; }
-        .footer__bg { position:absolute; inset:0; background-size:cover; background-position:center; }
-        .footer__overlay { position:absolute; inset:0; background:rgba(17,17,17,0.88); }
+        .footer { background:${J.pinkLight}; }
+        .footer__bg { display:none; }
+        .footer__overlay { display:none; }
         .footer__inner { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:72px 15px 40px; display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:60px; }
-        .footer__logo { font-family:'Sulphur Point',sans-serif; font-size:36px; font-weight:700; color:#fff; margin-bottom:20px; display:block; }
-        .footer__label { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:#fff; margin-bottom:14px; }
-        .footer__text { font-size:14px; color:rgba(255,255,255,0.5); line-height:1.85; }
-        .footer__link { font-size:14px; color:rgba(255,255,255,0.5); text-decoration:none; display:block; margin-bottom:8px; transition:color 0.2s; }
-        .footer__link:hover { color:${J.pink}; }
-        .footer__newsletter { display:flex; border-bottom:1px solid rgba(255,255,255,0.25); margin-top:8px; }
-        .footer__bottom { position:relative; z-index:2; border-top:1px solid rgba(255,255,255,0.08); text-align:center; padding:20px 15px; }
-        .footer__copy { font-size:13px; color:rgba(255,255,255,0.3); }
-        .footer__copy a { color:rgba(255,255,255,0.3); text-decoration:none; }
-        .footer__copy a:hover { color:${J.pink}; }
+        .footer__logo { display:block; margin-bottom:20px; }
+        .footer__logo img { height:110px; width:auto; display:block; }
+        .footer__label { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:${J.dark}; margin-bottom:14px; }
+        .footer__text { font-size:14px; font-weight:500; color:rgba(14,6,8,0.72); line-height:1.85; }
+        .footer__link { font-size:14px; font-weight:600; color:rgba(14,6,8,0.7); text-decoration:none; display:block; margin-bottom:8px; transition:color 0.2s; }
+        .footer__link:hover { color:${J.pinkDark}; }
+        .footer__newsletter { display:flex; border-bottom:1px solid rgba(14,6,8,0.2); margin-top:8px; }
+        .footer__bottom { position:relative; z-index:2; border-top:1px solid rgba(14,6,8,0.1); text-align:center; padding:20px 15px; }
+        .footer__copy { font-size:13px; font-weight:500; color:rgba(14,6,8,0.55); }
+        .footer__copy a { color:rgba(14,6,8,0.55); text-decoration:none; }
+        .footer__copy a:hover { color:${J.pinkDark}; }
 
         @media (max-width:900px) {
-          .book-grid { grid-template-columns:1fr !important; min-height:auto; }
+          .book-section { padding:48px 12px; }
+          .book-grid { grid-template-columns:1fr !important; }
           .book-left { padding:48px 28px !important; order:2; }
           .book-right { padding:40px 20px !important; order:1; }
           .footer__inner { grid-template-columns:1fr !important; gap:40px; }
         }
         @media (max-width:640px) {
+          .book-section { padding:32px 10px; }
           .book-form-card { padding:24px 18px !important; }
           .form-grid-2 { grid-template-columns:1fr !important; }
           .book-left { padding:36px 20px !important; }
@@ -436,12 +472,6 @@ export default function Y2KPage() {
           <span style={{ fontFamily:'Montserrat,sans-serif', fontSize:12, color:'rgba(255,255,255,0.7)' }}>
             <strong style={{ color:J.pink }}>Official</strong> Wedding Luggage Concierge for <strong style={{ color:'#fff' }}>#Y2K</strong> · <strong style={{ color:J.pink, background:'rgba(236,157,171,0.12)', padding:'1px 6px', borderRadius:2 }}>Taj Lake Palace, Udaipur</strong>
           </span>
-          <a href="tel:+916357115711" style={{ fontFamily:'Montserrat,sans-serif', fontSize:12, color:'rgba(255,255,255,0.75)', textDecoration:'none', display:'flex', alignItems:'center', gap:6 }}>
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{color:J.pink}}>
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.42 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.07 6.07l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-            <strong style={{ color:'#fff' }}>+91 63571 15711</strong>
-          </a>
         </div>
         <div className="header-main">
           <div className="header-inner">
@@ -450,7 +480,10 @@ export default function Y2KPage() {
               <li><a href="#venue">About</a></li>
               <li><a href="#book">Contact</a></li>
             </ul>
-            <a href="/" className="header-logo">Bagdrop</a>
+            <a href="/" className="header-logo">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/images/bagdrop-logo.png" alt="Bagdrop" />
+            </a>
             <div style={{ display:'flex', alignItems:'center', gap:22 }}>
               <a href="tel:+916357115711" style={{ fontFamily:'Montserrat,sans-serif', fontSize:14, fontWeight:600, color:J.black, textDecoration:'none', letterSpacing:'0.3px', display:'flex', alignItems:'center', gap:7 }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -480,10 +513,20 @@ export default function Y2KPage() {
             <div className="promo-slide__content">
               {i===slide&&(
                 <div className="hero-slide-in">
-                  <p className="promo-slide__suptitle">{s.label}<CirclesIcon size={18}/></p>
-                  <h1 className="promo-slide__h1">{s.h1a}<br/><em>{s.h1b}</em></h1>
+                  <p className="promo-slide__badge">• {s.label}</p>
+                  <p className="promo-slide__loc">{s.loc}</p>
+                  <h1 className="promo-slide__h1">{s.h1a}<br/><em className="em-gold">{s.h1b}</em></h1>
                   <p className="promo-slide__sub">{s.sub}</p>
-                  <BtnDefault href="#book" light>Book Concierge</BtnDefault>
+                  <div className="hero-couple-card">
+                    <span className="hero-couple-name">Yashna ❤ Yash &nbsp;<span className="nc-hashtag">#Y2K</span></span>
+                    <span className="hero-couple-meta">
+                      <span className="hero-date-highlight">📅 17 December 2026</span>
+                      &nbsp;&nbsp;🏛 Taj Lake Palace, Udaipur
+                    </span>
+                  </div>
+                  <div className="hero-cta-row">
+                    <BtnDefault href="#book" light>📦 Book Luggage Delivery</BtnDefault>
+                  </div>
                 </div>
               )}
             </div>
@@ -523,7 +566,8 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       {/* BOOKING SECTION — SPLIT PANEL                       */}
       {/* ════════════════════════════════════════════════════ */}
-      <section id="book" className="book-grid">
+      <section id="book" className="book-section">
+      <div className="book-grid">
 
         {/* ── LEFT: Branding + Details ── */}
         <div className="book-left">
@@ -539,8 +583,8 @@ export default function Y2KPage() {
 
             <Suptitle light>wedding concierge</Suptitle>
 
-            <h2 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:'clamp(36px,4.5vw,58px)', lineHeight:'108%', color:'#fff', marginBottom:20 }}>
-              Reserve Your<br/><em style={{ fontWeight:300, color:J.pink }}>Luggage Concierge</em>
+            <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(36px,4.5vw,58px)', lineHeight:'108%', color:'#fff', fontWeight:400, marginBottom:20 }}>
+              Reserve Your<br/><em style={{ fontStyle:'italic', color:J.pink }}>Luggage Concierge</em>
             </h2>
 
             <p style={{ fontSize:15, color:'rgba(255,255,255,0.55)', lineHeight:'170%', marginBottom:36 }}>
@@ -620,7 +664,7 @@ export default function Y2KPage() {
                 {/* ── Step 1: Guest Info ── */}
                 {step===1&&(
                   <>
-                    <h3 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:26, color:J.black, marginBottom:24 }}>Guest Information</h3>
+                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Guest Information</h3>
                     <div className="fld">
                       <label>Full Name *</label>
                       <input required type="text" placeholder="e.g. Priya Sharma" value={form.name} onChange={e=>patch('name',e.target.value)} style={fi}/>
@@ -638,33 +682,33 @@ export default function Y2KPage() {
                   </>
                 )}
 
-                {/* ── Step 2: Travel Info ── */}
+                {/* ── Step 2: Pickup Info ── */}
                 {step===2&&(
                   <>
-                    <h3 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:26, color:J.black, marginBottom:24 }}>Travel Information</h3>
+                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Pickup Information</h3>
                     <div className="form-grid-2">
                       <div className="fld">
-                        <label>Arrival City *</label>
-                        <input required type="text" placeholder="e.g. Mumbai, Delhi" value={form.arrivalCity} onChange={e=>patch('arrivalCity',e.target.value)} style={fi}/>
+                        <label>Pickup Date *</label>
+                        <input required type="date" value={form.pickupDate} onChange={e=>patch('pickupDate',e.target.value)} style={fi}/>
                       </div>
                       <div className="fld">
-                        <label>Arrival Airport</label>
-                        <input type="text" placeholder="e.g. BOM T2, DEL T3" value={form.arrivalAirport} onChange={e=>patch('arrivalAirport',e.target.value)} style={fi}/>
-                      </div>
-                    </div>
-                    <div className="form-grid-2">
-                      <div className="fld">
-                        <label>Arrival Date *</label>
-                        <input required type="date" value={form.arrivalDate} onChange={e=>patch('arrivalDate',e.target.value)} style={fi}/>
-                      </div>
-                      <div className="fld">
-                        <label>Arrival Time</label>
-                        <input type="time" value={form.arrivalTime} onChange={e=>patch('arrivalTime',e.target.value)} style={fi}/>
+                        <label>Pickup City *</label>
+                        <input required type="text" placeholder="e.g. Mumbai, Delhi" value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} style={fi}/>
                       </div>
                     </div>
                     <div className="fld">
-                      <label>Flight Number (optional)</label>
-                      <input type="text" placeholder="e.g. 6E 432, AI 888" value={form.flightNumber} onChange={e=>patch('flightNumber',e.target.value)} style={fi}/>
+                      <label>Pickup Address *</label>
+                      <input required type="text" placeholder="House / Flat no., Street, Area" value={form.pickupAddress} onChange={e=>patch('pickupAddress',e.target.value)} style={fi}/>
+                    </div>
+                    <div className="form-grid-2">
+                      <div className="fld">
+                        <label>Preferred Pickup Time *</label>
+                        <input required type="time" value={form.pickupTime} onChange={e=>patch('pickupTime',e.target.value)} style={fi}/>
+                      </div>
+                      <div className="fld">
+                        <label>Wedding Venue</label>
+                        <input type="text" value={form.weddingVenue} readOnly style={{ ...fi, background:'rgba(17,17,17,0.04)', color:J.body, cursor:'default' }}/>
+                      </div>
                     </div>
                   </>
                 )}
@@ -672,7 +716,7 @@ export default function Y2KPage() {
                 {/* ── Step 3: Luggage ── */}
                 {step===3&&(
                   <>
-                    <h3 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:26, color:J.black, marginBottom:24 }}>Luggage Information</h3>
+                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Luggage Information</h3>
                     <div className="fld">
                       <label>Number of Bags *</label>
                       <input required type="number" min={1} max={50} value={form.bags} onChange={e=>patch('bags',e.target.value)} style={fi}/>
@@ -753,10 +797,49 @@ export default function Y2KPage() {
                 </div>
 
                 <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, color:J.muted, textAlign:'center', marginTop:14, lineHeight:'170%' }}>
-                  No payment now · Confirmed within 2 hours ·{' '}
+                  No payment now · We&apos;ll call you to confirm ·{' '}
                   <a href="mailto:info@bagdrop.co" style={{ color:J.pink, textDecoration:'none' }}>info@bagdrop.co</a>
                 </p>
               </form>
+            </div>
+          </Reveal>
+        </div>
+      </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* STATS BANNER                                        */}
+      {/* ════════════════════════════════════════════════════ */}
+      <section style={{ position:'relative', padding:'80px 0', overflow:'hidden' }}>
+        {/* Background wedding photo */}
+        <div style={{ position:'absolute', inset:0, backgroundImage:'url(https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=1920&q=80&auto=format&fit=crop)', backgroundSize:'cover', backgroundPosition:'center' }}/>
+        <div style={{ position:'absolute', inset:0, background:'rgba(10,6,4,0.68)' }}/>
+        <div className="container" style={{ position:'relative', zIndex:2, textAlign:'center' }}>
+          <Reveal>
+            {/* Eyebrow */}
+            <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'2.5px', color:'rgba(255,255,255,0.55)', marginBottom:18 }}>Trusted by Couples Across India</p>
+            {/* Headline */}
+            <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(32px,4.5vw,52px)', color:'#fff', fontWeight:400, lineHeight:'118%', margin:'0 0 6px' }}>
+              Stress-free destination
+            </h2>
+            <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,48px)', fontStyle:'italic', color:'#d4a843', fontWeight:400, margin:'0 0 52px', lineHeight:'120%' }}>
+              weddings, delivered
+            </p>
+            {/* Stats row */}
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'32px 20px', maxWidth:900, margin:'0 auto' }}>
+              {([
+                { to:150,  suffix:'+',   label:'Guests Managed This Wedding' },
+                { to:200,  suffix:'+',   label:'Bags Managed This Wedding' },
+                { to:null, text:'Pan India', label:'Pickup Coverage Across India' },
+                { to:null, text:'24/7',      label:'Dedicated Wedding Support' },
+              ] as { to:number|null; suffix?:string; text?:string; label:string }[]).map(({ to, suffix, text, label }) => (
+                <div key={label}>
+                  <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(30px,3.5vw,46px)', color:'#d4a843', fontWeight:400, margin:'0 0 10px', lineHeight:1 }}>
+                    {to !== null ? <CountUp to={to} suffix={suffix??''} /> : text}
+                  </p>
+                  <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', color:'rgba(255,255,255,0.65)', lineHeight:'155%' }}>{label}</p>
+                </div>
+              ))}
             </div>
           </Reveal>
         </div>
@@ -771,16 +854,32 @@ export default function Y2KPage() {
             <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:72, alignItems:'center' }}>
               <div>
                 <Suptitle>find your ease</Suptitle>
-                <h2 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:'clamp(28px,4vw,46px)', lineHeight:'110%', color:J.black, marginBottom:20 }}>
-                  We Handle Everything<br/><em style={{ fontWeight:300 }}>For Your Happy Journey</em>
+                <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,46px)', lineHeight:'110%', color:J.black, fontWeight:400, marginBottom:32 }}>
+                  We Handle Everything<br/><em style={{ fontStyle:'italic' }}>For Your Happy Journey</em>
                 </h2>
-                <p style={{ fontSize:15, color:J.body, lineHeight:'170%', marginBottom:14 }}>
-                  Attending a destination wedding at Taj Lake Palace should feel like a dream — not a logistics challenge. Bagdrop is India&apos;s dedicated wedding luggage concierge, handling all baggage for guests attending <strong style={{ color:J.black }}>#Y2K</strong>.
-                </p>
-                <p style={{ fontSize:15, color:J.body, lineHeight:'170%', marginBottom:32 }}>
-                  Simply book above, hand us your bags at the airport, and walk into the palace completely unburdened.
-                </p>
-                <BtnDefault href="#book">Book Concierge</BtnDefault>
+                {[
+                  { title:'Airport Delivery',      desc:'Pickup from airport, delivered to your door.' },
+                  { title:'Excess Baggage',        desc:'Ship it cheaper than the airline charges.' },
+                  { title:'Door-to-Door',          desc:'From your home to any destination.' },
+                  { title:'Destination Weddings',  desc:'White-glove handling for your big day.' },
+                  { title:'Corporate Travel',      desc:'Volume rates and dedicated support.' },
+                  { title:'Student Relocation',    desc:'Skip the airline fees when you move.' },
+                ].map(({ title, desc }) => (
+                  <div key={title} style={{ display:'flex', alignItems:'flex-start', gap:14, marginBottom:20 }}>
+                    <div style={{ flexShrink:0, width:40, height:40, borderRadius:'50%', background:`rgba(236,157,171,0.15)`, display:'flex', alignItems:'center', justifyContent:'center', marginTop:2 }}>
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <rect x="2" y="7" width="20" height="14" rx="2"/>
+                        <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
+                        <line x1="12" y1="12" x2="12" y2="16"/>
+                        <line x1="10" y1="14" x2="14" y2="14"/>
+                      </svg>
+                    </div>
+                    <div>
+                      <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:17, fontWeight:700, color:J.black, margin:'0 0 2px' }}>{title}</p>
+                      <p style={{ fontSize:13, color:J.body, margin:0, lineHeight:'160%' }}>{desc}</p>
+                    </div>
+                  </div>
+                ))}
               </div>
               <div style={{ overflow:'hidden' }}>
                 <img src="/images/y2k-palace.jpg"
@@ -803,7 +902,7 @@ export default function Y2KPage() {
         <div className="container" style={{ position:'relative', zIndex:2 }}>
           <div className="gift-banner__content">
             <Reveal>
-              <Suptitle light>17 December 2026</Suptitle>
+              <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,42px)', fontStyle:'italic', color:J.pink, textAlign:'center', margin:'0 0 18px', letterSpacing:'0.5px' }}>17 December 2026</p>
               <h2 className="gift-banner__h2">
                 Hurry Up To<br/><em>Book Your Concierge</em>
               </h2>
@@ -839,33 +938,32 @@ export default function Y2KPage() {
         <div className="footer__overlay"/>
         <div className="footer__inner">
           <div>
-            <span className="footer__logo">Bagdrop</span>
+            <span className="footer__logo">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/images/bagdrop-logo.png" alt="Bagdrop" />
+            </span>
             <p className="footer__text" style={{ marginBottom:24 }}>India&apos;s Premium Wedding Luggage Concierge. Serving guests at destination weddings across India.</p>
-            <p className="footer__label">Newsletter</p>
-            <p className="footer__text" style={{ marginBottom:12 }}>Stay updated with wedding travel tips.</p>
-            <div className="footer__newsletter">
-              <input className="footer__nl-input" placeholder="your@email.com" style={{ background:'none', border:'none', outline:'none', fontFamily:'Montserrat,sans-serif', fontSize:14, color:'rgba(255,255,255,0.7)', flex:1, padding:'8px 0' }}/>
-              <button className="footer__nl-btn" style={{ background:'none', border:'none', cursor:'pointer', color:J.pink, fontSize:18, paddingLeft:12 }}>→</button>
-            </div>
+            <p className="footer__label">Write To Us</p>
+            <a href="mailto:info@bagdrop.co" className="footer__link" style={{ fontSize:15, fontWeight:700, color:J.pinkDark }}>info@bagdrop.co</a>
           </div>
           <div>
             <p className="footer__label">Reach Us</p>
             <a href="tel:+916357115711" className="footer__link">+91 63571 15711</a>
             <a href="mailto:info@bagdrop.co" className="footer__link">info@bagdrop.co</a>
-            <p className="footer__text" style={{ marginBottom:24 }}>Mumbai · Delhi · Ahmedabad · Udaipur · Goa</p>
-            <p className="footer__label">Follow</p>
-            <div style={{ display:'flex', gap:16 }}>
-              {['Instagram','WhatsApp','LinkedIn'].map(s=>(
-                <a key={s} href="#" className="footer__link" style={{ marginBottom:0 }}>{s}</a>
-              ))}
+            <p className="footer__text" style={{ marginBottom:24 }}>Mumbai · Delhi · Ahmedabad · Udaipur · Goa · Bangalore</p>
+            <p className="footer__label">Follow Us</p>
+            <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+              <a href="https://www.instagram.com/bagdropofficial" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>Instagram</a>
+              <a href="https://wa.me/916357115711" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>WhatsApp</a>
+              <a href="https://www.facebook.com/profile.php?id=61579334791456" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>Facebook</a>
             </div>
           </div>
           <div>
             <p className="footer__label">#Y2K Wedding</p>
-            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:36, color:J.pink, margin:'0 0 8px', lineHeight:1 }}>Yashna & Yash</p>
+            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:36, color:J.pinkDark, margin:'0 0 8px', lineHeight:1 }}>Yashna &amp; Yash</p>
             <p className="footer__text" style={{ marginBottom:16 }}>17 December 2026<br/>Taj Lake Palace, Udaipur</p>
-            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:'rgba(236,157,171,0.4)', margin:'0 0 4px' }}>#Y2K</p>
-            <p style={{ fontSize:11, color:'rgba(255,255,255,0.2)', textTransform:'uppercase', letterSpacing:'1px' }}>Official Wedding Hashtag</p>
+            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pinkDark, margin:'0 0 4px' }}>#Y2K</p>
+            <p style={{ fontSize:11, fontWeight:600, color:'rgba(14,6,8,0.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Official Wedding Hashtag</p>
           </div>
         </div>
         <div className="footer__bottom">
