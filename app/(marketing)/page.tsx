@@ -46,6 +46,7 @@ import { HowItWorks }        from '@/components/sections/how-it-works'
 import { ServicesGrid }      from '@/components/sections/services-grid'
 import { WhyBagdrop }        from '@/components/sections/why-bagdrop'
 import { Testimonials }      from '@/components/sections/testimonials'
+import { GoogleReviews }     from '@/components/sections/google-reviews'
 import { FaqSection }        from '@/components/sections/faq-section'
 import { CtaBanner }         from '@/components/sections/cta-banner'
 
@@ -58,6 +59,7 @@ export default function HomePage() {
       <ServicesGrid />
       <WhyBagdrop />
       <Testimonials />
+      <GoogleReviews />
       <FaqSection />
       <CtaBanner />
     </>
