@@ -411,8 +411,20 @@ function QuotePageInner() {
         }),
       })
       const cj = await createRes.json().catch(() => ({}))
-      if (!createRes.ok) { setErr(cj.error ?? 'Failed to create lead'); setGenerating(false); return }
-      resolvedLeadId = cj.lead?.id ?? null
+      if (!createRes.ok) {
+        // DUPLICATE_PHONE (409): a lead already exists for this phone.
+        // Use the existing lead's ID instead of erroring out — the user is
+        // simply generating a new quote for a returning customer.
+        if (createRes.status === 409 && cj.code === 'DUPLICATE_PHONE' && cj.duplicate_lead?.id) {
+          resolvedLeadId = cj.duplicate_lead.id
+        } else {
+          setErr(cj.error ?? 'Failed to create lead')
+          setGenerating(false)
+          return
+        }
+      } else {
+        resolvedLeadId = cj.lead?.id ?? null
+      }
       if (!resolvedLeadId) { setErr('Failed to get lead ID after creation'); setGenerating(false); return }
     }
 

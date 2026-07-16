@@ -151,21 +151,12 @@ export async function POST(req: Request) {
           if (leadInsertErr) {
             console.error('[Bookings] Lead insert error:', leadInsertErr.message)
           } else {
-            // Back-link: update the booking with the new lead's id
-            if (newLead?.id) {
-              await supabaseAdmin
-                .from('bookings')
-                .update({ lead_id: newLead.id })
-                .eq('id', savedBooking.id)
-            }
+            // Note: lead_id on bookings omitted (column may not exist in all DB schemas).
+            // Relationship is maintained via leads.booking_id set above.
             console.log(`[Bookings] Auto-created lead ${leadNumber} for booking ${trackingId}`)
           }
         } else {
-          // Lead already exists for this booking (API retry or race) — ensure back-link is set
-          await supabaseAdmin
-            .from('bookings')
-            .update({ lead_id: existingLeadForBooking.id })
-            .eq('id', savedBooking.id)
+          // Lead already exists for this booking (API retry or race) — no-op.
           console.log(`[Bookings] Lead already exists for booking ${trackingId} — skipping duplicate`)
         }
       } catch (leadErr) {

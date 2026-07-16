@@ -12,12 +12,14 @@ export async function GET(req: NextRequest) {
   const status        = searchParams.get('status')
   const excludeStatus = searchParams.get('exclude_status')
   const search        = searchParams.get('search')
+  const deleted       = searchParams.get('deleted') === 'true'
   const page          = parseInt(searchParams.get('page') ?? '1', 10)
   const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset        = (page - 1) * limit
 
-  let excludedBookingIds: string[] | null = null
-  if (excludeStatus) {
+  // ── Build excluded booking IDs for status filter ─────────────────────────
+  let excludedBookingIds: string[] = []
+  if (!deleted && excludeStatus) {
     const { data: cancelledBookings } = await supabaseAdmin
       .from('bookings')
       .select('id')
@@ -31,12 +33,24 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
-  if (status && status !== 'all') {
+  if (deleted) {
+    // Show only soft-deleted leads (for the "Deleted Leads" view)
+    query = query.not('deleted_at', 'is', null)
+  } else {
+    // Default: exclude soft-deleted leads
+    query = query.is('deleted_at', null)
+  }
+
+  if (!deleted && status && status !== 'all') {
     query = query.eq('status', status)
   }
 
-  if (excludedBookingIds && excludedBookingIds.length > 0) {
-    query = query.not('booking_id', 'in', `(${excludedBookingIds.join(',')})`)
+  // FIX: PostgreSQL NULL trap — `NOT IN (...)` also excludes rows where booking_id IS NULL.
+  // Use `or(booking_id.is.null,booking_id.not.in.(...))` to keep null-booking-id leads visible.
+  if (excludedBookingIds.length > 0) {
+    query = query.or(
+      `booking_id.is.null,booking_id.not.in.(${excludedBookingIds.join(',')})`
+    )
   }
 
   if (search) {
@@ -45,7 +59,35 @@ export async function GET(req: NextRequest) {
     )
   }
 
-  const { data, error, count } = await query
+  let { data, error, count } = await query
+
+  // ── Defensive fallback: deleted_at column may not exist yet (migration not run) ──
+  // If the query fails because deleted_at doesn't exist, retry without that filter.
+  // This lets the leads page show data even before SOFT_DELETE_MIGRATION.sql is run.
+  if (error && error.message?.includes('deleted_at')) {
+    console.warn('[leads GET] deleted_at column missing — falling back to unfiltered query. Run SOFT_DELETE_MIGRATION.sql.')
+    let fallbackQuery = supabaseAdmin
+      .from('leads')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1)
+    if (!deleted && status && status !== 'all') {
+      fallbackQuery = fallbackQuery.eq('status', status)
+    }
+    if (excludedBookingIds.length > 0) {
+      fallbackQuery = fallbackQuery.or(
+        `booking_id.is.null,booking_id.not.in.(${excludedBookingIds.join(',')})`
+      )
+    }
+    if (search) {
+      fallbackQuery = fallbackQuery.or(
+        `name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
+      )
+    }
+    const { data: fd, error: fe, count: fc } = await fallbackQuery
+    if (fe) return NextResponse.json({ error: fe.message }, { status: 500 })
+    data = fd; count = fc; error = null
+  }
 
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 })
@@ -143,13 +185,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // Check for existing website booking for this phone
+  // Check for existing website booking for this phone (BD-XXXX only, not BDA-)
+  // Note: .is('lead_id', null) omitted — lead_id column may not exist in all DB schemas
   const { data: existingWebBooking } = await supabaseAdmin
     .from('bookings')
     .select('id, tracking_id, status, status_history')
     .eq('customer_phone', normPhone)
     .like('tracking_id', 'BD-%')
-    .is('lead_id', null)
+    .not('tracking_id', 'like', 'BDA-%')
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -171,11 +214,11 @@ export async function POST(req: NextRequest) {
       .from('bookings')
       .update({
         customer_name:  body.name.trim(),
-        customer_email: body.email?.trim()?.toLowerCase() || null,
-        service_type:   serviceVal || null,
-        service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : null,
-        from_city:      body.from_city?.trim() || null,
-        to_city:        body.to_city?.trim() || null,
+        customer_email: body.email?.trim()?.toLowerCase() || '',
+        service_type:   serviceVal || '',
+        service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
+        from_city:      body.from_city?.trim() || '',
+        to_city:        body.to_city?.trim() || '',
         pickup_date:    nullDate(body.pickup_date),
         delivery_date:  nullDate(body.delivery_date),
         time_slot:      body.pickup_time?.trim() || null,
@@ -205,11 +248,11 @@ export async function POST(req: NextRequest) {
       tracking_id:    trackingId,
       customer_name:  body.name.trim(),
       customer_phone: normPhone,
-      customer_email: body.email?.trim()?.toLowerCase() || null,
-      service_type:   serviceVal,
-      service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : null,
-      from_city:      body.from_city?.trim() || null,
-      to_city:        body.to_city?.trim() || null,
+      customer_email: body.email?.trim()?.toLowerCase() || '',
+      service_type:   serviceVal || '',
+      service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
+      from_city:      body.from_city?.trim() || '',
+      to_city:        body.to_city?.trim() || '',
       pickup_date:    nullDate(body.pickup_date),
       delivery_date:  nullDate(body.delivery_date),
       time_slot:      body.pickup_time?.trim() || null,
@@ -313,13 +356,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 
-  // Back-link booking -> lead
-  if (booking?.id) {
-    await supabaseAdmin
-      .from('bookings')
-      .update({ lead_id: lead.id })
-      .eq('id', booking.id)
-  }
+  // Note: lead_id on bookings is omitted (column may not exist in all DB schemas).
+  // The relationship is maintained via leads.booking_id only.
 
   // Send inquiry notification email (fire-and-forget, non-blocking)
   Promise.allSettled([

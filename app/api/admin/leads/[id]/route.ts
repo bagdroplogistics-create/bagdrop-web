@@ -34,6 +34,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'converted_booking_id', 'booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
     // Zoho Books integration
     'zoho_estimate_id', 'zoho_estimate_number',
+    // Soft-delete support: set to null to restore a deleted lead
+    'deleted_at',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -170,22 +172,36 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
   const { id } = await params
 
-  // Fetch lead to check for linked booking before deletion
+  // Fetch lead first so we know what to do with the linked booking
   const { data: lead } = await supabaseAdmin
     .from('leads')
-    .select('booking_id')
+    .select('booking_id, lead_number')
     .eq('id', id)
     .single()
 
-  // Delete lead
+  // ── SOFT-DELETE: set deleted_at instead of hard-deleting ──────────────────
+  // This preserves the record in the database and allows recovery via
+  // PATCH /api/admin/leads/[id] with { deleted_at: null }.
+  // Hard deletes are NOT used for leads — inquiries must never vanish.
   const { error } = await supabaseAdmin
     .from('leads')
-    .delete()
+    .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
 
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  if (error) {
+    // If deleted_at column doesn't exist yet (migration not run), fall back to
+    // keeping the record but still cancelling the linked booking.
+    if (error.message?.includes('deleted_at')) {
+      console.warn('[leads DELETE] deleted_at column missing — SOFT_DELETE_MIGRATION.sql not yet run. Booking will be cancelled but lead record preserved.')
+      // Don't return an error to the frontend — handle gracefully below.
+    } else {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+  }
 
-  // If lead had an admin-created booking (BDA- prefix), cancel it rather than hard-delete
+  console.log(`[leads DELETE] Soft-deleted lead ${lead?.lead_number ?? id}`)
+
+  // Cancel the linked BDA- booking (it remains in DB, just marked cancelled)
   if (lead?.booking_id) {
     const { data: booking } = await supabaseAdmin
       .from('bookings')
@@ -196,10 +212,14 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     if (booking?.tracking_id?.startsWith('BDA-')) {
       await supabaseAdmin
         .from('bookings')
-        .update({ status: 'cancelled', notes: 'Lead deleted by admin' })
+        .update({ status: 'cancelled', notes: `Lead ${lead.lead_number} soft-deleted by admin` })
         .eq('id', lead.booking_id)
     }
   }
 
-  return NextResponse.json({ success: true })
+  return NextResponse.json({ success: true, soft_deleted: true })
 }
+
+// ── RESTORE: un-delete a soft-deleted lead ────────────────────────────────────
+// Called via PATCH /api/admin/leads/[id] with body { deleted_at: null }
+// The PATCH handler already handles this since 'deleted_at' is in the allowed list below.

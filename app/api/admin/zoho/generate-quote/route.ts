@@ -354,12 +354,14 @@ export async function POST(req: NextRequest) {
       .from('bookings')
       .insert({
         tracking_id:    trackingId,
+        // lead_id intentionally omitted — column may not exist in all DB schemas.
+        // The link is maintained via leads.booking_id (updated below).
         customer_name:  lead.name,
         customer_phone: lead.phone,
-        customer_email: lead.email ?? null,
-        service_type:   lead.service_type ?? lead.service_interest ?? null,
-        from_city:      fromCity || lead.from_city || null,
-        to_city:        toCity   || lead.to_city   || null,
+        customer_email: lead.email ?? '',
+        service_type:   lead.service_type ?? lead.service_interest ?? '',
+        from_city:      fromCity || lead.from_city || '',
+        to_city:        toCity   || lead.to_city   || '',
         pickup_date:    pickupDtOverride ? pickupDtOverride.slice(0, 10) : (lead.pickup_date ?? null),
         delivery_date:  deliveryDateOverride ?? lead.delivery_date ?? null,
         time_slot:      pickupDtOverride ? pickupDtOverride.slice(11, 16) : (lead.pickup_time ?? null),
@@ -367,7 +369,6 @@ export async function POST(req: NextRequest) {
         total_bags:     bags,
         total_amount:   total,
         status:         'quote_created',
-        lead_id:        lead.id,
         status_history: [{
           from:       null,
           to:         'quote_created',
@@ -381,17 +382,28 @@ export async function POST(req: NextRequest) {
 
     if (createErr) {
       // Could happen if tracking_id already exists (race condition or stale lead.booking_id).
-      // Try to find the existing booking by tracking_id and link it.
+      // Find the existing booking, re-link it, and un-cancel it if necessary.
       console.warn('[generate-quote] auto-create booking failed:', createErr.message)
       const { data: existing } = await supabaseAdmin
         .from('bookings')
-        .select('id')
+        .select('id, status')
         .eq('tracking_id', trackingId)
         .maybeSingle()
       if (existing?.id) {
         bookingId = existing.id
+        // Re-link booking → lead
         await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
-        console.log(`[generate-quote] Recovered existing booking ${trackingId} for lead ${lead.lead_number}`)
+        // Un-cancel: if the booking was cancelled (e.g., from a prior delete/error),
+        // reset it to quote_created so the lead becomes visible again in all modules.
+        // (lead_id omitted — may not exist in older DB schemas)
+        await supabaseAdmin.from('bookings').update({
+          total_amount: total,
+          notes:        null,
+          ...(!existing.status || existing.status === 'cancelled'
+            ? { status: 'quote_created' }
+            : {}),
+        }).eq('id', bookingId)
+        console.log(`[generate-quote] Recovered booking ${trackingId} (was: ${existing.status ?? 'unknown'}) for lead ${lead.lead_number}`)
       }
     } else if (newBooking) {
       bookingId = newBooking.id
@@ -408,7 +420,11 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     const currentStatus = existingBooking?.status ?? null
-    const canUpdateStatus = !currentStatus || QUOTE_STAGE_STATUSES.has(currentStatus)
+    // Can update status if:
+    //   - booking is brand new (no status)
+    //   - booking is still in early quote stages
+    //   - booking was cancelled and is being reactivated via a new quote
+    const canUpdateStatus = !currentStatus || QUOTE_STAGE_STATUSES.has(currentStatus) || currentStatus === 'cancelled'
 
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,

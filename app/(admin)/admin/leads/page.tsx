@@ -654,8 +654,10 @@ export default function LeadsPage() {
   const [search, setSearch]     = useState('')
   const [filter, setFilter]     = useState('all')
   const [sort, setSort]         = useState('newest')
-  const [modal, setModal]       = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
-  const [deleting, setDeleting] = useState<string | null>(null)
+  const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
+  const [deleting, setDeleting]       = useState<string | null>(null)
+  const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
+  const [showDeleted, setShowDeleted] = useState(false)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -675,26 +677,40 @@ export default function LeadsPage() {
     if (!adminKey) return
     setLoading(true)
     let qs = '?key=' + adminKey
-    if (filter !== 'all') {
+    if (showDeleted) {
+      // Show only soft-deleted leads
+      qs += '&deleted=true'
+    } else if (filter !== 'all') {
       qs += '&status=' + filter
-    } else {
-      // Default: hide leads linked to cancelled bookings
-      qs += '&exclude_status=cancelled'
     }
+    // Do NOT filter by exclude_status=cancelled — a lead is always visible
+    // regardless of its linked booking's status. The booking can be cancelled
+    // and re-activated when a new quote is generated.
     if (search) qs += '&search=' + encodeURIComponent(search)
     const res = await fetch('/api/admin/leads' + qs)
     if (res.ok) setLeads((await res.json()).leads ?? [])
     setLoading(false)
-  }, [adminKey, filter, search])
+  }, [adminKey, filter, search, showDeleted])
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
-  async function deleteLead(id: string) {
-    if (!confirm('Delete this lead? This cannot be undone.')) return
-    setDeleting(id)
-    await fetch('/api/admin/leads/' + id, {
+  async function confirmDelete(lead: Lead) {
+    setDeleteConfirm(null)
+    setDeleting(lead.id)
+    await fetch('/api/admin/leads/' + lead.id, {
       method: 'DELETE',
       headers: { 'x-admin-key': adminKey },
+    })
+    setDeleting(null)
+    fetchLeads()
+  }
+
+  async function restoreLead(id: string) {
+    setDeleting(id)
+    await fetch('/api/admin/leads/' + id, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ deleted_at: null }),
     })
     setDeleting(null)
     fetchLeads()
@@ -716,6 +732,40 @@ export default function LeadsPage() {
           onClose={() => setModal({ open: false, lead: null })}
           onSaved={() => { setModal({ open: false, lead: null }); fetchLeads() }}
         />
+      )}
+
+      {/* ── Delete Confirmation Modal ── */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 bg-black/50" onClick={() => setDeleteConfirm(null)} />
+          <div className="relative z-10 w-full max-w-sm rounded-2xl border border-red-100 bg-white shadow-2xl">
+            <div className="p-6">
+              <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100">
+                <Trash2 className="h-6 w-6 text-red-600" />
+              </div>
+              <h3 className="mb-1 text-base font-bold text-gray-900">Delete Lead?</h3>
+              <p className="text-sm text-gray-500 mb-1">
+                <strong>{deleteConfirm.name}</strong> · {deleteConfirm.lead_number}
+              </p>
+              <p className="text-xs text-gray-400 mb-5">
+                The lead will be soft-deleted and can be recovered from the Deleted Leads view. The linked booking will be cancelled.
+              </p>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setDeleteConfirm(null)}
+                  className="flex-1 rounded-lg border border-gray-200 py-2.5 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => confirmDelete(deleteConfirm)}
+                  disabled={deleting === deleteConfirm.id}
+                  className="flex-1 rounded-lg bg-red-600 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50 transition-colors">
+                  {deleting === deleteConfirm.id ? 'Deleting…' : 'Yes, Delete'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       <div className="border-b border-orange-100 bg-white px-6 py-4">
@@ -760,7 +810,23 @@ export default function LeadsPage() {
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
+          <button
+            onClick={() => setShowDeleted(v => !v)}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-sm font-medium transition-colors shadow-sm ${
+              showDeleted
+                ? 'border-red-300 bg-red-50 text-red-700 hover:bg-red-100'
+                : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+            }`}>
+            <Trash2 className="h-3.5 w-3.5" />
+            {showDeleted ? 'Active Leads' : 'Deleted'}
+          </button>
         </div>
+        {showDeleted && (
+          <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+            <Trash2 className="h-4 w-4 shrink-0" />
+            Showing soft-deleted leads. Click <strong>&nbsp;↩ Restore&nbsp;</strong> to recover a lead.
+          </div>
+        )}
 
         {/* Table */}
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
@@ -840,14 +906,18 @@ export default function LeadsPage() {
                                   body: JSON.stringify({ lead_id: l.id }),
                                 })
                                 if (res.ok) {
-                                  fetchLeads()
+                                  const data = await res.json().catch(() => ({}))
+                                  await fetchLeads()
+                                  if (data?.booking?.id) {
+                                    router.push(`/admin?highlight=${data.booking.id}`)
+                                  }
                                 } else {
                                   const err = await res.json().catch(() => ({}))
-                                  alert('Sync failed: ' + (err.error ?? 'Unknown error'))
+                                  alert('Could not link booking: ' + (err.error ?? 'Unknown error'))
                                 }
                               }}
-                              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:border-amber-400 transition-colors">
-                              ⚠️ Sync Booking
+                              className="inline-flex items-center gap-1 rounded-lg border border-green-100 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:border-green-300 transition-colors">
+                              <ExternalLink className="h-3 w-3" /> View Booking
                             </button>
                           )}
                           {l.zoho_estimate_number ? (
@@ -877,14 +947,25 @@ export default function LeadsPage() {
                       <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
-                          <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
-                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
-                            <Pencil className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => deleteLead(l.id)} disabled={deleting === l.id}
-                            className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
+                          {showDeleted ? (
+                            <button
+                              onClick={() => restoreLead(l.id)}
+                              disabled={deleting === l.id}
+                              className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40">
+                              {deleting === l.id ? 'Restoring…' : '↩ Restore'}
+                            </button>
+                          ) : (
+                            <>
+                              <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
+                                className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button onClick={() => setDeleteConfirm(l)} disabled={deleting === l.id}
+                                className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -895,7 +976,7 @@ export default function LeadsPage() {
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
-          Every new lead automatically creates a linked booking visible in the Dashboard and Bookings tab. If a booking link is missing, click <strong>Sync Booking</strong> to repair it.
+          Every new lead automatically creates a linked booking visible in the Dashboard and Bookings tab. Click <strong>View Booking</strong> to open the linked booking directly.
         </p>
       </main>
     </>

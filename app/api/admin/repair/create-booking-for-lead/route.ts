@@ -40,22 +40,22 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ booking: existing, created: false })
   }
 
-  // Also check by lead_id in case booking exists but wasn't linked
-  const { data: existingByLead } = await supabaseAdmin
+  // Also check by derived BDA- tracking_id in case booking exists but wasn't linked
+  // (lead_id column does not exist on bookings — relationship is via leads.booking_id only)
+  const derivedTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
+  const { data: existingByTracking } = await supabaseAdmin
     .from('bookings')
     .select('*')
-    .eq('lead_id', leadId)
-    .order('created_at', { ascending: false })
-    .limit(1)
+    .eq('tracking_id', derivedTrackingId)
     .maybeSingle()
 
-  if (existingByLead) {
+  if (existingByTracking) {
     // Link it back to lead
     await supabaseAdmin
       .from('leads')
-      .update({ booking_id: existingByLead.id })
+      .update({ booking_id: existingByTracking.id })
       .eq('id', leadId)
-    return NextResponse.json({ booking: existingByLead, created: false })
+    return NextResponse.json({ booking: existingByTracking, created: false })
   }
 
   // ── 3. Derive BDA- tracking ID from lead number (guaranteed unique) ──────────
@@ -79,12 +79,13 @@ export async function POST(req: NextRequest) {
     .from('bookings')
     .insert({
       tracking_id:    trackingId,
-      lead_id:        lead.id,
+      // lead_id omitted — column may not exist in older DB schemas.
+      // The relationship is maintained via leads.booking_id (set below).
       customer_name:  lead.name,
       customer_phone: lead.phone,
-      customer_email: lead.email ?? null,
-      from_city:      lead.from_city ?? null,
-      to_city:        lead.to_city ?? null,
+      customer_email: lead.email ?? '',
+      from_city:      lead.from_city ?? '',
+      to_city:        lead.to_city ?? '',
       pickup_date:    lead.pickup_date ?? null,
       time_slot:      lead.pickup_time ?? null,
       pickup_address: lead.pickup_address ?? null,
@@ -92,8 +93,8 @@ export async function POST(req: NextRequest) {
       total_bags:     lead.bags_count ?? 1,
       flight_number:  lead.flight_number ?? null,
       notes:          lead.notes ?? null,
-      service_type:   sType,
-      service_label:  serviceLabelMap[sType] ?? sType,
+      service_type:   sType || '',
+      service_label:  serviceLabelMap[sType] ?? sType ?? '',
       total_amount:   lead.quote_total ?? null,
       status:         lead.quote_number ? 'quote_created' : 'inquiry',
       status_history: [
