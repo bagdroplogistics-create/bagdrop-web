@@ -197,45 +197,60 @@ export async function POST(req: NextRequest) {
     booking = updated ?? { id: existingWebBooking.id, tracking_id: existingWebBooking.tracking_id }
 
   } else {
-    // No existing booking -- create a new BDA- booking derived from lead number
-    // BDL-2026-0001 -> BDA-2026-0001 (guaranteed unique, no race conditions)
+    // No existing booking — create a new BDA- booking derived from lead number.
+    // BDL-2026-0001 → BDA-2026-0001 (guaranteed unique, no race conditions)
     const trackingId = leadNumber.replace(/^BDL-/, 'BDA-')
+
+    const bookingPayload = {
+      tracking_id:    trackingId,
+      customer_name:  body.name.trim(),
+      customer_phone: normPhone,
+      customer_email: body.email?.trim()?.toLowerCase() || null,
+      service_type:   serviceVal,
+      service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : null,
+      from_city:      body.from_city?.trim() || null,
+      to_city:        body.to_city?.trim() || null,
+      pickup_date:    nullDate(body.pickup_date),
+      delivery_date:  nullDate(body.delivery_date),
+      time_slot:      body.pickup_time?.trim() || null,
+      pickup_address: body.pickup_address?.trim() || null,
+      drop_address:   body.drop_address?.trim() || null,
+      total_bags:     Number(body.bags_count) || 1,
+      flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
+      notes:          body.notes?.trim() || null,
+      status:         'inquiry',
+      status_history: [{
+        from:       null,
+        to:         'inquiry',
+        timestamp:  new Date().toISOString(),
+        changed_by: 'system',
+        note:       `Auto-created from lead ${leadNumber}`,
+      }],
+    }
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')
-      .insert({
-        tracking_id:    trackingId,
-        customer_name:  body.name.trim(),
-        customer_phone: normPhone,
-        customer_email: body.email?.trim()?.toLowerCase() || null,
-        service_type:   serviceVal,
-        service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : null,
-        from_city:      body.from_city?.trim() || null,
-        to_city:        body.to_city?.trim() || null,
-        pickup_date:    nullDate(body.pickup_date),
-        delivery_date:  nullDate(body.delivery_date),
-        time_slot:      body.pickup_time?.trim() || null,
-        pickup_address: body.pickup_address?.trim() || null,
-        drop_address:   body.drop_address?.trim() || null,
-        total_bags:     Number(body.bags_count) || 1,
-        flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
-        notes:          body.notes?.trim() || null,
-        status:         'inquiry',
-        status_history: [{
-          from:       null,
-          to:         'inquiry',
-          timestamp:  new Date().toISOString(),
-          changed_by: 'system',
-          note:       `Auto-created from lead ${leadNumber}`,
-        }],
-      })
+      .insert(bookingPayload)
       .select('id, tracking_id')
       .single()
 
     if (bookingErr) {
-      console.error('[leads POST] booking insert failed (non-fatal):', bookingErr.message)
+      console.error('[leads POST] booking insert failed:', bookingErr.message)
+      // Fallback: try to find an existing booking for this tracking_id (race/retry)
+      const { data: existingByTracking } = await supabaseAdmin
+        .from('bookings')
+        .select('id, tracking_id')
+        .eq('tracking_id', trackingId)
+        .maybeSingle()
+      if (existingByTracking) {
+        console.log('[leads POST] Recovered existing booking for', trackingId)
+        booking = existingByTracking
+      }
+      // If still null, the lead is created without a booking — admin can repair via
+      // /api/admin/repair/create-booking-for-lead
+    } else {
+      booking = newBooking ?? null
     }
-    booking = newBooking ?? null
   }
 
   // Create Lead and link it to the booking

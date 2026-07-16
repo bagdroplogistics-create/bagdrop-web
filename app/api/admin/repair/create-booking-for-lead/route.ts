@@ -98,9 +98,11 @@ export async function POST(req: NextRequest) {
       status:         lead.quote_number ? 'quote_created' : 'inquiry',
       status_history: [
         {
-          status:    lead.quote_number ? 'quote_created' : 'inquiry',
-          timestamp: new Date().toISOString(),
-          note:      'Booking created via repair tool (admin lead)',
+          from:       null,
+          to:         lead.quote_number ? 'quote_created' : 'inquiry',
+          timestamp:  new Date().toISOString(),
+          changed_by: 'system',
+          note:       `Booking created via repair tool for lead ${lead.lead_number}`,
         },
       ],
     })

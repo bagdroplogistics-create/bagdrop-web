@@ -139,9 +139,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         bookingUpdates.status = newBookingStatus
         const history = currentBooking?.status_history ?? []
         history.push({
-          status:    newBookingStatus,
-          timestamp: new Date().toISOString(),
-          note:      `Synced from lead status change: ${body.status}`,
+          from:       currentBooking?.status ?? null,
+          to:         newBookingStatus,
+          timestamp:  new Date().toISOString(),
+          changed_by: 'admin',
+          note:       `Synced from lead status change: ${body.status}`,
         })
         bookingUpdates.status_history = history
       }

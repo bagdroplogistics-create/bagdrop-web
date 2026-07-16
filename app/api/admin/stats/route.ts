@@ -9,12 +9,13 @@ export async function GET(req: NextRequest) {
 
   const [total, newInquiries, inProgress, inTransit, completedRes, revenueRes] = await Promise.all([
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }),
-    // New inquiries: pending (from quotes) + inquiry + document_collection + review
+    // New inquiries: all stages before payment is collected
+    // Includes quote_created + quote_sent so lead-generated inquiries are always counted
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
-      .in('status', ['pending', 'inquiry', 'document_collection', 'review']),
-    // In progress: accepted → confirmed → pickup stages
+      .in('status', ['pending', 'inquiry', 'quote_created', 'quote_sent', 'document_collection', 'review']),
+    // In progress: accepted through pickup stages
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
-      .in('status', ['accepted', 'quote_sent', 'payment_pending', 'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up']),
+      .in('status', ['accepted', 'payment_pending', 'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up']),
     // In transit / out for delivery
     supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
       .in('status', ['in_transit', 'out_for_delivery']),

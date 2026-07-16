@@ -353,6 +353,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
     // Journey summary
     '<h3 style="margin:0 0 10px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Journey Details</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
+    row('Customer Name', data.customerName) +
     row('Route',         data.fromCity + ' → ' + data.toCity) +
     row('No. of Bags',  String(data.bagsCount)) +
     row('Pickup Date',  data.pickupDate   ? formatDate(data.pickupDate)   ?? data.pickupDate   : null) +
@@ -413,7 +414,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 
   return sendEmail(
     data.customerEmail,
-    'Quote ' + data.quoteNumber + ' — ' + data.fromCity + ' → ' + data.toCity + ' | Bagdrop',
+    'Quote ' + data.quoteNumber + ' for ' + data.customerName + ' — ' + data.fromCity + ' → ' + data.toCity + ' | Bagdrop',
     baseTemplate(body),
     data.quoteNumber,
   )

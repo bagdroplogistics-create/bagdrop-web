@@ -826,11 +826,29 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
-                          {l.booking_id && (
+                          {l.booking_id ? (
                             <Link href={`/admin?highlight=${l.booking_id}`}
                               className="inline-flex items-center gap-1 rounded-lg border border-green-100 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:border-green-300 transition-colors">
                               <ExternalLink className="h-3 w-3" /> View Booking
                             </Link>
+                          ) : (
+                            <button
+                              onClick={async () => {
+                                const res = await fetch('/api/admin/repair/create-booking-for-lead', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+                                  body: JSON.stringify({ lead_id: l.id }),
+                                })
+                                if (res.ok) {
+                                  fetchLeads()
+                                } else {
+                                  const err = await res.json().catch(() => ({}))
+                                  alert('Sync failed: ' + (err.error ?? 'Unknown error'))
+                                }
+                              }}
+                              className="inline-flex items-center gap-1 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:border-amber-400 transition-colors">
+                              ⚠️ Sync Booking
+                            </button>
                           )}
                           {l.zoho_estimate_number ? (
                             <div className="flex flex-col gap-1">
@@ -877,7 +895,7 @@ export default function LeadsPage() {
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
-          Each new quote automatically creates a booking entry visible in the Dashboard and Bookings tab.
+          Every new lead automatically creates a linked booking visible in the Dashboard and Bookings tab. If a booking link is missing, click <strong>Sync Booking</strong> to repair it.
         </p>
       </main>
     </>
