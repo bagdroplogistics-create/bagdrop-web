@@ -210,9 +210,21 @@ export async function POST(req: NextRequest) {
 
   } else {
     // ── No existing booking — create a new BDA- booking ────────────────────────
-    // Derive tracking ID from lead number to guarantee uniqueness and cross-referencing:
-    // BDL-2026-0001 → BDA-2026-0001
-    const trackingId = leadNumber.replace(/^BDL-/, 'BDA-')
+    const { data: lastBooking } = await supabaseAdmin
+      .from('bookings')
+      .select('tracking_id')
+      .like('tracking_id', 'BDA-%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let bookingSeq = 1
+    if (lastBooking?.tracking_id) {
+      const parts = lastBooking.tracking_id.split('-')
+      const last = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(last)) bookingSeq = last + 1
+    }
+    const trackingId = `BDA-${String(bookingSeq).padStart(4, '0')}`
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')
@@ -319,14 +331,4 @@ export async function POST(req: NextRequest) {
       .eq('id', booking.id)
   }
 
-  // ── Send inquiry notification email (fire-and-forget, non-blocking) ──
-  Promise.allSettled([
-    sendInquiryNotification({
-      inquiryNumber:   leadNumber,
-      source:          body.source ?? 'admin',
-      customerName:    lead.name,
-      customerPhone:   lead.phone,
-      customerEmail:   lead.email,
-      serviceType:     lead.service_interest,
-      fromCity:        lead.from_city,
-      to
+  // ── Send inquiry notification email (fire-and-forget, non-blocking) ─�

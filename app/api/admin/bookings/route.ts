@@ -43,4 +43,23 @@ export async function GET(req: NextRequest) {
     // Phase filter: match any of the statuses in the list
     query = query.in('status', statuses.split(','))
   } else if (status && status !== 'all') {
-   
+    query = query.eq('status', status)
+  } else if (excludeStatus) {
+    // Default view: exclude a specific status (used to hide cancelled from normal view)
+    query = query.neq('status', excludeStatus)
+  }
+
+  if (search) {
+    query = query.or(
+      `customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,tracking_id.ilike.%${search}%,customer_phone.ilike.%${search}%`
+    )
+  }
+
+  const { data, error, count } = await query
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 })
+  }
+
+  return NextResponse.json({ bookings: data, total: count, page, limit })
+}
