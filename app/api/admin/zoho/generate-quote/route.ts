@@ -5,8 +5,13 @@
  * Computes line items from route pricing (or explicit items passed by the frontend),
  * saves them to the leads table, and updates the linked booking total + status.
  *
+ * If the lead ALREADY has a primary quote (quote_number is set), this call
+ * is treated as a RETURN QUOTE and stored in return_quote_* fields WITHOUT
+ * overwriting the primary quote or downgrading the booking status.
+ *
  * Body:
  *   lead_id              string   (required)
+ *   is_return_quote      boolean  (optional — forces return-quote mode)
  *   agent_name           string   (optional)
  *   salesperson_name     string   (optional)
  *   expiry_date          string   (optional, YYYY-MM-DD)
@@ -32,6 +37,13 @@ import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
+
+// Booking statuses that are "early enough" to be safely downgraded to quote_created.
+// Any status BEYOND these means the booking has progressed past the quote stage
+// and must NOT be reset.
+const QUOTE_STAGE_STATUSES = new Set([
+  'inquiry', 'quote_created', 'quote_sent',
+])
 
 interface ExplicitItem {
   name:         string
@@ -134,6 +146,7 @@ export async function POST(req: NextRequest) {
 
   const {
     lead_id,
+    is_return_quote:      forceReturnQuote,
     agent_name,
     salesperson_name,
     expiry_date,
@@ -155,6 +168,7 @@ export async function POST(req: NextRequest) {
     discount_fixed_amt:   discountFixedAmt,
   } = body as {
     lead_id:               string
+    is_return_quote?:      boolean
     agent_name?:           string
     salesperson_name?:     string
     expiry_date?:          string
@@ -190,6 +204,13 @@ export async function POST(req: NextRequest) {
   const bags     = Number(bagsCountOverride ?? lead.bags_count) || 1
   const fromCity = (fromCityOverride ?? lead.from_city  ?? '').trim()
   const toCity   = (toCityOverride   ?? lead.to_city    ?? '').trim()
+
+  // ── Detect return quote ───────────────────────────────────────────
+  // This is a return quote if the lead already has a primary quote number,
+  // OR if the caller explicitly flags it as return.
+  // Return quotes are stored in return_quote_* fields and do NOT touch
+  // the primary quote data or downgrade the booking status.
+  const isReturnQuote = forceReturnQuote === true || Boolean(lead.quote_number)
 
   // ── Resolve line items ────────────────────────────────────────────
   let lineItems: LineItem[]
@@ -239,11 +260,9 @@ export async function POST(req: NextRequest) {
   let discountAmt: number
 
   if (discountType === 'fixed') {
-    // Fixed rupee amount discount
     discountAmt  = Math.min(Math.max(0, Number(discountFixedAmt ?? 0)), subtotal)
-    discountRate = 0   // no stored percentage for fixed discounts
+    discountRate = 0
   } else {
-    // Percentage discount (default)
     discountRate = Math.min(100, Math.max(0, Number(discountPct ?? 0)))
     discountAmt  = parseFloat((subtotal * discountRate / 100).toFixed(2))
   }
@@ -252,39 +271,65 @@ export async function POST(req: NextRequest) {
   const taxAmt     = Math.round(taxableAmt * GST_PCT) / 100
   const total      = Math.round((taxableAmt + taxAmt) * 100) / 100
 
-  // ── Internal quote number ─────────────────────────────────────────
-  const quoteNumber = deriveQuoteNumber(lead.lead_number)
-  const today       = new Date().toISOString().slice(0, 10)
+  // ── Quote number ──────────────────────────────────────────────────
+  // Primary:  QT-2026-0022
+  // Return:   QT-2026-0022-R
+  const primaryQuoteNumber = deriveQuoteNumber(lead.lead_number)
+  const quoteNumber        = isReturnQuote ? primaryQuoteNumber + '-R' : primaryQuoteNumber
+  const today              = new Date().toISOString().slice(0, 10)
 
   // ── Save to leads table ───────────────────────────────────────────
-  const leadUpdates: Record<string, unknown> = {
-    quote_number:         quoteNumber,
-    quote_line_items:     lineItems,
-    quote_total:          total,
-    quote_subtotal:       subtotal,
-    quote_discount_pct:   (discountType !== 'fixed' && discountRate > 0) ? discountRate : null,
-    quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
-    quote_tax:            taxAmt,
-    quote_date:           today,
-    // Clear any old Zoho fields — we no longer push to Zoho
-    zoho_estimate_id:     null,
-    zoho_estimate_number: quoteNumber,   // keep number field for display compatibility
-    ...(expiry_date       ? { quote_expiry_date: expiry_date      } : {}),
-    ...(subject           ? { quote_subject:     subject          } : {}),
-    ...(customer_notes    ? { quote_notes:       customer_notes   } : {}),
-    ...(terms_conditions  ? { quote_terms:       terms_conditions } : {}),
-    ...(salesperson_name  ? { salesperson_name                    } : {}),
-    ...(agent_name        ? { agent_name                          } : {}),
-    ...(fromCityOverride      ? { from_city:      fromCity        } : {}),
-    ...(toCityOverride        ? { to_city:        toCity          } : {}),
-    ...(bagsCountOverride     ? { bags_count:     bags            } : {}),
-    ...(pickupAddrOverride    ? { pickup_address: pickupAddrOverride } : {}),
-    ...(pickupDtOverride ? {
-      pickup_date: pickupDtOverride.slice(0, 10),
-      pickup_time: pickupDtOverride.slice(11, 16),
-    } : {}),
-    ...(deliveryDateOverride  ? { delivery_date: deliveryDateOverride } : {}),
-    ...(flightDtOverride      ? { flight_time:   flightDtOverride    } : {}),
+  let leadUpdates: Record<string, unknown>
+
+  if (isReturnQuote) {
+    // ── RETURN QUOTE: write to return_quote_* fields only ─────────
+    // Primary quote fields are NOT touched. Booking status is NOT changed.
+    leadUpdates = {
+      return_quote_number:     quoteNumber,
+      return_quote_line_items: lineItems,
+      return_quote_total:      total,
+      return_quote_subtotal:   subtotal,
+      return_quote_tax:        taxAmt,
+      return_quote_date:       today,
+      return_from_city:        fromCity || null,
+      return_to_city:          toCity   || null,
+      return_bags_count:       bags,
+      ...(discountAmt  > 0 ? { return_discount_amt: discountAmt  } : { return_discount_amt: null }),
+      ...(discountRate > 0 && discountType !== 'fixed' ? { return_discount_pct: discountRate } : { return_discount_pct: null }),
+      ...(customer_notes    ? { return_quote_notes: customer_notes } : {}),
+      ...(pickupAddrOverride ? { return_pickup_address: pickupAddrOverride } : {}),
+      ...(pickupDtOverride  ? { return_pickup_date: pickupDtOverride.slice(0, 10) } : {}),
+    }
+  } else {
+    // ── PRIMARY QUOTE: write to main quote fields ──────────────────
+    leadUpdates = {
+      quote_number:         quoteNumber,
+      quote_line_items:     lineItems,
+      quote_total:          total,
+      quote_subtotal:       subtotal,
+      quote_discount_pct:   (discountType !== 'fixed' && discountRate > 0) ? discountRate : null,
+      quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
+      quote_tax:            taxAmt,
+      quote_date:           today,
+      zoho_estimate_id:     null,
+      zoho_estimate_number: quoteNumber,
+      ...(expiry_date       ? { quote_expiry_date: expiry_date      } : {}),
+      ...(subject           ? { quote_subject:     subject          } : {}),
+      ...(customer_notes    ? { quote_notes:       customer_notes   } : {}),
+      ...(terms_conditions  ? { quote_terms:       terms_conditions } : {}),
+      ...(salesperson_name  ? { salesperson_name                    } : {}),
+      ...(agent_name        ? { agent_name                          } : {}),
+      ...(fromCityOverride      ? { from_city:      fromCity        } : {}),
+      ...(toCityOverride        ? { to_city:        toCity          } : {}),
+      ...(bagsCountOverride     ? { bags_count:     bags            } : {}),
+      ...(pickupAddrOverride    ? { pickup_address: pickupAddrOverride } : {}),
+      ...(pickupDtOverride ? {
+        pickup_date: pickupDtOverride.slice(0, 10),
+        pickup_time: pickupDtOverride.slice(11, 16),
+      } : {}),
+      ...(deliveryDateOverride  ? { delivery_date: deliveryDateOverride } : {}),
+      ...(flightDtOverride      ? { flight_time:   flightDtOverride    } : {}),
+    }
   }
 
   const { error: updateErr } = await supabaseAdmin
@@ -297,13 +342,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // ── Ensure linked booking exists (create if missing) ─────────────
+  // ── Ensure linked booking exists ──────────────────────────────────
   let bookingId: string | null = lead.booking_id ?? null
 
   if (!bookingId) {
-    // Booking was not created at lead-creation time — create it now.
-    // Derive tracking ID from lead number (BDL-2026-0001 -> BDA-2026-0001)
-    // to guarantee uniqueness and enable cross-referencing across modules.
+    // No booking yet — create one.
+    // Derive tracking ID from lead number (BDL-2026-0001 → BDA-2026-0001)
     const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
 
     const { data: newBooking, error: createErr } = await supabaseAdmin
@@ -336,21 +380,40 @@ export async function POST(req: NextRequest) {
       .single()
 
     if (createErr) {
-      console.warn('[generate-quote] auto-create booking failed (non-fatal):', createErr.message)
+      // Could happen if tracking_id already exists (race condition or stale lead.booking_id).
+      // Try to find the existing booking by tracking_id and link it.
+      console.warn('[generate-quote] auto-create booking failed:', createErr.message)
+      const { data: existing } = await supabaseAdmin
+        .from('bookings')
+        .select('id')
+        .eq('tracking_id', trackingId)
+        .maybeSingle()
+      if (existing?.id) {
+        bookingId = existing.id
+        await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
+        console.log(`[generate-quote] Recovered existing booking ${trackingId} for lead ${lead.lead_number}`)
+      }
     } else if (newBooking) {
       bookingId = newBooking.id
-      // Link booking back to lead
-      await supabaseAdmin
-        .from('leads')
-        .update({ booking_id: bookingId })
-        .eq('id', lead.id)
+      await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
       console.log(`[generate-quote] Auto-created booking ${trackingId} for lead ${lead.lead_number}`)
     }
-  } else {
-    // Booking exists — update it
+  } else if (!isReturnQuote) {
+    // ── Primary quote: update existing booking ────────────────────
+    // Fetch current booking status so we don't accidentally downgrade it.
+    const { data: existingBooking } = await supabaseAdmin
+      .from('bookings')
+      .select('status')
+      .eq('id', bookingId)
+      .maybeSingle()
+
+    const currentStatus = existingBooking?.status ?? null
+    const canUpdateStatus = !currentStatus || QUOTE_STAGE_STATUSES.has(currentStatus)
+
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,
-      status:       'quote_created',
+      // Only reset to quote_created if booking hasn't progressed past the quote stage
+      ...(canUpdateStatus ? { status: 'quote_created' } : {}),
     }
     if (fromCityOverride)     bookingUpdates.from_city      = fromCity
     if (toCityOverride)       bookingUpdates.to_city        = toCity
@@ -370,11 +433,15 @@ export async function POST(req: NextRequest) {
     if (bookingErr) {
       console.warn('[generate-quote] booking update non-fatal:', bookingErr.message)
     }
+    if (!canUpdateStatus) {
+      console.log(`[generate-quote] Preserved booking status '${currentStatus}' — not downgraded to quote_created`)
+    }
   }
+  // NOTE: for return quotes (isReturnQuote === true), booking status is intentionally NOT changed.
 
-  console.log(`[generate-quote] Internal quote ${quoteNumber} created for lead ${lead.lead_number} | Total: ₹${total}`)
+  console.log(`[generate-quote] ${isReturnQuote ? 'Return quote' : 'Quote'} ${quoteNumber} saved for lead ${lead.lead_number} | Total: ₹${total}`)
 
-  // ── Send quote email to customer if requested ─────────────────────────
+  // ── Send quote email to customer if requested ─────────────────────
   let sentToCustomer = false
   const sendEmailFlag = body.send_email === true
   const customerEmail = (lead.email as string | null) ?? null
@@ -410,29 +477,33 @@ export async function POST(req: NextRequest) {
     console.warn('[generate-quote] send_email=true but lead has no email address')
   }
 
-  // ── If email was successfully sent, advance booking to quote_sent ───
-  // This ensures the workflow panel shows Step 4 (accept/reject) immediately,
-  // instead of requiring a redundant second click of "Send Quote" in the workflow.
-  if (sentToCustomer && bookingId) {
-    await supabaseAdmin
-      .from('bookings')
-      .update({ status: 'quote_sent' })
-      .eq('id', bookingId)
-    console.log(`[generate-quote] Booking ${bookingId} advanced to quote_sent (email sent)`)
+  // ── Advance booking to quote_sent if email was sent (primary quotes only) ──
+  // For return quotes, the booking status is managed independently.
+  if (sentToCustomer && bookingId && !isReturnQuote) {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings').select('status').eq('id', bookingId).maybeSingle()
+    if (bk && QUOTE_STAGE_STATUSES.has(bk.status ?? '')) {
+      await supabaseAdmin
+        .from('bookings')
+        .update({ status: 'quote_sent' })
+        .eq('id', bookingId)
+      console.log(`[generate-quote] Booking ${bookingId} advanced to quote_sent (email sent)`)
+    }
   }
 
   return NextResponse.json({
-    success:          true,
-    quote_number:     quoteNumber,
-    estimate_number:  quoteNumber,   // frontend compatibility
-    estimate_id:      null,
+    success:           true,
+    quote_number:      quoteNumber,
+    estimate_number:   quoteNumber,
+    estimate_id:       null,
+    is_return_quote:   isReturnQuote,
     total,
     subtotal,
-    discount_pct:     discountRate,
-    discount_amt:     discountAmt,
-    tax:              taxAmt,
-    line_items:       lineItems,
-    sent_to_customer: sentToCustomer,
-    zoho_url:         null,
+    discount_pct:      discountRate,
+    discount_amt:      discountAmt,
+    tax:               taxAmt,
+    line_items:        lineItems,
+    sent_to_customer:  sentToCustomer,
+    zoho_url:          null,
   })
 }
