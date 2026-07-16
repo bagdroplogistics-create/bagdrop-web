@@ -22,6 +22,8 @@ interface Lead {
   flight_number: string | null; pnr: string | null
   notes: string | null; status: string
   zoho_estimate_number: string | null; zoho_estimate_id: string | null
+  quote_number: string | null
+  return_quote_number: string | null
 }
 
 interface RoutePrice {
@@ -229,7 +231,7 @@ function QuotePageInner() {
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<{
     estimate_number: string; estimate_id: string; total: number
-    zoho_url: string; sent_to_customer: boolean
+    zoho_url: string; sent_to_customer: boolean; is_return_quote?: boolean
   } | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
@@ -426,6 +428,7 @@ function QuotePageInner() {
       salesperson_name:    salesperson || undefined,
       explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
       send_email: sendEmail,
+      is_return_quote: !!(lead?.quote_number),
     }
     if (agentName.trim())     payload.agent_name       = agentName.trim()
     if (expiryDate)           payload.expiry_date      = expiryDate
@@ -454,7 +457,7 @@ function QuotePageInner() {
     const d = await res.json()
     if (!res.ok) { setErr(d.message ?? d.error ?? 'Failed to generate quote'); setGenerating(false); return }
 
-    setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer })
+    setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
     if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id } : l)
     setGenerating(false)
   }
@@ -487,9 +490,9 @@ function QuotePageInner() {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
           <CheckCircle className="h-8 w-8 text-green-600" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900">Quote Created!</h2>
+        <h2 className="text-xl font-bold text-gray-900">{result.is_return_quote ? 'Return Quote Saved!' : 'Quote Created!'}</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Estimate created: <span className="font-mono font-bold text-blue-700">{result.estimate_number}</span>
+          {result.is_return_quote ? 'Return quote' : 'Quote'}: <span className="font-mono font-bold text-blue-700">{result.estimate_number}</span>
         </p>
         <div className="mt-6 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4 text-left text-sm">
           <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-semibold">{lead?.name ?? custName}</span></div>
@@ -568,10 +571,21 @@ function QuotePageInner() {
         {/* ── Left form ── */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-5 space-y-4 min-w-0">
 
-          {lead?.zoho_estimate_number && !isEdit && (
+          {lead?.quote_number && !isEdit && !lead?.return_quote_number && (
+            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-500" />
+              <span className="text-purple-800">
+                Quote <strong>{lead.quote_number}</strong> already exists for this lead.
+                {' '}This will be saved as the <strong>Return Journey Quote</strong> — the primary quote will not be changed.
+              </span>
+            </div>
+          )}
+          {lead?.return_quote_number && !isEdit && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
-              <span className="text-amber-800">Estimate <strong>{lead.zoho_estimate_number}</strong> already exists — generating again creates a new one.</span>
+              <span className="text-amber-800">
+                Return quote <strong>{lead.return_quote_number}</strong> already exists — generating again will overwrite it.
+              </span>
             </div>
           )}
 
@@ -988,7 +1002,7 @@ function QuotePageInner() {
 
             <button onClick={generate} disabled={generating}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> Generate Quote</>}
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : 'Generate Quote'}</>}
             </button>
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">

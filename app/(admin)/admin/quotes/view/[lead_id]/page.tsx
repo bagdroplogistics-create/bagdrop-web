@@ -59,6 +59,19 @@ interface Lead {
   zoho_estimate_number: string | null
   booking_id: string | null
   created_at: string
+  // Return journey quote fields
+  return_quote_number:     string | null
+  return_quote_line_items: LineItem[] | null
+  return_quote_total:      number | null
+  return_quote_subtotal:   number | null
+  return_quote_tax:        number | null
+  return_quote_date:       string | null
+  return_from_city:        string | null
+  return_to_city:          string | null
+  return_bags_count:       number | null
+  return_discount_pct:     number | null
+  return_discount_amt:     number | null
+  return_quote_notes:      string | null
 }
 
 interface Booking {
@@ -1507,6 +1520,107 @@ export default function QuoteViewPage() {
             >
               <Package className="h-4 w-4" /> Create &amp; Link Booking
             </button>
+          </div>
+        )}
+
+        {/* ── Return Quote Card (no-print) ── */}
+        {lead.return_quote_number && (
+          <div className="no-print mx-auto mt-4 max-w-3xl overflow-hidden rounded-xl border border-purple-200 bg-white shadow-sm">
+            <div className="flex items-center gap-3 border-b border-purple-100 bg-purple-50 px-6 py-3">
+              <Package className="h-4 w-4 text-purple-600" />
+              <span className="text-sm font-bold text-purple-700">Return Journey Quote</span>
+              <span className="ml-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700 font-mono">
+                {lead.return_quote_number}
+              </span>
+              <span className="ml-auto text-xs text-purple-500">{fmtDate(lead.return_quote_date)}</span>
+            </div>
+            <div className="px-6 py-5">
+              {/* Route info */}
+              <div className="mb-4 grid grid-cols-3 gap-4 text-sm">
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Route</p>
+                  <p className="font-medium text-gray-800">
+                    {lead.return_from_city ?? '—'} → {lead.return_to_city ?? '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Bags</p>
+                  <p className="font-medium text-gray-800">{lead.return_bags_count ?? '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-1">Total</p>
+                  <p className="font-bold text-purple-700 text-base">{fmtRs(lead.return_quote_total ?? 0)}</p>
+                </div>
+              </div>
+
+              {/* Line items */}
+              {(lead.return_quote_line_items ?? []).length > 0 && (
+                <div className="mb-4 overflow-hidden rounded-lg border border-gray-100">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-gray-50 border-b border-gray-100">
+                        <th className="px-3 py-2 text-left font-semibold text-gray-500 uppercase tracking-wide">Item</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-500 uppercase tracking-wide w-16">Qty</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-500 uppercase tracking-wide w-24">Rate</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-500 uppercase tracking-wide w-24">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(lead.return_quote_line_items ?? []).map((item, i) => (
+                        <tr key={i} className="border-b border-gray-50 last:border-0">
+                          <td className="px-3 py-2 text-gray-800 font-medium">{item.name}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{item.quantity}</td>
+                          <td className="px-3 py-2 text-right text-gray-600">{fmtRs(item.rate)}</td>
+                          <td className="px-3 py-2 text-right font-semibold text-gray-800">{fmtRs(item.amount)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+
+              {/* Totals */}
+              <div className="rounded-lg border border-gray-100 bg-gray-50 px-4 py-3 text-xs">
+                <div className="flex justify-between text-gray-500 mb-1">
+                  <span>Sub Total</span><span>{fmtRs(lead.return_quote_subtotal ?? 0)}</span>
+                </div>
+                {(lead.return_discount_amt ?? 0) > 0 && (
+                  <div className="flex justify-between text-red-600 font-bold mb-1">
+                    <span>{lead.return_discount_pct ? `Discount (${lead.return_discount_pct}%)` : 'Discount'}</span>
+                    <span>− {fmtRs(lead.return_discount_amt!)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-gray-500 mb-1">
+                  <span>CGST 2.5%</span><span>{fmtRs((lead.return_quote_tax ?? 0) / 2)}</span>
+                </div>
+                <div className="flex justify-between text-gray-500 mb-2">
+                  <span>SGST 2.5%</span><span>{fmtRs((lead.return_quote_tax ?? 0) / 2)}</span>
+                </div>
+                <div className="flex justify-between border-t border-gray-200 pt-2">
+                  <span className="font-bold text-gray-800 text-sm">Total</span>
+                  <span className="font-bold text-purple-700 text-base">{fmtRs(lead.return_quote_total ?? 0)}</span>
+                </div>
+              </div>
+
+              {lead.return_quote_notes && (
+                <p className="mt-3 text-xs text-gray-500 italic">{lead.return_quote_notes}</p>
+              )}
+
+              {/* Combined total */}
+              {(lead.quote_total ?? 0) > 0 && (lead.return_quote_total ?? 0) > 0 && (
+                <div className="mt-4 rounded-lg border-2 border-purple-200 bg-purple-50 px-4 py-3 flex items-center justify-between">
+                  <div>
+                    <p className="text-xs font-bold text-purple-700 uppercase tracking-wide">Combined Journey Total</p>
+                    <p className="text-xs text-purple-500 mt-0.5">
+                      Outward {fmtRs(lead.quote_total!)} + Return {fmtRs(lead.return_quote_total!)}
+                    </p>
+                  </div>
+                  <p className="text-xl font-black text-purple-700">
+                    {fmtRs((lead.quote_total ?? 0) + (lead.return_quote_total ?? 0))}
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         )}
       </div>
