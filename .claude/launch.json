@@ -1,0 +1,19 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "bagdrop-web-clean",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "bagdrop-web-clean"],
+      "port": 3000,
+      "autoPort": true
+    },
+    {
+      "name": "bagdrop-new",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--prefix", "C:\\Users\\Admin\\Claude\\Projects\\Bagdrop\\bagdrop-new"],
+      "port": 3010,
+      "autoPort": true
+    }
+  ]
+}
