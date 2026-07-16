@@ -297,8 +297,70 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // ── Update linked booking ─────────────────────────────────────────
-  if (lead.booking_id) {
+  // ── Ensure linked booking exists (create if missing) ─────────────
+  let bookingId: string | null = lead.booking_id ?? null
+
+  if (!bookingId) {
+    // Booking was not created at lead-creation time — create it now
+    const year = new Date().getFullYear()
+    const { data: lastBooking } = await supabaseAdmin
+      .from('bookings')
+      .select('tracking_id')
+      .like('tracking_id', 'BDA-%')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    let bookingSeq = 1
+    if (lastBooking?.tracking_id) {
+      const parts = lastBooking.tracking_id.split('-')
+      const last  = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(last)) bookingSeq = last + 1
+    }
+    const trackingId = `BDA-${String(bookingSeq).padStart(4, '0')}`
+
+    const { data: newBooking, error: createErr } = await supabaseAdmin
+      .from('bookings')
+      .insert({
+        tracking_id:    trackingId,
+        customer_name:  lead.name,
+        customer_phone: lead.phone,
+        customer_email: lead.email ?? null,
+        service_type:   lead.service_type ?? lead.service_interest ?? null,
+        from_city:      fromCity || lead.from_city || null,
+        to_city:        toCity   || lead.to_city   || null,
+        pickup_date:    pickupDtOverride ? pickupDtOverride.slice(0, 10) : (lead.pickup_date ?? null),
+        delivery_date:  deliveryDateOverride ?? lead.delivery_date ?? null,
+        time_slot:      pickupDtOverride ? pickupDtOverride.slice(11, 16) : (lead.pickup_time ?? null),
+        pickup_address: pickupAddrOverride ?? lead.pickup_address ?? null,
+        total_bags:     bags,
+        total_amount:   total,
+        status:         'quote_created',
+        lead_id:        lead.id,
+        status_history: [{
+          from:       null,
+          to:         'quote_created',
+          timestamp:  new Date().toISOString(),
+          changed_by: 'system',
+          note:       `Auto-created during quote generation for lead ${lead.lead_number}`,
+        }],
+      })
+      .select('id, tracking_id')
+      .single()
+
+    if (createErr) {
+      console.warn('[generate-quote] auto-create booking failed (non-fatal):', createErr.message)
+    } else if (newBooking) {
+      bookingId = newBooking.id
+      // Link booking back to lead
+      await supabaseAdmin
+        .from('leads')
+        .update({ booking_id: bookingId })
+        .eq('id', lead.id)
+      console.log(`[generate-quote] Auto-created booking ${trackingId} for lead ${lead.lead_number}`)
+    }
+  } else {
+    // Booking exists — update it
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,
       status:       'quote_created',
@@ -316,7 +378,7 @@ export async function POST(req: NextRequest) {
     const { error: bookingErr } = await supabaseAdmin
       .from('bookings')
       .update(bookingUpdates)
-      .eq('id', lead.booking_id)
+      .eq('id', bookingId)
 
     if (bookingErr) {
       console.warn('[generate-quote] booking update non-fatal:', bookingErr.message)
@@ -364,12 +426,12 @@ export async function POST(req: NextRequest) {
   // ── If email was successfully sent, advance booking to quote_sent ───
   // This ensures the workflow panel shows Step 4 (accept/reject) immediately,
   // instead of requiring a redundant second click of "Send Quote" in the workflow.
-  if (sentToCustomer && lead.booking_id) {
+  if (sentToCustomer && bookingId) {
     await supabaseAdmin
       .from('bookings')
       .update({ status: 'quote_sent' })
-      .eq('id', lead.booking_id)
-    console.log(`[generate-quote] Booking ${lead.booking_id} advanced to quote_sent (email sent)`)
+      .eq('id', bookingId)
+    console.log(`[generate-quote] Booking ${bookingId} advanced to quote_sent (email sent)`)
   }
 
   return NextResponse.json({
