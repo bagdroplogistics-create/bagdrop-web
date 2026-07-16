@@ -58,15 +58,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ booking: existingByLead, created: false })
   }
 
-  // ── 3. Generate BDA- tracking ID ────────────────────────────────────────────
-  const year = new Date().getFullYear()
-  const { count } = await supabaseAdmin
-    .from('bookings')
-    .select('*', { count: 'exact', head: true })
-    .like('tracking_id', `BDA-%`)
-
-  const seq = String((count ?? 0) + 1).padStart(4, '0')
-  const trackingId = `BDA-${year}-${seq}`
+  // ── 3. Derive BDA- tracking ID from lead number (guaranteed unique) ──────────
+  // BDL-2026-0001 → BDA-2026-0001 — enables cross-referencing across modules
+  const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
 
   // ── 4. Service label map ─────────────────────────────────────────────────────
   const serviceLabelMap: Record<string, string> = {

@@ -10,13 +10,12 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = req.nextUrl
   const status        = searchParams.get('status')
-  const excludeStatus = searchParams.get('exclude_status') // booking status to exclude linked leads for
+  const excludeStatus = searchParams.get('exclude_status')
   const search        = searchParams.get('search')
   const page          = parseInt(searchParams.get('page') ?? '1', 10)
   const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset        = (page - 1) * limit
 
-  // If excluding cancelled: first find all cancelled booking IDs to filter out linked leads
   let excludedBookingIds: string[] | null = null
   if (excludeStatus) {
     const { data: cancelledBookings } = await supabaseAdmin
@@ -36,7 +35,6 @@ export async function GET(req: NextRequest) {
     query = query.eq('status', status)
   }
 
-  // Exclude leads whose linked booking is cancelled
   if (excludedBookingIds && excludedBookingIds.length > 0) {
     query = query.not('booking_id', 'in', `(${excludedBookingIds.join(',')})`)
   }
@@ -53,12 +51,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({
-    leads: data,
-    total: count,
-    page,
-    limit,
-  })
+  return NextResponse.json({ leads: data, total: count, page, limit })
 }
 
 export async function POST(req: NextRequest) {
@@ -93,7 +86,7 @@ export async function POST(req: NextRequest) {
     ? '+91' + rawPhone.replace(/^91/, '')
     : body.phone.trim()
 
-  // Generate Lead Number — use max existing to avoid collision when records are deleted
+  // Generate Lead Number
   const year = new Date().getFullYear()
 
   const { data: lastLead } = await supabaseAdmin
@@ -122,8 +115,7 @@ export async function POST(req: NextRequest) {
     'airport-to-airport':   'Airport → Airport',
   }
 
-  // ── Duplicate phone guard ─────────────────────────────────────────────────────
-  // Prevent creating a duplicate lead for a phone number that already has one.
+  // Duplicate phone guard: prevent creating a duplicate lead for the same phone
   // (allow override via body.force_duplicate = true)
   if (!body.force_duplicate) {
     const { data: dupeLead } = await supabaseAdmin
@@ -151,15 +143,13 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  // ── Check for existing website booking for this phone ────────────────────────
-  // If a website booking (BD- prefix) already exists for this phone, reuse it
-  // instead of creating a duplicate BDA- booking in the dashboard.
+  // Check for existing website booking for this phone
   const { data: existingWebBooking } = await supabaseAdmin
     .from('bookings')
     .select('id, tracking_id, status, status_history')
     .eq('customer_phone', normPhone)
     .like('tracking_id', 'BD-%')
-    .is('lead_id', null)                          // not yet linked to a lead
+    .is('lead_id', null)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -167,8 +157,7 @@ export async function POST(req: NextRequest) {
   let booking: { id: string; tracking_id: string } | null = null
 
   if (existingWebBooking) {
-    // ── Reuse existing website booking ─────────────────────────────────────────
-    // Update it with any new details from the admin form and advance status to inquiry
+    // Reuse existing website booking
     const history = existingWebBooking.status_history ?? []
     history.push({
       from:       existingWebBooking.status,
@@ -206,25 +195,11 @@ export async function POST(req: NextRequest) {
       console.error('[leads POST] existing booking update failed (non-fatal):', updateErr.message)
     }
     booking = updated ?? { id: existingWebBooking.id, tracking_id: existingWebBooking.tracking_id }
-    console.log(`[leads POST] Reused existing website booking ${existingWebBooking.tracking_id} for lead ${leadNumber}`)
 
   } else {
-    // ── No existing booking — create a new BDA- booking ────────────────────────
-    const { data: lastBooking } = await supabaseAdmin
-      .from('bookings')
-      .select('tracking_id')
-      .like('tracking_id', 'BDA-%')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    let bookingSeq = 1
-    if (lastBooking?.tracking_id) {
-      const parts = lastBooking.tracking_id.split('-')
-      const last = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(last)) bookingSeq = last + 1
-    }
-    const trackingId = `BDA-${String(bookingSeq).padStart(4, '0')}`
+    // No existing booking -- create a new BDA- booking derived from lead number
+    // BDL-2026-0001 -> BDA-2026-0001 (guaranteed unique, no race conditions)
+    const trackingId = leadNumber.replace(/^BDL-/, 'BDA-')
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')
@@ -263,26 +238,26 @@ export async function POST(req: NextRequest) {
     booking = newBooking ?? null
   }
 
-  // ── Create Lead and link it to the booking ──
+  // Create Lead and link it to the booking
   const { data: lead, error: leadErr } = await supabaseAdmin
     .from('leads')
     .insert({
       lead_number: leadNumber,
 
-      name: body.name.trim(),
+      name:  body.name.trim(),
       phone: normPhone,
       email: body.email?.trim()?.toLowerCase() || null,
 
       source: body.source ?? 'admin',
 
       service_interest: serviceVal,
-      service_type: serviceVal,
+      service_type:     serviceVal,
 
       from_city: body.from_city?.trim() || null,
-      to_city: body.to_city?.trim() || null,
+      to_city:   body.to_city?.trim() || null,
 
-      travel_date: nullDate(body.travel_date),
-      pickup_date: nullDate(body.pickup_date),
+      travel_date:   nullDate(body.travel_date),
+      pickup_date:   nullDate(body.pickup_date),
       delivery_date: nullDate(body.delivery_date),
 
       pickup_time: body.pickup_time?.trim() || null,
@@ -323,7 +298,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 
-  // Back-link booking → lead
+  // Back-link booking -> lead
   if (booking?.id) {
     await supabaseAdmin
       .from('bookings')
@@ -331,4 +306,32 @@ export async function POST(req: NextRequest) {
       .eq('id', booking.id)
   }
 
-  // ── Send inquiry notification email (fire-and-forget, non-blocking) ─�
+  // Send inquiry notification email (fire-and-forget, non-blocking)
+  Promise.allSettled([
+    sendInquiryNotification({
+      inquiryNumber:   leadNumber,
+      source:          body.source ?? 'admin',
+      customerName:    lead.name,
+      customerPhone:   lead.phone,
+      customerEmail:   lead.email,
+      serviceType:     lead.service_interest,
+      fromCity:        lead.from_city,
+      toCity:          lead.to_city,
+      pickupAddress:   lead.pickup_address,
+      deliveryAddress: lead.drop_address,
+      bagsCount:       lead.bags_count,
+      travelDate:      lead.travel_date,
+      pickupDate:      lead.pickup_date,
+      deliveryDate:    lead.delivery_date,
+      flightNumber:    lead.flight_number,
+      pnr:             lead.pnr,
+      notes:           lead.notes,
+      submittedAt:     lead.created_at ?? new Date().toISOString(),
+    }),
+  ]).catch(err => console.error('[leads POST] email notification error:', err))
+
+  return NextResponse.json(
+    { lead, lead_number: leadNumber, tracking_id: booking?.tracking_id ?? null },
+    { status: 201 }
+  )
+}

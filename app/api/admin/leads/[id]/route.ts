@@ -199,4 +199,5 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  return NextResponse.json({ success
+  return NextResponse.json({ success: true })
+}
