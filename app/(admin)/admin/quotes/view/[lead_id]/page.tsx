@@ -252,15 +252,32 @@ export default function QuoteViewPage() {
     const l: Lead = ld.lead
     setLead(l)
 
-    // 2. Fetch linked booking + invoice in parallel
-    if (l.booking_id) {
-      Promise.all([
-        fetch(`/api/admin/bookings/${l.booking_id}?key=${encodeURIComponent(adminKey)}`).then(r => r.json()),
-        fetch(`/api/admin/invoices?booking_id=${l.booking_id}&key=${encodeURIComponent(adminKey)}`).then(r => r.json()),
-      ]).then(([bd, id]) => {
-        if (bd.booking)    setBooking(bd.booking as Booking)
-        if (id.invoices?.[0]) setInvoice(id.invoices[0] as Invoice)
-      }).catch(() => {})
+    // 2. Fetch linked booking + invoice
+    // Primary: use booking_id stored on lead
+    // Fallback: search bookings by lead_id (handles case where booking_id column is null
+    //           but booking exists with lead_id set, or booking was created after quote gen)
+    const bookingFetchUrl = l.booking_id
+      ? `/api/admin/bookings/${l.booking_id}?key=${encodeURIComponent(adminKey)}`
+      : `/api/admin/bookings?lead_id=${l.id}&key=${encodeURIComponent(adminKey)}`
+
+    const bd = await fetch(bookingFetchUrl).then(r => r.json()).catch(() => ({}))
+    const foundBooking: Booking | null = bd.booking ?? null
+
+    if (foundBooking) {
+      setBooking(foundBooking)
+      // Back-fill booking_id on lead in DB if it was missing (fire-and-forget)
+      if (!l.booking_id) {
+        fetch(`/api/admin/leads/${l.id}`, {
+          method:  'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ booking_id: foundBooking.id, key: adminKey }),
+        }).catch(() => {})
+      }
+      // Fetch invoice for found booking
+      fetch(`/api/admin/invoices?booking_id=${foundBooking.id}&key=${encodeURIComponent(adminKey)}`)
+        .then(r => r.json())
+        .then(id => { if (id.invoices?.[0]) setInvoice(id.invoices[0] as Invoice) })
+        .catch(() => {})
     }
 
     setLoading(false)
@@ -1418,24 +1435,4 @@ export default function QuoteViewPage() {
                     <p className="text-xs text-gray-400 mt-0.5">Generate and email an invoice to the customer</p>
                   </div>
                   <button
-                    onClick={() => booking?.id && generateAndSendInvoice(booking.id, !!booking.customer_email)}
-                    disabled={genInvoice}
-                    className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors"
-                  >
-                    <FileText className="h-4 w-4" /> Generate Invoice
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {!booking && !loading && (
-          <div className="no-print mx-auto mt-6 max-w-3xl rounded-xl border border-gray-200 bg-white px-6 py-5 text-center shadow-sm">
-            <p className="text-sm text-gray-500">No booking linked to this lead yet.</p>
-          </div>
-        )}
-      </div>
-    </>
-  )
-}
+                    onClick={() => booking?.id && genera

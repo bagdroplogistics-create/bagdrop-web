@@ -31,7 +31,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'name', 'phone', 'email', 'source', 'service_interest', 'service_type',
     'from_city', 'to_city', 'travel_date', 'pickup_date', 'delivery_date',
     'pickup_time', 'pickup_address', 'drop_address', 'bags_count', 'status', 'notes', 'assigned_to',
-    'converted_booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
+    'converted_booking_id', 'booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
     // Zoho Books integration
     'zoho_estimate_id', 'zoho_estimate_number',
   ]
@@ -199,5 +199,4 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     }
   }
 
-  return NextResponse.json({ success: true })
-}
+  return NextResponse.json({ success

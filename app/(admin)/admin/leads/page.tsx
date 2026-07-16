@@ -214,6 +214,7 @@ function LeadModal({
   const [savedLeadId, setSavedLeadId] = useState<string | null>(null)
   const [pnrMode, setPnrMode]   = useState<'text' | 'file'>('text')
   const [fileName, setFileName] = useState('')
+  const [dupWarning, setDupWarning] = useState<{ lead_number: string; name: string; id: string } | null>(null)
 
   // ── Route price auto-calculation ─────────────────────────────────
   const [routePrice, setRoutePrice] = useState<{
@@ -253,10 +254,10 @@ function LeadModal({
     return null
   }
 
-  async function save() {
+  async function save(forceDuplicate = false) {
     const validationErr = validate()
     if (validationErr) { setErr(validationErr); return }
-    setSaving(true); setErr('')
+    setSaving(true); setErr(''); setDupWarning(null)
 
     const url    = lead ? `/api/admin/leads/${lead.id}` : '/api/admin/leads'
     const method = lead ? 'PATCH' : 'POST'
@@ -276,10 +277,18 @@ function LeadModal({
         flight_number:     requiresFlight ? (form.flight_number.trim() || null) : null,
         flight_time:       requiresFlight ? (form.flight_time || null) : null,
         flight_ticket_url: requiresFlight ? (form.flight_ticket_url.trim() || null) : null,
+        // Duplicate override
+        ...(forceDuplicate ? { force_duplicate: true } : {}),
       }),
     })
     const j = await res.json().catch(() => ({}))
     if (!res.ok) {
+      // Duplicate phone detected — show inline warning instead of error
+      if (res.status === 409 && j.code === 'DUPLICATE_PHONE' && j.duplicate_lead) {
+        setDupWarning(j.duplicate_lead)
+        setSaving(false)
+        return
+      }
       setErr(j.error ?? 'Save failed')
       setSaving(false)
       return
@@ -560,12 +569,44 @@ function LeadModal({
         {err && (
           <div className="mx-6 mb-4 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-600">{err}</div>
         )}
+
+        {/* Duplicate phone warning */}
+        {dupWarning && (
+          <div className="mx-6 mb-4 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3">
+            <p className="text-sm font-semibold text-amber-800">⚠️ Duplicate Phone Number Detected</p>
+            <p className="mt-0.5 text-xs text-amber-700">
+              A lead already exists for this phone number: <span className="font-semibold">{dupWarning.lead_number}</span> ({dupWarning.name}).
+            </p>
+            <div className="mt-2.5 flex items-center gap-2">
+              <button
+                onClick={() => save(true)}
+                disabled={saving}
+                className="rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"
+              >
+                Create Anyway
+              </button>
+              <button
+                onClick={() => { setDupWarning(null); router.push(`/admin/quotes/view/${dupWarning.id}`) }}
+                className="rounded-md border border-amber-400 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 transition-colors"
+              >
+                View Existing Lead
+              </button>
+              <button
+                onClick={() => setDupWarning(null)}
+                className="text-xs text-amber-600 underline hover:text-amber-800"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="flex items-center justify-end gap-3 border-t border-gray-100 px-6 py-4">
           <button onClick={onClose}
             className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
             Cancel
           </button>
-          <button onClick={save} disabled={saving}
+          <button onClick={() => save()} disabled={saving}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50 transition-colors">
             {saving
               ? <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" />

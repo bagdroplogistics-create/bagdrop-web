@@ -122,6 +122,35 @@ export async function POST(req: NextRequest) {
     'airport-to-airport':   'Airport → Airport',
   }
 
+  // ── Duplicate phone guard ─────────────────────────────────────────────────────
+  // Prevent creating a duplicate lead for a phone number that already has one.
+  // (allow override via body.force_duplicate = true)
+  if (!body.force_duplicate) {
+    const { data: dupeLead } = await supabaseAdmin
+      .from('leads')
+      .select('id, lead_number, name, status')
+      .eq('phone', normPhone)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (dupeLead) {
+      return NextResponse.json(
+        {
+          error: `A lead already exists for this phone number.`,
+          duplicate_lead: {
+            id:          dupeLead.id,
+            lead_number: dupeLead.lead_number,
+            name:        dupeLead.name,
+            status:      dupeLead.status,
+          },
+          code: 'DUPLICATE_PHONE',
+        },
+        { status: 409 }
+      )
+    }
+  }
+
   // ── Check for existing website booking for this phone ────────────────────────
   // If a website booking (BD- prefix) already exists for this phone, reuse it
   // instead of creating a duplicate BDA- booking in the dashboard.
@@ -302,32 +331,4 @@ export async function POST(req: NextRequest) {
       .eq('id', booking.id)
   }
 
-  // ── Send inquiry notification email (fire-and-forget, non-blocking) ──
-  Promise.allSettled([
-    sendInquiryNotification({
-      inquiryNumber:   leadNumber,
-      source:          body.source ?? 'admin',
-      customerName:    lead.name,
-      customerPhone:   lead.phone,
-      customerEmail:   lead.email,
-      serviceType:     lead.service_interest,
-      fromCity:        lead.from_city,
-      toCity:          lead.to_city,
-      pickupAddress:   lead.pickup_address,
-      deliveryAddress: lead.drop_address,
-      bagsCount:       lead.bags_count,
-      travelDate:      lead.travel_date,
-      pickupDate:      lead.pickup_date,
-      deliveryDate:    lead.delivery_date,
-      flightNumber:    lead.flight_number,
-      pnr:             lead.pnr,
-      notes:           lead.notes,
-      submittedAt:     lead.created_at ?? new Date().toISOString(),
-    }),
-  ]).catch(err => console.error('[leads POST] email notification error:', err))
-
-  return NextResponse.json(
-    { lead, lead_number: leadNumber, tracking_id: booking?.tracking_id ?? null },
-    { status: 201 }
-  )
-}
+  // ── Send inquiry notification email (fire-and-forget, non-blocking) ─�
