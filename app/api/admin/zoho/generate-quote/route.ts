@@ -301,23 +301,10 @@ export async function POST(req: NextRequest) {
   let bookingId: string | null = lead.booking_id ?? null
 
   if (!bookingId) {
-    // Booking was not created at lead-creation time — create it now
-    const year = new Date().getFullYear()
-    const { data: lastBooking } = await supabaseAdmin
-      .from('bookings')
-      .select('tracking_id')
-      .like('tracking_id', 'BDA-%')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    let bookingSeq = 1
-    if (lastBooking?.tracking_id) {
-      const parts = lastBooking.tracking_id.split('-')
-      const last  = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(last)) bookingSeq = last + 1
-    }
-    const trackingId = `BDA-${String(bookingSeq).padStart(4, '0')}`
+    // Booking was not created at lead-creation time — create it now.
+    // Derive tracking ID from lead number (BDL-2026-0001 → BDA-2026-0001)
+    // to guarantee uniqueness and enable cross-referencing across modules.
+    const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
 
     const { data: newBooking, error: createErr } = await supabaseAdmin
       .from('bookings')
@@ -387,4 +374,12 @@ export async function POST(req: NextRequest) {
 
   console.log(`[generate-quote] Internal quote ${quoteNumber} created for lead ${lead.lead_number} | Total: ₹${total}`)
 
-  // ── Send quote email to customer if requested ─�
+  // ── Send quote email to customer if requested ─────────────────────────
+  let sentToCustomer = false
+  const sendEmailFlag = body.send_email === true
+  const customerEmail = (lead.email as string | null) ?? null
+
+  if (sendEmailFlag && customerEmail) {
+    try {
+      const emailResult = await sendQuoteEmail({
+        customerName:  lead.name,

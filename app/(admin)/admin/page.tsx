@@ -35,6 +35,7 @@ interface Booking {
   rejection_reason?: string | null
   rejection_comment?: string | null
   source?: string | null
+  lead_id?: string | null
   status_history?: Array<{
     from: string | null
     to: string
@@ -1370,9 +1371,23 @@ export default function AdminDashboard() {
                           <div className="flex flex-col gap-0.5">
                             <span className="font-mono text-xs font-bold text-orange-600">{b.tracking_id}</span>
                             {b.tracking_id?.startsWith('BDA-') && (
-                              <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
-                                <Users className="h-2.5 w-2.5" /> Lead
-                              </span>
+                              <>
+                                {/* Derive lead number from booking tracking ID: BDA-2026-0001 → BDL-2026-0001 */}
+                                <span className="font-mono text-[10px] text-blue-600 font-semibold">
+                                  {b.tracking_id.replace(/^BDA-/, 'BDL-')}
+                                </span>
+                                {b.lead_id ? (
+                                  <Link href={`/admin/quotes/view/${b.lead_id}`}
+                                    className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors"
+                                    onClick={e => e.stopPropagation()}>
+                                    <FileText className="h-2.5 w-2.5" /> View Quote
+                                  </Link>
+                                ) : (
+                                  <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                                    <Users className="h-2.5 w-2.5" /> Lead
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
@@ -1518,28 +1533,3 @@ export default function AdminDashboard() {
         <div className="mt-6 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
           <p className="mb-3 text-xs font-bold uppercase tracking-widest text-gray-400">Booking Workflow</p>
           <div className="flex flex-wrap items-center gap-1.5 text-xs">
-            {Object.entries(STATUS_CONFIG).map(([key, cfg], i, arr) => (
-              <Fragment key={key}>
-                <span style={{ color: cfg.color, background: cfg.bg }}
-                  className="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold">
-                  {cfg.icon}{cfg.label}
-                  {cfg.locked && <Lock className="h-2.5 w-2.5" />}
-                </span>
-                {i < arr.length - 1 && <span className="text-gray-300">&rarr;</span>}
-              </Fragment>
-            ))}
-          </div>
-          <p className="mt-2 flex items-center gap-1 text-xs text-gray-400">
-            <Lock className="h-3 w-3 text-green-700" />
-            <span className="font-semibold text-green-700">Completed</span>
-            &nbsp;status is locked &mdash; no further changes allowed.
-          </p>
-        </div>
-
-        <p className="mt-3 text-center text-xs text-gray-400">
-          Click any row to expand full booking details
-        </p>
-      </main>
-    </>
-  )
-}
