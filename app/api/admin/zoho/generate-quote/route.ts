@@ -302,7 +302,7 @@ export async function POST(req: NextRequest) {
 
   if (!bookingId) {
     // Booking was not created at lead-creation time — create it now.
-    // Derive tracking ID from lead number (BDL-2026-0001 → BDA-2026-0001)
+    // Derive tracking ID from lead number (BDL-2026-0001 -> BDA-2026-0001)
     // to guarantee uniqueness and enable cross-referencing across modules.
     const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
 
@@ -383,3 +383,56 @@ export async function POST(req: NextRequest) {
     try {
       const emailResult = await sendQuoteEmail({
         customerName:  lead.name,
+        customerEmail,
+        quoteNumber,
+        fromCity,
+        toCity,
+        bagsCount:     bags,
+        pickupDate:    pickupDtOverride ?? lead.pickup_date ?? null,
+        deliveryDate:  deliveryDateOverride ?? lead.delivery_date ?? null,
+        lineItems:     lineItems.map(i => ({ name: i.name, quantity: i.quantity, rate: i.rate, amount: i.amount })),
+        subtotal,
+        discountAmt:   discountAmt > 0 ? discountAmt : null,
+        discountPct:   (discountType !== 'fixed' && discountRate > 0) ? discountRate : null,
+        tax:           taxAmt,
+        total,
+        notes:         customer_notes ?? lead.notes ?? null,
+        salesperson:   salesperson_name ?? (lead.salesperson_name as string | null) ?? null,
+      })
+      sentToCustomer = emailResult.success
+      if (!emailResult.success) {
+        console.warn('[generate-quote] Email failed:', emailResult.error)
+      }
+    } catch (e) {
+      console.warn('[generate-quote] Email exception:', e)
+    }
+  } else if (sendEmailFlag && !customerEmail) {
+    console.warn('[generate-quote] send_email=true but lead has no email address')
+  }
+
+  // ── If email was successfully sent, advance booking to quote_sent ───
+  // This ensures the workflow panel shows Step 4 (accept/reject) immediately,
+  // instead of requiring a redundant second click of "Send Quote" in the workflow.
+  if (sentToCustomer && bookingId) {
+    await supabaseAdmin
+      .from('bookings')
+      .update({ status: 'quote_sent' })
+      .eq('id', bookingId)
+    console.log(`[generate-quote] Booking ${bookingId} advanced to quote_sent (email sent)`)
+  }
+
+  return NextResponse.json({
+    success:          true,
+    quote_number:     quoteNumber,
+    estimate_number:  quoteNumber,   // frontend compatibility
+    estimate_id:      null,
+    total,
+    subtotal,
+    discount_pct:     discountRate,
+    discount_amt:     discountAmt,
+    tax:              taxAmt,
+    line_items:       lineItems,
+    sent_to_customer: sentToCustomer,
+    zoho_url:         null,
+  })
+}
