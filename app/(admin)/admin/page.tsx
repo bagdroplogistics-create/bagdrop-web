@@ -35,6 +35,7 @@ interface Booking {
   rejection_reason?: string | null
   rejection_comment?: string | null
   source?: string | null
+  lead_id?: string | null
   status_history?: Array<{
     from: string | null
     to: string
@@ -1370,9 +1371,23 @@ export default function AdminDashboard() {
                           <div className="flex flex-col gap-0.5">
                             <span className="font-mono text-xs font-bold text-orange-600">{b.tracking_id}</span>
                             {b.tracking_id?.startsWith('BDA-') && (
-                              <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
-                                <Users className="h-2.5 w-2.5" /> Lead
-                              </span>
+                              <>
+                                {/* Derive lead number from booking tracking ID: BDA-2026-0001 → BDL-2026-0001 */}
+                                <span className="font-mono text-[10px] text-blue-600 font-semibold">
+                                  {b.tracking_id.replace(/^BDA-/, 'BDL-')}
+                                </span>
+                                {b.lead_id ? (
+                                  <Link href={`/admin/quotes/view/${b.lead_id}`}
+                                    className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors"
+                                    onClick={e => e.stopPropagation()}>
+                                    <FileText className="h-2.5 w-2.5" /> View Quote
+                                  </Link>
+                                ) : (
+                                  <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
+                                    <Users className="h-2.5 w-2.5" /> Lead
+                                  </span>
+                                )}
+                              </>
                             )}
                           </div>
                         </td>
