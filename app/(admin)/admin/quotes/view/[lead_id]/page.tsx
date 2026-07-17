@@ -59,6 +59,8 @@ interface Lead {
   zoho_estimate_number: string | null
   booking_id: string | null
   created_at: string
+  // Payment tracking
+  payment_status: string | null
   // Return journey quote fields
   return_quote_number:     string | null
   return_quote_line_items: LineItem[] | null
