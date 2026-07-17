@@ -44,7 +44,8 @@ const SELECT_COLUMNS =
   'pickup_date, delivery_date, time_slot, flight_number, notes, total_bags, bag_details, total_amount, ' +
   'currency, payment_status, payment_reference, status_history, created_at, updated_at'
 
-export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
+export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params
   const authHeader = req.headers.get('authorization') ?? ''
   const token = authHeader.replace(/^Bearer\s+/i, '').trim()
 
@@ -66,7 +67,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data: existing, error: fetchErr } = await supabaseAdmin
     .from('bookings')
     .select('id, status, customer_phone, customer_email')
-    .eq('id', params.id)
+    .eq('id', id)
     .maybeSingle()
 
   if (fetchErr || !existing) {
@@ -134,7 +135,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   const { data: updated, error: updateErr } = await supabaseAdmin
     .from('bookings')
     .update(updates)
-    .eq('id', params.id)
+    .eq('id', id)
     .select(SELECT_COLUMNS)
     .single()
 
