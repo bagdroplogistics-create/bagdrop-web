@@ -2,7 +2,7 @@
 
 export async function sendQuoteWhatsApp(p: {
   phone: string; customerName: string; quoteNumber: string
-  fromCity: string; toCity: string; totalAmount: number
+  fromCity: string; toCity: string; bagsCount: number; totalAmount: number
 }): Promise<boolean> {
   const token   = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID
@@ -13,8 +13,10 @@ export async function sendQuoteWhatsApp(p: {
   const fmt    = (n: number) => '₹' + n.toLocaleString('en-IN')
 
   const text = `Hi ${p.customerName}! 🧳\n\nYour Bagdrop service quote is ready.\n\n` +
+    `👤 Customer Name: *${p.customerName}*\n` +
     `📋 Quote: *${p.quoteNumber}*\n` +
     `🗺️ Route: ${p.fromCity} → ${p.toCity}\n` +
+    `🧳 No. of Bags: ${p.bagsCount}\n` +
     `💰 Total: *${fmt(p.totalAmount)}*\n\n` +
     `To confirm your booking, reply to this message or call us at +91 63571 15711.\n\n` +
     `_Bagdrop — Baggage Delivered. Journey Simplified._`

@@ -313,6 +313,7 @@ async function sendQuoteEmail(p: {
   </div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px">
     <tr style="background:#f9fafb"><td colspan="2" style="padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px">Service Details</td></tr>
+    <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6;width:40%">Customer</td><td style="padding:10px 16px;font-size:14px;color:#111827;font-weight:800;border-top:1px solid #f3f4f6">${p.customerName}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6;width:40%">Service</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${p.serviceType}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6">Route</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${p.fromCity} → ${p.toCity}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6">Pickup Date</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${pickupLine}</td></tr>

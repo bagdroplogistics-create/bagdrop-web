@@ -336,9 +336,10 @@ function QuotePageInner() {
     itemsFromPricing.current = false
   }
 
-  const [discountType,  setDiscountType]  = useState<'pct' | 'fixed'>('pct')
-  const [discountPct,   setDiscountPct]   = useState(0)
-  const [discountFixed, setDiscountFixed] = useState(0)
+  const [discountType,   setDiscountType]   = useState<'pct' | 'fixed'>('pct')
+  const [discountPct,    setDiscountPct]    = useState(0)
+  const [discountFixed,  setDiscountFixed]  = useState(0)
+  const [paymentStatus,  setPaymentStatus]  = useState<'pending' | 'received'>('pending')
 
   const subtotal    = lineItems.reduce((s, r) => s + r.qty * r.rate, 0)
   const discountAmt = discountType === 'fixed'
@@ -460,6 +461,7 @@ function QuotePageInner() {
       payload.discount_fixed_amt = discountFixed
       payload.discount_type      = 'fixed'
     }
+    payload.payment_status = paymentStatus
 
     const res = await fetch('/api/admin/zoho/generate-quote', {
       method: 'POST',
@@ -751,7 +753,10 @@ function QuotePageInner() {
               </div>
               <div>
                 <label className={lbl}>Payment Status</label>
-                <input type="text" value="Pending" readOnly className={inpRO} />
+                <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'pending' | 'received')} className={inp}>
+                  <option value="pending">Pending</option>
+                  <option value="received">Received</option>
+                </select>
               </div>
               <div>
                 <label className={lbl}>Undertaking Status</label>
@@ -1019,7 +1024,7 @@ function QuotePageInner() {
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">
               <p className="font-semibold text-gray-500">Auto-set by system:</p>
-              <p>✓ Payment Status: Pending</p>
+              <p>✓ Payment Status: <span className={paymentStatus === 'received' ? 'text-green-600 font-bold' : ''}>{paymentStatus === 'received' ? 'Received' : 'Pending'}</span></p>
               <p>✓ Undertaking: Pending</p>
               <p>✓ Scan &amp; Pay QR</p>
             </div>

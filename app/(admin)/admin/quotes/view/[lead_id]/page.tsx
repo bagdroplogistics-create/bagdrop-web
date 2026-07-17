@@ -671,6 +671,25 @@ export default function QuoteViewPage() {
               {STATUS_LABEL[booking.status] ?? booking.status}
             </span>
           )}
+          {/* Payment status badge — click to toggle */}
+          <button
+            onClick={async () => {
+              const next = lead.payment_status === 'received' ? 'pending' : 'received'
+              await fetch(`/api/admin/leads/${lead.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+                body: JSON.stringify({ payment_status: next }),
+              })
+              loadAll(key)
+            }}
+            className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
+              lead.payment_status === 'received'
+                ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+            }`}
+            title="Click to toggle payment status">
+            {lead.payment_status === 'received' ? '✓ Payment Received' : '⏳ Payment Pending'}
+          </button>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => window.print()}

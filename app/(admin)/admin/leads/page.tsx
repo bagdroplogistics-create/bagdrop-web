@@ -41,6 +41,7 @@ interface Lead {
   zoho_estimate_number: string | null
   quote_discount_pct:   number | null
   quote_discount_amt:   number | null
+  payment_status:       string | null
   updated_at?:          string | null
 }
 
@@ -935,6 +936,25 @@ export default function LeadsPage() {
                                   } discount
                                 </span>
                               )}
+                              {/* Payment status badge — clickable to toggle */}
+                              <button
+                                onClick={async () => {
+                                  const next = l.payment_status === 'received' ? 'pending' : 'received'
+                                  await fetch(`/api/admin/leads/${l.id}`, {
+                                    method: 'PATCH',
+                                    headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+                                    body: JSON.stringify({ payment_status: next }),
+                                  })
+                                  fetchLeads()
+                                }}
+                                className={`inline-flex items-center rounded-full border px-2 py-0.5 text-[10px] font-bold transition-colors ${
+                                  l.payment_status === 'received'
+                                    ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
+                                    : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                }`}
+                                title="Click to toggle payment status">
+                                {l.payment_status === 'received' ? '✓ Received' : '⏳ Pending'}
+                              </button>
                             </div>
                           ) : (
                             <Link href={`/admin/quotes/new?lead_id=${l.id}`}

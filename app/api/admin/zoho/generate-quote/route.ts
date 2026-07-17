@@ -166,6 +166,7 @@ export async function POST(req: NextRequest) {
     discount_pct:         discountPct,
     discount_type:        discountType,
     discount_fixed_amt:   discountFixedAmt,
+    payment_status:       paymentStatusIn,
   } = body as {
     lead_id:               string
     is_return_quote?:      boolean
@@ -188,6 +189,7 @@ export async function POST(req: NextRequest) {
     discount_pct?:         number
     discount_type?:        'pct' | 'fixed'
     discount_fixed_amt?:   number
+    payment_status?:       'pending' | 'received'
   }
 
   // ── Fetch lead ────────────────────────────────────────────────────
@@ -311,6 +313,7 @@ export async function POST(req: NextRequest) {
       quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
       quote_tax:            taxAmt,
       quote_date:           today,
+      payment_status:       paymentStatusIn ?? 'pending',
       zoho_estimate_id:     null,
       zoho_estimate_number: quoteNumber,
       ...(expiry_date       ? { quote_expiry_date: expiry_date      } : {}),

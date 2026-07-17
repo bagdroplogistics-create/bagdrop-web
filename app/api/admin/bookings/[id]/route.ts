@@ -394,6 +394,7 @@ async function sendQuoteEmail(p: {
   <div style="background:#fff7f0;border:2px solid #ffedd5;border-radius:12px;padding:20px;margin-bottom:24px">
     <p style="margin:0 0 12px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:#9a3412">Quote Summary</p>
     <table width="100%" cellpadding="0" cellspacing="0">
+      <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Customer</td><td align="right" style="font-size:14px;font-weight:800;color:#111827">${p.customerName}</td></tr>
       <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Quote No.</td><td align="right" style="font-size:13px;font-weight:700;color:#111827">${p.quoteNumber}</td></tr>
       <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Service</td><td align="right" style="font-size:13px;color:#111827">${p.serviceType}</td></tr>
       <tr><td style="font-size:13px;color:#6b7280;padding:3px 0">Route</td><td align="right" style="font-size:13px;color:#111827">${p.fromCity} → ${p.toCity}</td></tr>

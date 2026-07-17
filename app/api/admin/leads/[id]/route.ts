@@ -36,6 +36,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'zoho_estimate_id', 'zoho_estimate_number',
     // Soft-delete support: set to null to restore a deleted lead
     'deleted_at',
+    // Payment tracking
+    'payment_status',
   ]
 
   const updates: Record<string, unknown> = {}
