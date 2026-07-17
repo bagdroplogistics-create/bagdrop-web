@@ -1403,6 +1403,7 @@ export default function AdminDashboard() {
                             const tid = b.tracking_id ?? ''
                             const src = tid.startsWith('BDA-') ? { label: 'Lead', color: '#2563eb', bg: '#dbeafe' }
                                       : tid.startsWith('BDQ-') ? { label: 'Quote', color: '#7c3aed', bg: '#ede9fe' }
+                                      : tid.startsWith('BDM-') ? { label: 'Mobile App', color: '#ea580c', bg: '#ffedd5' }
                                       : { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
                             return (
                               <span style={{ color: src.color, background: src.bg }}

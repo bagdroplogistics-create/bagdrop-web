@@ -36,7 +36,13 @@ export async function POST(req: Request) {
     const dialCode      = countryCode === '+1CA' ? '+1' : countryCode
     const customerPhone = rawPhone ? dialCode + rawPhone : ''
 
-    const trackingId = 'BD-' + Math.random().toString(36).toUpperCase().slice(2, 8)
+    // Booking source: the mobile app explicitly sends { booking: { source: 'mobile-app', ... } }.
+    // Anything else (including the real website, which sends no source field at all)
+    // is treated as 'website'. Whitelisted so an unexpected value can't leak into
+    // the tracking ID prefix or lead/CRM source fields.
+    const bookingSource: 'mobile-app' | 'website' = booking?.source === 'mobile-app' ? 'mobile-app' : 'website'
+    const trackingIdPrefix = bookingSource === 'mobile-app' ? 'BDM-' : 'BD-'
+    const trackingId = trackingIdPrefix + Math.random().toString(36).toUpperCase().slice(2, 8)
 
     const { data: savedBooking, error: dbError } = await supabaseAdmin
       .from('bookings')
@@ -131,7 +137,7 @@ export async function POST(req: Request) {
             name:             customerName,
             phone:            customerPhone,
             email:            customerEmail || null,
-            source:           'website',
+            source:           bookingSource,
             status:           'new',
             service_type:     booking.serviceId ?? '',
             service_interest: booking.serviceId ?? '',
@@ -144,7 +150,7 @@ export async function POST(req: Request) {
             drop_address:     booking.dropAddress ?? null,
             bags_count:       pricing?.totalBags ?? booking.bags ?? 1,
             flight_number:    booking.flightNumber ?? null,
-            notes:            `Auto-created from website booking ${trackingId}`,
+            notes:            `Auto-created from ${bookingSource === 'mobile-app' ? 'mobile app' : 'website'} booking ${trackingId}`,
             booking_id:       savedBooking.id,
           }).select('id').single()
 
@@ -187,7 +193,7 @@ export async function POST(req: Request) {
       // Admin inquiry notification to both info@ and aditya@ with full details
       sendInquiryNotification({
         inquiryNumber:   trackingId,
-        source:          'website',
+        source:          bookingSource,
         customerName,
         customerPhone,
         customerEmail,

@@ -55,11 +55,12 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  manual:    'Manual',
-  website:   'Website',
-  referral:  'Referral',
-  b2b:       'B2B',
-  'walk-in': 'Walk-in',
+  manual:       'Manual',
+  website:      'Website',
+  'mobile-app': 'Mobile App',
+  referral:     'Referral',
+  b2b:          'B2B',
+  'walk-in':    'Walk-in',
 }
 
 const SERVICE_TYPES = [

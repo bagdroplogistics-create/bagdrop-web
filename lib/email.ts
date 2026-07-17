@@ -126,14 +126,15 @@ function formatDateTime(iso: string) {
 }
 
 const SOURCE_LABELS: Record<string, string> = {
-  website:    'Website Booking Form',
-  admin:      'Admin — Manual Entry',
-  whatsapp:   'WhatsApp',
-  instagram:  'Instagram',
-  facebook:   'Facebook',
-  phone:      'Phone Call',
-  'walk-in':  'Walk-in Customer',
-  b2b:        'B2B Partner',
+  website:      'Website Booking Form',
+  'mobile-app': 'Mobile App',
+  admin:        'Admin — Manual Entry',
+  whatsapp:     'WhatsApp',
+  instagram:    'Instagram',
+  facebook:     'Facebook',
+  phone:        'Phone Call',
+  'walk-in':    'Walk-in Customer',
+  b2b:          'B2B Partner',
   b2c:        'B2C Direct',
   referral:   'Referral',
   email:      'Email Inquiry',
