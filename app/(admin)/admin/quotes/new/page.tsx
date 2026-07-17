@@ -11,6 +11,16 @@ import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
 
 // ── Types ──────────────────────────────────────────────────────────────
+interface QuoteLineItem {
+  name:         string
+  description?: string | null
+  quantity:     number
+  rate:         number
+  tax_pct?:     number
+  hsn_or_sac?:  string
+  amount?:      number
+}
+
 interface Lead {
   id: string; lead_number: string | null; name: string; phone: string
   email: string | null; source: string; service_interest: string | null
@@ -24,6 +34,18 @@ interface Lead {
   zoho_estimate_number: string | null; zoho_estimate_id: string | null
   quote_number: string | null
   return_quote_number: string | null
+  // Saved quote/pricing data — must be reloaded in full when editing,
+  // regardless of whether the route exists in the Route Map.
+  quote_line_items:   QuoteLineItem[] | null
+  quote_discount_pct: number | null
+  quote_discount_amt: number | null
+  quote_subject:      string | null
+  quote_notes:        string | null
+  quote_terms:        string | null
+  quote_expiry_date:  string | null
+  salesperson_name:   string | null
+  agent_name:          string | null
+  payment_status:      'pending' | 'received' | null
 }
 
 interface RoutePrice {
@@ -272,9 +294,45 @@ function QuotePageInner() {
       setCustNotes2(d.notes ?? '')
       setPnr(d.pnr ?? '')
       setFlightNumber(d.flight_number ?? '')
+
+      // Editing an existing quote: reload EVERY previously saved value —
+      // pricing, discount, payment status, notes, etc. — regardless of
+      // whether the route exists in the Route Map. Without this, quotes
+      // built on a custom/manual route (not in Route Map) would open with
+      // an empty pricing table because the auto route-pricing lookup below
+      // finds nothing for that route and there'd be nothing to fall back on.
+      if (isEdit) {
+        if (d.quote_line_items && d.quote_line_items.length > 0) {
+          setLineItems(d.quote_line_items.map(li => ({
+            id:          uid(),
+            name:        li.name ?? '',
+            description: li.description ?? '',
+            qty:         li.quantity ?? 1,
+            rate:        li.rate ?? 0,
+            taxId:       TAX_GST5,
+          })))
+          // Mark items as already resolved so the route-pricing effect below
+          // does not overwrite this saved data (found or not found in Route Map).
+          itemsFromPricing.current = true
+        }
+        if (d.quote_discount_amt != null && d.quote_discount_amt > 0) {
+          setDiscountType('fixed'); setDiscountFixed(d.quote_discount_amt)
+        } else if (d.quote_discount_pct != null && d.quote_discount_pct > 0) {
+          setDiscountType('pct'); setDiscountPct(d.quote_discount_pct)
+        }
+        if (d.payment_status === 'pending' || d.payment_status === 'received') {
+          setPaymentStatus(d.payment_status)
+        }
+        setSubject(d.quote_subject ?? '')
+        setCustNotes(d.quote_notes ?? DEFAULT_NOTES)
+        setTerms(d.quote_terms ?? DEFAULT_TERMS)
+        setExpiryDate(d.quote_expiry_date ? toLocalDate(d.quote_expiry_date) : '')
+        if (d.salesperson_name) setSalesperson(d.salesperson_name)
+        setAgentName(d.agent_name ?? '')
+      }
     } else setErr('Lead not found')
     setLoading(false)
-  }, [adminKey, leadId])
+  }, [adminKey, leadId, isEdit])
 
   useEffect(() => { if (authed) fetchLead() }, [authed, fetchLead])
 
@@ -354,6 +412,30 @@ function QuotePageInner() {
     if (!custName.trim()) { setErr('Customer name is required.'); return }
     if (!custPhone.trim()) { setErr('Customer phone is required.'); return }
     setSaving(true); setErr('')
+
+    // Only touch saved quote/pricing fields if this lead actually has a quote
+    // (i.e. we loaded quote data on edit) — otherwise leave them untouched.
+    const validItems = lineItems.filter(r => r.name.trim() && r.rate > 0)
+    const hasQuote    = !!lead?.quote_number
+    const quotePayload = hasQuote ? {
+      quote_line_items: validItems.map(r => ({
+        name: r.name, description: r.description, quantity: r.qty, rate: r.rate,
+        tax_pct: 5, hsn_or_sac: SAC_CODE, amount: r.qty * r.rate,
+      })),
+      quote_subtotal:     subtotal,
+      quote_discount_pct: (discountType === 'pct'   && discountPct   > 0) ? discountPct   : null,
+      quote_discount_amt: (discountType === 'fixed' && discountFixed > 0) ? discountAmt   : null,
+      quote_tax:          taxAmt,
+      quote_total:        total,
+      quote_subject:      subject.trim()   || null,
+      quote_notes:        custNotes.trim() || null,
+      quote_terms:        terms.trim()     || null,
+      quote_expiry_date:  expiryDate || null,
+      salesperson_name:   salesperson || null,
+      agent_name:         agentName.trim() || null,
+      payment_status:     paymentStatus,
+    } : {}
+
     const res = await fetch(`/api/admin/leads/${leadId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
@@ -377,6 +459,7 @@ function QuotePageInner() {
         flight_time:      combineDateTime(flightDate, flightTime) || null,
         pnr:              pnr.trim() || null,
         notes:            custNotes2.trim() || null,
+        ...quotePayload,
       }),
     })
     setSaving(false)

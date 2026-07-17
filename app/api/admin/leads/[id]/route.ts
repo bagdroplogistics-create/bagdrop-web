@@ -38,6 +38,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'deleted_at',
     // Payment tracking
     'payment_status',
+    // Quote / pricing data — editable via Edit Quote, must round-trip in full
+    // (including custom/manual routes not present in the Route Map).
+    'quote_line_items', 'quote_subtotal', 'quote_discount_pct', 'quote_discount_amt',
+    'quote_tax', 'quote_total', 'quote_subject', 'quote_notes', 'quote_terms',
+    'quote_expiry_date', 'salesperson_name', 'agent_name',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -51,6 +56,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'email', 'from_city', 'to_city', 'notes', 'assigned_to',
     'converted_booking_id', 'pnr', 'flight_number', 'flight_ticket_url', 'pickup_time',
     'pickup_address', 'drop_address',
+    'quote_expiry_date', 'quote_subject', 'quote_notes', 'quote_terms',
+    'salesperson_name', 'agent_name',
   ]
   for (const f of nullableFields) {
     if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null
@@ -114,6 +121,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ('bags_count' in updates)     bookingUpdates.total_bags     = lead.bags_count
     if ('notes' in updates)          bookingUpdates.notes          = lead.notes
     if ('flight_number' in updates)  bookingUpdates.flight_number  = lead.flight_number
+    // Keep the linked booking's total in sync when a quote is edited (incl. custom/manual routes)
+    if ('quote_total' in updates)    bookingUpdates.total_amount   = lead.quote_total
 
     if ('service_type' in updates || 'service_interest' in updates) {
       const sType = lead.service_type ?? lead.service_interest ?? ''
