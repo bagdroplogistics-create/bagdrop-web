@@ -44,7 +44,7 @@ export default function Login() {
   return (
     <Screen>
       <View style={styles.hero}>
-        <Image source={require('@/assets/logo.png')} style={styles.logo} resizeMode="contain" />
+        <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
       </View>
 
       <Text style={styles.heading}>Welcome back</Text>

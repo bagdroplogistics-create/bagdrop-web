@@ -12,3 +12,5 @@ web-build/
 npm-debug.*
 *.jsbundle
 .env
+
+.vercel

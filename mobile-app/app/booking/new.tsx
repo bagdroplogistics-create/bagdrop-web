@@ -1,30 +1,75 @@
-import React, { useMemo } from 'react'
+import React, { useMemo, useState } from 'react'
 import { View, Text, StyleSheet, Pressable } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
 import { StepHeader } from '@/components/StepHeader'
 import { SelectField } from '@/components/SelectField'
+import { TextField } from '@/components/TextField'
 import { BookingFooter } from '@/components/BookingFooter'
 import { colors } from '@/theme/colors'
 import { type } from '@/theme/typography'
-import { SERVICE_TYPES, BOOKING_LOCATIONS, VALID_ROUTES } from '@/shared/constants'
+import { SERVICE_TYPES, BOOKING_LOCATIONS } from '@/shared/constants'
 import { useBooking } from '@/context/BookingContext'
 import { isStep1Valid } from '@/shared/booking-types'
 
+const OTHERS_VALUE = '__others__'
+
 export default function NewBooking() {
   const { state, update } = useBooking()
+  const [fromOthers, setFromOthers] = useState(false)
+  const [toOthers, setToOthers] = useState(false)
 
-  const fromOptions = useMemo(() => {
-    const froms = Array.from(new Set(VALID_ROUTES.map(r => r.from)))
-    return BOOKING_LOCATIONS.filter(l => froms.includes(l.id)).map(l => ({ value: l.id, label: l.label }))
-  }, [])
+  const knownCityIds = useMemo(() => BOOKING_LOCATIONS.map(c => c.id as string), [])
 
-  const toOptions = useMemo(() => {
-    if (!state.fromCity) return []
-    const tos = VALID_ROUTES.filter(r => r.from === state.fromCity).map(r => r.to)
-    return BOOKING_LOCATIONS.filter(l => tos.includes(l.id)).map(l => ({ value: l.id, label: l.label }))
-  }, [state.fromCity])
+  // Both dropdowns list every serviced location (minus whichever city is
+  // already picked on the other side, to prevent same-city bookings), plus
+  // an "Others" option that reveals a free-text field — matches the website.
+  const fromOptions = useMemo(() => [
+    ...BOOKING_LOCATIONS.filter(l => l.id !== state.toCity).map(l => ({ value: l.id, label: l.label })),
+    { value: OTHERS_VALUE, label: 'Others' },
+  ], [state.toCity])
+
+  const toOptions = useMemo(() => [
+    ...BOOKING_LOCATIONS.filter(l => l.id !== state.fromCity).map(l => ({ value: l.id, label: l.label })),
+    { value: OTHERS_VALUE, label: 'Others' },
+  ], [state.fromCity])
+
+  const fromSelectValue = fromOthers
+    ? OTHERS_VALUE
+    : (state.fromCity && knownCityIds.includes(state.fromCity) ? state.fromCity : null)
+  const toSelectValue = toOthers
+    ? OTHERS_VALUE
+    : (state.toCity && knownCityIds.includes(state.toCity) ? state.toCity : null)
+
+  function handleFromChange(v: string) {
+    if (v === OTHERS_VALUE) {
+      setFromOthers(true)
+      update({ fromCity: null })
+    } else {
+      setFromOthers(false)
+      const cityId = v as typeof state.fromCity
+      update({ fromCity: cityId, toCity: state.toCity === cityId ? null : state.toCity })
+    }
+  }
+
+  function handleToChange(v: string) {
+    if (v === OTHERS_VALUE) {
+      setToOthers(true)
+      update({ toCity: null })
+    } else {
+      setToOthers(false)
+      update({ toCity: v as typeof state.toCity })
+    }
+  }
+
+  function swapCities() {
+    const wasFromOthers = fromOthers
+    const wasToOthers = toOthers
+    setFromOthers(wasToOthers)
+    setToOthers(wasFromOthers)
+    update({ fromCity: state.toCity, toCity: state.fromCity })
+  }
 
   return (
     <Screen scroll={false} padded={false}>
@@ -53,25 +98,38 @@ export default function NewBooking() {
         </View>
 
         <SelectField
-          label="Pickup city"
-          placeholder="Select pickup city"
-          value={state.fromCity}
+          label="Pickup city / location"
+          placeholder="Select pickup location"
+          value={fromSelectValue}
           options={fromOptions}
-          onChange={v => update({ fromCity: v as typeof state.fromCity, toCity: null })}
+          onChange={handleFromChange}
         />
-        <SelectField
-          label="Delivery city"
-          placeholder={state.fromCity ? 'Select delivery city' : 'Select pickup city first'}
-          value={state.toCity}
-          options={toOptions}
-          onChange={v => update({ toCity: v as typeof state.toCity })}
-          disabled={!state.fromCity}
-        />
+        {fromOthers ? (
+          <TextField
+            placeholder="Enter your city or location"
+            value={state.fromCity ?? ''}
+            onChangeText={v => update({ fromCity: (v || null) as typeof state.fromCity })}
+          />
+        ) : null}
 
-        {state.fromCity && toOptions.length === 0 ? (
-          <Text style={styles.hint}>
-            No standard route found from this city yet — you can still continue and our team will send a custom quote.
-          </Text>
+        <Pressable style={styles.swapRow} onPress={swapCities} hitSlop={8}>
+          <Ionicons name="swap-vertical" size={16} color={colors.textMuted} />
+          <Text style={styles.swapText}>Swap locations</Text>
+        </Pressable>
+
+        <SelectField
+          label="Drop city / location"
+          placeholder="Select drop location"
+          value={toSelectValue}
+          options={toOptions}
+          onChange={handleToChange}
+        />
+        {toOthers ? (
+          <TextField
+            placeholder="Enter your city or location"
+            value={state.toCity ?? ''}
+            onChangeText={v => update({ toCity: (v || null) as typeof state.toCity })}
+          />
         ) : null}
       </View>
 
@@ -94,5 +152,6 @@ const styles = StyleSheet.create({
   serviceChipActive: { backgroundColor: colors.brand, borderColor: colors.brand },
   serviceChipText: { ...type.small, color: colors.textSecondary },
   serviceChipTextActive: { color: '#fff', fontWeight: '700' },
-  hint: { ...type.small, color: colors.warning, marginTop: 4 },
+  swapRow: { flexDirection: 'row', alignItems: 'center', gap: 6, alignSelf: 'center', paddingVertical: 8, marginBottom: 4 },
+  swapText: { ...type.small, color: colors.textMuted },
 })

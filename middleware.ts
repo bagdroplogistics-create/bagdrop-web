@@ -1,23 +1,25 @@
-// BAGDROP — CORS for customer-facing API routes
+// BAGDROP — CORS for customer- and admin-facing API routes
 //
-// The Bagdrop mobile app (React Native + Expo) calls these same API routes
-// directly from a different origin — both when running as a web preview
-// (npx expo start --web, served from localhost:8081) and, longer-term, any
-// other web-based tooling that talks to this API. Native iOS/Android builds
-// don't enforce CORS at all, so this file only matters for browser-based
-// clients, but it costs nothing to have and unblocks the web preview.
+// Both the customer mobile app and the admin mobile app (React Native +
+// Expo) call these same API routes directly from a different origin —
+// when running as a web preview (npx expo start --web / a Vercel-hosted
+// web export) and, longer-term, any other web-based tooling that talks to
+// this API. Native iOS/Android builds don't enforce CORS at all, so this
+// file only matters for browser-based clients, but it costs nothing to
+// have and unblocks the web preview for both apps.
 //
-// Scope is intentionally limited to the public, customer-facing endpoints
-// the app actually calls. /api/admin/** is NOT touched — the admin
-// dashboard's auth model is unaffected by this file.
+// /api/admin/** is included so the admin mobile app's web preview can
+// call it too — the admin auth model itself (x-admin-key / ADMIN_SECRET_KEY
+// / STAFF_SECRET_KEY) is completely unaffected by this file, it only adds
+// response headers.
 
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Access-Control-Allow-Methods': 'GET, POST, PATCH, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, x-admin-key',
   'Access-Control-Max-Age': '86400',
 }
 
@@ -45,5 +47,6 @@ export const config = {
     '/api/my-bookings',
     '/api/my-bookings/:path*',
     '/api/contact',
+    '/api/admin/:path*',
   ],
 }

@@ -29,7 +29,7 @@ export default function Home() {
           <Text style={styles.hello}>Hello{firstName ? `, ${firstName}` : ''} 👋</Text>
           <Text style={styles.title}>Where are your bags headed?</Text>
         </View>
-        <Image source={require('@/assets/logo.png')} style={styles.logo} resizeMode="contain" />
+        <Image source={require('../../assets/logo.png')} style={styles.logo} resizeMode="contain" />
       </View>
 
       <Card style={styles.heroCard}>

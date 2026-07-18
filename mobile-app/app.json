@@ -30,7 +30,8 @@
       "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT", "NOTIFICATIONS"]
     },
     "web": {
-      "bundler": "metro"
+      "bundler": "metro",
+      "output": "single"
     },
     "plugins": [
       "expo-router",
