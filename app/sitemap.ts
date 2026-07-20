@@ -28,6 +28,12 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/about`,                     lastModified: now, changeFrequency: 'monthly', priority: 0.65 },
     { url: `${base}/contact`,                   lastModified: now, changeFrequency: 'monthly', priority: 0.65 },
     { url: `${base}/blog`,                      lastModified: now, changeFrequency: 'weekly',  priority: 0.70 },
+    { url: `${base}/blog/india-digital-baggage-infrastructure-layer`,  lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
+    { url: `${base}/blog/why-airline-excess-baggage-fees-are-broken`,  lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
+    { url: `${base}/blog/nri-travel-india-baggage-problem`,            lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
+    { url: `${base}/blog/destination-wedding-logistics-india`,         lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
+    { url: `${base}/blog/airport-integrated-baggage-services`,         lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
+    { url: `${base}/blog/student-relocation-baggage-guide`,            lastModified: now, changeFrequency: 'monthly', priority: 0.60 },
     { url: `${base}/track`,                     lastModified: now, changeFrequency: 'monthly', priority: 0.50 },
 
     // Legal
