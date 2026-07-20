@@ -1,9 +1,19 @@
 'use client'
 
+import { useCallback, useEffect, useRef, useState } from 'react'
 import Image from 'next/image'
 import { motion } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const HAPPY_CLIENTS = [
+  {
+    // ASSUMPTION: bag count (5) read off the photo.
+    name:    'Hiral Shah Ratnani',
+    bags:    5,
+    route:   'Vadodara to Mumbai',
+    image:   '/images/testimonials/hiral-shah-ratnani.jpg',
+    initials: 'HS',
+  },
   {
     name:    'Mr. Brijesh Patel',
     bags:    6,
@@ -57,41 +67,101 @@ function StarRow() {
 }
 
 export function Testimonials() {
+  const trackRef  = useRef<HTMLDivElement>(null)
+  const cardRefs  = useRef<(HTMLDivElement | null)[]>([])
+  const [active, setActive] = useState(0)
+
+  const scrollToIndex = useCallback((i: number) => {
+    const clamped = Math.max(0, Math.min(HAPPY_CLIENTS.length - 1, i))
+    cardRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+  }, [])
+
+  // Track which card is centred in view so the dots / arrows stay in sync
+  // with touch-scrolling as well as button clicks.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
+        if (visible) {
+          const idx = cardRefs.current.findIndex((el) => el === visible.target)
+          if (idx !== -1) setActive(idx)
+        }
+      },
+      { root: track, threshold: [0.6] }
+    )
+
+    cardRefs.current.forEach((el) => el && observer.observe(el))
+    return () => observer.disconnect()
+  }, [])
+
   return (
     <section className="section-padding bg-cream" aria-labelledby="testimonials-heading">
       <div className="section-container">
 
         {/* Heading */}
         <motion.div
-          className="text-center"
+          className="flex flex-col items-center text-center sm:flex-row sm:items-end sm:justify-between sm:text-left"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
           transition={{ duration: 0.5, ease: 'easeOut' as const }}
         >
-          <span className="eyebrow">Happy Clients</span>
-          <h2 id="testimonials-heading" className="mt-3 font-display text-display-md text-text-primary">
-            Real customers. Real deliveries.
-          </h2>
-          <p className="mt-4 text-lg text-text-secondary max-w-xl mx-auto">
-            Every bag delivered. Every client smiling.
-          </p>
+          <div>
+            <span className="eyebrow">Happy Clients</span>
+            <h2 id="testimonials-heading" className="mt-3 font-display text-display-md text-text-primary">
+              Real customers. Real deliveries.
+            </h2>
+            <p className="mt-4 text-lg text-text-secondary max-w-xl sm:mx-0 mx-auto">
+              Every bag delivered. Every client smiling.
+            </p>
+          </div>
+
+          {/* Slider arrows — desktop / tablet */}
+          <div className="mt-6 hidden shrink-0 items-center gap-2 sm:mt-0 sm:flex">
+            <button
+              type="button"
+              onClick={() => scrollToIndex(active - 1)}
+              disabled={active === 0}
+              aria-label="Previous testimonial"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-white text-text-primary shadow-sm transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronLeft className="h-5 w-5" />
+            </button>
+            <button
+              type="button"
+              onClick={() => scrollToIndex(active + 1)}
+              disabled={active === HAPPY_CLIENTS.length - 1}
+              aria-label="Next testimonial"
+              className="flex h-10 w-10 items-center justify-center rounded-full border border-border bg-white text-text-primary shadow-sm transition-colors hover:bg-stone-50 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ChevronRight className="h-5 w-5" />
+            </button>
+          </div>
         </motion.div>
 
-        {/* Client cards */}
-        <div className="-mx-4 sm:mx-0 mt-12">
+        {/* Slider track */}
+        <div className="-mx-4 sm:mx-0 mt-10">
           <motion.div
-            className="flex gap-5 overflow-x-auto px-4 pb-4 sm:grid sm:grid-cols-2 lg:grid-cols-4 sm:overflow-visible sm:px-0 sm:pb-0 scrollbar-hide"
+            ref={trackRef}
+            className="flex snap-x snap-mandatory gap-5 overflow-x-auto scroll-smooth px-4 pb-4 sm:px-0 sm:pb-0 scrollbar-hide"
             variants={containerVariants}
             initial="hidden"
             whileInView="visible"
             viewport={{ once: true, margin: '-60px' }}
+            role="region"
+            aria-label="Customer testimonials — swipe or use the arrows to browse"
           >
-            {HAPPY_CLIENTS.map((client) => (
+            {HAPPY_CLIENTS.map((client, i) => (
               <motion.div
                 key={client.name}
+                ref={(el) => { cardRefs.current[i] = el }}
                 variants={cardVariants}
-                className="w-[72vw] shrink-0 sm:w-auto overflow-hidden rounded-2xl border border-border bg-white shadow-sm"
+                className="w-[78vw] shrink-0 snap-start overflow-hidden rounded-2xl border border-border bg-white shadow-sm sm:w-[calc((100%-2.5rem)/3)] lg:w-[calc((100%-3.75rem)/4)]"
               >
                 {/* Photo */}
                 <div className="relative h-72 w-full bg-stone-100">
@@ -100,9 +170,8 @@ export function Testimonials() {
                     alt={client.name}
                     fill
                     className="object-cover object-top"
-                    sizes="(max-width: 640px) 72vw, (max-width: 1024px) 50vw, 25vw"
+                    sizes="(max-width: 640px) 78vw, (max-width: 1024px) 33vw, 25vw"
                   />
-
                 </div>
 
                 {/* Details */}
@@ -118,6 +187,21 @@ export function Testimonials() {
               </motion.div>
             ))}
           </motion.div>
+        </div>
+
+        {/* Dots — mirror active slide, tappable on all breakpoints */}
+        <div className="mt-6 flex items-center justify-center gap-1.5" aria-hidden="true">
+          {HAPPY_CLIENTS.map((client, i) => (
+            <button
+              key={client.name}
+              type="button"
+              onClick={() => scrollToIndex(i)}
+              aria-label={`Go to ${client.name}'s testimonial`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === active ? 'w-6 bg-[#FF6300]' : 'w-1.5 bg-border'
+              }`}
+            />
+          ))}
         </div>
 
       </div>
