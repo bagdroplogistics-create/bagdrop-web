@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   Truck, Plus, Search, RefreshCw, ChevronDown,
-  Eye, Pencil, Trash2, TrendingUp, TrendingDown, IndianRupee,
+  Eye, Pencil, Trash2, Download, Loader2, TrendingUp, TrendingDown, IndianRupee,
   Package, CheckCircle, Clock, MapPin,
 } from 'lucide-react'
 
@@ -63,6 +63,7 @@ export default function TripSheetsPage() {
   const [search,   setSearch]   = useState('')
   const [filter,   setFilter]   = useState('all')
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [downloading, setDownloading] = useState<string | null>(null)
 
   // Summary totals
   const totalIncome  = sheets.reduce((s, t) => s + (t.total_income  || 0), 0)
@@ -96,6 +97,73 @@ export default function TripSheetsPage() {
     })
     setDeleting(null)
     fetchSheets()
+  }
+
+  async function downloadTripSheet(id: string) {
+    setDownloading(id)
+    try {
+      const res = await fetch(`/api/admin/trip-sheets/${id}?key=${encodeURIComponent(adminKey)}`)
+      if (!res.ok) throw new Error('Could not load trip sheet')
+      const { trip_sheet: ts } = await res.json()
+
+      const { pdf } = await import('@react-pdf/renderer')
+      const { default: TripSheetPDF } = await import('./TripSheetPDF')
+
+      const blob = await pdf(
+        TripSheetPDF({
+          tripNumber:        ts.trip_number,
+          createdAt:         ts.created_at,
+          status:            ts.status,
+          bookingId:         ts.booking_id,
+          customerName:      ts.customer_name,
+          customerPhone:     ts.customer_phone,
+          customerEmail:     ts.customer_email,
+          fromCity:          ts.from_city,
+          toCity:            ts.to_city,
+          pickupAddress:     ts.pickup_address,
+          dropAddress:       ts.drop_address,
+          pickupDate:        ts.pickup_date,
+          deliveryDate:      ts.delivery_date,
+          totalBags:         ts.total_bags,
+          serviceLabel:      ts.service_label,
+          vendor:            ts.vendor,
+          driverName:        ts.driver_name,
+          vehicleNumber:     ts.vehicle_number,
+          consignmentNumber: ts.consignment_number,
+          luggageCode:       ts.luggage_code,
+          cloakRoomNumber:   ts.cloak_room_number,
+          pickupPerson:      ts.pickup_person,
+          pickupContact:     ts.pickup_contact,
+          deliveryPerson:    ts.delivery_person,
+          deliveryContact:   ts.delivery_contact,
+          expenses:          ts.trip_expenses ?? [],
+          quoteAmount:       ts.quote_amount ?? 0,
+          additionalCharges: ts.additional_charges ?? 0,
+          discount:          ts.discount ?? 0,
+          taxAmount:         ts.tax_amount ?? 0,
+          totalIncome:       ts.total_income ?? 0,
+          totalExpense:      ts.total_expense ?? 0,
+          netProfit:         ts.net_profit ?? 0,
+          paymentStatus:     ts.payment_status,
+          notes:             ts.notes,
+          remarks:           ts.remarks,
+        })
+      ).toBlob()
+
+      const url  = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href     = url
+      link.download = `${ts.trip_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Trip sheet PDF generation failed:', e)
+      alert('Could not generate the trip sheet PDF. Please try again.')
+    } finally {
+      setDownloading(null)
+    }
   }
 
   if (!authed) return null
@@ -239,6 +307,13 @@ export default function TripSheetsPage() {
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                               <Pencil className="h-3.5 w-3.5" />
                             </Link>
+                            <button onClick={() => downloadTripSheet(s.id)} disabled={downloading === s.id}
+                              title="Download trip sheet"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-colors disabled:opacity-40">
+                              {downloading === s.id
+                                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                                : <Download className="h-3.5 w-3.5" />}
+                            </button>
                             <button onClick={() => deleteSheet(s.id)} disabled={deleting === s.id}
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
                               <Trash2 className="h-3.5 w-3.5" />
