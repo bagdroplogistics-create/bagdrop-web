@@ -69,30 +69,49 @@ function StarRow() {
 export function Testimonials() {
   const trackRef  = useRef<HTMLDivElement>(null)
   const cardRefs  = useRef<(HTMLDivElement | null)[]>([])
+  const ratiosRef = useRef<Map<Element, number>>(new Map())
   const [active, setActive] = useState(0)
 
   const scrollToIndex = useCallback((i: number) => {
     const clamped = Math.max(0, Math.min(HAPPY_CLIENTS.length - 1, i))
     cardRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+    // Update immediately on click rather than waiting for the observer —
+    // this is what makes the arrows/dots feel responsive instead of stuck.
+    setActive(clamped)
   }, [])
 
-  // Track which card is centred in view so the dots / arrows stay in sync
+  // Track which card is leftmost in view so the dots / arrows stay in sync
   // with touch-scrolling as well as button clicks.
   useEffect(() => {
     const track = trackRef.current
     if (!track) return
 
+    const ratios = ratiosRef.current
+
     const observer = new IntersectionObserver(
       (entries) => {
-        const visible = entries
-          .filter((e) => e.isIntersecting)
-          .sort((a, b) => b.intersectionRatio - a.intersectionRatio)[0]
-        if (visible) {
-          const idx = cardRefs.current.findIndex((el) => el === visible.target)
-          if (idx !== -1) setActive(idx)
-        }
+        // IMPORTANT: `entries` only contains the cards whose intersection
+        // state *changed* since the last callback — not every card that's
+        // currently visible. Keeping a running map of every card's last-known
+        // ratio (keyed by element) and recomputing the best one from that
+        // full map on every tick is what makes this reliable.
+        entries.forEach((entry) => {
+          ratios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0)
+        })
+
+        let bestIdx = -1
+        let bestRatio = 0
+        cardRefs.current.forEach((el, idx) => {
+          if (!el) return
+          const r = ratios.get(el) ?? 0
+          if (r > bestRatio) {
+            bestRatio = r
+            bestIdx = idx
+          }
+        })
+        if (bestIdx !== -1) setActive(bestIdx)
       },
-      { root: track, threshold: [0.6] }
+      { root: track, threshold: [0, 0.25, 0.5, 0.75, 1] }
     )
 
     cardRefs.current.forEach((el) => el && observer.observe(el))

@@ -1,6 +1,8 @@
 'use client'
 
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
+import { ChevronLeft, ChevronRight } from 'lucide-react'
 
 const REVIEWS = [
   {
@@ -94,13 +96,65 @@ const cardVariants = {
 }
 
 export function GoogleReviews() {
+  const trackRef  = useRef<HTMLDivElement>(null)
+  const cardRefs  = useRef<(HTMLDivElement | null)[]>([])
+  const ratiosRef = useRef<Map<Element, number>>(new Map())
+  const [active, setActive] = useState(0)
+
+  const scrollToIndex = useCallback((i: number) => {
+    const clamped = Math.max(0, Math.min(REVIEWS.length - 1, i))
+    cardRefs.current[clamped]?.scrollIntoView({ behavior: 'smooth', inline: 'start', block: 'nearest' })
+    // Update immediately on click rather than waiting for the observer —
+    // this is what makes the arrows/dots feel responsive instead of stuck.
+    setActive(clamped)
+  }, [])
+
+  // Keep the dots / arrow disabled-state in sync with touch-scrolling too.
+  useEffect(() => {
+    const track = trackRef.current
+    if (!track) return
+
+    const ratios = ratiosRef.current
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        // IMPORTANT: `entries` only contains the cards whose intersection
+        // state *changed* since the last callback — not every card that's
+        // currently visible. Keeping a running map of every card's last-known
+        // ratio (keyed by element) and recomputing the best one from that
+        // full map on every tick is what makes this reliable; reading only
+        // the batch of changed entries (the previous implementation) meant
+        // the "active" card often failed to advance after a scroll.
+        entries.forEach((entry) => {
+          ratios.set(entry.target, entry.isIntersecting ? entry.intersectionRatio : 0)
+        })
+
+        let bestIdx = -1
+        let bestRatio = 0
+        cardRefs.current.forEach((el, idx) => {
+          if (!el) return
+          const r = ratios.get(el) ?? 0
+          if (r > bestRatio) {
+            bestRatio = r
+            bestIdx = idx
+          }
+        })
+        if (bestIdx !== -1) setActive(bestIdx)
+      },
+      { root: track, threshold: [0, 0.25, 0.5, 0.75, 1] }
+    )
+
+    cardRefs.current.forEach((el) => el && observer.observe(el))
+    return () => observer.disconnect()
+  }, [])
+
   return (
-    <section className="section-padding bg-white" aria-labelledby="google-reviews-heading">
+    <section className="section-padding overflow-hidden bg-white" aria-labelledby="google-reviews-heading">
       <div className="section-container">
 
         {/* Heading */}
         <motion.div
-          className="text-center"
+          className="flex flex-col items-center text-center"
           initial={{ opacity: 0, y: 20 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true, margin: '-80px' }}
@@ -127,45 +181,102 @@ export function GoogleReviews() {
           </p>
         </motion.div>
 
-        {/* Review cards */}
+        {/* Slider arrows */}
+        <div className="mt-6 hidden items-center justify-end gap-2 sm:flex">
+          <button
+            type="button"
+            onClick={() => scrollToIndex(active - 1)}
+            disabled={active === 0}
+            aria-label="Previous review"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronLeft className="h-5 w-5" />
+          </button>
+          <button
+            type="button"
+            onClick={() => scrollToIndex(active + 1)}
+            disabled={active === REVIEWS.length - 1}
+            aria-label="Next review"
+            className="flex h-10 w-10 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-700 shadow-sm transition-colors hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            <ChevronRight className="h-5 w-5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Review cards — full-bleed horizontal slider so the row uses the
+          entire viewport width (not just the 1280px content column), fitting
+          as many fixed-width cards on one line as will physically fit. The
+          section stays a fixed height no matter how many reviews get added
+          later — extras just extend the scrollable track. */}
+      <div
+        className="mt-4 overflow-x-auto scrollbar-hide"
+        style={{
+          paddingLeft: 'max(1rem, calc((100vw - 80rem) / 2 + 2rem))',
+          paddingRight: 'max(1rem, calc((100vw - 80rem) / 2 + 2rem))',
+          scrollSnapType: 'x mandatory',
+        }}
+        ref={trackRef}
+        role="region"
+        aria-label="Customer reviews — swipe or use the arrows to browse"
+      >
         <motion.div
-          className="mt-12 grid gap-5 sm:grid-cols-2 lg:grid-cols-4"
+          className="flex gap-5 pb-4 sm:pb-0"
           variants={containerVariants}
           initial="hidden"
           whileInView="visible"
           viewport={{ once: true, margin: '-60px' }}
         >
-          {REVIEWS.map((review) => (
-            <motion.div
-              key={review.name}
-              variants={cardVariants}
-              className="flex flex-col rounded-2xl border border-gray-100 bg-gray-50 p-5 shadow-sm"
-            >
-              {/* Top row: avatar + name + Google logo */}
-              <div className="flex items-start justify-between gap-3 mb-3">
-                <div className="flex items-center gap-3">
-                  {/* Avatar initial */}
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FF6300] text-sm font-bold text-white">
-                    {review.initials}
+          {REVIEWS.map((review, i) => (
+              <motion.div
+                key={review.name}
+                ref={(el) => { cardRefs.current[i] = el }}
+                variants={cardVariants}
+                className="flex w-[85vw] max-w-[320px] shrink-0 flex-col rounded-2xl border border-gray-100 bg-gray-50 p-5 shadow-sm sm:w-[300px]"
+                style={{ scrollSnapAlign: 'start' }}
+              >
+                {/* Top row: avatar + name + Google logo */}
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    {/* Avatar initial */}
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#FF6300] text-sm font-bold text-white">
+                      {review.initials}
+                    </div>
+                    <div>
+                      <p className="font-semibold text-sm text-gray-900 leading-tight">{review.name}</p>
+                      <p className="text-xs text-gray-400 mt-0.5">{review.weeks}</p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-semibold text-sm text-gray-900 leading-tight">{review.name}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">{review.weeks}</p>
-                  </div>
+                  <GoogleLogo />
                 </div>
-                <GoogleLogo />
-              </div>
 
-              {/* Stars */}
-              <StarRow />
+                {/* Stars */}
+                <StarRow />
 
-              {/* Review text */}
-              <p className="mt-3 text-sm text-gray-600 leading-relaxed flex-1">
-                "{review.text}"
-              </p>
-            </motion.div>
+                {/* Review text */}
+                <p className="mt-3 text-sm text-gray-600 leading-relaxed flex-1">
+                  "{review.text}"
+                </p>
+              </motion.div>
+            ))}
+          </motion.div>
+        </div>
+
+      <div className="section-container">
+        {/* Dots */}
+        <div className="mt-6 flex items-center justify-center gap-1.5" aria-hidden="true">
+          {REVIEWS.map((review, i) => (
+            <button
+              key={review.name}
+              type="button"
+              onClick={() => scrollToIndex(i)}
+              aria-label={`Go to ${review.name}'s review`}
+              className={`h-1.5 rounded-full transition-all duration-300 ${
+                i === active ? 'w-6 bg-[#FF6300]' : 'w-1.5 bg-gray-200'
+              }`}
+            />
           ))}
-        </motion.div>
+        </div>
 
         {/* See all on Google CTA */}
         <motion.div
