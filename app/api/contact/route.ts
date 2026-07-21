@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { supabaseAdmin } from '@/lib/supabase'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -78,6 +79,56 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true })
   }
   // ────────────────────────────────────────────────────────────────
+
+  // ── Auto-create Lead ──────────────────────────────────────────────
+  // The contact form used to only email info@ — it never wrote a row to
+  // the leads table, so these inquiries never showed up in the Dashboard.
+  // Every other inquiry source (booking forms, mobile app) already
+  // auto-creates a lead (see app/api/bookings/route.ts); this brings the
+  // contact form in line so it's visible in the same place.
+  try {
+    const cleanPhone = (phone as string).replace(/[\s\-\(\)]/g, '')
+    const normalizedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+91' + digitsOnly
+    const cleanEmail = (email as string).trim().toLowerCase()
+
+    const year = new Date().getFullYear()
+    const { data: lastLead } = await supabaseAdmin
+      .from('leads')
+      .select('lead_number')
+      .like('lead_number', `BDL-${year}-%`)
+      .order('lead_number', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    let nextSeq = 1
+    if (lastLead?.lead_number) {
+      const parts = lastLead.lead_number.split('-')
+      const last = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(last)) nextSeq = last + 1
+    }
+    const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+
+    const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
+      lead_number:      leadNumber,
+      name:             (name as string).trim(),
+      phone:            normalizedPhone,
+      email:            cleanEmail || null,
+      source:           'contact-form',
+      status:           'new',
+      service_interest: subject || 'General Inquiry',
+      service_type:     subject || 'General Inquiry',
+      notes:            `[Contact Form] ${message}`,
+    })
+
+    if (leadInsertErr) {
+      console.error('[Contact] Lead insert error:', leadInsertErr.message)
+    } else {
+      console.log(`[Contact] Auto-created lead ${leadNumber} from contact form`)
+    }
+  } catch (leadErr) {
+    // Non-fatal — the inquiry email still sends below even if this fails.
+    console.error('[Contact] Lead auto-create failed (non-fatal):', leadErr)
+  }
+  // ── End Auto-create Lead ──────────────────────────────────────────
 
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
