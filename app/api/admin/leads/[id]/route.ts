@@ -172,6 +172,50 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         console.error('[leads PATCH] booking sync failed (non-fatal):', bookingErr.message)
       }
     }
+
+    // ── Restore: un-cancel the booking if it was auto-cancelled by the
+    // lead soft-delete (DELETE /api/admin/leads/[id]) ──────────────────
+    // Only reverses bookings that carry our auto-cancel marker in
+    // status_history — a booking the admin cancelled manually, or one
+    // that was already 'cancelled' before the lead was deleted, is left
+    // alone so restoring a lead never overrides a deliberate decision.
+    if ('deleted_at' in updates && updates.deleted_at === null) {
+      const { data: currentBooking } = await supabaseAdmin
+        .from('bookings')
+        .select('status, status_history')
+        .eq('id', lead.booking_id)
+        .single()
+
+      if (currentBooking?.status === 'cancelled') {
+        const history = Array.isArray(currentBooking.status_history) ? currentBooking.status_history : []
+        const autoCancelEntry = [...history].reverse().find(
+          (h: Record<string, unknown>) =>
+            h?.to === 'cancelled' &&
+            typeof h?.note === 'string' &&
+            h.note.includes('linked lead') &&
+            h.note.includes('deleted')
+        )
+
+        if (autoCancelEntry) {
+          const restoredStatus = (autoCancelEntry.from as string) || 'inquiry'
+          history.push({
+            from:       'cancelled',
+            to:         restoredStatus,
+            timestamp:  new Date().toISOString(),
+            changed_by: 'admin',
+            note:       `Auto-restored — linked lead ${lead.lead_number} was un-deleted`,
+          })
+          const { error: restoreErr } = await supabaseAdmin
+            .from('bookings')
+            .update({ status: restoredStatus, status_history: history })
+            .eq('id', lead.booking_id)
+
+          if (restoreErr) {
+            console.error('[leads PATCH] booking restore failed (non-fatal):', restoreErr.message)
+          }
+        }
+      }
+    }
   }
 
   return NextResponse.json({ lead })
@@ -212,18 +256,36 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
 
   console.log(`[leads DELETE] Soft-deleted lead ${lead?.lead_number ?? id}`)
 
-  // Cancel the linked BDA- booking (it remains in DB, just marked cancelled)
+  // Cancel the linked booking (it remains in DB, just marked cancelled) so it
+  // drops out of the Dashboard's default view, which excludes status=cancelled.
+  // Previously this only fired for BDA- (admin-created) bookings, so deleting
+  // a lead whose booking came from the website/mobile form (BD-, Y2K-, BDC-,
+  // etc.) left the booking sitting on the Dashboard even after the lead was
+  // gone — that's the bug being fixed here. Cancelling should happen for any
+  // linked booking, regardless of tracking-id prefix.
   if (lead?.booking_id) {
     const { data: booking } = await supabaseAdmin
       .from('bookings')
-      .select('tracking_id')
+      .select('tracking_id, status, status_history')
       .eq('id', lead.booking_id)
       .single()
 
-    if (booking?.tracking_id?.startsWith('BDA-')) {
+    if (booking && booking.status !== 'cancelled') {
+      const history = Array.isArray(booking.status_history) ? booking.status_history : []
+      history.push({
+        from:       booking.status ?? null,
+        to:         'cancelled',
+        timestamp:  new Date().toISOString(),
+        changed_by: 'admin',
+        note:       `Auto-cancelled — linked lead ${lead.lead_number} was deleted`,
+      })
       await supabaseAdmin
         .from('bookings')
-        .update({ status: 'cancelled', notes: `Lead ${lead.lead_number} soft-deleted by admin` })
+        .update({
+          status: 'cancelled',
+          notes: `Lead ${lead.lead_number} soft-deleted by admin`,
+          status_history: history,
+        })
         .eq('id', lead.booking_id)
     }
   }
