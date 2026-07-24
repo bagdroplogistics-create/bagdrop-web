@@ -63,6 +63,10 @@ export async function POST(req: Request) {
         delivery_date:  booking.deliveryDate   || null,
         time_slot:      timeSlotLabel,
         flight_number:  booking.flightNumber   ?? null,
+        // Collected on step 3 for airport-delivery (BookingState.flightDateTime)
+        // but previously never persisted — needed for the "Driver Details
+        // Shared" 4-hours-before-arrival automation (see lib/driver-details.ts).
+        flight_datetime: booking.flightDateTime || null,
         total_bags:     pricing?.totalBags     ?? booking.bags ?? 1,
         bag_details:    (() => {
           const base = booking.bagDetails ?? null

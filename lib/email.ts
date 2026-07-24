@@ -456,6 +456,68 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
   )
 }
 
+// ── Driver Details (Airport Delivery only) ─────────────────────────────
+// Sent automatically when a trip sheet's status is set to
+// "Driver Details Shared" — either immediately (if within 4 hours of the
+// customer's flight arrival) or later via the cron job in
+// app/api/cron/send-driver-details/route.ts. See lib/driver-details.ts
+// for the orchestration (dedup guard, WhatsApp, history logging).
+
+export interface DriverDetailsEmailData {
+  customerName:      string
+  customerEmail:      string
+  trackingId:         string
+  driverName:         string
+  driverPhone:        string
+  vehicleNumber:      string
+  airportName:        string
+  pickupInstructions?: string | null
+}
+
+const SUPPORT_PHONE_DISPLAY = '+91 63571 15711'
+const SUPPORT_PHONE_TEL     = '+916357115711'
+
+export async function sendDriverDetailsEmail(data: DriverDetailsEmailData) {
+  if (!data.customerEmail) return { success: false, error: 'No customer email' }
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Your Driver Details</h2>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + data.customerName + ', your driver is on the way. Details below.</p>' +
+
+    '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:20px;margin-bottom:24px;">' +
+    '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
+    '<p style="margin:0 0 16px;font-size:20px;font-weight:900;color:' + BRAND + ';letter-spacing:1px;">' + data.trackingId + '</p>' +
+    '<table width="100%" cellpadding="0" cellspacing="0">' +
+    row('Driver Name',   data.driverName) +
+    row('Driver Mobile', data.driverPhone) +
+    row('Vehicle No.',   data.vehicleNumber) +
+    row('Airport',       data.airportName) +
+    '</table>' +
+    '</div>' +
+
+    (data.pickupInstructions
+      ? '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-bottom:24px;">' +
+        '<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.5px;">Pickup Instructions</p>' +
+        '<p style="margin:0;font-size:13px;color:#166534;line-height:1.6;">' + data.pickupInstructions + '</p>' +
+        '</div>'
+      : '') +
+
+    '<p style="margin:0 0 8px;font-size:14px;color:#374151;">Need help? Call Bagdrop Support:</p>' +
+    '<p style="margin:0 0 24px;font-size:16px;font-weight:700;color:' + BRAND + ';">' +
+    '<a href="tel:' + SUPPORT_PHONE_TEL + '" style="color:' + BRAND + ';text-decoration:none;">' + SUPPORT_PHONE_DISPLAY + '</a></p>' +
+
+    '<div style="text-align:center;margin-bottom:8px;">' +
+    '<a href="https://wa.me/916357115711" style="display:inline-block;background:#25D366;color:#fff;font-size:13px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;">WhatsApp Us</a>' +
+    '</div>'
+
+  return sendEmail(
+    data.customerEmail,
+    'Your Driver Details — Booking ' + data.trackingId + ' | Bagdrop',
+    baseTemplate(body),
+    'driver-details:' + data.trackingId,
+  )
+}
+
 // ── Legacy admin notification (kept for backward compat) ──────────────
 // Routes should migrate to sendInquiryNotification instead.
 

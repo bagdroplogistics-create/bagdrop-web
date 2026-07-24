@@ -1,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/send-driver-details",
+      "schedule": "*/10 * * * *"
+    }
+  ]
+}

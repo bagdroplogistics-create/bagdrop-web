@@ -77,6 +77,9 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   picked_up:         { label: 'Bags Picked Up',     color: '#7c3aed', bg: '#ede9fe', icon: <Package className="h-3 w-3" /> },
   in_transit:        { label: 'In Transit',         color: '#0891b2', bg: '#cffafe', icon: <Truck className="h-3 w-3" /> },
   out_for_delivery:  { label: 'Out for Delivery',   color: '#ea580c', bg: '#ffedd5', icon: <Truck className="h-3 w-3" /> },
+  // Airport Delivery only — set from the Trip Sheet, not selectable for
+  // any other service type. See app/api/admin/trip-sheets/[id]/route.ts.
+  driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe', icon: <Phone className="h-3 w-3" /> },
   delivered:         { label: 'Delivered',          color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
   trip_created:      { label: 'Trip Sheet Created', color: '#0891b2', bg: '#cffafe', icon: <Truck className="h-3 w-3" /> },
   // Phase 6: Final
@@ -89,7 +92,7 @@ const WORKFLOW_PHASES = [
   { label: 'Quote',      statuses: ['quote_created','quote_sent','accepted','rejected','closed'] },
   { label: 'Payment',    statuses: ['payment_pending','payment_received','payment_approved'] },
   { label: 'Booking',    statuses: ['confirmed','invoice_generated','invoice_sent'] },
-  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery'] },
+  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared'] },
   { label: 'Closed',     statuses: ['delivered','trip_created','completed','cancelled'] },
 ]
 

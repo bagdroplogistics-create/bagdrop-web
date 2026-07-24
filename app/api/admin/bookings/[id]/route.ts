@@ -2,7 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
+import { sendDriverDetails } from '@/lib/driver-details'
 import type { BookingStatus } from '@/lib/supabase'
+
+// "Driver Details Shared" is sent exactly 4 hours before flight arrival.
+const DRIVER_DETAILS_LEAD_TIME_MS = 4 * 60 * 60 * 1000
 
 export async function GET(
   req: NextRequest,
@@ -40,6 +44,9 @@ export async function PATCH(
     approved_without_payment, delivery_date,
     rejection_reason, rejection_comment,
     reason,   // status-change reason (goes only into history, not booking notes)
+    // Driver Details Shared (Airport Delivery only) — see the special-case
+    // block below for validation, scheduling, and send logic.
+    driver_name, driver_phone, vehicle_number, pickup_instructions, flight_datetime,
   } = body
 
   if (approved_without_payment && role !== 'admin') {
@@ -72,6 +79,65 @@ export async function PATCH(
   if (rejection_reason  !== undefined) updates.rejection_reason  = rejection_reason
   if (rejection_comment !== undefined) updates.rejection_comment = rejection_comment ?? null
   if (status === 'rejected' && !updates.rejected_at) updates.rejected_at = new Date().toISOString()
+  if (driver_name          !== undefined) updates.driver_name          = driver_name?.trim() || null
+  if (driver_phone         !== undefined) updates.driver_phone         = driver_phone?.trim() || null
+  if (vehicle_number       !== undefined) updates.vehicle_number       = vehicle_number?.trim() || null
+  if (pickup_instructions  !== undefined) updates.pickup_instructions  = pickup_instructions?.trim() || null
+  if (flight_datetime      !== undefined) updates.flight_datetime      = flight_datetime || null
+
+  // ── Driver Details Shared — Airport Delivery only ──────────────────
+  // Validated and scheduled here; the generic status-change block below
+  // still handles the history entry + customer status notification for
+  // this status like any other. If the flight is already within the
+  // 4-hour window, sendDriverDetailsNow triggers the actual send after
+  // this booking's own field updates (driver name/phone/vehicle, pickup
+  // instructions) are committed further down.
+  let sendDriverDetailsNow = false
+  if (status === 'driver_details_shared') {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings')
+      .select('service_type, driver_name, driver_phone, vehicle_number, flight_datetime, driver_details_sent_at')
+      .eq('id', id)
+      .single()
+
+    if (!bk) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
+    if (bk.service_type !== 'airport-delivery') {
+      return NextResponse.json({ error: '"Driver Details Shared" is only available for Airport Delivery bookings' }, { status: 400 })
+    }
+    if (bk.driver_details_sent_at) {
+      return NextResponse.json({ error: `Driver details were already sent for this booking at ${bk.driver_details_sent_at}` }, { status: 409 })
+    }
+
+    const finalDriverName    = (updates.driver_name    as string | null) ?? bk.driver_name
+    const finalDriverPhone   = (updates.driver_phone   as string | null) ?? bk.driver_phone
+    const finalVehicleNumber = (updates.vehicle_number as string | null) ?? bk.vehicle_number
+    if (!finalDriverName || !finalDriverPhone || !finalVehicleNumber) {
+      return NextResponse.json({ error: 'Set driver name, driver mobile number, and vehicle number before sharing driver details' }, { status: 400 })
+    }
+
+    const finalFlightDateTime = (updates.flight_datetime as string | null) ?? bk.flight_datetime
+    if (!finalFlightDateTime) {
+      return NextResponse.json({ error: 'Set the customer\'s flight arrival date & time before sharing driver details' }, { status: 400 })
+    }
+
+    const sendAt = new Date(finalFlightDateTime).getTime() - DRIVER_DETAILS_LEAD_TIME_MS
+    if (Number.isNaN(sendAt)) {
+      return NextResponse.json({ error: 'Invalid flight date/time' }, { status: 400 })
+    }
+
+    if (sendAt <= Date.now()) {
+      // Already within (or past) the 4-hour window — send immediately,
+      // right after this booking's own field updates are committed.
+      updates.driver_details_scheduled_at = null
+      sendDriverDetailsNow = true
+    } else {
+      // Outside the window — the cron job (app/api/cron/send-driver-details)
+      // will pick it up once driver_details_scheduled_at has passed.
+      updates.driver_details_scheduled_at = new Date(sendAt).toISOString()
+    }
+  }
 
   // ── Special: send quote email to customer (side-effect, status still updates) ──
   if (body.send_quote_email) {
@@ -185,6 +251,15 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Awaited (not fire-and-forget) so Vercel doesn't tear down the function
+  // before the send completes — mirrors sendLeadAcknowledgment's approach.
+  // Never throws, so it can't turn a successful status update into a
+  // failed request even if email/WhatsApp both fail.
+  if (sendDriverDetailsNow) {
+    await sendDriverDetails(id)
+  }
+
   return NextResponse.json({ booking: data })
 }
 

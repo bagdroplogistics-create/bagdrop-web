@@ -142,7 +142,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
         'inquiry', 'document_collection', 'pending', 'review',
         'accepted', 'rejected', 'quote_sent', 'payment_pending',
         'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up',
-        'in_transit', 'out_for_delivery', 'delivered', 'completed', 'cancelled',
+        'in_transit', 'out_for_delivery', 'driver_details_shared',
+        'delivered', 'completed', 'cancelled',
       ]
       const newBookingStatus = statusMap[body.status]
       const currentIdx       = bookingStatusOrder.indexOf(currentBooking?.status ?? 'inquiry')
