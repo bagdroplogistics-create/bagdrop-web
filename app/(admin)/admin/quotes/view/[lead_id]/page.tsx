@@ -80,6 +80,7 @@ interface Booking {
   id: string
   tracking_id: string
   status: string
+  service_type: string | null
   payment_status: string | null
   payment_reference: string | null
   total_amount: number | null
@@ -87,6 +88,14 @@ interface Booking {
   customer_phone: string | null
   rejection_reason: string | null
   rejection_comment: string | null
+  // Driver Details Shared (Airport Delivery only)
+  driver_name:          string | null
+  driver_phone:         string | null
+  vehicle_number:       string | null
+  pickup_instructions:  string | null
+  flight_datetime:      string | null
+  driver_details_sent_at:      string | null
+  driver_details_scheduled_at: string | null
 }
 
 interface Invoice {
@@ -152,8 +161,10 @@ function toWords(n: number): string {
 
 // ── Booking Workflow ──────────────────────────────────────────────────────────
 
-// Full 17-step sequential workflow — each step only enables when booking is at the correct preceding status
-const STATUS_STEPS = [
+// Full 17-step sequential workflow — each step only enables when booking is at the correct preceding status.
+// Airport Delivery bookings get an 18th step ("Driver Details Shared") inserted between Out for Delivery
+// and Delivered — see buildStatusSteps() below, which is what components should actually use.
+const STATUS_STEPS_BASE = [
   { key: 'inquiry',          label: 'New Inquiry' },
   { key: 'quote_created',    label: 'Quote Created' },
   { key: 'quote_sent',       label: 'Quote Sent' },
@@ -172,8 +183,20 @@ const STATUS_STEPS = [
   { key: 'completed',        label: 'Completed' },
 ]
 
+const DRIVER_DETAILS_STEP = { key: 'driver_details_shared', label: 'Driver Details Shared' }
+
+// Builds the step list + status order for a specific booking — Airport
+// Delivery only gets the extra "Driver Details Shared" step between Out
+// for Delivery and Delivered. Every other service type keeps the exact
+// original 16-step list/order untouched.
+function buildStatusSteps(isAirportDelivery: boolean) {
+  if (!isAirportDelivery) return STATUS_STEPS_BASE
+  const idx = STATUS_STEPS_BASE.findIndex(s => s.key === 'delivered')
+  return [...STATUS_STEPS_BASE.slice(0, idx), DRIVER_DETAILS_STEP, ...STATUS_STEPS_BASE.slice(idx)]
+}
+
 // Ordered status progression for gating checks
-const STATUS_ORDER = [
+const STATUS_ORDER_BASE = [
   'inquiry', 'quote_created', 'quote_sent', 'accepted',
   'payment_pending', 'payment_received', 'payment_approved',
   'confirmed', 'invoice_generated', 'invoice_sent',
@@ -181,12 +204,18 @@ const STATUS_ORDER = [
   'out_for_delivery', 'delivered', 'trip_created', 'completed',
 ]
 
+function buildStatusOrder(isAirportDelivery: boolean): string[] {
+  if (!isAirportDelivery) return STATUS_ORDER_BASE
+  const idx = STATUS_ORDER_BASE.indexOf('delivered')
+  return [...STATUS_ORDER_BASE.slice(0, idx), 'driver_details_shared', ...STATUS_ORDER_BASE.slice(idx)]
+}
+
 const NO_BACK_STATUSES = new Set(['completed', 'cancelled', 'rejected'])
 
-function getPreviousStatus(current: string): string | null {
-  const idx = STATUS_ORDER.indexOf(current)
+function getPreviousStatus(current: string, order: string[]): string | null {
+  const idx = order.indexOf(current)
   if (idx <= 0) return null
-  return STATUS_ORDER[idx - 1]
+  return order[idx - 1]
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -199,6 +228,7 @@ const STATUS_LABEL: Record<string, string> = {
   picked_up:        'Picked Up',
   in_transit:       'In Transit',
   out_for_delivery: 'Out for Delivery',
+  driver_details_shared: 'Driver Details Shared',
   delivered:        'Delivered',
   completed:        'Completed',
   cancelled:        'Cancelled',
@@ -216,6 +246,7 @@ const STATUS_COLOR: Record<string, string> = {
   pickup_scheduled: 'bg-teal-100 text-teal-700',
   picked_up:        'bg-cyan-100 text-cyan-700',
   in_transit:       'bg-indigo-100 text-indigo-700',
+  driver_details_shared: 'bg-sky-100 text-sky-700',
   delivered:        'bg-green-100 text-green-700',
   completed:        'bg-gray-100 text-gray-700',
   cancelled:        'bg-red-100 text-red-700',
@@ -434,11 +465,36 @@ export default function QuoteViewPage() {
 
   // ── Step-gated workflow functions ─────────────────────────────────
 
+  // Airport Delivery bookings get the extra "Driver Details Shared" step
+  // inserted between Out for Delivery and Delivered — STATUS_STEPS and
+  // STATUS_ORDER below are derived from this per booking, so no other
+  // service type is affected.
+  const isAirportDelivery = booking?.service_type === 'airport-delivery'
+  const steps       = buildStatusSteps(isAirportDelivery)
+  const statusOrder = buildStatusOrder(isAirportDelivery)
+
+  // Driver Details Shared form state — defaults from whatever's already
+  // saved on the booking (e.g. if a previous attempt failed validation).
+  const [driverName,  setDriverName]  = useState('')
+  const [driverPhone, setDriverPhone] = useState('')
+  const [vehicleNo,   setVehicleNo]   = useState('')
+  const [pickupInstr, setPickupInstr] = useState('')
+  const [flightDT,    setFlightDT]    = useState('')
+
+  useEffect(() => {
+    if (!booking) return
+    setDriverName(booking.driver_name ?? '')
+    setDriverPhone(booking.driver_phone ?? '')
+    setVehicleNo(booking.vehicle_number ?? '')
+    setPickupInstr(booking.pickup_instructions ?? '')
+    setFlightDT(booking.flight_datetime ? booking.flight_datetime.slice(0, 16) : '')
+  }, [booking])
+
   // Helper: is booking at or past a given status in the linear sequence?
   function atOrPast(targetStatus: string): boolean {
     if (!booking) return false
-    const cur = STATUS_ORDER.indexOf(booking.status)
-    const tgt = STATUS_ORDER.indexOf(targetStatus)
+    const cur = statusOrder.indexOf(booking.status)
+    const tgt = statusOrder.indexOf(targetStatus)
     return cur >= tgt
   }
 
@@ -552,9 +608,28 @@ export default function QuoteViewPage() {
   async function doMarkDelivered()     { await patchBooking('mark_delivered',     { status: 'delivered' }) }
   async function doMarkCompleted()     { await patchBooking('mark_completed',     { status: 'completed' }) }
 
+  // Airport Delivery only — validated server-side too (service_type gate,
+  // required fields, dedup) in app/api/admin/bookings/[id]/route.ts. That
+  // route also decides send-now vs. schedule-for-4-hours-before-flight and
+  // triggers lib/driver-details.ts accordingly.
+  async function doShareDriverDetails() {
+    if (!driverName.trim() || !driverPhone.trim() || !vehicleNo.trim() || !flightDT) {
+      setActionError('Driver name, phone, vehicle number and flight date/time are all required.')
+      return
+    }
+    await patchBooking('share_driver_details', {
+      status:              'driver_details_shared',
+      driver_name:         driverName.trim(),
+      driver_phone:        driverPhone.trim(),
+      vehicle_number:      vehicleNo.trim(),
+      pickup_instructions: pickupInstr.trim() || null,
+      flight_datetime:     new Date(flightDT).toISOString(),
+    })
+  }
+
   async function doMoveBack() {
     if (!booking) return
-    const prev = getPreviousStatus(booking.status)
+    const prev = getPreviousStatus(booking.status, statusOrder)
     if (!prev) return
     const ok = await patchBooking('move_back', {
       status: prev,
@@ -588,7 +663,7 @@ export default function QuoteViewPage() {
   const quoteDate   = lead.quote_date       ?? lead.created_at
 
   // Back button computed values
-  const prevStatus = booking ? getPreviousStatus(booking.status) : null
+  const prevStatus = booking ? getPreviousStatus(booking.status, statusOrder) : null
   const canGoBack  = !!(prevStatus && booking && !NO_BACK_STATUSES.has(booking.status))
   const prevLabel  = prevStatus ? (STATUS_LABEL[prevStatus] ?? prevStatus) : ''
   const curLabel   = booking ? (STATUS_LABEL[booking.status] ?? booking.status) : ''
@@ -1003,7 +1078,7 @@ export default function QuoteViewPage() {
               {/* Horizontal progress strip */}
               <div className="overflow-x-auto px-6 py-4">
                 <div className="flex min-w-max items-center">
-                  {STATUS_STEPS.map((step, idx) => {
+                  {steps.map((step, idx) => {
                     const done    = atOrPast(step.key) && booking.status !== step.key
                     const current = booking.status === step.key
                     return (
@@ -1024,8 +1099,8 @@ export default function QuoteViewPage() {
                             {step.label}
                           </span>
                         </div>
-                        {idx < STATUS_STEPS.length - 1 && (
-                          <div className={`h-0.5 w-6 shrink-0 mb-4 ${atOrPast(STATUS_STEPS[idx + 1].key) ? 'bg-green-400' : 'bg-gray-200'}`} />
+                        {idx < steps.length - 1 && (
+                          <div className={`h-0.5 w-6 shrink-0 mb-4 ${atOrPast(steps[idx + 1].key) ? 'bg-green-400' : 'bg-gray-200'}`} />
                         )}
                       </div>
                     )
@@ -1332,8 +1407,46 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
-                {/* ── Step 14: Delivered ── */}
-                {atStatus('out_for_delivery') && (
+                {/* ── Step 13b: Driver Details Shared — Airport Delivery only ── */}
+                {atStatus('out_for_delivery') && isAirportDelivery && (
+                  <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-sky-600">🚕 Step 13b — Share Driver Details (Airport Delivery)</p>
+                    <p className="text-sm text-sky-700">
+                      Sends the driver &amp; vehicle details to the customer automatically — 4 hours before flight
+                      arrival, or immediately if that window has already passed.
+                    </p>
+                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      <input type="text" placeholder="Driver Name *"
+                        value={driverName} onChange={e => setDriverName(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                      <input type="tel" placeholder="Driver Mobile Number *"
+                        value={driverPhone} onChange={e => setDriverPhone(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                      <input type="text" placeholder="Vehicle Number *"
+                        value={vehicleNo} onChange={e => setVehicleNo(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                      <input type="datetime-local" placeholder="Flight Arrival Date & Time *"
+                        value={flightDT} onChange={e => setFlightDT(e.target.value)}
+                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                      <textarea rows={2} placeholder="Pickup Instructions (optional)"
+                        value={pickupInstr} onChange={e => setPickupInstr(e.target.value)}
+                        className="sm:col-span-2 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
+                    </div>
+                    <button onClick={doShareDriverDetails} disabled={!!acting}
+                      className="flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40 transition-colors">
+                      {acting === 'share_driver_details' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {acting === 'share_driver_details' ? 'Sending...' : 'Share Driver Details →'}
+                    </button>
+                    {actionSuccess === 'share_driver_details' && (
+                      <p className="text-xs text-green-600 font-semibold">✅ Driver details sent (or scheduled for 4hrs before flight).</p>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Step 14: Delivered ──
+                     Non-Airport-Delivery: unlocks straight from Out for Delivery, exactly as before.
+                     Airport Delivery: only unlocks after Driver Details Shared. ── */}
+                {((atStatus('out_for_delivery') && !isAirportDelivery) || atStatus('driver_details_shared')) && (
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-green-600">✅ Step 14 — Mark Delivered</p>
                     <p className="text-sm text-green-700">Delivery agent on the way. Mark delivered once bags reach the customer.</p>
