@@ -302,6 +302,41 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
   await sendEmail(data.customerEmail, 'Booking Confirmed | Bagdrop', baseTemplate(body), data.trackingId)
 }
 
+// ── Inquiry Acknowledgment (to customer) ───────────────────────────────
+// Sent automatically the moment ANY inquiry is saved, regardless of source
+// (website contact form, booking forms, mobile app, admin/partner/API lead
+// creation). See lib/lead-acknowledgment.ts for the orchestration —
+// idempotency, WhatsApp, and communication_log — that calls this.
+
+export interface InquiryAcknowledgmentEmailData {
+  customerName:  string
+  customerEmail: string
+}
+
+export async function sendInquiryAcknowledgmentEmail(data: InquiryAcknowledgmentEmailData) {
+  if (!data.customerEmail) return { success: false, error: 'No customer email' }
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Thank You for Your Inquiry</h2>' +
+    '<p style="margin:20px 0 0;font-size:14px;color:#333;line-height:1.6;">Dear ' + data.customerName + ',</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Thank you for contacting Bagdrop.</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">' +
+    'We have successfully received your inquiry. Our team will review the details and get in touch with you shortly ' +
+    'to discuss your requirements and provide a customized quotation based on the information you have shared.' +
+    '</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">' +
+    'If you have any additional information or questions, feel free to reply to this message.' +
+    '</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Thank you for choosing Bagdrop. We look forward to assisting you.</p>' +
+    '<p style="margin:24px 0 0;font-size:14px;color:#333;line-height:1.6;">Regards,<br/>Bagdrop Team</p>' +
+
+    '<div style="text-align:center;margin:28px 0 4px;">' +
+    '<a href="https://wa.me/916357115711" style="display:inline-block;background:#25D366;color:#fff;font-size:13px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;">WhatsApp Us</a>' +
+    '</div>'
+
+  return sendEmail(data.customerEmail, 'Thank You for Your Inquiry', baseTemplate(body), 'ack:' + data.customerName)
+}
+
 // ── Quote Email (to customer) ─────────────────────────────────────────
 
 export interface QuoteEmailData {

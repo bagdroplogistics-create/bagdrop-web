@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
+import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -359,8 +360,9 @@ export async function POST(req: NextRequest) {
   // Note: lead_id on bookings is omitted (column may not exist in all DB schemas).
   // The relationship is maintained via leads.booking_id only.
 
-  // Send inquiry notification email (fire-and-forget, non-blocking)
-  Promise.allSettled([
+  // Send inquiry notification + customer acknowledgment. Awaited (not
+  // fire-and-forget) so Vercel doesn't tear the function down mid-send.
+  await Promise.allSettled([
     sendInquiryNotification({
       inquiryNumber:   leadNumber,
       source:          body.source ?? 'admin',
@@ -380,6 +382,15 @@ export async function POST(req: NextRequest) {
       pnr:             lead.pnr,
       notes:           lead.notes,
       submittedAt:     lead.created_at ?? new Date().toISOString(),
+    }),
+    // Customer acknowledgment (email + WhatsApp) — covers manual creation,
+    // the admin mobile app, and any partner/API integration that creates
+    // leads through this endpoint. See lib/lead-acknowledgment.ts.
+    sendLeadAcknowledgment({
+      id:    lead.id,
+      name:  lead.name,
+      phone: lead.phone,
+      email: lead.email,
     }),
   ]).catch(err => console.error('[leads POST] email notification error:', err))
 

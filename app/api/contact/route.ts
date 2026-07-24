@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -107,7 +108,7 @@ export async function POST(req: Request) {
     }
     const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
 
-    const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
+    const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
       lead_number:      leadNumber,
       name:             (name as string).trim(),
       phone:            normalizedPhone,
@@ -117,12 +118,22 @@ export async function POST(req: Request) {
       service_interest: subject || 'General Inquiry',
       service_type:     subject || 'General Inquiry',
       notes:            `[Contact Form] ${message}`,
-    })
+    }).select('id').single()
 
     if (leadInsertErr) {
       console.error('[Contact] Lead insert error:', leadInsertErr.message)
     } else {
       console.log(`[Contact] Auto-created lead ${leadNumber} from contact form`)
+      // Fire the "Thank You for Your Inquiry" email + WhatsApp — awaited so
+      // it isn't cut off if Vercel tears down the function after we respond.
+      if (newLead) {
+        await sendLeadAcknowledgment({
+          id:    newLead.id,
+          name:  (name as string).trim(),
+          phone: normalizedPhone,
+          email: cleanEmail,
+        })
+      }
     }
   } catch (leadErr) {
     // Non-fatal — the inquiry email still sends below even if this fails.

@@ -43,6 +43,16 @@ interface Lead {
   quote_discount_amt:   number | null
   payment_status:       string | null
   updated_at?:          string | null
+  acknowledgment_sent_at?: string | null
+  communication_log?:   CommunicationLogEntry[] | null
+}
+
+interface CommunicationLogEntry {
+  type:      string
+  channel:   'email' | 'whatsapp' | string
+  status:    'sent' | 'failed' | 'skipped' | string
+  timestamp: string
+  detail:    string | null
 }
 
 // ── Config ───────────────────────────────────────────────────────
@@ -565,6 +575,42 @@ function LeadModal({
               placeholder="Any special instructions, weight details, fragile items…"
               className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
+
+          {/* ── Communication Log (read-only, full width) ── */}
+          {lead && lead.communication_log && lead.communication_log.length > 0 && (
+            <div className="col-span-2">
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Communication Log
+              </label>
+              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                {lead.communication_log.map((entry, i) => {
+                  const statusStyle =
+                    entry.status === 'sent'    ? { color: '#16a34a', bg: '#f0fdf4', label: 'Sent' } :
+                    entry.status === 'failed'  ? { color: '#dc2626', bg: '#fef2f2', label: 'Failed' } :
+                                                  { color: '#6b7280', bg: '#f9fafb', label: 'Skipped' }
+                  const channelLabel = entry.channel === 'whatsapp' ? 'WhatsApp' : entry.channel === 'email' ? 'Email' : entry.channel
+                  return (
+                    <div key={i} className="flex items-center justify-between gap-3 px-3 py-2 text-xs">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-gray-700 whitespace-nowrap">{channelLabel}</span>
+                        <span className="text-gray-400">·</span>
+                        <span className="text-gray-500 truncate">
+                          {new Date(entry.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                        </span>
+                        {entry.detail && entry.status === 'failed' && (
+                          <span className="text-red-500 truncate" title={entry.detail}>— {entry.detail}</span>
+                        )}
+                      </div>
+                      <span style={{ color: statusStyle.color, background: statusStyle.bg }}
+                        className="shrink-0 rounded-full px-2 py-0.5 font-semibold whitespace-nowrap">
+                        {statusStyle.label}
+                      </span>
+                    </div>
+                  )
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Footer */}

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendCustomerConfirmation, sendInquiryNotification, type BookingEmailData } from '@/lib/email'
+import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS } from '@/lib/constants'
 
 export async function POST(req: Request) {
@@ -105,6 +106,7 @@ export async function POST(req: Request) {
     // ── Auto-create Lead ────────────────────────────────────────────
     // Every website booking gets its own lead row.
     // We check by booking_id (not phone) so repeat customers also appear in leads.
+    let ackPromise: Promise<void> = Promise.resolve()
     if (savedBooking) {
       try {
         // Guard against duplicate lead on API retry: check by booking_id
@@ -160,6 +162,14 @@ export async function POST(req: Request) {
             // Note: lead_id on bookings omitted (column may not exist in all DB schemas).
             // Relationship is maintained via leads.booking_id set above.
             console.log(`[Bookings] Auto-created lead ${leadNumber} for booking ${trackingId}`)
+            if (newLead) {
+              ackPromise = sendLeadAcknowledgment({
+                id:    newLead.id,
+                name:  customerName,
+                phone: customerPhone,
+                email: customerEmail,
+              })
+            }
           }
         } else {
           // Lead already exists for this booking (API retry or race) — no-op.
@@ -215,6 +225,8 @@ export async function POST(req: Request) {
         })(),
         submittedAt: new Date().toISOString(),
       }),
+      // Customer acknowledgment (email + WhatsApp) — see lib/lead-acknowledgment.ts
+      ackPromise,
     ])
     emailResults.forEach((r, i) => {
       if (r.status === 'rejected') {
