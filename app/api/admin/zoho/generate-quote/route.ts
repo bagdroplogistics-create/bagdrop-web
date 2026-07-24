@@ -431,6 +431,12 @@ export async function POST(req: NextRequest) {
 
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,
+      // Keep the booking's customer info in sync with the lead — otherwise a
+      // booking created against an older name/email (e.g. reused via the
+      // duplicate-phone path) stays stale forever and won't show up when
+      // searching the Dashboard by the customer's current name.
+      customer_name:  lead.name,
+      customer_email: lead.email ?? '',
       // Only reset to quote_created if booking hasn't progressed past the quote stage
       ...(canUpdateStatus ? { status: 'quote_created' } : {}),
     }

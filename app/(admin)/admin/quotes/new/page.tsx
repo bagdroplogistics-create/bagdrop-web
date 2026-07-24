@@ -497,10 +497,42 @@ function QuotePageInner() {
       const cj = await createRes.json().catch(() => ({}))
       if (!createRes.ok) {
         // DUPLICATE_PHONE (409): a lead already exists for this phone.
-        // Use the existing lead's ID instead of erroring out — the user is
-        // simply generating a new quote for a returning customer.
+        // Previously this silently reused the OLD lead — no new leads-tab
+        // row, no admin-notification email, and the OLD lead's name/email
+        // stayed on record even though the form had different values typed
+        // in. That looked exactly like "quote created but nowhere to be
+        // found and no email" even though nothing actually failed — it was
+        // quietly attaching to a different, pre-existing customer record.
+        // Now: tell the admin exactly what's happening and let them decide,
+        // and if they proceed, sync the existing lead's details to what was
+        // just typed so the record (and future search) reflects reality.
         if (createRes.status === 409 && cj.code === 'DUPLICATE_PHONE' && cj.duplicate_lead?.id) {
-          resolvedLeadId = cj.duplicate_lead.id
+          const dup = cj.duplicate_lead
+          const proceed = window.confirm(
+            `A lead already exists for this phone number:\n\n` +
+            `${dup.lead_number} — ${dup.name} (status: ${dup.status})\n\n` +
+            `This quote will be added to that existing lead instead of creating a new one — ` +
+            `no new "New Inquiry" email will be sent, since it's not a new customer.\n\n` +
+            `Click OK to continue with the existing lead (its name/email will be updated to what you just entered), ` +
+            `or Cancel to go back and use a different phone number.`
+          )
+          if (!proceed) { setGenerating(false); return }
+          resolvedLeadId = dup.id
+          // Sync the existing lead's details to what was just typed, so the
+          // record reflects the current customer info instead of staying
+          // stuck on whatever was entered the first time this phone was used.
+          await fetch(`/api/admin/leads/${resolvedLeadId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+            body: JSON.stringify({
+              name: effectiveName, email: custEmail.trim() || null,
+              service_interest: custService || null, service_type: custService || null,
+              from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
+              pickup_date: pickupDate || null, delivery_date: deliveryDate || null, pickup_time: pickupTime || null,
+              pickup_address: pickupAddr.trim() || null, drop_address: dropAddr.trim() || null,
+              bags_count: Number(bagsCount) || 1,
+            }),
+          }).catch(() => {})
         } else {
           setErr(cj.error ?? 'Failed to create lead')
           setGenerating(false)
