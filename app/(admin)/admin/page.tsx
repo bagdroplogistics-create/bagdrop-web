@@ -135,6 +135,19 @@ function StatusSelect({ id, current, adminKey, onUpdate }: {
         <p className="text-[10px] text-amber-600 leading-tight max-w-[160px]">
           Create a quote first via Leads tab → New Quote
         </p>
+        {/* Escape hatch: some bookings (orphan test entries, duplicates, spam)
+            have no linked lead at all, so "Leads tab → New Quote" is a dead
+            end — there's nothing to click there. Cancelling doesn't need a
+            quote, so it's exposed here directly instead of being blocked
+            behind the same lock as real status progression. */}
+        <button
+          onClick={() => { if (confirm('Cancel this booking? It will drop off the default Dashboard view.')) change('cancelled') }}
+          disabled={loading}
+          className="text-[10px] font-semibold text-red-500 hover:text-red-700 underline disabled:opacity-50"
+        >
+          {loading ? 'Cancelling…' : 'Cancel booking'}
+        </button>
+        {error && <p className="text-xs text-red-500">{error}</p>}
       </div>
     )
   }
