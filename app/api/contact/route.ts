@@ -81,16 +81,24 @@ export async function POST(req: Request) {
   }
   // ────────────────────────────────────────────────────────────────
 
-  // ── Auto-create Lead ──────────────────────────────────────────────
+  // ── Auto-create Lead + Booking ─────────────────────────────────────
   // The contact form used to only email info@ — it never wrote a row to
-  // the leads table, so these inquiries never showed up in the Dashboard.
-  // Every other inquiry source (booking forms, mobile app) already
-  // auto-creates a lead (see app/api/bookings/route.ts); this brings the
-  // contact form in line so it's visible in the same place.
+  // the leads table, so these inquiries never showed up anywhere in the
+  // admin system. A first fix added the leads-table insert, which made it
+  // show up in the Leads tab — but the Dashboard's main table is sourced
+  // from `bookings`, not `leads` (same as every other inquiry source:
+  // website/mobile booking forms create booking+lead together in
+  // app/api/bookings/route.ts, and admin manual entry does the same in
+  // app/api/admin/leads/route.ts). Without a linked booking row, a
+  // contact-form lead is invisible to the Dashboard even though it's
+  // correctly saved and visible in Leads. This creates both rows, exactly
+  // mirroring the admin/leads pattern, so contact-form inquiries behave
+  // identically to every other source.
   try {
     const cleanPhone = (phone as string).replace(/[\s\-\(\)]/g, '')
     const normalizedPhone = cleanPhone.startsWith('+') ? cleanPhone : '+91' + digitsOnly
     const cleanEmail = (email as string).trim().toLowerCase()
+    const serviceLabel = subject || 'General Inquiry'
 
     const year = new Date().getFullYear()
     const { data: lastLead } = await supabaseAdmin
@@ -107,6 +115,40 @@ export async function POST(req: Request) {
       if (!isNaN(last)) nextSeq = last + 1
     }
     const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+    // BDC- = Bagdrop Contact-form — derived from the lead number so it's
+    // guaranteed unique, same trick used for BDA- (admin) bookings.
+    const trackingId = leadNumber.replace(/^BDL-/, 'BDC-')
+
+    const { data: newBooking, error: bookingErr } = await supabaseAdmin
+      .from('bookings')
+      .insert({
+        tracking_id:    trackingId,
+        status:         'inquiry',
+        customer_name:  (name as string).trim(),
+        customer_email: cleanEmail || '',
+        customer_phone: normalizedPhone,
+        service_type:   '',
+        service_label:  serviceLabel,
+        from_city:      '',
+        to_city:        '',
+        total_bags:     1,
+        total_amount:   0,
+        currency:       'INR',
+        notes:          `[Contact Form] ${message}`,
+        status_history: [{
+          from:       null,
+          to:         'inquiry',
+          timestamp:  new Date().toISOString(),
+          changed_by: 'system',
+          note:       `Auto-created from contact form submission`,
+        }],
+      })
+      .select('id, tracking_id')
+      .single()
+
+    if (bookingErr) {
+      console.error('[Contact] Booking insert error (lead will still be created without a link):', bookingErr.message)
+    }
 
     const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
       lead_number:      leadNumber,
@@ -115,15 +157,16 @@ export async function POST(req: Request) {
       email:            cleanEmail || null,
       source:           'contact-form',
       status:           'new',
-      service_interest: subject || 'General Inquiry',
-      service_type:     subject || 'General Inquiry',
+      service_interest: serviceLabel,
+      service_type:     serviceLabel,
       notes:            `[Contact Form] ${message}`,
+      booking_id:       newBooking?.id ?? null,
     }).select('id').single()
 
     if (leadInsertErr) {
       console.error('[Contact] Lead insert error:', leadInsertErr.message)
     } else {
-      console.log(`[Contact] Auto-created lead ${leadNumber} from contact form`)
+      console.log(`[Contact] Auto-created lead ${leadNumber}${newBooking ? ` + booking ${trackingId}` : ''} from contact form`)
       // Fire the "Thank You for Your Inquiry" email + WhatsApp — awaited so
       // it isn't cut off if Vercel tears down the function after we respond.
       if (newLead) {
@@ -137,9 +180,9 @@ export async function POST(req: Request) {
     }
   } catch (leadErr) {
     // Non-fatal — the inquiry email still sends below even if this fails.
-    console.error('[Contact] Lead auto-create failed (non-fatal):', leadErr)
+    console.error('[Contact] Lead/booking auto-create failed (non-fatal):', leadErr)
   }
-  // ── End Auto-create Lead ──────────────────────────────────────────
+  // ── End Auto-create Lead + Booking ─────────────────────────────────
 
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
