@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { sendInquiryNotification } from '@/lib/email'
+import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 
 // ── Quote number: BDQ-YYYY-NNNN ──────────────────────────────────
 // Uses MAX of existing quote numbers (not COUNT) so deletions never cause collisions.
@@ -238,6 +240,86 @@ export async function POST(req: NextRequest) {
       console.error('[quotes POST] booking creation failed:', bookingErr?.message)
     }
     linkedBookingId = newBooking?.id ?? null
+
+    // ── Also create a Lead row + notify admins ──────────────────────────
+    // The "+ New Quote" button in the Leads tab (no lead_id) jumps straight
+    // here without going through POST /api/admin/leads first. That meant
+    // quotes created this way never got a leads-table row (invisible in the
+    // Leads tab) and never triggered sendInquiryNotification (info@ /
+    // aditya@ never heard about it) — the exact gap reported 2026-07-24.
+    // Mirror what /api/admin/leads does so every new-customer entry point
+    // behaves identically regardless of which button was clicked.
+    if (linkedBookingId) {
+      try {
+        const leadYear = new Date().getFullYear()
+        const { data: lastLead } = await supabaseAdmin
+          .from('leads')
+          .select('lead_number')
+          .like('lead_number', `BDL-${leadYear}-%`)
+          .order('lead_number', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+        let leadSeq = 1
+        if (lastLead?.lead_number) {
+          const last = parseInt(lastLead.lead_number.split('-').pop() ?? '0', 10)
+          if (!isNaN(last)) leadSeq = last + 1
+        }
+        const leadNumber = `BDL-${leadYear}-${String(leadSeq).padStart(4, '0')}`
+
+        const { data: newLead, error: leadInsertErr } = await supabaseAdmin
+          .from('leads')
+          .insert({
+            lead_number:       leadNumber,
+            name:               quoteFields.customer_name,
+            phone:              quoteFields.customer_phone,
+            email:              quoteFields.customer_email,
+            source:             'admin',
+            status:             'new',
+            service_interest:   serviceLabel,
+            service_type:       quoteFields.service_type,
+            from_city:          quoteFields.from_city,
+            to_city:            quoteFields.to_city,
+            pickup_date:        quoteFields.pickup_date,
+            pickup_time:        quoteFields.time_slot,
+            bags_count:         quoteFields.total_bags,
+            notes:              quoteFields.notes,
+            booking_id:         linkedBookingId,
+          })
+          .select('id')
+          .single()
+
+        if (leadInsertErr) {
+          console.error('[quotes POST] lead insert failed (non-fatal — quote still created):', leadInsertErr.message)
+        } else {
+          await Promise.allSettled([
+            sendInquiryNotification({
+              inquiryNumber:  leadNumber,
+              source:         'admin',
+              customerName:   quoteFields.customer_name,
+              customerPhone:  quoteFields.customer_phone,
+              customerEmail:  quoteFields.customer_email,
+              serviceType:    quoteFields.service_type,
+              fromCity:       quoteFields.from_city,
+              toCity:         quoteFields.to_city,
+              bagsCount:      quoteFields.total_bags,
+              pickupDate:     quoteFields.pickup_date,
+              notes:          quoteFields.notes,
+              submittedAt:    new Date().toISOString(),
+            }),
+            newLead
+              ? sendLeadAcknowledgment({
+                  id:    newLead.id,
+                  name:  quoteFields.customer_name,
+                  phone: quoteFields.customer_phone,
+                  email: quoteFields.customer_email,
+                })
+              : Promise.resolve(),
+          ])
+        }
+      } catch (notifyErr) {
+        console.error('[quotes POST] lead/notification step failed (non-fatal — quote still created):', notifyErr)
+      }
+    }
   }
 
   // ── INSERT: new quote (retry up to 3× on quote_number collision) ──
