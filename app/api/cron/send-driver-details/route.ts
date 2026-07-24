@@ -1,20 +1,28 @@
 // BAGDROP — app/api/cron/send-driver-details/route.ts
 //
-// Vercel Cron target for the "Driver Details Shared" automation (Airport
+// Scheduled target for the "Driver Details Shared" automation (Airport
 // Delivery only). When an admin marks a booking's status (from the
 // "Booking Workflow" stepper — see
 // app/(admin)/admin/quotes/view/[lead_id]/page.tsx) before the
 // 4-hour-before-flight-arrival window opens, the PATCH handler in
 // app/api/admin/bookings/[id]/route.ts stores driver_details_scheduled_at
-// instead of sending right away. This route runs on a schedule (see
-// vercel.json — every 10 minutes), finds bookings whose scheduled time
-// has passed and haven't been sent yet, and sends them.
+// instead of sending right away. This route needs to be hit on a schedule,
+// finds bookings whose scheduled time has passed and haven't been sent
+// yet, and sends them.
 //
-// Auth: Vercel automatically attaches `Authorization: Bearer $CRON_SECRET`
-// to requests it triggers for scheduled cron jobs, IF a CRON_SECRET env
-// var is set on the project (Vercel Dashboard → Settings → Environment
-// Variables). Add one there — any random string — for this check to work.
-// Docs: https://vercel.com/docs/cron-jobs/manage-cron-jobs#securing-cron-jobs
+// NOT using Vercel Cron here: the Hobby plan only allows daily cron
+// frequency, and this feature needs ~10-minute resolution to reliably
+// land sends near the 4-hour-before-flight mark. Instead, point a free
+// external scheduler (e.g. cron-job.org, EasyCron) at this URL every
+// 10 minutes:
+//   https://bagdrop.co/api/cron/send-driver-details
+// with header  Authorization: Bearer <CRON_SECRET>  (see below).
+// If you later upgrade to Vercel Pro, this can move back into
+// vercel.json's `crons` array instead.
+//
+// Auth: set a CRON_SECRET env var (Vercel Dashboard → Settings →
+// Environment Variables) — any random string — and configure your
+// external scheduler to send it as `Authorization: Bearer $CRON_SECRET`.
 
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
