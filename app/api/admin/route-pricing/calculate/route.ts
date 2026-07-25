@@ -1,23 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-
-// Aliases to normalize user-typed city names to DB keys
-const CITY_ALIASES: Record<string, string> = {
-  'vadodara':          'baroda',
-  'bengaluru':         'bangalore',
-  'bombay':            'mumbai',
-  'new delhi':         'delhi',
-  'new-delhi':         'delhi',
-  'ahmedabad airport': 'ahmedabad',
-  'mumbai airport':    'mumbai',
-  'delhi airport':     'delhi',
-}
-
-function normalizeCity(raw: string): string {
-  const s = raw.toLowerCase().trim().replace(/-/g, ' ')
-  return CITY_ALIASES[s] ?? s
-}
+import { normalizeCity } from '@/lib/city-normalize'
 
 // GET /api/admin/route-pricing/calculate?from=X&to=Y&bags=N
 export async function GET(req: NextRequest) {

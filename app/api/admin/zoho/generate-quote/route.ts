@@ -35,14 +35,33 @@ import { requireAdminAuth }          from '@/lib/admin-auth'
 import { supabaseAdmin }             from '@/lib/supabase'
 import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
+import { normalizeCity }             from '@/lib/city-normalize'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
 
-// Booking statuses that are "early enough" to be safely downgraded to quote_created.
-// Any status BEYOND these means the booking has progressed past the quote stage
-// and must NOT be reset.
+// Booking statuses that are "early enough" to be safely set to quote_created.
+// Used below to decide whether to advance a booking to quote_sent after a
+// quote email goes out — deliberately a narrow whitelist there, since that
+// check only needs to catch the two known pre-quote states.
 const QUOTE_STAGE_STATUSES = new Set([
   'inquiry', 'quote_created', 'quote_sent',
+])
+
+// Statuses that mean the booking has genuinely progressed PAST the quote
+// stage — these are the only ones Generate Quote must never downgrade.
+// Deliberately a blacklist, not a whitelist of "safe" statuses: any status
+// string not in this list (including legacy/unrecognized values like the
+// old 'pending' default, or a status from a future integration we haven't
+// seen yet) is treated as safe to advance. The previous whitelist approach
+// silently refused to advance the booking for ANY unrecognized status —
+// including 'pending', which is how bookings created via the public
+// website form (before that was fixed to use 'inquiry') got permanently
+// stuck with a fully-generated quote but a workflow that never unlocked.
+const PROTECTED_LATE_STAGE_STATUSES = new Set([
+  'accepted', 'payment_pending', 'payment_received', 'payment_approved',
+  'confirmed', 'invoice_generated', 'invoice_sent', 'pickup_scheduled',
+  'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
+  'delivered', 'trip_created', 'completed', 'rejected',
 ])
 
 interface ExplicitItem {
@@ -120,17 +139,10 @@ function deriveQuoteNumber(leadNumber: string): string {
   return parts.length >= 3 ? 'QT-' + parts.slice(1).join('-') : 'QT-' + leadNumber
 }
 
-const ALIASES: Record<string, string> = {
-  vadodara: 'baroda', vdr: 'baroda', brc: 'baroda',
-  bengaluru: 'bangalore', blr: 'bangalore',
-  bom: 'mumbai', nmia: 'mumbai',
-  del: 'delhi', igi: 'delhi',
-  amd: 'ahmedabad', amdairport: 'ahmedabad',
-}
-function normalise(city: string) {
-  const s = city.toLowerCase().replace(/\s+/g, '')
-  return ALIASES[s] ?? s
-}
+// City normalization (strips airport terminal suffixes, aliases short
+// codes/spelling variants) now lives in lib/city-normalize.ts, shared with
+// app/api/admin/route-pricing/calculate/route.ts so both route-pricing
+// lookups match the exact same route_pricing rows.
 
 // ─────────────────────────────────────────────────────────────────
 
@@ -231,8 +243,8 @@ export async function POST(req: NextRequest) {
 
   } else {
     // Route pricing DB lookup
-    const fN = normalise(fromCity)
-    const tN = normalise(toCity)
+    const fN = normalizeCity(fromCity)
+    const tN = normalizeCity(toCity)
 
     const { data: route } = await supabaseAdmin
       .from('route_pricing')
@@ -423,11 +435,10 @@ export async function POST(req: NextRequest) {
       .maybeSingle()
 
     const currentStatus = existingBooking?.status ?? null
-    // Can update status if:
-    //   - booking is brand new (no status)
-    //   - booking is still in early quote stages
-    //   - booking was cancelled and is being reactivated via a new quote
-    const canUpdateStatus = !currentStatus || QUOTE_STAGE_STATUSES.has(currentStatus) || currentStatus === 'cancelled'
+    // Can update status unless the booking has genuinely progressed past the
+    // quote stage. Any unrecognized/legacy status (not just the known early
+    // ones) defaults to advanceable — see PROTECTED_LATE_STAGE_STATUSES above.
+    const canUpdateStatus = !currentStatus || !PROTECTED_LATE_STAGE_STATUSES.has(currentStatus)
 
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,
