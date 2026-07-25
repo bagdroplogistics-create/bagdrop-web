@@ -1486,8 +1486,14 @@ export default function QuoteViewPage() {
 
                 {/* ── Step 14: Delivered ──
                      Non-Airport-Delivery: unlocks straight from Out for Delivery, exactly as before.
-                     Airport Delivery: only unlocks after Driver Details Shared. ── */}
-                {((atStatus('out_for_delivery') && !isAirportDelivery) || atStatus('driver_details_shared')) && (
+                     Airport Delivery: unlocks after Driver Details Shared — OR if the booking is
+                     back at Out for Delivery but driver_details_sent_at is already set (e.g. an
+                     admin used Previous Step after a successful send). Without that second case,
+                     re-visiting Out for Delivery after already sending leaves NO card visible at
+                     all, since the Driver Assignment/Share card also hides once already sent. ── */}
+                {((atStatus('out_for_delivery') && !isAirportDelivery) ||
+                  atStatus('driver_details_shared') ||
+                  (atStatus('out_for_delivery') && isAirportDelivery && !!booking.driver_details_sent_at)) && (
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-green-600">✅ Step 14 — Mark Delivered</p>
                     <p className="text-sm text-green-700">Delivery agent on the way. Mark delivered once bags reach the customer.</p>
