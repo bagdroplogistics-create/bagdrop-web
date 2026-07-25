@@ -7,7 +7,7 @@ import {
   CheckCircle, Clock, AlertCircle, Send,
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
-  RotateCcw,
+  RotateCcw, Save,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -92,6 +92,8 @@ interface Booking {
   driver_name:          string | null
   driver_phone:         string | null
   vehicle_number:       string | null
+  vehicle_type:         string | null
+  airport_location:     string | null
   pickup_instructions:  string | null
   flight_datetime:      string | null
   driver_details_sent_at:      string | null
@@ -469,26 +471,48 @@ export default function QuoteViewPage() {
   // inserted between Out for Delivery and Delivered — STATUS_STEPS and
   // STATUS_ORDER below are derived from this per booking, so no other
   // service type is affected.
-  const isAirportDelivery = booking?.service_type === 'airport-delivery'
+  // Matches every airport-involving service_type value used across the codebase:
+  // the public booking form uses 'airport-delivery', while admin-created quotes
+  // use 'airport-to-doorstep' / 'airport-to-door' / 'doorstep-to-airport' /
+  // 'door-to-airport'. All of these contain "airport" — same heuristic already
+  // used in lib/driver-details.ts's deriveAirportName().
+  const isAirportDelivery = /airport/i.test(booking?.service_type ?? '')
   const steps       = buildStatusSteps(isAirportDelivery)
   const statusOrder = buildStatusOrder(isAirportDelivery)
 
   // Driver Details Shared form state — defaults from whatever's already
   // saved on the booking (e.g. if a previous attempt failed validation).
-  const [driverName,  setDriverName]  = useState('')
-  const [driverPhone, setDriverPhone] = useState('')
-  const [vehicleNo,   setVehicleNo]   = useState('')
-  const [pickupInstr, setPickupInstr] = useState('')
-  const [flightDT,    setFlightDT]    = useState('')
+  // Simplified to just name + phone — no vehicle/location/flight fields.
+  const [driverName,      setDriverName]      = useState('')
+  const [driverPhone,     setDriverPhone]     = useState('')
+  const [driverAssignmentOpen, setDriverAssignmentOpen] = useState(true)
+  const [savingDriver,    setSavingDriver]    = useState(false)
+  const [driverSaveMsg,   setDriverSaveMsg]   = useState<string | null>(null)
 
   useEffect(() => {
     if (!booking) return
     setDriverName(booking.driver_name ?? '')
     setDriverPhone(booking.driver_phone ?? '')
-    setVehicleNo(booking.vehicle_number ?? '')
-    setPickupInstr(booking.pickup_instructions ?? '')
-    setFlightDT(booking.flight_datetime ? booking.flight_datetime.slice(0, 16) : '')
+    // Collapse the assignment card by default once a driver is already on
+    // file — keeps the panel compact for bookings that were assigned earlier.
+    setDriverAssignmentOpen(!(booking.driver_name && booking.driver_phone))
   }, [booking])
+
+  const driverAssigned = !!(driverName.trim() && driverPhone.trim())
+
+  async function doSaveDriverDetails() {
+    if (!driverName.trim() || !driverPhone.trim()) {
+      setDriverSaveMsg(null)
+      return
+    }
+    setSavingDriver(true); setDriverSaveMsg(null)
+    const ok = await patchBooking('save_driver_details', {
+      driver_name:  driverName,
+      driver_phone: driverPhone,
+    })
+    setSavingDriver(false)
+    if (ok) { setDriverSaveMsg('Driver details saved.'); setDriverAssignmentOpen(false) }
+  }
 
   // Helper: is booking at or past a given status in the linear sequence?
   function atOrPast(targetStatus: string): boolean {
@@ -609,21 +633,17 @@ export default function QuoteViewPage() {
   async function doMarkCompleted()     { await patchBooking('mark_completed',     { status: 'completed' }) }
 
   // Airport Delivery only — validated server-side too (service_type gate,
-  // required fields, dedup) in app/api/admin/bookings/[id]/route.ts. That
-  // route also decides send-now vs. schedule-for-4-hours-before-flight and
-  // triggers lib/driver-details.ts accordingly.
+  // required fields, dedup) in app/api/admin/bookings/[id]/route.ts. Sends
+  // immediately — no flight-time scheduling window.
   async function doShareDriverDetails() {
-    if (!driverName.trim() || !driverPhone.trim() || !vehicleNo.trim() || !flightDT) {
-      setActionError('Driver name, phone, vehicle number and flight date/time are all required.')
+    if (!driverName.trim() || !driverPhone.trim()) {
+      setActionError('Please assign a driver before sharing driver details with the customer.')
       return
     }
     await patchBooking('share_driver_details', {
-      status:              'driver_details_shared',
-      driver_name:         driverName.trim(),
-      driver_phone:        driverPhone.trim(),
-      vehicle_number:      vehicleNo.trim(),
-      pickup_instructions: pickupInstr.trim() || null,
-      flight_datetime:     new Date(flightDT).toISOString(),
+      status:       'driver_details_shared',
+      driver_name:  driverName.trim(),
+      driver_phone: driverPhone.trim(),
     })
   }
 
@@ -1407,38 +1427,94 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
-                {/* ── Step 13b: Driver Details Shared — Airport Delivery only ── */}
+                {/* ── Driver Assignment — Airport Delivery only ──────────────────
+                     Persistent section (not gated to a single status) so Operations
+                     can assign the driver as soon as it's known, well ahead of Out
+                     for Delivery — decoupled from the actual customer-facing send. ── */}
+                {isAirportDelivery && !atStatus('completed', 'cancelled', 'rejected') && (
+                  <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 space-y-3">
+                    <button
+                      type="button"
+                      onClick={() => setDriverAssignmentOpen(o => !o)}
+                      className="flex w-full items-center justify-between text-left"
+                    >
+                      <span className="text-xs font-bold uppercase tracking-widest text-indigo-600">
+                        🚕 Driver Assignment (Airport Delivery)
+                        {driverAssigned && <span className="ml-2 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">Assigned</span>}
+                        {!driverAssigned && <span className="ml-2 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700">Not assigned yet</span>}
+                      </span>
+                      <span className="text-indigo-500 text-xs font-semibold">{driverAssignmentOpen ? 'Collapse ▲' : 'Expand ▼'}</span>
+                    </button>
+
+                    {driverAssignmentOpen && (
+                      <>
+                        <p className="text-sm text-indigo-700">
+                          Enter the driver assigned to this booking. Save it here as soon as Operations knows it —
+                          you don't need to wait until Out for Delivery. The customer-facing message is only sent
+                          when you click <strong>Share Driver Details</strong> (here or in the later step), never automatically.
+                        </p>
+                        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                          <input type="text" placeholder="Driver Name *"
+                            value={driverName} onChange={e => setDriverName(e.target.value)}
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <input type="tel" placeholder="Driver Mobile Number *"
+                            value={driverPhone} onChange={e => setDriverPhone(e.target.value)}
+                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                        </div>
+                        {booking.driver_details_sent_at ? (
+                          <p className="text-xs font-semibold text-green-700">
+                            ✅ Driver details were already shared with the customer on {new Date(booking.driver_details_sent_at).toLocaleString('en-IN')}.
+                          </p>
+                        ) : (
+                          <div className="flex flex-wrap gap-2">
+                            <button onClick={doSaveDriverDetails} disabled={savingDriver || !!acting}
+                              className="flex items-center gap-2 rounded-lg border border-indigo-300 bg-white px-4 py-2.5 text-sm font-semibold text-indigo-700 hover:bg-indigo-100 disabled:opacity-40 transition-colors">
+                              {savingDriver ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                              {savingDriver ? 'Saving...' : 'Save Driver Details'}
+                            </button>
+                            <button onClick={doShareDriverDetails} disabled={!!acting}
+                              className="flex items-center gap-2 rounded-lg bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
+                              {acting === 'share_driver_details' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                              {acting === 'share_driver_details' ? 'Sending...' : 'Save & Share Driver Details →'}
+                            </button>
+                          </div>
+                        )}
+                        {driverSaveMsg && <p className="text-xs text-green-600 font-semibold">✅ {driverSaveMsg}</p>}
+                        {actionSuccess === 'share_driver_details' && (
+                          <p className="text-xs text-green-600 font-semibold">✅ Driver details sent.</p>
+                        )}
+                      </>
+                    )}
+                  </div>
+                )}
+
+                {/* ── Step 13b: Share Driver Details — Airport Delivery only ──────
+                     Appears once Out for Delivery. Read-only summary of whatever was
+                     saved in Driver Assignment above — the actual sending step, kept
+                     separate so re-typing details at send-time is never required (or
+                     possible), which is exactly what avoids sending the wrong driver's
+                     details on the wrong booking. ── */}
                 {atStatus('out_for_delivery') && isAirportDelivery && (
                   <div className="rounded-xl border border-sky-100 bg-sky-50 p-4 space-y-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-sky-600">🚕 Step 13b — Share Driver Details (Airport Delivery)</p>
-                    <p className="text-sm text-sky-700">
-                      Sends the driver &amp; vehicle details to the customer automatically — 4 hours before flight
-                      arrival, or immediately if that window has already passed.
-                    </p>
-                    <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-                      <input type="text" placeholder="Driver Name *"
-                        value={driverName} onChange={e => setDriverName(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
-                      <input type="tel" placeholder="Driver Mobile Number *"
-                        value={driverPhone} onChange={e => setDriverPhone(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
-                      <input type="text" placeholder="Vehicle Number *"
-                        value={vehicleNo} onChange={e => setVehicleNo(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
-                      <input type="datetime-local" placeholder="Flight Arrival Date & Time *"
-                        value={flightDT} onChange={e => setFlightDT(e.target.value)}
-                        className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
-                      <textarea rows={2} placeholder="Pickup Instructions (optional)"
-                        value={pickupInstr} onChange={e => setPickupInstr(e.target.value)}
-                        className="sm:col-span-2 resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-sky-400" />
-                    </div>
-                    <button onClick={doShareDriverDetails} disabled={!!acting}
-                      className="flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40 transition-colors">
-                      {acting === 'share_driver_details' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {acting === 'share_driver_details' ? 'Sending...' : 'Share Driver Details →'}
-                    </button>
-                    {actionSuccess === 'share_driver_details' && (
-                      <p className="text-xs text-green-600 font-semibold">✅ Driver details sent (or scheduled for 4hrs before flight).</p>
+                    <p className="text-xs font-bold uppercase tracking-widest text-sky-600">🚕 Step 13b — Share Driver Details</p>
+                    {driverAssigned ? (
+                      <>
+                        <div className="rounded-lg border border-sky-200 bg-white px-4 py-3 text-sm text-gray-700 space-y-1">
+                          <p><span className="font-semibold text-gray-500">Driver:</span> {driverName} · {driverPhone}</p>
+                        </div>
+                        <button onClick={doShareDriverDetails} disabled={!!acting}
+                          className="flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-sky-700 disabled:opacity-40 transition-colors">
+                          {acting === 'share_driver_details' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                          {acting === 'share_driver_details' ? 'Sending...' : 'Share Driver Details →'}
+                        </button>
+                        {actionSuccess === 'share_driver_details' && (
+                          <p className="text-xs text-green-600 font-semibold">✅ Driver details sent.</p>
+                        )}
+                      </>
+                    ) : (
+                      <p className="text-sm font-semibold text-red-600">
+                        ⚠️ Please assign a driver before sharing driver details with the customer — use the Driver Assignment section above.
+                      </p>
                     )}
                   </div>
                 )}

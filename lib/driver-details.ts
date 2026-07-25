@@ -42,6 +42,8 @@ interface BookingRow {
   driver_name:          string | null
   driver_phone:         string | null
   vehicle_number:       string | null
+  vehicle_type:         string | null
+  airport_location:     string | null
   pickup_instructions:  string | null
   status_history:       Array<Record<string, unknown>> | null
 }
@@ -75,7 +77,7 @@ export async function sendDriverDetails(bookingId: string): Promise<void> {
       .select(`
         id, tracking_id, customer_name, customer_email, customer_phone,
         from_city, to_city, driver_name, driver_phone, vehicle_number,
-        pickup_instructions, status_history
+        vehicle_type, airport_location, pickup_instructions, status_history
       `)
       .maybeSingle()
 
@@ -90,7 +92,10 @@ export async function sendDriverDetails(bookingId: string): Promise<void> {
 
     const booking = claimed as unknown as BookingRow
     const name    = booking.customer_name?.trim() || 'Customer'
-    const airportName = deriveAirportName(booking.from_city, booking.to_city)
+    // Prefer the admin-entered/editable Airport/Pickup Location from the
+    // Driver Assignment section; fall back to auto-deriving it from the
+    // booking's route if that field was left blank.
+    const airportName = booking.airport_location?.trim() || deriveAirportName(booking.from_city, booking.to_city)
 
     const channelResults: { channel: 'email' | 'whatsapp'; status: 'sent' | 'failed' | 'skipped'; detail: string | null }[] = []
 
@@ -137,8 +142,10 @@ export async function sendDriverDetails(bookingId: string): Promise<void> {
     }
 
     const sentChannels = channelResults.filter(c => c.status === 'sent').map(c => c.channel)
+    const vehicleDesc  = [booking.vehicle_number, booking.vehicle_type].filter(Boolean).join(' · ')
     const summaryNote  = 'Driver details ' +
       (sentChannels.length ? `sent via ${sentChannels.join(' + ')}` : 'send attempted — see channel log') +
+      ` — Driver: ${booking.driver_name ?? '—'} (${booking.driver_phone ?? '—'}), Vehicle: ${vehicleDesc || '—'}` +
       (channelResults.some(c => c.status === 'failed')
         ? ` (failed: ${channelResults.filter(c => c.status === 'failed').map(c => `${c.channel}: ${c.detail}`).join('; ')})`
         : '')
