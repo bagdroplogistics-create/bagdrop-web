@@ -1562,8 +1562,15 @@ export default function QuoteViewPage() {
               </div>
             </div>
 
-            {/* ── Invoice Card ── */}
-            {(invoice || genInvoice) && (
+            {/* ── Invoice Card ──
+                 Only relevant while the booking is actually at the Invoice
+                 Generated / Invoice Sent step — matches every other card's
+                 exclusive, current-step-only gating. The genInvoice loading
+                 spinner is an exception: it needs to show the moment
+                 generation starts (from Step 8, while status is still
+                 'confirmed', before the server has advanced it), so that one
+                 case bypasses the status gate. ── */}
+            {((genInvoice) || (invoice && atStatus('invoice_generated', 'invoice_sent'))) && (
               <div className="no-print mx-auto mt-4 max-w-3xl overflow-hidden rounded-xl border border-green-200 bg-white shadow-sm">
                 <div className="flex items-center gap-3 border-b border-green-100 bg-green-50 px-6 py-3">
                   <FileText className="h-4 w-4 text-green-600" />
