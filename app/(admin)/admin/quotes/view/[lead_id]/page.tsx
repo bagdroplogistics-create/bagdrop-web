@@ -494,7 +494,16 @@ export default function QuoteViewPage() {
     setDriverPhone(booking.driver_phone ?? '')
   }, [booking])
 
-  const driverAssigned = !!(driverName.trim() && driverPhone.trim())
+  // Deliberately checks the PERSISTED booking fields, not the live
+  // driverName/driverPhone draft state. Using the draft state here caused a
+  // bug: as soon as the admin typed a name and even a single phone digit,
+  // both draft fields briefly became non-empty, this flipped true mid-typing,
+  // and the form JSX below (gated on driverAssigned) swapped out from under
+  // the phone input to the read-only "assigned" summary view -- looking
+  // exactly like "the field freezes after the first digit" (the input never
+  // froze; it was unmounted). Only flip to the assigned/summary view once
+  // Save Driver Details has actually succeeded and booking reflects it.
+  const driverAssigned = !!(booking?.driver_name?.trim() && booking?.driver_phone?.trim())
 
   async function doSaveDriverDetails() {
     if (!driverName.trim() || !driverPhone.trim()) {
@@ -569,27 +578,33 @@ export default function QuoteViewPage() {
   }
 
   async function doMarkPaymentReceived() {
-    const ok = await patchBooking('mark_payment', {
+    // Deliberately no invoice generation here. Invoice generation used to
+    // fire immediately on payment confirmation (auto-emailing the customer),
+    // and separately Step 9's "Send Invoice to Customer" ALSO emailed it —
+    // the customer got the same invoice twice. Invoice generation + sending
+    // now only ever happen at the dedicated Invoice Generated (Step 8) and
+    // Send Invoice (Step 9) steps below, so this step is a pure status change.
+    await patchBooking('mark_payment', {
       status: 'payment_received',
       payment_status: 'paid',
       ...(paymentRef ? { payment_reference: paymentRef } : {}),
     })
     setShowPaymentInput(false)
     setPaymentRef('')
-    if (ok && booking?.id) await generateAndSendInvoice(booking.id, !!booking.customer_email)
   }
 
   async function doAdminApprove() {
-    const ok = await patchBooking('admin_approve', {
+    // Same reasoning as doMarkPaymentReceived above — no invoice side effect.
+    await patchBooking('admin_approve', {
       status: 'payment_approved',
       approved_without_payment: true,
     })
-    if (ok && booking?.id && !invoice) await generateAndSendInvoice(booking.id, !!booking?.customer_email)
   }
 
   async function doConfirmBooking() {
-    // Generate invoice first if not already done, then confirm
-    if (!invoice && booking?.id) await generateAndSendInvoice(booking.id, false)
+    // Same reasoning as doMarkPaymentReceived above — confirming the booking
+    // no longer generates an invoice as a side effect. Invoice creation is
+    // now exclusively Step 8's job.
     await patchBooking('confirm', { status: 'confirmed' })
   }
 
@@ -1313,8 +1328,8 @@ export default function QuoteViewPage() {
                         </button>
                       </div>
                     )}
-                    {actionSuccess === 'mark_payment' && <p className="text-xs text-green-600 font-semibold">✅ Payment confirmed. Invoice auto-generated and emailed.</p>}
-                    {actionSuccess === 'admin_approve' && <p className="text-xs text-amber-700 font-semibold">🏦 Admin approved (pay later). Invoice generated.</p>}
+                    {actionSuccess === 'mark_payment' && <p className="text-xs text-green-600 font-semibold">✅ Payment confirmed.</p>}
+                    {actionSuccess === 'admin_approve' && <p className="text-xs text-amber-700 font-semibold">🏦 Admin approved (pay later).</p>}
                   </div>
                 )}
 
@@ -1324,13 +1339,13 @@ export default function QuoteViewPage() {
                     <p className="text-xs font-bold uppercase tracking-widest text-blue-600">
                       {booking.status === 'payment_approved' ? '🏦 Admin Approved' : '✅ Payment Received'} — Step 7: Confirm Booking
                     </p>
-                    <p className="text-sm text-blue-700">Generate invoice and confirm the booking to proceed to operations.</p>
-                    <button onClick={doConfirmBooking} disabled={!!acting || genInvoice}
+                    <p className="text-sm text-blue-700">Confirm the booking to proceed to invoicing and operations.</p>
+                    <button onClick={doConfirmBooking} disabled={!!acting}
                       className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-blue-700 disabled:opacity-40 transition-colors">
-                      {(acting === 'confirm' || genInvoice) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                      {(acting === 'confirm' || genInvoice) ? 'Processing...' : 'Generate Invoice & Confirm Booking →'}
+                      {acting === 'confirm' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                      {acting === 'confirm' ? 'Processing...' : 'Confirm Booking →'}
                     </button>
-                    {actionSuccess === 'confirm' && <p className="text-xs text-green-600 font-semibold">🎉 Booking confirmed! Invoice generated.</p>}
+                    {actionSuccess === 'confirm' && <p className="text-xs text-green-600 font-semibold">🎉 Booking confirmed! Proceed to Generate Invoice below.</p>}
                   </div>
                 )}
 
