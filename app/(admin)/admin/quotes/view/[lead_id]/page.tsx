@@ -711,7 +711,10 @@ export default function QuoteViewPage() {
 
   useEffect(() => {
     if (!booking?.id || !key) return
-    if (atOrPast('indemnity_bond_sent')) loadIndemnityDocs()
+    // Matches the card's own visibility below — only load while the
+    // booking is actually on an indemnity step, not for its entire
+    // remaining life (each workflow card shows only its own step's info).
+    if (atStatus('indemnity_bond_sent', 'indemnity_bond_signed')) loadIndemnityDocs()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking?.id, booking?.status, key])
 
@@ -1536,14 +1539,14 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
-                {/* ── Step 8: Indemnity Bond Documents (admin review) ──
-                     Persists for the rest of the booking's life once a bond
-                     has been sent — this is the ONLY way to view a signed
-                     bond/documents once the customer's public link locks
-                     itself post-submission. Independent of atStatus() so it
-                     doesn't disappear as the workflow moves past this step. ── */}
+                {/* ── Indemnity Bond Documents (admin review) ──
+                     Shown only while the booking is actually on an
+                     indemnity step (Sent or Signed) — same single-card-
+                     per-step convention as every other card here. Once
+                     the booking moves on to Invoice/Pickup/Delivery this
+                     card hides too; by then it's already been reviewed. ── */}
                 {(() => {
-                  if (!atOrPast('indemnity_bond_sent')) return null
+                  if (!atStatus('indemnity_bond_sent', 'indemnity_bond_signed')) return null
                   const bond = indemnityDocs?.bond
                   const urls = indemnityDocs?.urls
                   return (
