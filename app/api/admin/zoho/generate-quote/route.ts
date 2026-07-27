@@ -59,7 +59,8 @@ const QUOTE_STAGE_STATUSES = new Set([
 // stuck with a fully-generated quote but a workflow that never unlocked.
 const PROTECTED_LATE_STAGE_STATUSES = new Set([
   'accepted', 'payment_pending', 'payment_received', 'payment_approved',
-  'confirmed', 'invoice_generated', 'invoice_sent', 'pickup_scheduled',
+  'confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed',
+  'invoice_generated', 'invoice_sent', 'pickup_scheduled',
   'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
   'delivered', 'trip_created', 'completed', 'rejected',
 ])

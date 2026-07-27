@@ -464,14 +464,11 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 // for the orchestration (dedup guard, WhatsApp, history logging).
 
 export interface DriverDetailsEmailData {
-  customerName:      string
-  customerEmail:      string
-  trackingId:         string
-  driverName:         string
-  driverPhone:        string
-  vehicleNumber:      string
-  airportName:        string
-  pickupInstructions?: string | null
+  customerName:  string
+  customerEmail: string
+  trackingId:    string
+  driverName:    string
+  driverPhone:   string
 }
 
 const SUPPORT_PHONE_DISPLAY = '+91 63571 15711'
@@ -490,17 +487,8 @@ export async function sendDriverDetailsEmail(data: DriverDetailsEmailData) {
     '<table width="100%" cellpadding="0" cellspacing="0">' +
     row('Driver Name',   data.driverName) +
     row('Driver Mobile', data.driverPhone) +
-    row('Vehicle No.',   data.vehicleNumber) +
-    row('Airport',       data.airportName) +
     '</table>' +
     '</div>' +
-
-    (data.pickupInstructions
-      ? '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin-bottom:24px;">' +
-        '<p style="margin:0 0 4px;font-size:11px;font-weight:700;color:#15803d;text-transform:uppercase;letter-spacing:0.5px;">Pickup Instructions</p>' +
-        '<p style="margin:0;font-size:13px;color:#166534;line-height:1.6;">' + data.pickupInstructions + '</p>' +
-        '</div>'
-      : '') +
 
     '<p style="margin:0 0 8px;font-size:14px;color:#374151;">Need help? Call Bagdrop Support:</p>' +
     '<p style="margin:0 0 24px;font-size:16px;font-weight:700;color:' + BRAND + ';">' +
@@ -515,6 +503,87 @@ export async function sendDriverDetailsEmail(data: DriverDetailsEmailData) {
     'Your Driver Details — Booking ' + data.trackingId + ' | Bagdrop',
     baseTemplate(body),
     'driver-details:' + data.trackingId,
+  )
+}
+
+// ── Indemnity Bond — Send link (Step 1) ────────────────────────────────
+// Sent automatically when admin clicks "Send Indemnity Bond" on a
+// Booking Confirmed booking. Email is the channel that works immediately
+// (Resend is already configured); WhatsApp is additive once a Meta-approved
+// Fast2SMS template exists — see lib/indemnity-notifications.ts.
+
+export interface IndemnityBondSentEmailData {
+  customerName:  string
+  customerEmail: string
+  trackingId:    string
+  secureLink:    string
+  expiryDays:    number
+}
+
+export async function sendIndemnityBondEmail(data: IndemnityBondSentEmailData) {
+  if (!data.customerEmail) return { success: false, error: 'No customer email' }
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Complete Your Indemnity Bond</h2>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + data.customerName + ', before we schedule your pickup, please review and digitally sign your indemnity bond. It only takes a couple of minutes.</p>' +
+
+    '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:20px;margin-bottom:24px;">' +
+    '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
+    '<p style="margin:0;font-size:20px;font-weight:900;color:' + BRAND + ';letter-spacing:1px;">' + data.trackingId + '</p>' +
+    '</div>' +
+
+    '<div style="text-align:center;margin-bottom:20px;">' +
+    '<a href="' + data.secureLink + '" style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:15px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">Sign Indemnity Bond →</a>' +
+    '</div>' +
+
+    '<p style="margin:0 0 8px;font-size:13px;color:#6B7280;">You will be asked to verify a one-time code sent to your registered mobile/email before signing. This link is unique to your booking and expires in ' + data.expiryDays + ' days, or as soon as you submit the bond.</p>' +
+    '<p style="margin:0;font-size:12px;color:#9CA3AF;">If the button above does not work, copy and paste this link into your browser:<br/>' +
+    '<a href="' + data.secureLink + '" style="color:' + BRAND + ';word-break:break-all;">' + data.secureLink + '</a></p>'
+
+  return sendEmail(
+    data.customerEmail,
+    'Action Required: Sign Your Indemnity Bond — Booking ' + data.trackingId + ' | Bagdrop',
+    baseTemplate(body),
+    'indemnity-bond-sent:' + data.trackingId,
+  )
+}
+
+// ── Indemnity Bond — generic status notifications (Step 9) ─────────────
+// One shared template for the remaining customer-facing indemnity events —
+// OTP verified, documents submitted, approved, resubmission requested.
+// Kept generic (headline + message) rather than one function per event
+// since the only thing that differs is the wording, not the layout.
+
+export interface IndemnityBondStatusEmailData {
+  customerName:  string
+  customerEmail: string
+  trackingId:    string
+  headline:      string
+  message:       string
+  secureLink?:   string | null   // included for resubmission-requested
+}
+
+export async function sendIndemnityBondStatusEmail(data: IndemnityBondStatusEmailData) {
+  if (!data.customerEmail) return { success: false, error: 'No customer email' }
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">' + data.headline + '</h2>' +
+    '<p style="margin:0 0 20px;font-size:14px;color:#555;">Hi ' + data.customerName + ', ' + data.message + '</p>' +
+    '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:16px 20px;margin-bottom:20px;">' +
+    '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
+    '<p style="margin:0;font-size:18px;font-weight:900;color:' + BRAND + ';letter-spacing:1px;">' + data.trackingId + '</p>' +
+    '</div>' +
+    (data.secureLink
+      ? '<div style="text-align:center;margin-bottom:8px;">' +
+        '<a href="' + data.secureLink + '" style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:15px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">Resubmit Documents →</a>' +
+        '</div>'
+      : '')
+
+  return sendEmail(
+    data.customerEmail,
+    data.headline + ' — Booking ' + data.trackingId + ' | Bagdrop',
+    baseTemplate(body),
+    'indemnity-bond-status:' + data.trackingId,
   )
 }
 

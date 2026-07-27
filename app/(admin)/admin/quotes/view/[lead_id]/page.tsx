@@ -7,7 +7,7 @@ import {
   CheckCircle, Clock, AlertCircle, Send,
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
-  RotateCcw, Save,
+  RotateCcw, Save, ShieldCheck,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -174,6 +174,8 @@ const STATUS_STEPS_BASE = [
   { key: 'payment_pending',  label: 'Payment Requested' },
   { key: 'payment_received', label: 'Payment Received' },
   { key: 'confirmed',        label: 'Booking Confirmed' },
+  { key: 'indemnity_bond_sent',   label: 'Indemnity Bond Sent' },
+  { key: 'indemnity_bond_signed', label: 'Indemnity Bond Signed' },
   { key: 'invoice_generated',label: 'Invoice Generated' },
   { key: 'invoice_sent',     label: 'Invoice Sent' },
   { key: 'pickup_scheduled', label: 'Pickup Scheduled' },
@@ -201,7 +203,8 @@ function buildStatusSteps(isAirportDelivery: boolean) {
 const STATUS_ORDER_BASE = [
   'inquiry', 'quote_created', 'quote_sent', 'accepted',
   'payment_pending', 'payment_received', 'payment_approved',
-  'confirmed', 'invoice_generated', 'invoice_sent',
+  'confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed',
+  'invoice_generated', 'invoice_sent',
   'pickup_scheduled', 'picked_up', 'in_transit',
   'out_for_delivery', 'delivered', 'trip_created', 'completed',
 ]
@@ -226,6 +229,8 @@ const STATUS_LABEL: Record<string, string> = {
   payment_pending:  'Payment Received',
   payment_approved: 'Payment Approved',
   confirmed:        'Booking Confirmed',
+  indemnity_bond_sent:   'Indemnity Bond Sent',
+  indemnity_bond_signed: 'Indemnity Bond Signed',
   pickup_scheduled: 'Pickup Scheduled',
   picked_up:        'Picked Up',
   in_transit:       'In Transit',
@@ -245,6 +250,8 @@ const STATUS_COLOR: Record<string, string> = {
   payment_pending:  'bg-yellow-100 text-yellow-700',
   payment_approved: 'bg-emerald-100 text-emerald-700',
   confirmed:        'bg-green-100 text-green-700',
+  indemnity_bond_sent:   'bg-amber-100 text-amber-700',
+  indemnity_bond_signed: 'bg-lime-100 text-lime-700',
   pickup_scheduled: 'bg-teal-100 text-teal-700',
   picked_up:        'bg-cyan-100 text-cyan-700',
   in_transit:       'bg-indigo-100 text-indigo-700',
@@ -268,6 +275,8 @@ export default function QuoteViewPage() {
   const [error, setError]     = useState('')
 
   const [downloading,     setDownloading]     = useState(false)
+  const [sendingIndemnity, setSendingIndemnity] = useState(false)
+  const [indemnityLink,    setIndemnityLink]    = useState<string | null>(null)
   const [invoice,         setInvoice]         = useState<Invoice | null>(null)
   const [genInvoice,      setGenInvoice]      = useState(false)
   const [resendingEmail,  setResendingEmail]  = useState(false)
@@ -606,6 +615,39 @@ export default function QuoteViewPage() {
     // no longer generates an invoice as a side effect. Invoice creation is
     // now exclusively Step 8's job.
     await patchBooking('confirm', { status: 'confirmed' })
+  }
+
+  // ── Indemnity Bond — Send (Step 7b) ──────────────────────────────
+  // Separate from patchBooking since it's a dedicated endpoint (creates/
+  // refreshes the secure token, emails the link, fires WhatsApp
+  // additively) rather than a plain status PATCH — see
+  // app/api/admin/bookings/[id]/indemnity/send/route.ts.
+  async function doSendIndemnityBond() {
+    if (!booking?.id || !key) return
+    setSendingIndemnity(true); setActionError(null)
+    try {
+      const r = await fetch(`/api/admin/bookings/${booking.id}/indemnity/send`, {
+        method: 'POST',
+        headers: { 'x-admin-key': key },
+      })
+      const d = await r.json()
+      if (!r.ok) { setActionError(d.error ?? 'Failed to send indemnity bond'); return }
+      setIndemnityLink(d.secure_link ?? null)
+      setBooking(prev => prev ? { ...prev, status: 'indemnity_bond_sent' } : prev)
+      setActionSuccess('send_indemnity')
+      setTimeout(() => setActionSuccess(null), 6000)
+    } catch {
+      setActionError('Network error — please try again')
+    } finally {
+      setSendingIndemnity(false)
+    }
+  }
+
+  // Escape hatch for edge cases (e.g. a paper bond collected in person) —
+  // advances the workflow without going through the customer's self-serve
+  // link. Uses the same generic status PATCH every other step uses.
+  async function doMarkIndemnitySignedOffline() {
+    await patchBooking('mark_indemnity_signed_offline', { status: 'indemnity_bond_signed' })
   }
 
   async function doGenerateInvoice() {
@@ -1345,12 +1387,69 @@ export default function QuoteViewPage() {
                       {acting === 'confirm' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
                       {acting === 'confirm' ? 'Processing...' : 'Confirm Booking →'}
                     </button>
-                    {actionSuccess === 'confirm' && <p className="text-xs text-green-600 font-semibold">🎉 Booking confirmed! Proceed to Generate Invoice below.</p>}
+                    {actionSuccess === 'confirm' && <p className="text-xs text-green-600 font-semibold">🎉 Booking confirmed! Proceed to send the indemnity bond below.</p>}
+                  </div>
+                )}
+
+                {/* ── Step 7b: Send Indemnity Bond ──
+                     Reuses the existing signed indemnity-bond PDF (never
+                     redesigned) — the customer completes it on a secure,
+                     OTP-verified link at bagdrop.co/indemnity/[token]. ── */}
+                {atStatus('confirmed') && (
+                  <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-amber-600">📝 Step 7b — Send Indemnity Bond</p>
+                    <p className="text-sm text-amber-700">
+                      Send the customer a secure link to review, verify their identity via OTP, and digitally sign
+                      the indemnity bond before we schedule pickup.
+                    </p>
+                    <button onClick={doSendIndemnityBond} disabled={sendingIndemnity}
+                      className="flex items-center gap-2 rounded-lg bg-amber-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-amber-600 disabled:opacity-40 transition-colors">
+                      {sendingIndemnity ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {sendingIndemnity ? 'Sending...' : 'Send Indemnity Bond →'}
+                    </button>
+                    {actionSuccess === 'send_indemnity' && (
+                      <div className="rounded-lg border border-green-200 bg-white px-3 py-2 text-xs text-green-700 space-y-1">
+                        <p className="font-semibold">✅ Indemnity bond link sent via email{booking.customer_phone ? ' + WhatsApp' : ''}.</p>
+                        {indemnityLink && <p className="break-all font-mono text-gray-500">{indemnityLink}</p>}
+                      </div>
+                    )}
+                    {actionError && <p className="text-xs font-semibold text-red-600">{actionError}</p>}
+                  </div>
+                )}
+
+                {/* ── Step 7c: Indemnity Bond Signed & Submitted ──
+                     Completed by the CUSTOMER on the public link, not by an
+                     admin click — this card is a status/waiting view, plus
+                     a resend option and an offline-override escape hatch. ── */}
+                {atStatus('indemnity_bond_sent') && (
+                  <div className="rounded-xl border border-lime-100 bg-lime-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-lime-700 flex items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5" /> Step 7c — Awaiting Signed Indemnity Bond
+                    </p>
+                    <p className="text-sm text-lime-800">
+                      Waiting for the customer to verify their identity and sign the indemnity bond via the link sent.
+                      This step advances automatically once they submit — no action needed unless the link expired.
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      <button onClick={doSendIndemnityBond} disabled={sendingIndemnity}
+                        className="flex items-center gap-2 rounded-lg border border-lime-300 bg-white px-4 py-2 text-xs font-semibold text-lime-700 hover:bg-lime-100 disabled:opacity-40 transition-colors">
+                        {sendingIndemnity ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                        Resend Link
+                      </button>
+                      <button onClick={doMarkIndemnitySignedOffline} disabled={!!acting}
+                        className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                        {acting === 'mark_indemnity_signed_offline' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '✍️'}
+                        Mark Signed (Offline / Paper Bond)
+                      </button>
+                    </div>
+                    {actionSuccess === 'send_indemnity' && indemnityLink && (
+                      <p className="break-all rounded-lg border border-green-200 bg-white px-3 py-2 text-xs font-mono text-gray-500">{indemnityLink}</p>
+                    )}
                   </div>
                 )}
 
                 {/* ── Step 8: Generate Invoice (only if invoice not yet created) ── */}
-                {atStatus('confirmed') && !invoice && (
+                {atStatus('indemnity_bond_signed') && !invoice && (
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-violet-600">🧾 Step 8 — Generate Invoice</p>
                     <button onClick={doGenerateInvoice} disabled={!!acting || genInvoice}
@@ -1367,7 +1466,7 @@ export default function QuoteViewPage() {
                      (b) status = confirmed AND invoice already exists
                          (invoice was auto-generated during payment confirm — status never advanced to invoice_generated)
                 ── */}
-                {(atStatus('invoice_generated') || (atStatus('confirmed') && !!invoice)) && (
+                {(atStatus('invoice_generated') || (atStatus('indemnity_bond_signed') && !!invoice)) && (
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-violet-600">📧 Step 9 — Send Invoice to Customer</p>
                     <p className="text-sm text-violet-700">
@@ -1684,7 +1783,7 @@ export default function QuoteViewPage() {
             )}
 
             {/* Generate invoice manually if not yet created and payment received */}
-            {!invoice && !genInvoice && booking && ['payment_pending', 'payment_approved', 'confirmed', 'completed', 'delivered'].includes(booking.status) && (
+            {!invoice && !genInvoice && booking && ['payment_pending', 'payment_approved', 'confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed', 'completed', 'delivered'].includes(booking.status) && (
               <div className="no-print mx-auto mt-4 max-w-3xl rounded-xl border border-dashed border-gray-200 bg-white px-6 py-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div>
