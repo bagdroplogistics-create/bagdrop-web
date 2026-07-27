@@ -64,58 +64,83 @@ export async function GET(req: NextRequest) {
 }
 
 // ── POST /api/admin/trip-sheets ──────────────────────────────
+// Two entry points, both produce the exact same trip_sheets row shape:
+//  (a) booking_id provided  — auto-fills customer/route fields from the
+//      linked booking (original behavior), and advances that booking's
+//      status to trip_created.
+//  (b) manual: true         — no booking/lead exists yet for this trip
+//      (e.g. an ad-hoc job, a corrigendum, a customer handled entirely
+//      offline). Customer/route fields come straight from the request body
+//      instead. booking_id/quote_id stay null — the trip_sheets.booking_id
+//      column is nullable (ON DELETE SET NULL) specifically to support this.
+//      No booking exists, so there's nothing to advance to trip_created.
 export async function POST(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
-  if (!body?.booking_id) {
-    return NextResponse.json({ error: 'booking_id is required' }, { status: 400 })
+  if (!body?.booking_id && !body?.manual) {
+    return NextResponse.json({ error: 'booking_id is required (or set manual: true for a manual entry)' }, { status: 400 })
   }
 
-  // Fetch the confirmed booking to auto-fill fields
-  const { data: booking, error: bookingErr } = await supabaseAdmin
-    .from('bookings')
-    .select('*')
-    .eq('id', body.booking_id)
-    .single()
+  let booking: Record<string, unknown> | null = null
+  let quote:   { id: string; total_amount: number | null } | null = null
+  let quoteAmount = 0
 
-  if (bookingErr || !booking) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+  if (body.booking_id) {
+    // Fetch the confirmed booking to auto-fill fields
+    const { data: bk, error: bookingErr } = await supabaseAdmin
+      .from('bookings')
+      .select('*')
+      .eq('id', body.booking_id)
+      .single()
+
+    if (bookingErr || !bk) {
+      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    }
+    booking = bk
+
+    // Fetch linked quote for quote_id and quote_amount
+    const { data: q } = await supabaseAdmin
+      .from('quotes')
+      .select('id, total_amount, quote_number')
+      .eq('booking_id', body.booking_id)
+      .maybeSingle()
+    quote = q
+    quoteAmount = quote?.total_amount ?? Number(booking.total_amount ?? 0)
+  } else {
+    // Manual entry — no booking/lead backing this trip at all.
+    if (!body.customer_name?.trim() || !body.customer_phone?.trim()) {
+      return NextResponse.json({ error: 'Customer name and phone are required for a manual trip sheet' }, { status: 400 })
+    }
+    quoteAmount = Number(body.quote_amount) || 0
   }
-
-  // Fetch linked quote for quote_id and quote_amount
-  const { data: quote } = await supabaseAdmin
-    .from('quotes')
-    .select('id, total_amount, quote_number')
-    .eq('booking_id', body.booking_id)
-    .maybeSingle()
 
   const tripNumber = await nextTripNumber()
-  const quoteAmount = quote?.total_amount ?? booking.total_amount ?? 0
 
   const { data: sheet, error } = await supabaseAdmin
     .from('trip_sheets')
     .insert({
       trip_number: tripNumber,
 
-      booking_id:  booking.id,
-      quote_id:    quote?.id ?? null,
+      booking_id:  booking?.id ?? null,
+      quote_id:    quote?.id   ?? null,
 
-      // Auto-filled from booking
-      customer_name:   booking.customer_name,
-      customer_phone:  booking.customer_phone,
-      customer_email:  booking.customer_email ?? null,
-      service_type:    booking.service_type,
-      service_label:   booking.service_label ?? booking.service_type,
-      from_city:       booking.from_city,
-      to_city:         booking.to_city,
-      pickup_address:  booking.pickup_address ?? null,
-      drop_address:    booking.drop_address   ?? null,
-      pickup_date:     booking.pickup_date    ?? null,
-      delivery_date:   booking.delivery_date  ?? null,
-      total_bags:      booking.total_bags     ?? 1,
+      // Auto-filled from booking, or straight from the request body for a
+      // manual entry — either way these are the same plain columns.
+      customer_name:   booking ? booking.customer_name  : body.customer_name.trim(),
+      customer_phone:  booking ? booking.customer_phone : body.customer_phone.trim(),
+      customer_email:  booking ? (booking.customer_email ?? null) : (body.customer_email?.trim() || null),
+      service_type:    booking ? booking.service_type  : (body.service_type  || null),
+      service_label:   booking ? (booking.service_label ?? booking.service_type) : (body.service_label || body.service_type || null),
+      from_city:       booking ? booking.from_city : (body.from_city || null),
+      to_city:         booking ? booking.to_city   : (body.to_city   || null),
+      pickup_address:  booking ? (booking.pickup_address ?? null) : (body.pickup_address || null),
+      drop_address:    booking ? (booking.drop_address   ?? null) : (body.drop_address   || null),
+      pickup_date:     booking ? (booking.pickup_date    ?? null) : (body.pickup_date    || null),
+      delivery_date:   booking ? (booking.delivery_date  ?? null) : (body.delivery_date  || null),
+      total_bags:      booking ? (booking.total_bags     ?? 1)    : (Number(body.total_bags) || 1),
       quote_amount:    quoteAmount,
-      payment_status:  booking.payment_status ?? null,
+      payment_status:  booking ? (booking.payment_status ?? null) : (body.payment_status || null),
 
       // Operational fields (from body if provided)
       vendor:             body.vendor             ?? null,
@@ -147,7 +172,9 @@ export async function POST(req: NextRequest) {
         to:         'created',
         timestamp:  new Date().toISOString(),
         changed_by: 'admin',
-        note:       `Trip sheet created for booking ${booking.tracking_id}`,
+        note:       booking
+          ? `Trip sheet created for booking ${(booking as { tracking_id?: string }).tracking_id ?? body.booking_id}`
+          : `Trip sheet created manually (no linked booking)`,
       }],
       created_by: 'admin',
     })
@@ -156,8 +183,9 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Advance booking status to trip_created if it's at confirmed
-  if (['confirmed', 'payment_approved'].includes(booking.status)) {
+  // Advance booking status to trip_created if it's at confirmed — only
+  // applies when this trip sheet is actually linked to a booking.
+  if (booking && ['confirmed', 'payment_approved'].includes(booking.status as string)) {
     const history = (booking.status_history ?? []) as object[]
     history.push({
       from:       booking.status,
@@ -169,7 +197,7 @@ export async function POST(req: NextRequest) {
     await supabaseAdmin
       .from('bookings')
       .update({ status: 'trip_created', status_history: history })
-      .eq('id', booking.id)
+      .eq('id', booking.id as string)
   }
 
   return NextResponse.json({ trip_sheet: sheet, trip_number: tripNumber }, { status: 201 })

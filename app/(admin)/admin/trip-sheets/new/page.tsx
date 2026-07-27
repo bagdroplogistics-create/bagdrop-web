@@ -129,6 +129,29 @@ export default function NewTripSheetPage() {
   const [error,    setError]    = useState('')
   const [tab,      setTab]      = useState<'overview' | 'operations' | 'expenses' | 'pnl' | 'activity'>('overview')
 
+  // 'select' = pick an existing booking/lead (original flow, auto-fills
+  // customer + route). 'manual' = no booking exists yet for this trip — the
+  // same Overview fields become editable inputs instead of read-only, and
+  // the same Operations/Expenses/P&L tabs below apply unchanged. Backed by
+  // POST /api/admin/trip-sheets { manual: true, ... } — booking_id stays
+  // null (the column is nullable for exactly this case).
+  const [entryMode, setEntryMode] = useState<'select' | 'manual'>('select')
+
+  // Manual entry fields — same data the "select" flow would have auto-filled
+  // from a booking (see TripEntry / Overview tab below).
+  const [manualCustomerName,  setManualCustomerName]  = useState('')
+  const [manualCustomerPhone, setManualCustomerPhone] = useState('')
+  const [manualCustomerEmail, setManualCustomerEmail] = useState('')
+  const [manualServiceLabel,  setManualServiceLabel]  = useState('')
+  const [manualFromCity,      setManualFromCity]      = useState('')
+  const [manualToCity,        setManualToCity]        = useState('')
+  const [manualPickupDate,    setManualPickupDate]    = useState('')
+  const [manualDeliveryDate,  setManualDeliveryDate]  = useState('')
+  const [manualPickupAddress, setManualPickupAddress] = useState('')
+  const [manualDropAddress,   setManualDropAddress]   = useState('')
+  const [manualBags,          setManualBags]          = useState('1')
+  const [manualAmount,        setManualAmount]        = useState('0')
+
   // Status fields
   const [mode,              setMode]             = useState('')
   const [paymentStatus,     setPaymentStatus]    = useState('RECEIVED')
@@ -252,14 +275,34 @@ export default function NewTripSheetPage() {
   // ── Create ────────────────────────────────────────────────────────────────
 
   async function create() {
-    if (!selected) return
+    if (entryMode === 'select' && !selected) return
+    if (entryMode === 'manual' && (!manualCustomerName.trim() || !manualCustomerPhone.trim())) {
+      setError('Customer name and phone are required')
+      return
+    }
     setCreating(true); setError('')
     try {
       const res = await fetch('/api/admin/trip-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
-          booking_id:         selected.booking_id,
+          ...(entryMode === 'select'
+            ? { booking_id: selected!.booking_id }
+            : {
+                manual:          true,
+                customer_name:   manualCustomerName.trim(),
+                customer_phone:  manualCustomerPhone.trim(),
+                customer_email:  manualCustomerEmail.trim()  || null,
+                service_label:   manualServiceLabel.trim()   || null,
+                from_city:       manualFromCity.trim()       || null,
+                to_city:         manualToCity.trim()         || null,
+                pickup_date:     manualPickupDate             || null,
+                delivery_date:   manualDeliveryDate           || null,
+                pickup_address:  manualPickupAddress.trim()  || null,
+                drop_address:    manualDropAddress.trim()    || null,
+                total_bags:      Number(manualBags)  || 1,
+                quote_amount:    Number(manualAmount) || 0,
+              }),
           mode:               mode              || null,
           payment_status:     paymentStatus,
           undertaking_status: undertakingStatus,
@@ -332,7 +375,7 @@ export default function NewTripSheetPage() {
           <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
           <span className="font-semibold text-gray-800">New Trip Sheet</span>
         </div>
-        {selected && (
+        {(entryMode === 'select' ? selected : true) && (
           <button onClick={create} disabled={creating}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors">
             {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating…</> : <><Truck className="h-4 w-4" /> Create Trip Sheet</>}
@@ -342,24 +385,50 @@ export default function NewTripSheetPage() {
 
       <div className="flex h-[calc(100vh-57px)] overflow-hidden">
 
-        {/* ── LEFT: Booking selector ── */}
+        {/* ── LEFT: Booking selector / Manual entry toggle ── */}
         <div className="flex w-[380px] shrink-0 flex-col border-r border-gray-200 bg-gray-50">
           <div className="border-b border-gray-200 bg-white p-4">
-            <p className="mb-3 text-sm font-bold text-gray-800">
-              Select Booking / Lead
-              <span className="ml-2 text-xs font-normal text-gray-400">confirmed · invoice sent · delivered · completed · converted</span>
-            </p>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-              <input type="text" placeholder="Search by name, ID, city…" value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200" />
+            {/* Mode toggle — pick from an existing booking/lead, or fill
+                everything in by hand when no booking exists for this trip. */}
+            <div className="mb-3 flex gap-1 rounded-xl bg-gray-100 p-1">
+              <button onClick={() => setEntryMode('select')}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  entryMode === 'select' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                Select Booking / Lead
+              </button>
+              <button onClick={() => setEntryMode('manual')}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-semibold transition-colors ${
+                  entryMode === 'manual' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                }`}>
+                Create Manually
+              </button>
             </div>
-            {!loading && <p className="mt-2 text-xs text-gray-400">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</p>}
+
+            {entryMode === 'select' ? (
+              <>
+                <p className="mb-3 text-xs font-normal text-gray-400">confirmed · invoice sent · delivered · completed · converted</p>
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                  <input type="text" placeholder="Search by name, ID, city…" value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200" />
+                </div>
+                {!loading && <p className="mt-2 text-xs text-gray-400">{filtered.length} record{filtered.length !== 1 ? 's' : ''}</p>}
+              </>
+            ) : (
+              <p className="text-xs text-gray-400">No booking or lead needed — fill in the customer and route details yourself in the Overview tab on the right.</p>
+            )}
           </div>
 
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {loading ? (
+            {entryMode === 'manual' ? (
+              <div className="py-10 text-center px-4">
+                <Pencil className="mx-auto h-8 w-8 text-orange-200 mb-2" />
+                <p className="text-sm text-gray-500 font-medium">Manual Entry mode</p>
+                <p className="mt-1 text-xs text-gray-400">Customer, route, operations, expenses, and P&amp;L are all filled in on the right — same as a booking-linked trip sheet.</p>
+              </div>
+            ) : loading ? (
               <div className="flex items-center justify-center py-16"><Loader2 className="h-6 w-6 animate-spin text-orange-400" /></div>
             ) : filtered.length === 0 ? (
               <div className="py-16 text-center">
@@ -408,13 +477,17 @@ export default function NewTripSheetPage() {
 
         {/* ── RIGHT: Form ── */}
         <div className="flex-1 overflow-y-auto bg-gray-50">
-          {!selected ? (
+          {entryMode === 'select' && !selected ? (
             <div className="flex h-full flex-col items-center justify-center text-center">
               <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-orange-50 mb-4">
                 <Truck className="h-8 w-8 text-orange-400" />
               </div>
               <h2 className="text-lg font-bold text-gray-700">Select a Booking or Lead</h2>
-              <p className="mt-1 text-sm text-gray-400 max-w-xs">Choose from the left panel to fill in trip sheet details.</p>
+              <p className="mt-1 text-sm text-gray-400 max-w-xs">Choose from the left panel, or switch to <strong>Create Manually</strong> if there's no booking for this trip yet.</p>
+              <button onClick={() => setEntryMode('manual')}
+                className="mt-4 flex items-center gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700 hover:bg-orange-100 transition-colors">
+                <Pencil className="h-4 w-4" /> Create Manually Instead
+              </button>
             </div>
           ) : (
             <div className="p-6">
@@ -422,10 +495,10 @@ export default function NewTripSheetPage() {
               {/* Summary strip */}
               <div className="mb-5 grid grid-cols-4 gap-3">
                 {[
-                  { label: 'Customer',   value: selected.customer_name,          icon: <User className="h-4 w-4" />,      color: '#f97316', bg: '#fff7ed' },
-                  { label: 'Route',      value: `${selected.from_city ?? '—'} → ${selected.to_city ?? '—'}`, icon: <MapPin className="h-4 w-4" />, color: '#2563eb', bg: '#eff6ff' },
-                  { label: 'Pickup',     value: fmtDate(selected.pickup_date),   icon: <Calendar className="h-4 w-4" />, color: '#7c3aed', bg: '#f5f3ff' },
-                  { label: 'Amount',     value: fmtRs(selected.total_amount),    icon: <IndianRupee className="h-4 w-4" />, color: '#16a34a', bg: '#f0fdf4' },
+                  { label: 'Customer',   value: entryMode === 'manual' ? (manualCustomerName || '—') : selected!.customer_name,          icon: <User className="h-4 w-4" />,      color: '#f97316', bg: '#fff7ed' },
+                  { label: 'Route',      value: entryMode === 'manual' ? `${manualFromCity || '—'} → ${manualToCity || '—'}` : `${selected!.from_city ?? '—'} → ${selected!.to_city ?? '—'}`, icon: <MapPin className="h-4 w-4" />, color: '#2563eb', bg: '#eff6ff' },
+                  { label: 'Pickup',     value: entryMode === 'manual' ? fmtDate(manualPickupDate || null) : fmtDate(selected!.pickup_date),   icon: <Calendar className="h-4 w-4" />, color: '#7c3aed', bg: '#f5f3ff' },
+                  { label: 'Amount',     value: entryMode === 'manual' ? fmtRs(Number(manualAmount) || 0) : fmtRs(selected!.total_amount),    icon: <IndianRupee className="h-4 w-4" />, color: '#16a34a', bg: '#f0fdf4' },
                 ].map(c => (
                   <div key={c.label} className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
                     <div className="flex items-center gap-2 mb-1">
@@ -456,40 +529,82 @@ export default function NewTripSheetPage() {
               {/* ── TAB: Overview ── */}
               {tab === 'overview' && (
                 <div className="grid gap-4 sm:grid-cols-2">
-                  {/* Customer Details */}
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
-                      <User className="h-4 w-4 text-orange-400" /> Customer Details
-                    </h3>
-                    <div className="space-y-3 text-sm">
-                      <Row label="Name"    val={selected.customer_name} />
-                      <Row label="Phone"   val={selected.customer_phone} />
-                      <Row label="Email"   val={selected.customer_email ?? '—'} />
-                      <Row label="Service" val={selected.service_label  ?? '—'} />
-                      <Row label="Bags"    val={selected.total_bags != null ? String(selected.total_bags) : '—'} />
-                    </div>
-                  </div>
+                  {entryMode === 'manual' ? (
+                    <>
+                      {/* Customer Details — editable, no booking to read from */}
+                      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
+                          <User className="h-4 w-4 text-orange-400" /> Customer Details
+                        </h3>
+                        <div className="space-y-3">
+                          <FInput label="Name *"    value={manualCustomerName}  onChange={setManualCustomerName}  placeholder="Customer name" />
+                          <FInput label="Phone *"   value={manualCustomerPhone} onChange={setManualCustomerPhone} type="tel" placeholder="Mobile number" />
+                          <FInput label="Email"     value={manualCustomerEmail} onChange={setManualCustomerEmail} type="email" placeholder="Optional" />
+                          <FInput label="Service"   value={manualServiceLabel}  onChange={setManualServiceLabel}  placeholder="e.g. Airport to Doorstep" />
+                          <FInput label="Bags"      value={manualBags}          onChange={setManualBags}          type="number" placeholder="1" />
+                        </div>
+                      </div>
 
-                  {/* Route */}
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                    <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
-                      <MapPin className="h-4 w-4 text-orange-400" /> Route
-                    </h3>
-                    <div className="space-y-3 text-sm">
-                      <Row label="From"           val={selected.from_city      ?? '—'} />
-                      <Row label="To"             val={selected.to_city        ?? '—'} />
-                      <Row label="Pickup Date"    val={fmtDate(selected.pickup_date)} />
-                      <Row label="Delivery Date"  val={fmtDate(selected.delivery_date)} />
-                      <Row label="Pickup Address" val={selected.pickup_address ?? '—'} />
-                      <Row label="Drop Address"   val={selected.drop_address   ?? '—'} />
-                    </div>
-                  </div>
+                      {/* Route — editable */}
+                      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
+                          <MapPin className="h-4 w-4 text-orange-400" /> Route
+                        </h3>
+                        <div className="space-y-3">
+                          <FInput label="From"           value={manualFromCity}      onChange={setManualFromCity}      placeholder="Origin city" />
+                          <FInput label="To"             value={manualToCity}        onChange={setManualToCity}        placeholder="Destination city" />
+                          <FInput label="Pickup Date"    value={manualPickupDate}    onChange={setManualPickupDate}    type="date" />
+                          <FInput label="Delivery Date"  value={manualDeliveryDate}  onChange={setManualDeliveryDate}  type="date" />
+                          <FInput label="Pickup Address" value={manualPickupAddress} onChange={setManualPickupAddress} placeholder="Optional" />
+                          <FInput label="Drop Address"   value={manualDropAddress}   onChange={setManualDropAddress}   placeholder="Optional" />
+                          <FInput label="Quote Amount (₹)" value={manualAmount}      onChange={setManualAmount}        type="number" placeholder="0" />
+                        </div>
+                      </div>
 
-                  {/* Quick-fill prompt */}
-                  <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-5 py-3 text-xs text-blue-700 flex items-center gap-2">
-                    <Pencil className="h-3.5 w-3.5 shrink-0" />
-                    Customer and route details are auto-filled from the selected booking. Switch to <strong>Operations</strong>, <strong>Expenses</strong>, and <strong>Status</strong> tabs to add operational details.
-                  </div>
+                      {/* Quick-fill prompt */}
+                      <div className="sm:col-span-2 rounded-xl border border-amber-100 bg-amber-50 px-5 py-3 text-xs text-amber-700 flex items-center gap-2">
+                        <Pencil className="h-3.5 w-3.5 shrink-0" />
+                        Manual entry — no booking is linked to this trip sheet. Name and phone are required; everything else is optional. Switch to <strong>Operations</strong>, <strong>Expenses</strong>, and <strong>P&amp;L</strong> tabs to add the rest.
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      {/* Customer Details */}
+                      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
+                          <User className="h-4 w-4 text-orange-400" /> Customer Details
+                        </h3>
+                        <div className="space-y-3 text-sm">
+                          <Row label="Name"    val={selected!.customer_name} />
+                          <Row label="Phone"   val={selected!.customer_phone} />
+                          <Row label="Email"   val={selected!.customer_email ?? '—'} />
+                          <Row label="Service" val={selected!.service_label  ?? '—'} />
+                          <Row label="Bags"    val={selected!.total_bags != null ? String(selected!.total_bags) : '—'} />
+                        </div>
+                      </div>
+
+                      {/* Route */}
+                      <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                        <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">
+                          <MapPin className="h-4 w-4 text-orange-400" /> Route
+                        </h3>
+                        <div className="space-y-3 text-sm">
+                          <Row label="From"           val={selected!.from_city      ?? '—'} />
+                          <Row label="To"             val={selected!.to_city        ?? '—'} />
+                          <Row label="Pickup Date"    val={fmtDate(selected!.pickup_date)} />
+                          <Row label="Delivery Date"  val={fmtDate(selected!.delivery_date)} />
+                          <Row label="Pickup Address" val={selected!.pickup_address ?? '—'} />
+                          <Row label="Drop Address"   val={selected!.drop_address   ?? '—'} />
+                        </div>
+                      </div>
+
+                      {/* Quick-fill prompt */}
+                      <div className="sm:col-span-2 rounded-xl border border-blue-100 bg-blue-50 px-5 py-3 text-xs text-blue-700 flex items-center gap-2">
+                        <Pencil className="h-3.5 w-3.5 shrink-0" />
+                        Customer and route details are auto-filled from the selected booking. Switch to <strong>Operations</strong>, <strong>Expenses</strong>, and <strong>Status</strong> tabs to add operational details.
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
 
@@ -716,7 +831,7 @@ export default function NewTripSheetPage() {
 
               {/* ── TAB: P&L Summary ── */}
               {tab === 'pnl' && (() => {
-                const quoteAmt = selected?.total_amount ?? 0
+                const quoteAmt = entryMode === 'manual' ? (Number(manualAmount) || 0) : (selected?.total_amount ?? 0)
                 const addl     = Number(additionalCharges) || 0
                 const disc     = Number(discount)          || 0
                 const tax      = Number(taxAmount)         || 0
@@ -835,7 +950,7 @@ export default function NewTripSheetPage() {
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors shadow-sm">
                   {creating
                     ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating Trip Sheet{expenses.length > 0 ? ` + ${expenses.length} expense${expenses.length !== 1 ? 's' : ''}` : ''}…</>
-                    : <><Truck className="h-4 w-4" /> Create Trip Sheet for {selected.ref_number}{expenses.length > 0 ? ` + ${expenses.length} Expense${expenses.length !== 1 ? 's' : ''}` : ''}</>
+                    : <><Truck className="h-4 w-4" /> Create Trip Sheet{entryMode === 'select' ? ` for ${selected!.ref_number}` : ' (Manual Entry)'}{expenses.length > 0 ? ` + ${expenses.length} Expense${expenses.length !== 1 ? 's' : ''}` : ''}</>
                   }
                 </button>
                 <p className="mt-2 text-center text-xs text-gray-400">All fields can be updated later from the trip sheet detail page.</p>
