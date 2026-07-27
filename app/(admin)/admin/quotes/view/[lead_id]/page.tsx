@@ -118,6 +118,39 @@ interface Invoice {
   created_at:        string
 }
 
+interface IndemnityDocsResponse {
+  bond: {
+    id:                     string
+    otp_verified:           boolean
+    otp_verified_at:        string | null
+    aadhaar_number:         string | null
+    passport_number:        string | null
+    licence_number:         string | null
+    bond_date:              string | null
+    bond_place:             string | null
+    signed_at:              string | null
+    document_status:        string
+    reviewed_by:            string | null
+    reviewed_at:            string | null
+    review_note:            string | null
+    submitted_at:           string | null
+    sent_at:                string | null
+    token_expires_at:       string | null
+    has_aadhaar_doc:        boolean
+    has_passport_doc:       boolean
+    has_flight_ticket_doc:  boolean
+    has_extra_doc:          boolean
+    has_signed_pdf:         boolean
+  } | null
+  urls?: {
+    signed_bond_url:   string | null
+    aadhaar_url:       string | null
+    passport_url:      string | null
+    flight_ticket_url: string | null
+    extra_doc_url:     string | null
+  }
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmtDate(d: string | null | undefined) {
@@ -277,6 +310,10 @@ export default function QuoteViewPage() {
   const [downloading,     setDownloading]     = useState(false)
   const [sendingIndemnity, setSendingIndemnity] = useState(false)
   const [indemnityLink,    setIndemnityLink]    = useState<string | null>(null)
+  const [indemnityDocs,        setIndemnityDocs]        = useState<IndemnityDocsResponse | null>(null)
+  const [indemnityDocsLoading, setIndemnityDocsLoading] = useState(false)
+  const [indemnityReviewNote,  setIndemnityReviewNote]  = useState('')
+  const [reviewingIndemnity,   setReviewingIndemnity]   = useState<string | null>(null)
   const [invoice,         setInvoice]         = useState<Invoice | null>(null)
   const [genInvoice,      setGenInvoice]      = useState(false)
   const [resendingEmail,  setResendingEmail]  = useState(false)
@@ -648,6 +685,57 @@ export default function QuoteViewPage() {
   // link. Uses the same generic status PATCH every other step uses.
   async function doMarkIndemnitySignedOffline() {
     await patchBooking('mark_indemnity_signed_offline', { status: 'indemnity_bond_signed' })
+  }
+
+  // ── Indemnity Bond — Documents (Step 8, admin review) ────────────
+  // The customer's public signing link locks itself the moment they
+  // submit (by design — a signed legal document shouldn't be silently
+  // re-editable), so this is the only place to view what was actually
+  // submitted once that link stops working. Keyed off booking_id
+  // directly, independent of the booking's current workflow status.
+  async function loadIndemnityDocs() {
+    if (!booking?.id || !key) return
+    setIndemnityDocsLoading(true)
+    try {
+      const r = await fetch(`/api/admin/bookings/${booking.id}/indemnity`, {
+        headers: { 'x-admin-key': key },
+      })
+      const d = await r.json()
+      if (r.ok) setIndemnityDocs(d as IndemnityDocsResponse)
+    } catch {
+      // Non-fatal — the card just shows nothing to load.
+    } finally {
+      setIndemnityDocsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    if (!booking?.id || !key) return
+    if (atOrPast('indemnity_bond_sent')) loadIndemnityDocs()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.id, booking?.status, key])
+
+  async function doReviewIndemnity(action: 'approve' | 'reject' | 'request_resubmission') {
+    if (!booking?.id || !key) return
+    setReviewingIndemnity(action); setActionError(null)
+    try {
+      const r = await fetch(`/api/admin/bookings/${booking.id}/indemnity/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ action, note: indemnityReviewNote.trim() || undefined }),
+      })
+      const d = await r.json()
+      if (!r.ok) { setActionError(d.error ?? 'Failed to update review status'); return }
+      setIndemnityReviewNote('')
+      await loadIndemnityDocs()
+      if (action === 'request_resubmission') {
+        setBooking(prev => prev ? { ...prev, status: 'indemnity_bond_sent' } : prev)
+      }
+    } catch {
+      setActionError('Network error — please try again')
+    } finally {
+      setReviewingIndemnity(null)
+    }
   }
 
   async function doGenerateInvoice() {
@@ -1447,6 +1535,134 @@ export default function QuoteViewPage() {
                     )}
                   </div>
                 )}
+
+                {/* ── Step 8: Indemnity Bond Documents (admin review) ──
+                     Persists for the rest of the booking's life once a bond
+                     has been sent — this is the ONLY way to view a signed
+                     bond/documents once the customer's public link locks
+                     itself post-submission. Independent of atStatus() so it
+                     doesn't disappear as the workflow moves past this step. ── */}
+                {(() => {
+                  if (!atOrPast('indemnity_bond_sent')) return null
+                  const bond = indemnityDocs?.bond
+                  const urls = indemnityDocs?.urls
+                  return (
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
+                      <p className="text-xs font-bold uppercase tracking-widest text-slate-600 flex items-center gap-1.5">
+                        <ShieldCheck className="h-3.5 w-3.5" /> Indemnity Bond Documents
+                      </p>
+
+                      {indemnityDocsLoading && !bond && (
+                        <p className="flex items-center gap-2 text-xs text-slate-500">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading…
+                        </p>
+                      )}
+
+                      {!indemnityDocsLoading && !bond && (
+                        <p className="text-xs text-slate-500">Not submitted yet.</p>
+                      )}
+
+                      {bond && (
+                        <>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span className={
+                              'rounded-full px-2.5 py-1 font-semibold ' +
+                              (bond.document_status === 'approved' ? 'bg-green-100 text-green-700'
+                                : bond.document_status === 'rejected' ? 'bg-red-100 text-red-700'
+                                : bond.document_status === 'resubmission_requested' ? 'bg-amber-100 text-amber-700'
+                                : 'bg-gray-100 text-gray-600')
+                            }>
+                              {bond.document_status.replace(/_/g, ' ')}
+                            </span>
+                            <span className="text-slate-500">
+                              {bond.submitted_at ? `Submitted ${fmtDateTime(bond.submitted_at)}` : 'Not yet submitted'}
+                            </span>
+                            <span className="text-slate-500">
+                              · OTP {bond.otp_verified ? `verified ${fmtDateTime(bond.otp_verified_at)}` : 'not verified'}
+                            </span>
+                          </div>
+
+                          {(bond.aadhaar_number || bond.passport_number || bond.licence_number) && (
+                            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-slate-600 sm:grid-cols-3">
+                              {bond.aadhaar_number  && <span><span className="text-slate-400">Aadhaar:</span> {bond.aadhaar_number}</span>}
+                              {bond.passport_number && <span><span className="text-slate-400">Passport:</span> {bond.passport_number}</span>}
+                              {bond.licence_number  && <span><span className="text-slate-400">Licence:</span> {bond.licence_number}</span>}
+                            </div>
+                          )}
+
+                          {bond.submitted_at && (
+                            <div className="flex flex-wrap gap-2">
+                              {bond.has_signed_pdf && urls?.signed_bond_url && (
+                                <a href={urls.signed_bond_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <FileText className="h-3.5 w-3.5" /> Signed Bond
+                                </a>
+                              )}
+                              {bond.has_aadhaar_doc && urls?.aadhaar_url && (
+                                <a href={urls.aadhaar_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <FileText className="h-3.5 w-3.5" /> Aadhaar
+                                </a>
+                              )}
+                              {bond.has_passport_doc && urls?.passport_url && (
+                                <a href={urls.passport_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <FileText className="h-3.5 w-3.5" /> Passport
+                                </a>
+                              )}
+                              {bond.has_flight_ticket_doc && urls?.flight_ticket_url && (
+                                <a href={urls.flight_ticket_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <FileText className="h-3.5 w-3.5" /> Flight Ticket
+                                </a>
+                              )}
+                              {bond.has_extra_doc && urls?.extra_doc_url && (
+                                <a href={urls.extra_doc_url} target="_blank" rel="noopener noreferrer"
+                                  className="flex items-center gap-1.5 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100">
+                                  <FileText className="h-3.5 w-3.5" /> Extra Doc
+                                </a>
+                              )}
+                              <button onClick={loadIndemnityDocs} disabled={indemnityDocsLoading}
+                                className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-500 hover:bg-slate-100 disabled:opacity-40">
+                                {indemnityDocsLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                Refresh links
+                              </button>
+                            </div>
+                          )}
+
+                          {bond.review_note && (
+                            <p className="text-xs text-slate-500">Last review note: {bond.review_note}</p>
+                          )}
+
+                          {bond.submitted_at && bond.document_status !== 'approved' && (
+                            <div className="space-y-2 border-t border-slate-200 pt-3">
+                              <input type="text" value={indemnityReviewNote} onChange={e => setIndemnityReviewNote(e.target.value)}
+                                placeholder="Optional note (shown to customer for reject/resubmission)"
+                                className="w-full rounded border border-gray-300 bg-white px-2.5 py-1.5 text-xs focus:border-orange-400 focus:outline-none" />
+                              <div className="flex flex-wrap gap-2">
+                                <button onClick={() => doReviewIndemnity('approve')} disabled={!!reviewingIndemnity}
+                                  className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-40">
+                                  {reviewingIndemnity === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                                  Approve
+                                </button>
+                                <button onClick={() => doReviewIndemnity('reject')} disabled={!!reviewingIndemnity}
+                                  className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                                  {reviewingIndemnity === 'reject' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '✕'}
+                                  Reject
+                                </button>
+                                <button onClick={() => doReviewIndemnity('request_resubmission')} disabled={!!reviewingIndemnity}
+                                  className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-50 disabled:opacity-40">
+                                  {reviewingIndemnity === 'request_resubmission' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                                  Request Resubmission
+                                </button>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  )
+                })()}
 
                 {/* ── Step 8: Generate Invoice (only if invoice not yet created) ── */}
                 {atStatus('indemnity_bond_signed') && !invoice && (
