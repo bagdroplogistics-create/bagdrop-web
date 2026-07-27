@@ -106,7 +106,7 @@ export async function POST(req: NextRequest) {
       .eq('booking_id', body.booking_id)
       .maybeSingle()
     quote = q
-    quoteAmount = quote?.total_amount ?? Number(booking.total_amount ?? 0)
+    quoteAmount = quote?.total_amount ?? Number(bk.total_amount ?? 0)
   } else {
     // Manual entry — no booking/lead backing this trip at all.
     if (!body.customer_name?.trim() || !body.customer_phone?.trim()) {
