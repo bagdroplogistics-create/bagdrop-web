@@ -190,6 +190,22 @@ export async function PATCH(
   }
 
   // ── Special: send payment request email to customer ──────────────
+  // NOTE: this used to return early with { sent: true } unconditionally,
+  // which meant that when the Booking Workflow's "Send Payment Request"
+  // button called this with BOTH `status: 'payment_pending'` AND
+  // `send_payment_email: true` in the same request, the status update was
+  // NEVER applied — the function returned before reaching the status-update
+  // block below, so the booking stayed on its old status in the DB,
+  // notifyBookingStatus never ran, and (once added) sendLifecycleWhatsApp
+  // never ran either. The customer only ever got the payment request EMAIL,
+  // never a WhatsApp message, no matter how many times the button was
+  // clicked. Fixed to only short-circuit when this is a bare resend with no
+  // status change (e.g. the admin Dashboard's "Email Payment Request"
+  // button, which intentionally sends only { send_payment_email: true } and
+  // expects just an email + { sent: true } — that behavior is preserved
+  // below). When status IS present, fall through so the status update +
+  // lifecycle WhatsApp send still happen, matching the send_quote_email
+  // pattern above.
   if (body.send_payment_email) {
     const { data: bk } = await supabaseAdmin.from('bookings').select('*').eq('id', id).single()
     if (bk && bk.customer_email) {
@@ -198,7 +214,10 @@ export async function PATCH(
       const amount = Number(bk.total_amount ?? 0)
       await sendPaymentRequestEmail({ booking: bk, upiId, amount })
     }
-    return NextResponse.json({ sent: true })
+    if (!status) {
+      return NextResponse.json({ sent: true })
+    }
+    // Don't return early — let status update to payment_pending continue below
   }
 
   if (Object.keys(updates).length === 0 && !status) {
