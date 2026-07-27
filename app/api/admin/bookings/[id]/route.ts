@@ -3,7 +3,34 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
+import { sendLifecycleWhatsApp } from '@/lib/lifecycle-notifications'
 import type { BookingStatus } from '@/lib/supabase'
+
+// Full booking status sequence (superset — includes the airport-only
+// 'driver_details_shared' step, harmless for non-airport bookings since
+// that value is simply never reached there). Used only to tell forward
+// progress apart from a backward move (Previous Step / doMoveBack) so
+// lifecycle WhatsApp templates never re-fire when an admin reverts a status.
+const STATUS_ORDER = [
+  'inquiry', 'quote_created', 'quote_sent', 'accepted',
+  'payment_pending', 'payment_received', 'payment_approved',
+  'confirmed', 'invoice_generated', 'invoice_sent',
+  'pickup_scheduled', 'picked_up', 'in_transit',
+  'out_for_delivery', 'driver_details_shared', 'delivered',
+  'trip_created', 'completed',
+]
+
+function isForwardMove(oldStatus: string | null | undefined, newStatus: string): boolean {
+  if (!oldStatus) return true
+  const oldIdx = STATUS_ORDER.indexOf(oldStatus)
+  const newIdx = STATUS_ORDER.indexOf(newStatus)
+  // Unknown/unlisted status on either side (e.g. 'rejected', a terminal
+  // branch not part of the main sequence) — default to allowing the send,
+  // matching the same "unknown defaults to advanceable" rule used in
+  // generate-quote's canUpdateStatus.
+  if (oldIdx === -1 || newIdx === -1) return true
+  return newIdx > oldIdx
+}
 
 export async function GET(
   req: NextRequest,
@@ -178,6 +205,8 @@ export async function PATCH(
     return NextResponse.json({ error: 'No fields provided to update' }, { status: 400 })
   }
 
+  let shouldSendLifecycleWhatsApp = false
+
   if (status) {
     // LOCK: completed bookings cannot have status changed
     const { data: currentBooking } = await supabaseAdmin
@@ -193,6 +222,11 @@ export async function PATCH(
       .select('status, status_history, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
       .eq('id', id)
       .single()
+
+    // Lifecycle WhatsApp templates (Fast2SMS) only fire on genuine forward
+    // progress — never when an admin uses "Previous Step" to revert a
+    // booking, so reverting-and-readvancing can't spam the customer.
+    shouldSendLifecycleWhatsApp = isForwardMove(existing?.status, status)
 
     const history = existing?.status_history ?? []
     history.push({
@@ -243,6 +277,14 @@ export async function PATCH(
   // failed request even if email/WhatsApp both fail.
   if (sendDriverDetailsNow) {
     await sendDriverDetails(id)
+  }
+
+  // Fast2SMS lifecycle WhatsApp — additive, alongside all existing
+  // notification behavior (wa.me links, payment emails, etc.). `data` is the
+  // just-updated row (select() with no args returns every column), so it has
+  // everything sendLifecycleWhatsApp needs. Never throws.
+  if (shouldSendLifecycleWhatsApp && status && data) {
+    await sendLifecycleWhatsApp(status, data)
   }
 
   return NextResponse.json({ booking: data })
