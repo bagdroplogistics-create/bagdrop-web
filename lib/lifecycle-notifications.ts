@@ -56,6 +56,14 @@ function fmtDate(iso: string): string {
   return new Date(iso).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
 }
 
+// payment_request's template has an Image header (the UPI QR code). Fast2SMS
+// requires the header media to be supplied per-send via media_url — it is
+// NOT automatically reused from the sample image submitted at template
+// approval time. This QR is static (encodes only the fixed UPI ID, no
+// amount), so one hosted image works for every booking; must live under
+// /public so Vercel serves it at this exact path.
+const PAYMENT_QR_MEDIA_URL = 'https://bagdrop.co/bagdrop_upi_qr.png'
+
 /**
  * Fires the lifecycle WhatsApp template for this status, if one is mapped
  * and the booking has a phone number on file. Safe to call unconditionally
@@ -119,7 +127,11 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), booking.drop_address || route || '—']
     }
 
-    const result = await sendWhatsAppTemplateFast2SMS(booking.customer_phone, templateId, variables)
+    // payment_pending is the only stage whose approved template has a media
+    // (Image) header — the QR code — so it's the only one that needs media_url.
+    const mediaUrl = status === 'payment_pending' ? PAYMENT_QR_MEDIA_URL : undefined
+
+    const result = await sendWhatsAppTemplateFast2SMS(booking.customer_phone, templateId, variables, mediaUrl)
 
     const note = `WhatsApp (${status}) ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)

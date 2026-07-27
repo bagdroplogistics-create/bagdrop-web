@@ -199,7 +199,8 @@ async function sendWhatsApp(
 export async function sendWhatsAppTemplateFast2SMS(
   phone: string,
   messageId: string,
-  variables: string[]
+  variables: string[],
+  mediaUrl?: string
 ): Promise<{ success: boolean; error?: string; requestId?: string }> {
   const apiKey        = process.env.FAST2SMS_API_KEY
   const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
@@ -218,11 +219,18 @@ export async function sendWhatsAppTemplateFast2SMS(
   const digits   = phone.replace(/\D/g, '')
   const tenDigit = digits.slice(-10)
 
+  // Templates with an Image/PDF header (e.g. payment_request's QR code) do
+  // NOT bake the approved-template sample image into every send — Fast2SMS
+  // requires the header media to be supplied per-request via `media_url`,
+  // or the header renders empty ("No Preview Available") on WhatsApp even
+  // though the rest of the template body sends fine. Only added when the
+  // caller passes one; harmless (and omitted) for plain text-header templates.
   const params = new URLSearchParams({
     message_id:       messageId,
     phone_number_id:  phoneNumberId,
     numbers:          tenDigit,
     variables_values: variables.join('|'),
+    ...(mediaUrl ? { media_url: mediaUrl } : {}),
   })
 
   try {
