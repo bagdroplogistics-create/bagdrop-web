@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { resolveIndemnityToken } from '@/lib/indemnity-token'
 import { fillIndemnityBondPdf } from '@/lib/indemnity-pdf'
 import { sendIndemnityWhatsApp } from '@/lib/indemnity-notifications'
-import { sendIndemnityBondStatusEmail } from '@/lib/email'
+import { sendIndemnityBondStatusEmail, sendIndemnityBondAdminNotification } from '@/lib/email'
 
 export const runtime = 'nodejs'
 
@@ -201,6 +201,22 @@ export async function POST(
       message:       'we\'ve received your signed indemnity bond and documents. Our team will review them shortly — you\'ll be notified once approved.',
     }).catch(() => {})
   }
+
+  // Admin (info@bagdrop.co / aditya@bagdrop.co) needs to know a submission
+  // is waiting for review — the customer-facing email above doesn't reach
+  // them, and there's no other signal until the admin Documents/approve
+  // UI (Phase 2) is built.
+  sendIndemnityBondAdminNotification({
+    trackingId:      booking.tracking_id,
+    leadId:          booking.lead_id,
+    customerName:    booking.customer_name,
+    customerPhone:   booking.customer_phone,
+    documentStatus:  'pending',
+    aadhaarNumber:   aadhaarNumber  || null,
+    passportNumber:  passportNumber || null,
+    licenceNumber:   licenceNumber  || null,
+    submittedAt:     now,
+  }).catch(() => {})
 
   return NextResponse.json({ success: true })
 }

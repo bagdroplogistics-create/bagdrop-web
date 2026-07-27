@@ -587,6 +587,65 @@ export async function sendIndemnityBondStatusEmail(data: IndemnityBondStatusEmai
   )
 }
 
+// ── Indemnity Bond — admin notification (Step 9, admin side) ───────────
+// The customer-facing sendIndemnityBondStatusEmail() above only reaches
+// the customer. Nothing previously notified info@bagdrop.co when a
+// customer actually signed and submitted their bond — the admin team had
+// no way to know a submission was waiting for review (Phase 2's Documents
+// approve/reject UI isn't built yet, so this email is the only signal
+// until then). Sent once, from the submit route, alongside the customer
+// confirmation — never blocks the customer-facing response if it fails.
+
+export interface IndemnityBondAdminNotifyData {
+  trackingId:      string
+  leadId:          string | null
+  customerName:    string | null
+  customerPhone:   string | null
+  documentStatus:  string
+  aadhaarNumber:   string | null
+  passportNumber:  string | null
+  licenceNumber:   string | null
+  submittedAt:     string
+}
+
+export async function sendIndemnityBondAdminNotification(data: IndemnityBondAdminNotifyData) {
+  const adminLink = data.leadId
+    ? 'https://bagdrop.co/admin/quotes/view/' + data.leadId
+    : 'https://bagdrop.co/admin/leads'
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Indemnity Bond Signed & Submitted</h2>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">A customer has completed and submitted their indemnity bond. Please review the uploaded documents and approve or request resubmission.</p>' +
+
+    '<div style="background:#fff7f0;border-left:4px solid ' + BRAND + ';border-radius:6px;padding:14px 18px;margin-bottom:24px;">' +
+    '<p style="margin:0;font-size:11px;color:#999;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
+    '<p style="margin:4px 0 0;font-size:26px;font-weight:900;color:' + BRAND + ';letter-spacing:2px;">' + data.trackingId + '</p>' +
+    '</div>' +
+
+    '<h3 style="margin:0 0 10px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Submission Details</h3>' +
+    '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
+    row('Customer Name',   data.customerName) +
+    row('Contact Number',  data.customerPhone) +
+    row('Document Status', data.documentStatus) +
+    row('Aadhaar Number',  data.aadhaarNumber) +
+    row('Passport Number', data.passportNumber) +
+    row('Licence Number',  data.licenceNumber) +
+    row('Submitted At',    formatDateTime(data.submittedAt)) +
+    '</table>' +
+
+    '<div style="text-align:center;margin-bottom:8px;">' +
+    '<a href="' + adminLink + '" style="display:inline-block;background:' + BRAND + ';color:#fff;' +
+    'font-size:13px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;">Review in Admin Panel</a>' +
+    '</div>'
+
+  const subject = 'Indemnity Bond Submitted — ' + data.trackingId + ' — ' + (data.customerName ?? 'Customer')
+
+  // Send one independent email per admin — Resend can silently drop array recipients
+  return Promise.allSettled(
+    ADMIN_EMAILS.map(addr => sendEmail(addr, subject, baseTemplate(body), 'indemnity-bond-submitted:' + data.trackingId))
+  )
+}
+
 // ── Legacy admin notification (kept for backward compat) ──────────────
 // Routes should migrate to sendInquiryNotification instead.
 
