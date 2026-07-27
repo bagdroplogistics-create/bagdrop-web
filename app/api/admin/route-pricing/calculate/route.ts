@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { normalizeCity } from '@/lib/city-normalize'
+import { findRouteMatch } from '@/lib/city-normalize'
 
 // GET /api/admin/route-pricing/calculate?from=X&to=Y&bags=N
 export async function GET(req: NextRequest) {
@@ -16,21 +16,18 @@ export async function GET(req: NextRequest) {
   if (!from || !to)
     return NextResponse.json({ error: 'from and to are required' }, { status: 400 })
 
-  const normFrom = normalizeCity(from)
-  const normTo   = normalizeCity(to)
-
-  // Look for route in either direction
-  const { data, error } = await supabaseAdmin
+  // Compare against ALL active routes with normalized (aliased) city keys —
+  // not a raw `.eq()` — so rows saved with a non-canonical spelling
+  // ("Vadodara" instead of "Baroda", "Bengaluru" instead of "Bangalore")
+  // still match. See findRouteMatch() in lib/city-normalize.ts for why.
+  const { data: routes, error } = await supabaseAdmin
     .from('route_pricing')
     .select('*')
     .eq('is_active', true)
-    .or(
-      `and(from_city.eq.${normFrom},to_city.eq.${normTo}),and(from_city.eq.${normTo},to_city.eq.${normFrom})`
-    )
-    .limit(1)
-    .maybeSingle()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  const data = findRouteMatch(routes ?? [], from, to)
 
   if (!data) {
     return NextResponse.json({

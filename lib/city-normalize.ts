@@ -45,3 +45,33 @@ export function normalizeCity(raw: string | null | undefined): string {
   s = s.replace(/\s+/g, '').trim()
   return CITY_ALIASES[s] ?? s
 }
+
+// True when two free-form city labels resolve to the same canonical city —
+// e.g. citiesEqual('Vadodara', 'Baroda') === true, citiesEqual('Mumbai
+// Airport (T2)', 'mumbai') === true. Empty/unresolvable input never matches.
+export function citiesEqual(a: string | null | undefined, b: string | null | undefined): boolean {
+  const na = normalizeCity(a)
+  return na !== '' && na === normalizeCity(b)
+}
+
+// Finds the first active route_pricing row whose (from_city, to_city) pair
+// matches the given cities in either direction, comparing on normalized
+// (aliased) city keys rather than raw stored text. This is deliberately an
+// in-application match over ALL active routes rather than a DB `.eq()` query
+// — route_pricing rows are saved as free-typed text (see
+// app/api/admin/route-pricing/route.ts), so two rows meaning the same city
+// ("Vadodara" vs "Baroda", "Bengaluru" vs "Bangalore") can be stored with
+// different raw spellings. A raw `.eq()` against a normalized query value
+// silently misses any row saved with the non-canonical spelling — comparing
+// normalizeCity(row.field) against normalizeCity(query) catches all of them,
+// including rows that predate this fix, with no data migration required.
+export function findRouteMatch<T extends { from_city: string; to_city: string }>(
+  routes: T[],
+  from: string,
+  to: string,
+): T | null {
+  return routes.find(r =>
+    (citiesEqual(r.from_city, from) && citiesEqual(r.to_city, to)) ||
+    (citiesEqual(r.from_city, to)   && citiesEqual(r.to_city, from))
+  ) ?? null
+}

@@ -35,7 +35,7 @@ import { requireAdminAuth }          from '@/lib/admin-auth'
 import { supabaseAdmin }             from '@/lib/supabase'
 import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
-import { normalizeCity }             from '@/lib/city-normalize'
+import { findRouteMatch }            from '@/lib/city-normalize'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
 
@@ -243,17 +243,16 @@ export async function POST(req: NextRequest) {
     lineItems = buildCustomItems(fromCity, toCity, bags, custom_price_per_bag)
 
   } else {
-    // Route pricing DB lookup
-    const fN = normalizeCity(fromCity)
-    const tN = normalizeCity(toCity)
-
-    const { data: route } = await supabaseAdmin
+    // Route pricing DB lookup — compare against ALL active routes with
+    // normalized (aliased) city keys, not a raw `.eq()`, so rows saved with
+    // a non-canonical spelling ("Vadodara" instead of "Baroda") still match.
+    // See findRouteMatch() in lib/city-normalize.ts.
+    const { data: routes } = await supabaseAdmin
       .from('route_pricing')
-      .select('base_price, per_bag_rate')
+      .select('from_city, to_city, base_price, per_bag_rate')
       .eq('is_active', true)
-      .or(`and(from_city.eq.${fN},to_city.eq.${tN}),and(from_city.eq.${tN},to_city.eq.${fN})`)
-      .limit(1)
-      .single()
+
+    const route = findRouteMatch(routes ?? [], fromCity, toCity)
 
     if (!route) {
       return NextResponse.json(
