@@ -6,13 +6,14 @@ import { StepHeader } from '@/components/StepHeader'
 import { Card } from '@/components/Card'
 import { TextField } from '@/components/TextField'
 import { SelectField } from '@/components/SelectField'
+import { PhoneInput } from '@/components/PhoneInput'
 import { DateField } from '@/components/DateField'
 import { BookingFooter } from '@/components/BookingFooter'
 import { colors } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useBooking } from '@/context/BookingContext'
 import { useAuth } from '@/context/AuthContext'
-import { isStep4Valid, COUNTRY_CODES } from '@/shared/booking-types'
+import { isStep4Valid } from '@/shared/booking-types'
 import { BOOKING_LOCATIONS, ADDON_SERVICES, TIME_SLOTS } from '@/shared/constants'
 import { formatCurrency } from '@/shared/format'
 import { createBooking } from '@/lib/api'
@@ -136,18 +137,13 @@ export default function Review() {
 
         <Text style={styles.sectionTitleLoose}>Your details</Text>
         <TextField label="Full name" placeholder="Your name" value={state.name} onChangeText={v => update({ name: v })} />
-        <SelectField
-          label="Country code"
-          value={state.countryCode}
-          options={COUNTRY_CODES.map(c => ({ value: c.code, label: `${c.flag} ${c.label}` }))}
-          onChange={v => update({ countryCode: v })}
-        />
-        <TextField
+        <PhoneInput
           label="Mobile number"
+          countryIso2={state.countryIso2 || 'IN'}
+          nationalNumber={state.phone}
+          onCountryChange={iso2 => update({ countryIso2: iso2 })}
+          onNumberChange={digits => update({ phone: digits })}
           placeholder="98765 43210"
-          keyboardType="phone-pad"
-          value={state.phone}
-          onChangeText={v => update({ phone: v })}
         />
         <TextField
           label="Email (optional)"

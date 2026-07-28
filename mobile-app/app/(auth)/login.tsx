@@ -4,22 +4,26 @@ import { router } from 'expo-router'
 import { Screen } from '@/components/Screen'
 import { Button } from '@/components/Button'
 import { TextField } from '@/components/TextField'
+import { PhoneInput } from '@/components/PhoneInput'
 import { colors } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useAuth } from '@/context/AuthContext'
+import { isValidPhoneForCountry, toE164 } from '@/shared/phone-format'
+import { DEFAULT_COUNTRY_ISO2 } from '@/shared/phone-countries'
 
 export default function Login() {
   const { requestOtp } = useAuth()
   const [mode, setMode] = useState<'phone' | 'email'>('phone')
   const [contact, setContact] = useState('')
+  const [countryIso2, setCountryIso2] = useState(DEFAULT_COUNTRY_ISO2)
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
   async function handleContinue() {
     setError('')
     const trimmed = contact.trim()
-    if (mode === 'phone' && !/^[6-9]\d{9}$/.test(trimmed.replace(/\D/g, ''))) {
-      setError('Enter a valid 10-digit Indian mobile number.')
+    if (mode === 'phone' && !isValidPhoneForCountry(trimmed, countryIso2)) {
+      setError('Enter a valid mobile number.')
       return
     }
     if (mode === 'email' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
@@ -28,7 +32,7 @@ export default function Login() {
     }
     setLoading(true)
     try {
-      const fullContact = mode === 'phone' ? '+91' + trimmed.replace(/\D/g, '') : trimmed.toLowerCase()
+      const fullContact = mode === 'phone' ? toE164(trimmed, countryIso2) : trimmed.toLowerCase()
       const { fallbackOtp } = await requestOtp(mode, fullContact)
       router.push({
         pathname: '/(auth)/verify',
@@ -60,15 +64,18 @@ export default function Login() {
       </View>
 
       {mode === 'phone' ? (
-        <TextField
-          label="Mobile number"
-          placeholder="98765 43210"
-          keyboardType="phone-pad"
-          maxLength={10}
-          value={contact}
-          onChangeText={setContact}
-          error={error}
-        />
+        <>
+          <PhoneInput
+            label="Mobile number"
+            countryIso2={countryIso2}
+            nationalNumber={contact}
+            onCountryChange={setCountryIso2}
+            onNumberChange={setContact}
+            placeholder="98765 43210"
+            showValidation={false}
+          />
+          {error ? <Text style={styles.fieldError}>{error}</Text> : null}
+        </>
       ) : (
         <TextField
           label="Email address"
@@ -101,4 +108,5 @@ const styles = StyleSheet.create({
   tabText: { ...type.smallBold, color: colors.textMuted },
   tabTextActive: { color: colors.textPrimary },
   terms: { ...type.small, color: colors.textMuted, textAlign: 'center', marginTop: 16 },
+  fieldError: { ...type.small, color: colors.error, marginTop: -8, marginBottom: 14 },
 })

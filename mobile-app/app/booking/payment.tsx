@@ -10,6 +10,7 @@ import { createRazorpayOrder, createBooking } from '@/lib/api'
 import type { RazorpayOrder } from '@/shared/booking-types'
 import { RAZORPAY_KEY_ID } from '@/lib/config'
 import { formatCurrency } from '@/shared/format'
+import { toE164 } from '@/shared/phone-format'
 
 // NOTE: this screen is not part of the primary booking flow. The real
 // website never collects payment at booking time — pricing/payment happens
@@ -155,7 +156,7 @@ export default function Payment() {
   return (
     <NativeWebView
       originWhitelist={['*']}
-      source={{ html: checkoutHtml(order, state.name, state.email, state.countryCode + state.phone) }}
+      source={{ html: checkoutHtml(order, state.name, state.email, toE164(state.phone, state.countryIso2)) }}
       onMessage={e => handleMessage(e.nativeEvent.data)}
       style={{ flex: 1 }}
     />

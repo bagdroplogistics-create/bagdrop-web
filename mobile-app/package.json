@@ -37,7 +37,8 @@
     "@react-native-community/datetimepicker": "8.0.1",
     "@supabase/supabase-js": "^2.45.4",
     "@opentelemetry/api": "^1.9.0",
-    "@expo/vector-icons": "^14.0.2"
+    "@expo/vector-icons": "^14.0.2",
+    "libphonenumber-js": "^1.13.9"
   },
   "devDependencies": {
     "@babel/core": "^7.24.0",

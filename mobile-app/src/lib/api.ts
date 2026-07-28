@@ -61,7 +61,7 @@ export function createBooking(state: BookingState, pricing: PricingBreakdown) {
         name: state.name,
         email: state.email,
         phone: state.phone,
-        countryCode: state.countryCode,
+        countryIso2: state.countryIso2,
         serviceId: state.serviceId,
         fromCity: state.fromCity,
         toCity: state.toCity,
