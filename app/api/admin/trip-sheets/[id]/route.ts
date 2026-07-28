@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, getAdminRole } from '@/lib/admin-auth'
+import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
 
 export const runtime = 'nodejs'
 
@@ -72,9 +73,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         cancelled:        'cancelled',
       }
       if (current.booking_id && updates.status && statusMap[updates.status as string]) {
+        // Select every field sendLifecycleWhatsApp needs (previously only
+        // status/status_history) — this route updates the booking's status
+        // directly but, until now, never fired the Fast2SMS lifecycle
+        // WhatsApp send for it. That's the root cause of picked_up /
+        // in_transit / out_for_delivery / delivered messages not reaching
+        // the customer immediately: those statuses are normally advanced
+        // from the Trip Sheet (this route), not the single-booking edit
+        // route (app/api/admin/bookings/[id]/route.ts) which DOES send it —
+        // so the customer only got the message later, if/when an admin
+        // separately touched the booking's own page.
         const { data: bk } = await supabaseAdmin
           .from('bookings')
-          .select('status, status_history')
+          .select('id, status, status_history, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
           .eq('id', current.booking_id)
           .single()
 
@@ -88,10 +99,20 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             changed_by: 'system',
             note:       `Synced from trip sheet status: ${updates.status}`,
           })
-          await supabaseAdmin
+          const { data: updatedBooking } = await supabaseAdmin
             .from('bookings')
             .update({ status: newBkStatus, status_history: bkHistory })
             .eq('id', current.booking_id)
+            .select()
+            .single()
+
+          // Fires the matching Fast2SMS WhatsApp template — awaited so it
+          // completes before this response returns, and only on genuine
+          // forward progress (never re-fires if a trip sheet status is
+          // reverted). Never throws.
+          if (isForwardMove(bk.status, newBkStatus) && updatedBooking) {
+            await sendLifecycleWhatsApp(newBkStatus, updatedBooking)
+          }
         }
       }
     }

@@ -3,35 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
-import { sendLifecycleWhatsApp } from '@/lib/lifecycle-notifications'
+import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
 import type { BookingStatus } from '@/lib/supabase'
 
-// Full booking status sequence (superset — includes the airport-only
-// 'driver_details_shared' step, harmless for non-airport bookings since
-// that value is simply never reached there). Used only to tell forward
-// progress apart from a backward move (Previous Step / doMoveBack) so
-// lifecycle WhatsApp templates never re-fire when an admin reverts a status.
-const STATUS_ORDER = [
-  'inquiry', 'quote_created', 'quote_sent', 'accepted',
-  'payment_pending', 'payment_received', 'payment_approved',
-  'confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed',
-  'invoice_generated', 'invoice_sent',
-  'pickup_scheduled', 'picked_up', 'in_transit',
-  'out_for_delivery', 'driver_details_shared', 'delivered',
-  'trip_created', 'completed',
-]
-
-function isForwardMove(oldStatus: string | null | undefined, newStatus: string): boolean {
-  if (!oldStatus) return true
-  const oldIdx = STATUS_ORDER.indexOf(oldStatus)
-  const newIdx = STATUS_ORDER.indexOf(newStatus)
-  // Unknown/unlisted status on either side (e.g. 'rejected', a terminal
-  // branch not part of the main sequence) — default to allowing the send,
-  // matching the same "unknown defaults to advanceable" rule used in
-  // generate-quote's canUpdateStatus.
-  if (oldIdx === -1 || newIdx === -1) return true
-  return newIdx > oldIdx
-}
+// STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
+// shared with app/api/admin/trip-sheets/[id]/route.ts, which needed the same
+// forward/backward check when it was found to be syncing booking status
+// without ever firing the lifecycle WhatsApp send (picked_up/in_transit/
+// out_for_delivery/delivered are normally advanced from the Trip Sheet, not
+// this route, which is why those messages were missing/delayed).
 
 export async function GET(
   req: NextRequest,
