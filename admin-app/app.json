@@ -1,0 +1,53 @@
+{
+  "expo": {
+    "name": "Bagdrop Admin",
+    "slug": "bagdrop-admin",
+    "scheme": "bagdropadmin",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "backgroundColor": "#080F1E",
+    "icon": "./assets/logo.png",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#FFFFFF"
+    },
+    "assetBundlePatterns": ["**/*"],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "co.bagdrop.admin",
+      "infoPlist": {
+        "NSFaceIDUsageDescription": "Use Face ID to sign in to your Bagdrop Admin account quickly."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#FFFFFF"
+      },
+      "package": "co.bagdrop.admin",
+      "permissions": ["USE_BIOMETRIC", "USE_FINGERPRINT", "NOTIFICATIONS"]
+    },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
+    "plugins": [
+      "expo-router",
+      "expo-secure-store",
+      [
+        "expo-notifications",
+        {
+          "color": "#FF6300"
+        }
+      ]
+    ],
+    "extra": {
+      "apiBaseUrl": "https://bagdrop.co",
+      "router": {
+        "origin": false
+      }
+    }
+  }
+}
