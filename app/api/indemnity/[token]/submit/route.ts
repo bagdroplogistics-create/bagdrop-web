@@ -208,15 +208,27 @@ export async function POST(
     return NextResponse.json({ error: statusErr.message }, { status: 500 })
   }
 
-  // ── Notify (Step 9) — best-effort, never blocks the response ───────
-  sendIndemnityWhatsApp('documents_submitted', {
+  // ── Notify (Step 9) ──────────────────────────────────────────────
+  // These are AWAITED (not fire-and-forget) before the response returns.
+  // They previously ran unawaited — fine for the small/fast WhatsApp and
+  // customer-email sends, but the admin notification below carries several
+  // MB of base64-encoded attachments and takes measurably longer to reach
+  // Resend. Vercel's serverless runtime can freeze/terminate a function
+  // invocation shortly after its response is sent, which can silently cut
+  // off exactly this kind of slower in-flight request — almost certainly
+  // why the admin email with attachments wasn't arriving. Each send is
+  // still wrapped so a failure here never blocks the customer's success
+  // response; it just means the customer waits a moment longer while these
+  // complete instead of the emails racing (and losing) against the
+  // response teardown.
+  await sendIndemnityWhatsApp('documents_submitted', {
     customerPhone: booking.customer_phone,
     customerName:  booking.customer_name,
     trackingId:    booking.tracking_id,
   }, [booking.customer_name ?? 'Customer', booking.tracking_id]).catch(() => {})
 
   if (booking.customer_email) {
-    sendIndemnityBondStatusEmail({
+    await sendIndemnityBondStatusEmail({
       customerName:  booking.customer_name ?? 'Customer',
       customerEmail: booking.customer_email,
       trackingId:    booking.tracking_id,
@@ -255,23 +267,40 @@ export async function POST(
     console.warn(`[indemnity submit] Booking ${booking.tracking_id} — admin email attachments skipped, combined size ${totalBytes} bytes exceeds ${ADMIN_ATTACHMENT_SIZE_LIMIT_BYTES}`)
   }
 
-  sendIndemnityBondAdminNotification({
-    trackingId:      booking.tracking_id,
-    // bookings.lead_id does not exist as a column in production (confirmed
-    // via Vercel logs) despite being referenced by a couple of admin UI
-    // links elsewhere — see the note in lib/indemnity-token.ts. Passing
-    // null here just means the notification email's button falls back to
-    // the generic /admin/leads page instead of a direct deep link.
-    leadId:          null,
-    customerName:    booking.customer_name,
-    customerPhone:   booking.customer_phone,
-    documentStatus:  'pending',
-    aadhaarNumber:   aadhaarNumber  || null,
-    passportNumber:  passportNumber || null,
-    licenceNumber:   licenceNumber  || null,
-    submittedAt:     now,
-    attachmentsIncluded,
-  }, emailAttachments).catch(() => {})
+  try {
+    const results = await sendIndemnityBondAdminNotification({
+      trackingId:      booking.tracking_id,
+      // bookings.lead_id does not exist as a column in production (confirmed
+      // via Vercel logs) despite being referenced by a couple of admin UI
+      // links elsewhere — see the note in lib/indemnity-token.ts. Passing
+      // null here just means the notification email's button falls back to
+      // the generic /admin/leads page instead of a direct deep link.
+      leadId:          null,
+      customerName:    booking.customer_name,
+      customerPhone:   booking.customer_phone,
+      documentStatus:  'pending',
+      aadhaarNumber:   aadhaarNumber  || null,
+      passportNumber:  passportNumber || null,
+      licenceNumber:   licenceNumber  || null,
+      submittedAt:     now,
+      attachmentsIncluded,
+    }, emailAttachments)
+
+    // Promise.allSettled never rejects, so log each recipient's actual
+    // outcome explicitly — previously this was fire-and-forget with no
+    // logging at all, so a failed send (or one cut off by the runtime
+    // returning before it finished — see note above) was invisible.
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled' && r.value.success) {
+        console.log(`[indemnity submit] Booking ${booking.tracking_id} — admin notification ${i} sent (id ${r.value.id})`)
+      } else {
+        const detail = r.status === 'fulfilled' ? r.value.error : r.reason
+        console.error(`[indemnity submit] Booking ${booking.tracking_id} — admin notification ${i} FAILED:`, detail)
+      }
+    })
+  } catch (err) {
+    console.error(`[indemnity submit] Booking ${booking.tracking_id} — admin notification threw:`, err)
+  }
 
   return NextResponse.json({ success: true })
 }

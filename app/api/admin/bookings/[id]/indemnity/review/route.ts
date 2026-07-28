@@ -72,8 +72,12 @@ export async function POST(
       .eq('id', bond.id)
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+    // Awaited (not fire-and-forget) before the response returns — same fix
+    // applied across every indemnity route this session, since unawaited
+    // background sends risk being cut off by Vercel's serverless runtime
+    // once the response has gone out.
     if (booking.customer_email) {
-      sendIndemnityBondStatusEmail({
+      await sendIndemnityBondStatusEmail({
         customerName:  booking.customer_name ?? 'Customer',
         customerEmail: booking.customer_email,
         trackingId:    booking.tracking_id,
@@ -81,7 +85,7 @@ export async function POST(
         message:       'your signed indemnity bond and documents have been reviewed and approved. No further action is needed.',
       }).catch(() => {})
     }
-    sendIndemnityWhatsApp('documents_approved', {
+    await sendIndemnityWhatsApp('documents_approved', {
       customerPhone: booking.customer_phone, customerName: booking.customer_name, trackingId: booking.tracking_id,
     }, [booking.customer_name ?? 'Customer', booking.tracking_id]).catch(() => {})
 
@@ -102,7 +106,7 @@ export async function POST(
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
     if (booking.customer_email) {
-      sendIndemnityBondStatusEmail({
+      await sendIndemnityBondStatusEmail({
         customerName:  booking.customer_name ?? 'Customer',
         customerEmail: booking.customer_email,
         trackingId:    booking.tracking_id,
@@ -136,7 +140,7 @@ export async function POST(
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   if (booking.customer_email) {
-    sendIndemnityBondStatusEmail({
+    await sendIndemnityBondStatusEmail({
       customerName:  booking.customer_name ?? 'Customer',
       customerEmail: booking.customer_email,
       trackingId:    booking.tracking_id,
@@ -145,7 +149,7 @@ export async function POST(
       secureLink,
     }).catch(() => {})
   }
-  sendIndemnityWhatsApp('resubmission_requested', {
+  await sendIndemnityWhatsApp('resubmission_requested', {
     customerPhone: booking.customer_phone, customerName: booking.customer_name, trackingId: booking.tracking_id,
   }, [booking.customer_name ?? 'Customer', booking.tracking_id, secureLink]).catch(() => {})
 
