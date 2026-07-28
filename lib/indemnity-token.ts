@@ -57,6 +57,11 @@ export async function resolveIndemnityToken(token: string): Promise<TokenLookupR
     .maybeSingle()
 
   if (bondErr || !bond) {
+    // Previously swallowed silently — logging the real Postgrest error here
+    // (missing column, RLS, connection issue, etc.) instead of just the
+    // generic customer-facing message, so a bad link is actually diagnosable
+    // from Vercel logs instead of guesswork.
+    if (bondErr) console.error('[resolveIndemnityToken] bond lookup failed for token', token, '—', bondErr.message)
     return { ok: false, status: 404, error: 'This link is invalid. Please contact Bagdrop for a new one.' }
   }
 
@@ -75,6 +80,10 @@ export async function resolveIndemnityToken(token: string): Promise<TokenLookupR
     .single()
 
   if (bookingErr || !booking) {
+    console.error(
+      '[resolveIndemnityToken] booking lookup failed — bond', bond.id, 'booking_id', bond.booking_id, '—',
+      bookingErr ? bookingErr.message : 'no matching booking row',
+    )
     return { ok: false, status: 404, error: 'Booking not found for this link.' }
   }
 

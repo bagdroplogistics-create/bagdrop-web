@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendIndemnityBondEmail } from '@/lib/email'
 import { generateSecureToken, getIndemnityExpiryDays, sendIndemnityWhatsApp } from '@/lib/indemnity-notifications'
+import { resolveIndemnityToken } from '@/lib/indemnity-token'
 
 export const runtime = 'nodejs'
 
@@ -64,6 +65,20 @@ export async function POST(
 
   if (upsertErr) {
     return NextResponse.json({ error: upsertErr.message }, { status: 500 })
+  }
+
+  // Pre-flight self-check — confirm the link we're about to email/WhatsApp
+  // actually resolves before sending it out. Catches any bond/booking
+  // consistency issue (e.g. an FK edge case, RLS, schema-cache lag) at
+  // send-time with a clear server-side error, instead of only surfacing it
+  // later when the customer or admin opens a link that turns out broken.
+  const preflight = await resolveIndemnityToken(secureToken)
+  if (!preflight.ok) {
+    console.error(`[indemnity send] Booking ${id} — generated link failed its own resolve check: ${preflight.error}`)
+    return NextResponse.json(
+      { error: `Link was created but failed a consistency check (${preflight.error}). Nothing was sent — please try again or contact support.` },
+      { status: 500 },
+    )
   }
 
   const secureLink = `https://bagdrop.co/indemnity/${secureToken}`
