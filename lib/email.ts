@@ -8,12 +8,18 @@ const BRAND        = '#FF6300'
 // Both admins receive every inquiry notification
 const ADMIN_EMAILS = ['info@bagdrop.co', 'aditya@bagdrop.co']
 
+export interface EmailAttachment {
+  filename: string
+  content:  string // base64-encoded file content — Resend's expected format
+}
+
 // ── Core send function ────────────────────────────────────────────────
 async function sendEmail(
   to:      string | string[],
   subject: string,
   html:    string,
   context: string = '',
+  attachments?: EmailAttachment[],
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) {
@@ -31,7 +37,10 @@ async function sendEmail(
         'Content-Type': 'application/json',
         'Authorization': 'Bearer ' + apiKey,
       },
-      body: JSON.stringify({ from: FROM, to: recipients, subject, html }),
+      body: JSON.stringify({
+        from: FROM, to: recipients, subject, html,
+        ...(attachments && attachments.length > 0 ? { attachments } : {}),
+      }),
     })
 
     const data = await res.json().catch(() => ({})) as Record<string, unknown>
@@ -591,10 +600,18 @@ export async function sendIndemnityBondStatusEmail(data: IndemnityBondStatusEmai
 // The customer-facing sendIndemnityBondStatusEmail() above only reaches
 // the customer. Nothing previously notified info@bagdrop.co when a
 // customer actually signed and submitted their bond — the admin team had
-// no way to know a submission was waiting for review (Phase 2's Documents
-// approve/reject UI isn't built yet, so this email is the only signal
-// until then). Sent once, from the submit route, alongside the customer
-// confirmation — never blocks the customer-facing response if it fails.
+// no way to know a submission was waiting for review. Sent once, from the
+// submit route, alongside the customer confirmation — never blocks the
+// customer-facing response if it fails.
+//
+// The signed bond PDF + every uploaded document (Aadhaar, passport, flight
+// ticket, extra) are attached directly to this email — not just linked —
+// so the admin has the actual files in their inbox, in addition to the
+// "Review in Admin Panel" link (which also works via the Documents card on
+// the Booking Workflow page for viewing/approving later). If the combined
+// attachment size is too large for Resend's request limit, the submit
+// route falls back to sending without attachments and the link still
+// works either way — see ATTACHMENT_SIZE_LIMIT_BYTES in the submit route.
 
 export interface IndemnityBondAdminNotifyData {
   trackingId:      string
@@ -606,16 +623,24 @@ export interface IndemnityBondAdminNotifyData {
   passportNumber:  string | null
   licenceNumber:   string | null
   submittedAt:     string
+  attachmentsIncluded?: boolean // false when skipped for size — changes the email copy
 }
 
-export async function sendIndemnityBondAdminNotification(data: IndemnityBondAdminNotifyData) {
+export async function sendIndemnityBondAdminNotification(
+  data: IndemnityBondAdminNotifyData,
+  attachments?: EmailAttachment[],
+) {
   const adminLink = data.leadId
     ? 'https://bagdrop.co/admin/quotes/view/' + data.leadId
     : 'https://bagdrop.co/admin/leads'
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Indemnity Bond Signed & Submitted</h2>' +
-    '<p style="margin:0 0 24px;font-size:14px;color:#555;">A customer has completed and submitted their indemnity bond. Please review the uploaded documents and approve or request resubmission.</p>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">A customer has completed and submitted their indemnity bond. ' +
+    (data.attachmentsIncluded === false
+      ? 'The documents were too large to attach directly — please view/download them from the admin panel.'
+      : 'The signed bond and uploaded documents are attached to this email.') +
+    ' Please review and approve or request resubmission.</p>' +
 
     '<div style="background:#fff7f0;border-left:4px solid ' + BRAND + ';border-radius:6px;padding:14px 18px;margin-bottom:24px;">' +
     '<p style="margin:0;font-size:11px;color:#999;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
@@ -642,7 +667,9 @@ export async function sendIndemnityBondAdminNotification(data: IndemnityBondAdmi
 
   // Send one independent email per admin — Resend can silently drop array recipients
   return Promise.allSettled(
-    ADMIN_EMAILS.map(addr => sendEmail(addr, subject, baseTemplate(body), 'indemnity-bond-submitted:' + data.trackingId))
+    ADMIN_EMAILS.map(addr =>
+      sendEmail(addr, subject, baseTemplate(body), 'indemnity-bond-submitted:' + data.trackingId, attachments)
+    )
   )
 }
 

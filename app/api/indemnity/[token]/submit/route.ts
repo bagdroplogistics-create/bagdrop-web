@@ -3,13 +3,25 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { resolveIndemnityToken } from '@/lib/indemnity-token'
 import { fillIndemnityBondPdf } from '@/lib/indemnity-pdf'
 import { sendIndemnityWhatsApp } from '@/lib/indemnity-notifications'
-import { sendIndemnityBondStatusEmail, sendIndemnityBondAdminNotification } from '@/lib/email'
+import { sendIndemnityBondStatusEmail, sendIndemnityBondAdminNotification, type EmailAttachment } from '@/lib/email'
 
 export const runtime = 'nodejs'
 
 const BUCKET = 'indemnity-documents'
 const ALLOWED_DOC_TYPES = ['application/pdf', 'image/jpeg', 'image/png']
 const MAX_DOC_BYTES = 10 * 1024 * 1024
+
+// Conservative combined-size cap for the admin notification's attachments —
+// base64 inflates raw bytes by ~1.37x, and Resend's request body limit is
+// documented at 40MB, so this keeps the encoded payload well under that
+// even with a signed bond + all 4 possible document uploads attached.
+// Over the cap, the admin email is still sent (with the "Review in Admin
+// Panel" link) — it just skips the attachments rather than failing outright.
+const ADMIN_ATTACHMENT_SIZE_LIMIT_BYTES = 15 * 1024 * 1024
+
+function extFor(file: File): string {
+  return file.type === 'application/pdf' ? 'pdf' : file.type === 'image/png' ? 'png' : 'jpg'
+}
 
 async function uploadDoc(bookingId: string, field: string, file: File): Promise<{ path: string | null; error?: string }> {
   if (!ALLOWED_DOC_TYPES.includes(file.type)) {
@@ -18,8 +30,7 @@ async function uploadDoc(bookingId: string, field: string, file: File): Promise<
   if (file.size > MAX_DOC_BYTES) {
     return { path: null, error: `${field}: file is too large (max 10 MB)` }
   }
-  const ext = file.type === 'application/pdf' ? 'pdf' : file.type === 'image/png' ? 'png' : 'jpg'
-  const path = `${bookingId}/${field}-${Date.now()}.${ext}`
+  const path = `${bookingId}/${field}-${Date.now()}.${extFor(file)}`
   const bytes = new Uint8Array(await file.arrayBuffer())
   const { error } = await supabaseAdmin.storage.from(BUCKET).upload(path, bytes, {
     contentType: file.type,
@@ -204,8 +215,34 @@ export async function POST(
 
   // Admin (info@bagdrop.co / aditya@bagdrop.co) needs to know a submission
   // is waiting for review — the customer-facing email above doesn't reach
-  // them, and there's no other signal until the admin Documents/approve
-  // UI (Phase 2) is built.
+  // them. The signed bond + every uploaded document are attached directly
+  // (built from the same bytes already in memory from this request, so no
+  // extra storage round-trip), with a size guard that falls back to
+  // link-only if the combined files are too large for one email.
+  const attachmentParts: { filename: string; bytes: Uint8Array }[] = [
+    { filename: `signed-indemnity-bond-${booking.tracking_id}.pdf`, bytes: signedPdfBytes },
+    { filename: `aadhaar-${booking.tracking_id}.${extFor(aadhaarDocFile)}`, bytes: new Uint8Array(await aadhaarDocFile.arrayBuffer()) },
+  ]
+  if (passportDocFile instanceof File && passportDocFile.size > 0) {
+    attachmentParts.push({ filename: `passport-${booking.tracking_id}.${extFor(passportDocFile)}`, bytes: new Uint8Array(await passportDocFile.arrayBuffer()) })
+  }
+  if (flightTicketDocFile instanceof File && flightTicketDocFile.size > 0) {
+    attachmentParts.push({ filename: `flight-ticket-${booking.tracking_id}.${extFor(flightTicketDocFile)}`, bytes: new Uint8Array(await flightTicketDocFile.arrayBuffer()) })
+  }
+  if (extraDocFile instanceof File && extraDocFile.size > 0) {
+    attachmentParts.push({ filename: `extra-doc-${booking.tracking_id}.${extFor(extraDocFile)}`, bytes: new Uint8Array(await extraDocFile.arrayBuffer()) })
+  }
+
+  const totalBytes = attachmentParts.reduce((sum, p) => sum + p.bytes.length, 0)
+  const attachmentsIncluded = totalBytes <= ADMIN_ATTACHMENT_SIZE_LIMIT_BYTES
+  const emailAttachments: EmailAttachment[] | undefined = attachmentsIncluded
+    ? attachmentParts.map(p => ({ filename: p.filename, content: Buffer.from(p.bytes).toString('base64') }))
+    : undefined
+
+  if (!attachmentsIncluded) {
+    console.warn(`[indemnity submit] Booking ${booking.tracking_id} — admin email attachments skipped, combined size ${totalBytes} bytes exceeds ${ADMIN_ATTACHMENT_SIZE_LIMIT_BYTES}`)
+  }
+
   sendIndemnityBondAdminNotification({
     trackingId:      booking.tracking_id,
     leadId:          booking.lead_id,
@@ -216,7 +253,8 @@ export async function POST(
     passportNumber:  passportNumber || null,
     licenceNumber:   licenceNumber  || null,
     submittedAt:     now,
-  }).catch(() => {})
+    attachmentsIncluded,
+  }, emailAttachments).catch(() => {})
 
   return NextResponse.json({ success: true })
 }
