@@ -27,7 +27,6 @@ export interface IndemnityBondRow {
 
 export interface BookingSummary {
   id:              string
-  lead_id:         string | null
   tracking_id:     string
   status:          string
   status_history:  Array<Record<string, unknown>> | null
@@ -73,9 +72,18 @@ export async function resolveIndemnityToken(token: string): Promise<TokenLookupR
     return { ok: false, status: 410, error: 'This link has expired. Please contact Bagdrop for a new one.' }
   }
 
+  // NOTE: bookings.lead_id does NOT exist in production (confirmed via
+  // Vercel logs — "column bookings.lead_id does not exist") despite being
+  // referenced elsewhere in the app (e.g. admin/page.tsx's booking list,
+  // /api/admin/bookings?lead_id=). Do not add it to this select — it broke
+  // every indemnity link resolve (Postgrest errors the whole query on an
+  // unknown column, not just that field) until this was reverted. Any
+  // future need for lead_id here must be a separate, isolated, non-fatal
+  // lookup — see submit/route.ts's admin-notification email link for the
+  // pattern.
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, lead_id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label')
+    .select('id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label')
     .eq('id', bond.booking_id)
     .single()
 

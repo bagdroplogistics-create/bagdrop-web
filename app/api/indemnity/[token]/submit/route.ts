@@ -245,7 +245,12 @@ export async function POST(
 
   sendIndemnityBondAdminNotification({
     trackingId:      booking.tracking_id,
-    leadId:          booking.lead_id,
+    // bookings.lead_id does not exist as a column in production (confirmed
+    // via Vercel logs) despite being referenced by a couple of admin UI
+    // links elsewhere — see the note in lib/indemnity-token.ts. Passing
+    // null here just means the notification email's button falls back to
+    // the generic /admin/leads page instead of a direct deep link.
+    leadId:          null,
     customerName:    booking.customer_name,
     customerPhone:   booking.customer_phone,
     documentStatus:  'pending',
