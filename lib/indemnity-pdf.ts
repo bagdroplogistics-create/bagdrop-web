@@ -28,11 +28,22 @@ export interface IndemnityFillInput {
   bondPlace:        string
   /** Raw PNG bytes of the customer's drawn signature (transparent background). */
   signaturePng?:    Uint8Array | null
+  /**
+   * Raw PNG bytes of the customer's signature against the dedicated
+   * "Alcohol is strictly prohibited in your baggage" declaration box near
+   * the bottom of the template — a separate, mandatory signature distinct
+   * from the main one above.
+   */
+  alcoholSignaturePng?: Uint8Array | null
 }
 
 // Measured field positions — { x, top } where `top` is distance from the
 // top of the page (matches pdfplumber/PyMuPDF convention used when these
-// were measured against the real template).
+// were measured against the real template). Re-verified 2026-07-28 by
+// re-extracting word/line/image positions directly from
+// public/legal/indemnity-bond-template.pdf with pdfplumber + PyMuPDF after
+// a report that the signature was overlapping the suitcase graphic in the
+// final PDF — see the maxWidth note on `signature` below.
 const FIELDS = {
   customerName:  { x: 36,  top: 150.1 },
   aadhaar:       { x: 407, top: 150.1 },
@@ -40,10 +51,20 @@ const FIELDS = {
   licence:       { x: 283, top: 164.4 },
   date:          { x: 60,  top: 714.1 },
   place:         { x: 65,  top: 743.5 },
-  // Signature sits on a short ruled line (~107pt wide) below the
-  // "Signature:" label, not beside it — confirmed by extracting the
-  // template's actual vector line positions, not guessed from the label.
-  signature:     { x: 30,  top: 631.96, maxWidth: 100, maxHeight: 28 },
+  // Signature sits on a short ruled line below the "Signature:" label, not
+  // beside it — the actual ruled line (from the template's own vector
+  // drawings) runs x:26.4-137.5, top:635.96. The suitcase/checklist
+  // illustration's bounding box starts at x:115.3, so maxWidth is capped
+  // at 80 (30+80=110) rather than the line's full width, leaving a safe
+  // ~5pt margin before the image — previously maxWidth:100 (30 to 130)
+  // reached 15pt into the image's bounding box, which is what caused the
+  // reported overlap for wider signatures.
+  signature:     { x: 30,  top: 631.96, maxWidth: 80, maxHeight: 28 },
+  // The template has its own dedicated signature cell for this specific
+  // declaration — a red-bordered box at the bottom of the page, right half
+  // labelled "Signature" (placeholder text), right of a vertical divider
+  // at x:489.1. Cell interior: x:489.1-566.9, top:753.9-776.8.
+  alcoholSignature: { x: 493, top: 774, maxWidth: 70, maxHeight: 16 },
 } as const
 
 const TEMPLATE_PATH = path.join(process.cwd(), 'public', 'legal', 'indemnity-bond-template.pdf')
@@ -81,18 +102,29 @@ export async function fillIndemnityBondPdf(input: IndemnityFillInput): Promise<U
   drawField(input.bondDate, FIELDS.date)
   drawField(input.bondPlace, FIELDS.place)
 
-  if (input.signaturePng && input.signaturePng.length > 0) {
-    const sigImage = await pdfDoc.embedPng(input.signaturePng)
+  // Scales the (mostly-transparent) signature canvas image down to fit
+  // within its target box without distortion, then draws it anchored so
+  // its BOTTOM edge sits at `field.top` (same convention as drawField's
+  // baseline) — never larger than maxWidth/maxHeight, never upscaled
+  // (capped at natural size via the trailing `1`).
+  async function drawSignature(
+    png: Uint8Array | null | undefined,
+    field: { x: number; top: number; maxWidth: number; maxHeight: number },
+  ) {
+    if (!png || png.length === 0) return
+    const sigImage = await pdfDoc.embedPng(png)
     const natural = sigImage.scale(1)
-    const { maxWidth, maxHeight } = FIELDS.signature
-    const scale = Math.min(maxWidth / natural.width, maxHeight / natural.height, 1)
+    const scale = Math.min(field.maxWidth / natural.width, field.maxHeight / natural.height, 1)
     page.drawImage(sigImage, {
-      x: FIELDS.signature.x,
-      y: height - FIELDS.signature.top,
+      x: field.x,
+      y: height - field.top,
       width: natural.width * scale,
       height: natural.height * scale,
     })
   }
+
+  await drawSignature(input.signaturePng, FIELDS.signature)
+  await drawSignature(input.alcoholSignaturePng, FIELDS.alcoholSignature)
 
   return pdfDoc.save()
 }

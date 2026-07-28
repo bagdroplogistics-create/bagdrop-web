@@ -36,6 +36,37 @@ function SignaturePad({ onChange }: { onChange: (blob: Blob | null) => void }) {
   const drawingRef = useRef(false)
   const hasDrawnRef = useRef(false)
 
+  // Keep the canvas's internal bitmap resolution in sync with its actual
+  // rendered CSS size (scaled by devicePixelRatio for crisp lines).
+  // Previously the canvas had fixed width/height attributes (500x160) but
+  // was stretched to 100% of its container via CSS (`w-full`) — on any
+  // screen narrower than 500px (i.e. basically every phone), the on-screen
+  // size and the internal drawing coordinate space didn't match, so
+  // pointer position and where the ink actually landed drifted apart as
+  // you drew. That's what made the signature look wrong/garbled and land
+  // oddly once embedded in the PDF. Sizing the bitmap to match the
+  // rendered box (via ResizeObserver, since it can change on rotation/
+  // resize) keeps getBoundingClientRect() and the canvas coordinate space
+  // 1:1 at all times.
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const observer = new ResizeObserver(() => {
+      const rect = canvas.getBoundingClientRect()
+      if (rect.width === 0 || rect.height === 0) return
+      const dpr = window.devicePixelRatio || 1
+      canvas.width = Math.max(1, Math.round(rect.width * dpr))
+      canvas.height = Math.max(1, Math.round(rect.height * dpr))
+      const ctx = canvas.getContext('2d')
+      ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
+      hasDrawnRef.current = false
+      onChange(null)
+    })
+    observer.observe(canvas)
+    return () => observer.disconnect()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   function getPos(e: React.PointerEvent<HTMLCanvasElement>) {
     const rect = e.currentTarget.getBoundingClientRect()
     return { x: e.clientX - rect.left, y: e.clientY - rect.top }
@@ -81,7 +112,14 @@ function SignaturePad({ onChange }: { onChange: (blob: Blob | null) => void }) {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
-    ctx?.clearRect(0, 0, canvas.width, canvas.height)
+    if (ctx) {
+      // Clear in raw device-pixel space regardless of the DPR transform
+      // set up above, so this always clears the full bitmap exactly.
+      ctx.save()
+      ctx.setTransform(1, 0, 0, 1, 0, 0)
+      ctx.clearRect(0, 0, canvas.width, canvas.height)
+      ctx.restore()
+    }
     hasDrawnRef.current = false
     onChange(null)
   }
@@ -91,9 +129,7 @@ function SignaturePad({ onChange }: { onChange: (blob: Blob | null) => void }) {
       <div className="relative overflow-hidden rounded-xl border-2 border-dashed border-gray-300 bg-gray-50">
         <canvas
           ref={canvasRef}
-          width={500}
-          height={160}
-          className="w-full touch-none bg-white"
+          className="block aspect-[25/8] w-full touch-none bg-white"
           onPointerDown={start}
           onPointerMove={move}
           onPointerUp={end}
@@ -135,6 +171,7 @@ export default function IndemnityBondPage() {
   const [bondDate,       setBondDate]       = useState(() => new Date().toISOString().slice(0, 10))
   const [bondPlace,      setBondPlace]      = useState('')
   const [signatureBlob,  setSignatureBlob]  = useState<Blob | null>(null)
+  const [alcoholSignatureBlob, setAlcoholSignatureBlob] = useState<Blob | null>(null)
   const [aadhaarDoc,     setAadhaarDoc]     = useState<File | null>(null)
   const [passportDoc,    setPassportDoc]    = useState<File | null>(null)
   const [flightDoc,      setFlightDoc]      = useState<File | null>(null)
@@ -209,10 +246,12 @@ export default function IndemnityBondPage() {
     }
     if (!bondDate || !bondPlace.trim()) { setSubmitError('Date and Place are required.'); return }
     if (!signatureBlob) { setSubmitError('Please draw your signature.'); return }
+    if (!alcoholSignatureBlob) { setSubmitError('Please sign the alcohol declaration below your signature.'); return }
     if (!aadhaarDoc) { setSubmitError('Please upload your Aadhaar Card.'); return }
     if (data.booking.is_airport_delivery && !flightDoc) {
       setSubmitError('Please upload your Flight Ticket / Boarding Pass.'); return
     }
+    if (!otpVerified) { setSubmitError('Please verify your identity with the OTP before submitting.'); return }
 
     setSubmitting(true)
     try {
@@ -223,6 +262,7 @@ export default function IndemnityBondPage() {
       form.set('bond_date', bondDate)
       form.set('bond_place', bondPlace.trim())
       form.set('signature', signatureBlob, 'signature.png')
+      form.set('alcohol_signature', alcoholSignatureBlob, 'alcohol-signature.png')
       form.set('aadhaar_doc', aadhaarDoc)
       if (passportDoc) form.set('passport_doc', passportDoc)
       if (flightDoc) form.set('flight_ticket_doc', flightDoc)
@@ -238,6 +278,17 @@ export default function IndemnityBondPage() {
       setSubmitting(false)
     }
   }
+
+  // Mirrors the checks inside submit() — used to proactively disable the
+  // button and show a checklist, instead of only erroring after a click.
+  const canSubmit = !!data
+    && otpVerified
+    && (!!aadhaarNumber.trim() || !!passportNumber.trim() || !!licenceNumber.trim())
+    && !!bondDate && !!bondPlace.trim()
+    && !!signatureBlob
+    && !!alcoholSignatureBlob
+    && !!aadhaarDoc
+    && (!data.booking.is_airport_delivery || !!flightDoc)
 
   // ── Render states ──────────────────────────────────────────────────
 
@@ -387,6 +438,19 @@ export default function IndemnityBondPage() {
           </div>
 
           <div>
+            <div className="mb-3 rounded-xl border-2 border-red-200 bg-red-50 p-3.5">
+              <p className="text-sm font-bold text-red-700">⚠ Alcohol is strictly prohibited in your baggage.</p>
+              <p className="mt-1 text-xs text-red-600">
+                By signing below, you separately confirm your baggage does not contain any alcohol.
+              </p>
+            </div>
+            <p className="mb-2 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
+              <PenLine className="h-3.5 w-3.5" /> Alcohol Declaration Signature <span className="text-red-500">*</span>
+            </p>
+            <SignaturePad onChange={setAlcoholSignatureBlob} />
+          </div>
+
+          <div>
             <p className="mb-3 flex items-center gap-1.5 text-xs font-bold uppercase tracking-widest text-gray-500">
               <Upload className="h-3.5 w-3.5" /> Documents
             </p>
@@ -407,7 +471,19 @@ export default function IndemnityBondPage() {
             </div>
           )}
 
-          <button onClick={submit} disabled={submitting}
+          {!canSubmit && !submitError && (
+            <ul className="space-y-1 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+              {!otpVerified && <li>• Verify your identity with the OTP.</li>}
+              {!(aadhaarNumber.trim() || passportNumber.trim() || licenceNumber.trim()) && <li>• Provide Aadhaar, Passport, or Licence number.</li>}
+              {(!bondDate || !bondPlace.trim()) && <li>• Fill in Date and Place.</li>}
+              {!signatureBlob && <li>• Draw your signature.</li>}
+              {!alcoholSignatureBlob && <li>• Sign the alcohol declaration.</li>}
+              {!aadhaarDoc && <li>• Upload your Aadhaar Card.</li>}
+              {data.booking.is_airport_delivery && !flightDoc && <li>• Upload your Flight Ticket / Boarding Pass.</li>}
+            </ul>
+          )}
+
+          <button onClick={submit} disabled={submitting || !canSubmit}
             className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50">
             {submitting ? <><Loader2 className="h-4 w-4 animate-spin" /> Submitting…</> : 'Submit Indemnity Bond'}
           </button>

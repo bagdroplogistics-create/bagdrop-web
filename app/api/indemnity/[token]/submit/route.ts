@@ -85,6 +85,16 @@ export async function POST(
     return NextResponse.json({ error: 'Please draw your signature before submitting.' }, { status: 400 })
   }
 
+  // Separate, mandatory signature against the "Alcohol is strictly
+  // prohibited in your baggage" declaration — the template has its own
+  // dedicated signature box for this clause, distinct from the main
+  // signature above. Required server-side regardless of what the client
+  // enforces, same as every other required field here.
+  const alcoholSignatureFile = form.get('alcohol_signature')
+  if (!(alcoholSignatureFile instanceof File) || alcoholSignatureFile.size === 0) {
+    return NextResponse.json({ error: 'Please sign the alcohol declaration before submitting.' }, { status: 400 })
+  }
+
   const aadhaarDocFile      = form.get('aadhaar_doc')
   const passportDocFile     = form.get('passport_doc')
   const flightTicketDocFile = form.get('flight_ticket_doc')
@@ -126,6 +136,7 @@ export async function POST(
 
   // ── Fill + sign the original PDF (Step 5/6) ────────────────────────
   const signatureBytes = new Uint8Array(await signatureFile.arrayBuffer())
+  const alcoholSignatureBytes = new Uint8Array(await alcoholSignatureFile.arrayBuffer())
   let signedPdfBytes: Uint8Array
   try {
     signedPdfBytes = await fillIndemnityBondPdf({
@@ -136,6 +147,7 @@ export async function POST(
       bondDate,
       bondPlace,
       signaturePng: signatureBytes,
+      alcoholSignaturePng: alcoholSignatureBytes,
     })
   } catch (err) {
     console.error('[indemnity submit] PDF fill failed:', err)
