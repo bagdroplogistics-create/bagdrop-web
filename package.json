@@ -38,7 +38,8 @@
     "sonner": "^2.0.3",
     "@googlemaps/js-api-loader": "^1.16.8",
     "@react-pdf/renderer": "^4.3.0",
-    "pdf-lib": "^1.17.1"
+    "pdf-lib": "^1.17.1",
+    "libphonenumber-js": "^1.13.9"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
