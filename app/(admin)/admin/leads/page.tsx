@@ -8,6 +8,8 @@ import {
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown,
 } from 'lucide-react'
 import Link from 'next/link'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
@@ -156,7 +158,7 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
 
 // ── Lead Form Interface ──────────────────────────────────────────
 interface LeadForm {
-  name: string; phone: string; countryCode: string; email: string; source: string
+  name: string; phone: string; countryIso2: string; email: string; source: string
   service_interest: string; from_city: string; to_city: string
   // Address fields
   pickup_address: string; drop_address: string
@@ -169,15 +171,8 @@ interface LeadForm {
   status: string; notes: string
 }
 
-const COUNTRY_CODES = [
-  { code: '+91',  flag: '🇮🇳', label: 'India (+91)',  maxDigits: 10 },
-  { code: '+1',   flag: '🇺🇸', label: 'USA (+1)',     maxDigits: 10 },
-  { code: '+44',  flag: '🇬🇧', label: 'UK (+44)',     maxDigits: 11 },
-  { code: '+1CA', flag: '🇨🇦', label: 'Canada (+1)', maxDigits: 10 },
-]
-
 const EMPTY_FORM: LeadForm = {
-  name: '', phone: '', countryCode: '+91', email: '', source: 'manual',
+  name: '', phone: '', countryIso2: 'IN', email: '', source: 'manual',
   service_interest: '', from_city: '', to_city: '',
   pickup_address: '', drop_address: '',
   travel_date: '', pickup_date: '', delivery_date: '', pickup_time: '',
@@ -194,12 +189,17 @@ function LeadModal({
 }) {
   const router  = useRouter()
   const fileRef = useRef<HTMLInputElement>(null)
+  // Re-parses the stored E.164 string so the correct flag/dial code shows
+  // automatically instead of always resetting to India — previously this
+  // stripped the country code entirely and hardcoded +91.
+  const initialPhone = lead ? parseStoredPhone(lead.phone) : null
+
   const [form, setForm] = useState<LeadForm>(
     lead
       ? {
           name:              lead.name,
-          phone:             lead.phone.replace(/^\+\d+/, ''),  // strip any stored country code
-          countryCode:       '+91',  // default; stored leads don't carry code separately
+          phone:             initialPhone!.nationalNumber,
+          countryIso2:       initialPhone!.iso2,
           email:             lead.email ?? '',
           source:            lead.source,
           service_interest:  lead.service_interest ?? lead.service_type ?? '',
@@ -279,8 +279,12 @@ function LeadModal({
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
         ...form,
-        // Store full phone with dial code (e.g. +919876543210, +17185550100)
-        phone:          (form.countryCode === '+1CA' ? '+1' : form.countryCode) + form.phone,
+        // Full international number for the existing single-column DB field
+        // (e.g. +919876543210, +14155550100) plus the two parts split out
+        // separately — see INTERNATIONAL_PHONE_MIGRATION.sql.
+        phone:               toE164(form.phone, form.countryIso2),
+        phone_country_code:  form.countryIso2,
+        phone_national:      form.phone,
         service_type:   form.service_interest,
         bags_count:     Number(form.bags_count) || 1,
         pickup_address: form.pickup_address.trim() || null,
@@ -387,25 +391,14 @@ function LeadModal({
               <label className="mb-1.5 block text-xs font-semibold text-gray-600">
                 Phone<span className="ml-0.5 text-orange-500">*</span>
               </label>
-              <div className="flex gap-1.5">
-                <select
-                  value={form.countryCode}
-                  onChange={e => setForm(f => ({ ...f, countryCode: e.target.value, phone: '' }))}
-                  className="rounded-lg border border-gray-200 bg-gray-50 px-2 py-2 text-xs font-semibold text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 cursor-pointer"
-                  aria-label="Country code"
-                >
-                  {COUNTRY_CODES.map(c => (
-                    <option key={c.code} value={c.code}>{c.flag} {c.label}</option>
-                  ))}
-                </select>
-                <input type="tel" inputMode="numeric" value={form.phone}
-                  onChange={e => {
-                    const maxLen = COUNTRY_CODES.find(c => c.code === form.countryCode)?.maxDigits ?? 10
-                    setForm(f => ({ ...f, phone: e.target.value.replace(/\D/g, '').slice(0, maxLen) }))
-                  }}
-                  placeholder={form.countryCode === '+44' ? '7911 123456' : '9876543210'}
-                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-              </div>
+              <PhoneInput
+                countryIso2={form.countryIso2}
+                nationalNumber={form.phone}
+                onCountryChange={iso2 => setForm(f => ({ ...f, countryIso2: iso2 }))}
+                onNumberChange={digits => setForm(f => ({ ...f, phone: digits }))}
+                placeholder="9876543210"
+                required
+              />
             </div>
             <Field label="Email" value={form.email} onChange={set('email')} placeholder="amit@email.com" type="email" />
             <div>

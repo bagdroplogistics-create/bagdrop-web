@@ -9,6 +9,8 @@ import {
   FileText, Mail, ExternalLink, Truck,
   RotateCcw, Save, ShieldCheck,
 } from 'lucide-react'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -91,6 +93,8 @@ interface Booking {
   // Driver Details Shared (Airport Delivery only)
   driver_name:          string | null
   driver_phone:         string | null
+  driver_phone_country_code?: string | null
+  driver_phone_national?:     string | null
   vehicle_number:       string | null
   vehicle_type:         string | null
   airport_location:     string | null
@@ -530,14 +534,19 @@ export default function QuoteViewPage() {
   // saved on the booking (e.g. if a previous attempt failed validation).
   // Simplified to just name + phone — no vehicle/location/flight fields.
   const [driverName,      setDriverName]      = useState('')
-  const [driverPhone,     setDriverPhone]     = useState('')
+  const [driverPhone,     setDriverPhone]     = useState('')       // national digits only
+  const [driverCountryIso2, setDriverCountryIso2] = useState('IN')
   const [savingDriver,    setSavingDriver]    = useState(false)
   const [driverSaveMsg,   setDriverSaveMsg]   = useState<string | null>(null)
 
   useEffect(() => {
     if (!booking) return
     setDriverName(booking.driver_name ?? '')
-    setDriverPhone(booking.driver_phone ?? '')
+    // Re-parses the stored E.164 string so the correct flag/dial code shows
+    // automatically instead of always assuming India.
+    const parsed = parseStoredPhone(booking.driver_phone)
+    setDriverPhone(booking.driver_phone_national || parsed.nationalNumber)
+    setDriverCountryIso2(booking.driver_phone_country_code || parsed.iso2)
   }, [booking])
 
   // Deliberately checks the PERSISTED booking fields, not the live
@@ -559,7 +568,9 @@ export default function QuoteViewPage() {
     setSavingDriver(true); setDriverSaveMsg(null)
     const ok = await patchBooking('save_driver_details', {
       driver_name:  driverName,
-      driver_phone: driverPhone,
+      driver_phone: toE164(driverPhone, driverCountryIso2),
+      driver_phone_country_code: driverCountryIso2,
+      driver_phone_national:     driverPhone.trim(),
     })
     setSavingDriver(false)
     if (ok) { setDriverSaveMsg('Driver details saved.') }
@@ -787,7 +798,9 @@ export default function QuoteViewPage() {
     await patchBooking('share_driver_details', {
       status:       'driver_details_shared',
       driver_name:  driverName.trim(),
-      driver_phone: driverPhone.trim(),
+      driver_phone: toE164(driverPhone, driverCountryIso2),
+      driver_phone_country_code: driverCountryIso2,
+      driver_phone_national:     driverPhone.trim(),
     })
   }
 
@@ -1774,7 +1787,7 @@ export default function QuoteViewPage() {
                     {driverAssigned ? (
                       <>
                         <div className="rounded-lg border border-indigo-200 bg-white px-4 py-3 text-sm text-gray-700 space-y-1">
-                          <p><span className="font-semibold text-gray-500">Driver:</span> {driverName} · {driverPhone}</p>
+                          <p><span className="font-semibold text-gray-500">Driver:</span> {driverName} · {toE164(driverPhone, driverCountryIso2) || driverPhone}</p>
                         </div>
                         <button onClick={doShareDriverDetails} disabled={!!acting}
                           className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-indigo-700 disabled:opacity-40 transition-colors">
@@ -1792,9 +1805,13 @@ export default function QuoteViewPage() {
                           <input type="text" placeholder="Driver Name *"
                             value={driverName} onChange={e => setDriverName(e.target.value)}
                             className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
-                          <input type="tel" placeholder="Driver Mobile Number *"
-                            value={driverPhone} onChange={e => setDriverPhone(e.target.value)}
-                            className="rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          <PhoneInput
+                            countryIso2={driverCountryIso2}
+                            nationalNumber={driverPhone}
+                            onCountryChange={setDriverCountryIso2}
+                            onNumberChange={setDriverPhone}
+                            placeholder="Driver Mobile Number *"
+                          />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <button onClick={doSaveDriverDetails} disabled={savingDriver || !!acting}

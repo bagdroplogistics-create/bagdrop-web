@@ -373,6 +373,8 @@ export async function POST(req: NextRequest) {
         // The link is maintained via leads.booking_id (updated below).
         customer_name:  lead.name,
         customer_phone: lead.phone,
+        customer_phone_country_code: lead.phone_country_code ?? null,
+        customer_phone_national:     lead.phone_national ?? null,
         customer_email: lead.email ?? '',
         service_type:   lead.service_type ?? lead.service_interest ?? '',
         from_city:      fromCity || lead.from_city || '',

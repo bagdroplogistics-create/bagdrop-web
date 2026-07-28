@@ -43,7 +43,7 @@ export async function PATCH(
   const body   = await req.json().catch(() => ({}))
 
   const {
-    status, notes, customer_name, customer_phone, customer_email,
+    status, notes, customer_name, customer_phone, customer_phone_country_code, customer_phone_national, customer_email,
     total_bags, total_amount, pickup_date, pickup_address, drop_address,
     payment_status, payment_method, payment_reference,
     approved_without_payment, delivery_date,
@@ -51,7 +51,8 @@ export async function PATCH(
     reason,   // status-change reason (goes only into history, not booking notes)
     // Driver Details Shared (Airport Delivery only) — see the special-case
     // block below for validation, scheduling, and send logic.
-    driver_name, driver_phone, vehicle_number, vehicle_type, airport_location,
+    driver_name, driver_phone, driver_phone_country_code, driver_phone_national,
+    vehicle_number, vehicle_type, airport_location,
     pickup_instructions, flight_datetime,
   } = body
 
@@ -64,8 +65,17 @@ export async function PATCH(
   if (total_amount         !== undefined) updates.total_amount         = Number(total_amount)
   if (customer_name        !== undefined) updates.customer_name        = customer_name.trim()
   if (customer_phone       !== undefined) {
-    const raw = customer_phone.replace(/\D/g, '')
-    updates.customer_phone = raw ? ('+91' + raw.replace(/^91/, '')) : ''
+    // The Booking Edit modal now sends a proper dial-code-prefixed
+    // international number (e.g. "+14155550100") via PhoneInput — this used
+    // to hardcode +91 onto whatever digits arrived, silently corrupting any
+    // non-Indian number regardless of what the admin actually selected.
+    // Bare-digit input (no leading "+") still assumed India for compatibility.
+    const trimmed = customer_phone.trim()
+    updates.customer_phone = trimmed.startsWith('+')
+      ? trimmed
+      : (() => { const raw = trimmed.replace(/\D/g, ''); return raw ? '+91' + raw.replace(/^91/, '') : '' })()
+    updates.customer_phone_country_code = customer_phone_country_code || null
+    updates.customer_phone_national     = customer_phone_national     || null
   }
   if (customer_email       !== undefined) updates.customer_email       = customer_email.trim().toLowerCase()
   if (total_bags           !== undefined) updates.total_bags           = Number(total_bags)
@@ -87,6 +97,8 @@ export async function PATCH(
   if (status === 'rejected' && !updates.rejected_at) updates.rejected_at = new Date().toISOString()
   if (driver_name          !== undefined) updates.driver_name          = driver_name?.trim() || null
   if (driver_phone         !== undefined) updates.driver_phone         = driver_phone?.trim() || null
+  if (driver_phone_country_code !== undefined) updates.driver_phone_country_code = driver_phone_country_code || null
+  if (driver_phone_national     !== undefined) updates.driver_phone_national     = driver_phone_national     || null
   if (vehicle_number       !== undefined) updates.vehicle_number       = vehicle_number?.trim() || null
   if (vehicle_type         !== undefined) updates.vehicle_type         = vehicle_type?.trim() || null
   if (airport_location     !== undefined) updates.airport_location     = airport_location?.trim() || null

@@ -3,18 +3,33 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendCustomerConfirmation, sendInquiryNotification, type BookingEmailData } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS } from '@/lib/constants'
+import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
+import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
+
+// Best-effort mapping from the old '+91'/'+1'/'+44'/'+1CA' dial-code-string
+// convention to an ISO2 country — only hit if a client sends the pre-
+// international-support `countryCode` field instead of the new `countryIso2`.
+function legacyDialCodeToIso2(countryCode: string | undefined | null): string | null {
+  switch (countryCode) {
+    case '+91':   return 'IN'
+    case '+1':    return 'US'
+    case '+1CA':  return 'CA'
+    case '+44':   return 'GB'
+    default:      return null
+  }
+}
 
 export async function POST(req: Request) {
   try {
     const { booking, pricing } = await req.json()
 
     const rawPhoneCheck = booking?.phone?.replace(/\D/g, '') ?? ''
-    const countryCode   = booking?.countryCode ?? '+91'
-    // Validate by country: India 10 digits (6-9), UK 10-11, USA/CA 10
-    const phoneValid =
-      countryCode === '+91'  ? /^[6-9]\d{9}$/.test(rawPhoneCheck) :
-      countryCode === '+44'  ? /^\d{10,11}$/.test(rawPhoneCheck)  :
-                               /^\d{10}$/.test(rawPhoneCheck)
+    // countryIso2 is what the booking flow now sends (e.g. 'IN', 'US', 'GB')
+    // — countryCode is kept as a fallback so any not-yet-updated caller
+    // (older cached client bundle, direct API integration) still works,
+    // interpreting a legacy '+1CA'/'+91'-style dial-code string as best-effort.
+    const countryIso2 = booking?.countryIso2 || legacyDialCodeToIso2(booking?.countryCode) || DEFAULT_COUNTRY_ISO2
+    const phoneValid = isValidPhoneForCountry(rawPhoneCheck, countryIso2)
     if (!booking?.name || !phoneValid) {
       return NextResponse.json(
         { error: 'Name and a valid mobile number are required' },
@@ -33,9 +48,7 @@ export async function POST(req: Request) {
     const customerName  = booking.name.trim()
     const customerEmail = booking.email?.trim().toLowerCase() ?? ''
     const rawPhone      = booking.phone?.replace(/\D/g, '') ?? ''
-    // Resolve actual dial code (+1CA → +1 for Canada)
-    const dialCode      = countryCode === '+1CA' ? '+1' : countryCode
-    const customerPhone = rawPhone ? dialCode + rawPhone : ''
+    const customerPhone = toE164(rawPhone, countryIso2)
 
     // Booking source: the mobile app explicitly sends { booking: { source: 'mobile-app', ... } }.
     // Anything else (including the real website, which sends no source field at all)
@@ -49,10 +62,17 @@ export async function POST(req: Request) {
       .from('bookings')
       .insert({
         tracking_id:    trackingId,
-        status:         'pending',
+        // Must be a valid admin Booking Workflow status (see STATUS_ORDER_BASE
+        // in app/(admin)/admin/quotes/view/[lead_id]/page.tsx) — 'pending' was
+        // never one of those steps, so bookings created here silently never
+        // matched any workflow step card. 'inquiry' is step 1, same starting
+        // point admin-created leads use.
+        status:         'inquiry',
         customer_name:  customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
+        customer_phone_country_code: countryIso2,
+        customer_phone_national:     rawPhone,
         service_type:   booking.serviceId   ?? '',
         service_label:  serviceLabel,
         from_city:      fromCityLabel,
@@ -98,7 +118,7 @@ export async function POST(req: Request) {
           }
           return parts.length ? parts.join(' | ') : null
         })(),
-        status_history: [{ status: 'pending', timestamp: new Date().toISOString(), note: 'Booking request received' }],
+        status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: 'Booking request received' }],
       })
       .select()
       .single()

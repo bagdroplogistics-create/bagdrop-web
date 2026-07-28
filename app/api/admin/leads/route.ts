@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
+import { parseStoredPhone } from '@/lib/phone-format'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -124,10 +125,25 @@ export async function POST(req: NextRequest) {
     'doorstep-to-airport',
   ].includes(serviceVal ?? '')
 
-  const rawPhone = body.phone.replace(/\D/g, '')
-  const normPhone = rawPhone
-    ? '+91' + rawPhone.replace(/^91/, '')
-    : body.phone.trim()
+  // The Lead Form now sends a proper dial-code-prefixed international
+  // number (e.g. "+14155550100", "+919876543210") via PhoneInput — this
+  // used to hardcode +91 onto whatever digits arrived, silently corrupting
+  // every non-Indian number regardless of what the admin actually selected.
+  // Still defensively normalizes to a leading "+" for any older caller that
+  // sends bare digits (assumed India, matching Bagdrop's pre-international
+  // legacy behavior).
+  const normPhone = body.phone.trim().startsWith('+')
+    ? body.phone.trim()
+    : (() => {
+        const digits = body.phone.replace(/\D/g, '')
+        return digits ? '+91' + digits.replace(/^91/, '') : body.phone.trim()
+      })()
+
+  // Prefer the country_code/national parts PhoneInput already sent — fall
+  // back to re-parsing normPhone for any older caller that doesn't send them.
+  const phoneParsed = parseStoredPhone(normPhone)
+  const phoneCountryCode = body.phone_country_code || phoneParsed.iso2
+  const phoneNational    = body.phone_national     || phoneParsed.nationalNumber
 
   // Generate Lead Number
   const year = new Date().getFullYear()
@@ -249,6 +265,8 @@ export async function POST(req: NextRequest) {
       tracking_id:    trackingId,
       customer_name:  body.name.trim(),
       customer_phone: normPhone,
+      customer_phone_country_code: phoneCountryCode,
+      customer_phone_national:     phoneNational,
       customer_email: body.email?.trim()?.toLowerCase() || '',
       service_type:   serviceVal || '',
       service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
@@ -305,6 +323,8 @@ export async function POST(req: NextRequest) {
 
       name:  body.name.trim(),
       phone: normPhone,
+      phone_country_code: phoneCountryCode,
+      phone_national:     phoneNational,
       email: body.email?.trim()?.toLowerCase() || null,
 
       source: body.source ?? 'admin',

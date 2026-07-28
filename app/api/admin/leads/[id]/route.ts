@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { parseStoredPhone } from '@/lib/phone-format'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAdminAuth(req)) {
@@ -28,7 +29,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
   const allowed = [
-    'name', 'phone', 'email', 'source', 'service_interest', 'service_type',
+    'name', 'phone', 'phone_country_code', 'phone_national', 'email', 'source', 'service_interest', 'service_type',
     'from_city', 'to_city', 'travel_date', 'pickup_date', 'delivery_date',
     'pickup_time', 'pickup_address', 'drop_address', 'bags_count', 'status', 'notes', 'assigned_to',
     'converted_booking_id', 'booking_id', 'pnr', 'flight_number', 'flight_time', 'flight_ticket_url',
@@ -67,10 +68,27 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if ('service_interest' in updates) updates.service_type = updates.service_interest
   if ('service_type' in updates && !('service_interest' in updates)) updates.service_interest = updates.service_type
 
-  // Normalise phone if provided
+  // Normalise phone if provided. PhoneInput's Edit Quote/Edit Lead form now
+  // sends a proper dial-code-prefixed value (e.g. "+14155550100") plus
+  // phone_country_code/phone_national split out separately — this used to
+  // hardcode +91 onto whatever digits arrived, corrupting every non-Indian
+  // number no matter what country the admin actually selected. Bare-digit
+  // input (no leading "+") is still assumed India, matching the legacy
+  // pre-international behavior for any older caller.
   if ('phone' in updates && typeof updates.phone === 'string') {
-    const raw = updates.phone.replace(/\D/g, '')
-    updates.phone = raw ? '+91' + raw.replace(/^91/, '') : updates.phone
+    const trimmed = updates.phone.trim()
+    if (!trimmed.startsWith('+')) {
+      const raw = trimmed.replace(/\D/g, '')
+      updates.phone = raw ? '+91' + raw.replace(/^91/, '') : trimmed
+    } else {
+      updates.phone = trimmed
+    }
+    // Fill in the split columns if the caller didn't already send them.
+    if (!('phone_country_code' in updates) || !('phone_national' in updates)) {
+      const parsed = parseStoredPhone(updates.phone as string)
+      if (!('phone_country_code' in updates)) updates.phone_country_code = parsed.iso2
+      if (!('phone_national' in updates))     updates.phone_national     = parsed.nationalNumber
+    }
   }
 
   if (Object.keys(updates).length === 0) {
@@ -110,7 +128,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     const bookingUpdates: Record<string, unknown> = {}
 
     if ('name' in updates)          bookingUpdates.customer_name  = lead.name
-    if ('phone' in updates)         bookingUpdates.customer_phone = lead.phone
+    if ('phone' in updates) {
+      bookingUpdates.customer_phone = lead.phone
+      bookingUpdates.customer_phone_country_code = lead.phone_country_code
+      bookingUpdates.customer_phone_national     = lead.phone_national
+    }
     if ('email' in updates)         bookingUpdates.customer_email = lead.email
     if ('from_city' in updates)     bookingUpdates.from_city      = lead.from_city
     if ('to_city' in updates)       bookingUpdates.to_city        = lead.to_city

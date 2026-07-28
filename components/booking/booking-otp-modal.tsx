@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { MessageSquare, ShieldCheck, RotateCcw, X } from 'lucide-react'
 import { cn } from '@/lib/utils'
+import { findCountry, DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 
 // ── Inline 6-box OTP input ────────────────────────────────────
 const OTP_LENGTH = 6
@@ -155,8 +156,8 @@ function OtpBoxes({
 export interface BookingOtpModalProps {
   /** Digits-only phone from booking state (no country code) */
   phone: string
-  /** Country dial code, e.g. '+91', '+1', '+44'. Defaults to '+91'. */
-  countryCode?: string
+  /** ISO 3166-1 alpha-2 country, e.g. 'IN', 'US', 'GB'. Defaults to India. */
+  countryIso2?: string
   /** Called after OTP is verified — parent then submits the booking */
   onVerified: () => void
   /** Called when the customer closes the modal without verifying */
@@ -165,7 +166,7 @@ export interface BookingOtpModalProps {
 
 type Status = 'sending' | 'ready' | 'verifying' | 'error'
 
-export function BookingOtpModal({ phone, countryCode = '+91', onVerified, onClose }: BookingOtpModalProps) {
+export function BookingOtpModal({ phone, countryIso2 = DEFAULT_COUNTRY_ISO2, onVerified, onClose }: BookingOtpModalProps) {
   const [status,          setStatus]          = useState<Status>('sending')
   const [error,           setError]           = useState<string | null>(null)
   const [otp,             setOtp]             = useState('')
@@ -174,8 +175,8 @@ export function BookingOtpModal({ phone, countryCode = '+91', onVerified, onClos
 
   const isLoading = status === 'sending' || status === 'verifying'
 
-  // Actual dial code (+1CA → +1)
-  const dialCode = countryCode === '+1CA' ? '+1' : countryCode
+  // Dial code for the selected country (e.g. 'US' → '1', 'GB' → '44')
+  const dialCode = '+' + (findCountry(countryIso2)?.dialCode ?? findCountry(DEFAULT_COUNTRY_ISO2)!.dialCode)
 
   // E.164 format for the API
   const e164 = dialCode + phone.replace(/\D/g, '')

@@ -89,7 +89,7 @@ export function BookingEngine() {
         {showOtpModal && (
           <BookingOtpModal
             phone={booking.phone}
-            countryCode={booking.countryCode}
+            countryIso2={booking.countryIso2}
             onVerified={handleOtpVerified}
             onClose={() => setShowOtpModal(false)}
           />

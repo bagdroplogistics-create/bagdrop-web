@@ -3,13 +3,14 @@
 import { motion } from 'framer-motion'
 import {
   ArrowLeft, Luggage, MapPin, Calendar, Clock,
-  Plane, User, Mail, Phone, MessageSquare, Send,
+  Plane, User, Mail, MessageSquare, Send,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { PhoneInput } from '@/components/ui/phone-input'
 import { cn } from '@/lib/utils'
 import { COVERAGE_CITIES, SERVICE_TYPES, BAG_TYPES, ADDON_SERVICES } from '@/lib/constants'
 import type { BookingState } from '@/lib/booking-types'
-import { isStep4Valid, COUNTRY_CODES } from '@/lib/booking-types'
+import { isStep4Valid } from '@/lib/booking-types'
 
 interface StepReviewProps {
   state:    BookingState
@@ -81,36 +82,16 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             <label htmlFor="phone" className="block text-sm font-medium text-text-primary">
               Mobile number<span className="ml-0.5 text-brand">*</span>
             </label>
-            <div className="flex gap-2">
-              {/* Country code selector */}
-              <select
-                value={state.countryCode ?? '+91'}
-                onChange={e => onChange({ countryCode: e.target.value, phone: '' })}
-                className="h-10 shrink-0 rounded-xl border border-border bg-cream px-2 text-sm font-semibold text-text-secondary focus:border-brand focus:outline-none focus:ring-1 focus:ring-brand/30 cursor-pointer"
-                aria-label="Country code"
-              >
-                {COUNTRY_CODES.map(c => (
-                  <option key={c.code} value={c.code}>{c.flag} {c.label}</option>
-                ))}
-              </select>
-              {/* Phone number input */}
-              <div className="relative flex-1">
-                <Phone className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-text-muted pointer-events-none" strokeWidth={1.75} />
-                <input
-                  id="phone"
-                  type="tel"
-                  inputMode="numeric"
-                  value={state.phone}
-                  onChange={e => {
-                    const maxLen = COUNTRY_CODES.find(c => c.code === (state.countryCode ?? '+91'))?.maxDigits ?? 10
-                    onChange({ phone: e.target.value.replace(/\D/g, '').slice(0, maxLen) })
-                  }}
-                  placeholder={COUNTRY_CODES.find(c => c.code === (state.countryCode ?? '+91'))?.placeholder ?? '98765 43210'}
-                  autoComplete="tel-national"
-                  className="input-base pl-10 w-full"
-                />
-              </div>
-            </div>
+            <PhoneInput
+              id="phone"
+              variant="public"
+              countryIso2={state.countryIso2 || 'IN'}
+              nationalNumber={state.phone}
+              onCountryChange={iso2 => onChange({ countryIso2: iso2 })}
+              onNumberChange={digits => onChange({ phone: digits })}
+              placeholder="98765 43210"
+              required
+            />
             <p className="text-[11px] text-text-muted">Our team will call on this number to coordinate pickup.</p>
           </div>
           <FormField

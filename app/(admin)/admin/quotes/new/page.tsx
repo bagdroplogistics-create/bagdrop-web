@@ -9,6 +9,8 @@ import {
 } from 'lucide-react'
 import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface QuoteLineItem {
@@ -23,6 +25,7 @@ interface QuoteLineItem {
 
 interface Lead {
   id: string; lead_number: string | null; name: string; phone: string
+  phone_country_code?: string | null; phone_national?: string | null
   email: string | null; source: string; service_interest: string | null
   from_city: string | null; to_city: string | null
   pickup_date: string | null; delivery_date: string | null
@@ -203,7 +206,8 @@ function QuotePageInner() {
 
   // ── Customer fields (editable in both new-quote and edit mode) ─────
   const [custName,    setCustName]    = useState('')
-  const [custPhone,   setCustPhone]   = useState('')
+  const [custPhone,   setCustPhone]   = useState('')       // national digits only — see PhoneInput
+  const [custCountryIso2, setCustCountryIso2] = useState('IN')
   const [custEmail,   setCustEmail]   = useState('')
   const [custSource,  setCustSource]  = useState('admin')
   const [custService, setCustService] = useState('')
@@ -284,9 +288,13 @@ function QuotePageInner() {
       }
       setPickupAddr(d.pickup_address ?? '')
       setDropAddr(d.drop_address ?? '')
-      // Populate editable customer fields (always, used in edit mode)
+      // Populate editable customer fields (always, used in edit mode).
+      // Re-parses the stored E.164 string so the correct flag/dial code
+      // shows automatically instead of defaulting back to India.
       setCustName(d.name)
-      setCustPhone(d.phone)
+      const parsedPhone = parseStoredPhone(d.phone)
+      setCustPhone(parsedPhone.nationalNumber)
+      setCustCountryIso2(d.phone_country_code || parsedPhone.iso2)
       setCustEmail(d.email ?? '')
       setCustSource(d.source ?? 'admin')
       setCustService(d.service_interest ?? '')
@@ -441,7 +449,9 @@ function QuotePageInner() {
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
         name:             custName.trim(),
-        phone:            custPhone.trim(),
+        phone:            toE164(custPhone, custCountryIso2),
+        phone_country_code: custCountryIso2,
+        phone_national:      custPhone.trim(),
         email:            custEmail.trim() || null,
         source:           custSource,
         service_interest: custService || null,
@@ -471,7 +481,9 @@ function QuotePageInner() {
   async function generate() {
     setErr('')
     const effectiveName  = lead?.name  ?? custName.trim()
-    const effectivePhone = lead?.phone ?? custPhone.trim()
+    const effectivePhone = lead?.phone ?? toE164(custPhone, custCountryIso2)
+    const effectivePhoneCountryCode = lead?.phone_country_code ?? custCountryIso2
+    const effectivePhoneNational    = lead?.phone_national     ?? custPhone.trim()
     if (!effectiveName)  { setErr('Customer name is required.'); return }
     if (!effectivePhone) { setErr('Customer phone is required.'); return }
     if (!pickupAddr.trim()) { setErr('Pickup address is required.'); return }
@@ -486,7 +498,9 @@ function QuotePageInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
-          name: effectiveName, phone: effectivePhone, email: custEmail.trim() || null,
+          name: effectiveName, phone: effectivePhone,
+          phone_country_code: effectivePhoneCountryCode, phone_national: effectivePhoneNational,
+          email: custEmail.trim() || null,
           source: custSource, service_interest: custService || null, service_type: custService || null,
           from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
           pickup_date: pickupDate || null, delivery_date: deliveryDate || null, pickup_time: pickupTime || null,
@@ -656,7 +670,8 @@ function QuotePageInner() {
   if (leadId && !loading && !lead) return <div className="flex min-h-[50vh] items-center justify-center"><p className="text-sm text-gray-400">{err || 'Lead not found'}</p></div>
 
   const displayName  = lead?.name  ?? custName
-  const displayPhone = lead?.phone ?? custPhone
+  const displayPhone = lead?.phone ?? toE164(custPhone, custCountryIso2)
+  const displayPhoneNational = lead?.phone_national ?? custPhone
 
   // ── FORM ─────────────────────────────────────────────────────────────
   return (
@@ -736,13 +751,15 @@ function QuotePageInner() {
               </div>
               <div>
                 <label className={lbl}>Phone <span className="text-red-400">*</span></label>
-                <div className="relative">
-                  <Phone className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
-                  <input type="tel" value={custPhone} onChange={e => setCustPhone(e.target.value)}
-                    readOnly={!!lead && !isEdit}
-                    placeholder="+91 98765 43210"
-                    className={(!!lead && !isEdit ? inpRO : inp) + ' pl-7'} />
-                </div>
+                <PhoneInput
+                  countryIso2={custCountryIso2}
+                  nationalNumber={custPhone}
+                  onCountryChange={setCustCountryIso2}
+                  onNumberChange={setCustPhone}
+                  disabled={!!lead && !isEdit}
+                  placeholder="98765 43210"
+                  required
+                />
               </div>
               <div>
                 <label className={lbl}>Email</label>
@@ -879,7 +896,7 @@ function QuotePageInner() {
               </div>
               <div>
                 <label className={lbl}>Client Contact Number</label>
-                <input type="text" value={displayPhone.replace(/\D/g, '').slice(-10)} readOnly className={inpRO} />
+                <input type="text" value={displayPhoneNational} readOnly className={inpRO} />
               </div>
               <div>
                 <label className={lbl}>Scan &amp; Pay QR</label>
@@ -1083,7 +1100,7 @@ function QuotePageInner() {
               className="h-4 w-4 rounded border-gray-300 accent-orange-500" />
             <div>
               <p className="text-sm font-medium text-gray-800">Send estimate email to customer</p>
-              <p className="text-xs text-gray-400">Estimate PDF will be emailed to {(lead?.email ?? custEmail) || (lead?.phone ?? custPhone) || 'customer'} immediately after creation.</p>
+              <p className="text-xs text-gray-400">Estimate PDF will be emailed to {(lead?.email ?? custEmail) || displayPhone || 'customer'} immediately after creation.</p>
             </div>
           </label>
 

@@ -10,6 +10,8 @@ import {
   FileCheck, CreditCard, Receipt, Download, ArrowUpDown, ArrowRight,
 } from 'lucide-react'
 import Link from 'next/link'
+import { PhoneInput } from '@/components/ui/phone-input'
+import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 
 interface Booking {
   id: string
@@ -18,6 +20,8 @@ interface Booking {
   customer_name: string
   customer_email: string
   customer_phone: string
+  customer_phone_country_code?: string | null
+  customer_phone_national?: string | null
   service_label: string
   from_city: string
   to_city: string
@@ -206,7 +210,7 @@ function DetailRow({ icon, label, val }: { icon: React.ReactNode; label: string;
 
 
 interface EditForm {
-  customer_name: string; customer_phone: string; customer_email: string
+  customer_name: string; customer_phone: string; customer_phone_country_iso2: string; customer_email: string
   total_bags: string; pickup_date: string; pickup_address: string
   drop_address: string; notes: string
 }
@@ -214,9 +218,15 @@ interface EditForm {
 function EditModal({ booking, adminKey, onSaved, onClose }: {
   booking: Booking; adminKey: string; onSaved: () => void; onClose: () => void
 }) {
+  // Re-parses the stored E.164 string so the correct flag/dial code shows
+  // automatically instead of always assuming +91 — previously this stripped
+  // a literal "+91" prefix and silently left any other country code intact
+  // (mangled) or, for genuinely Indian numbers, worked by coincidence.
+  const initialPhone = parseStoredPhone(booking.customer_phone)
   const [form, setForm] = useState<EditForm>({
     customer_name:  booking.customer_name,
-    customer_phone: booking.customer_phone?.replace('+91', '') ?? '',
+    customer_phone: booking.customer_phone_national || initialPhone.nationalNumber,
+    customer_phone_country_iso2: booking.customer_phone_country_code || initialPhone.iso2,
     customer_email: booking.customer_email ?? '',
     total_bags:     String(booking.total_bags),
     pickup_date:    booking.pickup_date?.slice(0, 10) ?? '',
@@ -238,7 +248,9 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
           customer_name:  form.customer_name.trim(),
-          customer_phone: form.customer_phone.replace(/\D/g, ''),
+          customer_phone: toE164(form.customer_phone, form.customer_phone_country_iso2),
+          customer_phone_country_code: form.customer_phone_country_iso2,
+          customer_phone_national:     form.customer_phone.trim(),
           customer_email: form.customer_email.trim(),
           total_bags:     Number(form.total_bags) || 1,
           pickup_date:    form.pickup_date || null,
@@ -284,12 +296,14 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
             </div>
             <div className="space-y-1">
               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Mobile</label>
-              <div className="flex gap-1.5">
-                <span className="flex items-center rounded-lg border border-gray-200 bg-gray-50 px-2 text-xs font-semibold text-gray-500 select-none">+91</span>
-                <input type="tel" inputMode="numeric" value={form.customer_phone} disabled={isLocked}
-                  onChange={e => set('customer_phone', e.target.value.replace(/\D/g, '').slice(0, 10))}
-                  className="flex-1 rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:bg-gray-50 disabled:text-gray-500" />
-              </div>
+              <PhoneInput
+                countryIso2={form.customer_phone_country_iso2}
+                nationalNumber={form.customer_phone}
+                onCountryChange={iso2 => set('customer_phone_country_iso2', iso2)}
+                onNumberChange={digits => set('customer_phone', digits)}
+                disabled={isLocked}
+                placeholder="9876543210"
+              />
             </div>
             <div className="space-y-1">
               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Email</label>

@@ -3,28 +3,16 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { BagTypeId, CityId } from './constants'
+import { isValidPhoneForCountry } from './phone-format'
+import { DEFAULT_COUNTRY_ISO2 } from './phone-countries'
 
-// ── Country codes for phone field ─────────────────────────────
-export const COUNTRY_CODES = [
-  { code: '+91', flag: '🇮🇳', label: 'India (+91)',  maxDigits: 10, placeholder: '98765 43210' },
-  { code: '+1',  flag: '🇺🇸', label: 'USA (+1)',     maxDigits: 10, placeholder: '800 555 0100' },
-  { code: '+44', flag: '🇬🇧', label: 'UK (+44)',     maxDigits: 11, placeholder: '7911 123456'  },
-  { code: '+1CA',flag: '🇨🇦', label: 'Canada (+1)',  maxDigits: 10, placeholder: '604 555 0100' },
-] as const
-
-// Returns the actual dial code (Canada and USA both use +1)
-export function getDialCode(code: string): string {
-  return code === '+1CA' ? '+1' : code
-}
-
-// Phone validation by country
-export function validatePhone(digits: string, countryCode: string): boolean {
-  switch (countryCode) {
-    case '+91':  return /^[6-9]\d{9}$/.test(digits)   // 10 digits, starts 6-9
-    case '+44':  return /^\d{10,11}$/.test(digits)     // 10–11 digits
-    default:     return /^\d{10}$/.test(digits)        // +1 USA & CA: 10 digits
-  }
-}
+// International phone support: country is now tracked as an ISO 3166-1
+// alpha-2 code (e.g. 'IN', 'US', 'CA', 'GB') instead of a raw dial-code
+// string — the old '+1CA' hack to disambiguate US/Canada under the shared
+// +1 dial code doesn't scale to the full ~245-country list (many share a
+// dial code, not just US/CA). See components/ui/phone-input.tsx and
+// lib/phone-countries.ts / lib/phone-format.ts for the shared selector UI
+// and per-country validation this now uses.
 
 export type { CityId }
 
@@ -91,8 +79,8 @@ export interface BookingState {
   // Step 4 — Customer details
   name:        string
   email:       string
-  phone:       string
-  countryCode: string   // e.g. '+91', '+1', '+44', '+1CA'
+  phone:       string      // national digits only, no dial code
+  countryIso2: string      // e.g. 'IN', 'US', 'CA', 'GB'
   notes:       string
 }
 
@@ -118,7 +106,7 @@ export const INITIAL_BOOKING_STATE: BookingState = {
   name:            '',
   email:           '',
   phone:           '',
-  countryCode:     '+91',
+  countryIso2:     DEFAULT_COUNTRY_ISO2,
   notes:           '',
 }
 
@@ -177,7 +165,7 @@ export function isStep3Valid(s: BookingState): boolean {
 
 export function isStep4Valid(s: BookingState): boolean {
   const digits  = s.phone.replace(/\D/g, '')
-  const phoneOk = validatePhone(digits, s.countryCode ?? '+91')
+  const phoneOk = isValidPhoneForCountry(digits, s.countryIso2 || DEFAULT_COUNTRY_ISO2)
   const emailOk = !s.email.trim() || /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)
   return !!(s.name.trim() && phoneOk && emailOk)
 }
