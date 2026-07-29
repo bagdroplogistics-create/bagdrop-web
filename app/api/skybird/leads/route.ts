@@ -21,6 +21,41 @@ import { parseStoredPhone } from '@/lib/phone-format'
 // never see another partner's or BagDrop's own direct inquiries.
 // ============================================================================
 
+// Explicit row shape for the leads SELECT below. supabaseAdmin (lib/supabase.ts)
+// is created without a `Database` generic, so supabase-js falls back to
+// parsing the raw select-string at the TYPE level to infer the row shape —
+// a fragile mechanism (breaks on string concatenation, hoisting into a
+// variable, etc. — see prior commits on this file) that isn't worth fighting.
+// Casting explicitly to this interface sidesteps it entirely.
+interface SkybirdLeadRow {
+  id: string
+  lead_number: string | null
+  name: string
+  phone: string
+  email: string | null
+  service_interest: string | null
+  service_type: string | null
+  from_city: string | null
+  to_city: string | null
+  travel_date: string | null
+  pickup_date: string | null
+  delivery_date: string | null
+  pickup_time: string | null
+  bags_count: number
+  pnr: string | null
+  flight_number: string | null
+  flight_time: string | null
+  pickup_address: string | null
+  drop_address: string | null
+  status: string
+  notes: string | null
+  created_at: string
+  booking_id: string | null
+  zoho_estimate_number: string | null
+  quote_discount_pct: number | null
+  quote_discount_amt: number | null
+}
+
 export async function GET(req: NextRequest) {
   if (!requireSkybirdAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -41,21 +76,14 @@ export async function GET(req: NextRequest) {
   // Instead, booking info is fetched separately below and merged manually —
   // matching how other admin routes in this codebase already do this
   // (see /api/admin/leads GET's separate `bookings` lookup for exclude_status).
-  // Field list is inlined directly into each .select() call below (not
-  // pulled into a variable) — supabase-js's .select() overloads parse the
-  // query string at the TYPE level to build the row shape, which only
-  // works when the argument is a string-literal expression passed inline.
-  // A variable (even with `as const`, which doesn't apply to a `+`-built
-  // string anyway) breaks that inference and the result comes back
-  // untyped. Keep both copies below in sync if the field list changes.
+  // Result is cast to SkybirdLeadRow (defined above) rather than relying on
+  // supabase-js's select-string type inference — see that interface's
+  // comment for why.
 
   let query = supabaseAdmin
     .from('leads')
     .select(
-      'id, lead_number, name, phone, email, service_interest, service_type, ' +
-      'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
-      'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-      'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+      'id, lead_number, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
       { count: 'exact' }
     )
     .eq('source', SKYBIRD_SOURCE)
@@ -78,10 +106,7 @@ export async function GET(req: NextRequest) {
     let fallback = supabaseAdmin
       .from('leads')
       .select(
-        'id, lead_number, name, phone, email, service_interest, service_type, ' +
-        'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
-        'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-        'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+        'id, lead_number, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
         { count: 'exact' }
       )
       .eq('source', SKYBIRD_SOURCE)
@@ -99,9 +124,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // Explicit cast — see SkybirdLeadRow's comment above for why this
+  // doesn't rely on supabase-js's select-string type inference.
+  const leadRows = (data ?? []) as unknown as SkybirdLeadRow[]
+
   // ── Attach linked booking info (tracking ID, status, amount) ──────────
   // Fetched separately (not embedded) — see note above.
-  const bookingIds = (data ?? []).map(l => l.booking_id).filter((id): id is string => !!id)
+  const bookingIds = leadRows.map(l => l.booking_id).filter((id): id is string => !!id)
   let bookingsById: Record<string, { tracking_id: string; status: string; total_amount: number | null; payment_status: string | null }> = {}
   if (bookingIds.length > 0) {
     const { data: bookingRows, error: bookingsErr } = await supabaseAdmin
@@ -120,7 +149,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const leadsWithBooking = (data ?? []).map(l => ({
+  const leadsWithBooking = leadRows.map(l => ({
     ...l,
     bookings: l.booking_id ? (bookingsById[l.booking_id] ?? null) : null,
   }))
