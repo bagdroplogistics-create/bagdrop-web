@@ -41,20 +41,23 @@ export async function GET(req: NextRequest) {
   // Instead, booking info is fetched separately below and merged manually —
   // matching how other admin routes in this codebase already do this
   // (see /api/admin/leads GET's separate `bookings` lookup for exclude_status).
-  // `as const` keeps this a string-literal type (not widened to `string`) —
-  // supabase-js's .select() overloads parse the query string at the type
-  // level to build the row shape, and only kick in for literal types. A
-  // plain `string`-typed variable falls back to a generic/untyped result,
-  // which is why `l.booking_id` below needs this.
-  const LEAD_FIELDS =
-    'id, lead_number, name, phone, email, service_interest, service_type, ' +
-    'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
-    'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-    'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt' as const
+  // Field list is inlined directly into each .select() call below (not
+  // pulled into a variable) — supabase-js's .select() overloads parse the
+  // query string at the TYPE level to build the row shape, which only
+  // works when the argument is a string-literal expression passed inline.
+  // A variable (even with `as const`, which doesn't apply to a `+`-built
+  // string anyway) breaks that inference and the result comes back
+  // untyped. Keep both copies below in sync if the field list changes.
 
   let query = supabaseAdmin
     .from('leads')
-    .select(LEAD_FIELDS, { count: 'exact' })
+    .select(
+      'id, lead_number, name, phone, email, service_interest, service_type, ' +
+      'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
+      'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
+      'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+      { count: 'exact' }
+    )
     .eq('source', SKYBIRD_SOURCE)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -74,7 +77,13 @@ export async function GET(req: NextRequest) {
   if (error && error.message?.includes('deleted_at')) {
     let fallback = supabaseAdmin
       .from('leads')
-      .select(LEAD_FIELDS, { count: 'exact' })
+      .select(
+        'id, lead_number, name, phone, email, service_interest, service_type, ' +
+        'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
+        'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
+        'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+        { count: 'exact' }
+      )
       .eq('source', SKYBIRD_SOURCE)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
