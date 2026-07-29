@@ -18,6 +18,7 @@ interface Lead {
   phone:                string
   email:                string | null
   source:               string
+  partner_name?:        string | null
   service_interest:     string | null
   service_type:         string | null
   from_city:            string | null
@@ -74,6 +75,7 @@ const SOURCE_LABELS: Record<string, string> = {
   referral:       'Referral',
   b2b:            'B2B',
   'walk-in':      'Walk-in',
+  skybird:        'Skybird',
 }
 
 const SERVICE_TYPES = [
@@ -695,6 +697,7 @@ export default function LeadsPage() {
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
   const [filter, setFilter]     = useState('all')
+  const [sourceFilter, setSourceFilter] = useState('all')
   const [sort, setSort]         = useState('newest')
   const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting]       = useState<string | null>(null)
@@ -729,10 +732,11 @@ export default function LeadsPage() {
     // regardless of its linked booking's status. The booking can be cancelled
     // and re-activated when a new quote is generated.
     if (search) qs += '&search=' + encodeURIComponent(search)
+    if (sourceFilter !== 'all') qs += '&source=' + encodeURIComponent(sourceFilter)
     const res = await fetch('/api/admin/leads' + qs)
     if (res.ok) setLeads((await res.json()).leads ?? [])
     setLoading(false)
-  }, [adminKey, filter, search, showDeleted])
+  }, [adminKey, filter, search, showDeleted, sourceFilter])
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
@@ -841,6 +845,14 @@ export default function LeadsPage() {
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
           <div className="relative">
+            <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+              <option value="all">All sources</option>
+              {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
+          <div className="relative">
             <ArrowUpDown className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
             <select value={sort} onChange={e => handleSortChange(e.target.value)}
               className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-8 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
@@ -914,11 +926,16 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-4 py-3">
                         {l.source ? (
-                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-600">
+                          <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${
+                            l.source === 'skybird' ? 'bg-sky-100 text-sky-700' : 'bg-gray-100 text-gray-600'
+                          }`}>
                             {SOURCE_LABELS[l.source] ?? l.source}
                           </span>
                         ) : (
                           <span className="text-xs text-gray-400">—</span>
+                        )}
+                        {l.partner_name && (
+                          <div className="mt-1 text-[11px] text-gray-400">{l.partner_name}</div>
                         )}
                       </td>
                       <td className="px-4 py-3">

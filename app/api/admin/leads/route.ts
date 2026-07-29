@@ -14,7 +14,8 @@ export async function GET(req: NextRequest) {
   const status        = searchParams.get('status')
   const excludeStatus = searchParams.get('exclude_status')
   const search        = searchParams.get('search')
-  const deleted       = searchParams.get('deleted') === 'true'
+  const source         = searchParams.get('source')
+  const deleted        = searchParams.get('deleted') === 'true'
   const page          = parseInt(searchParams.get('page') ?? '1', 10)
   const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset        = (page - 1) * limit
@@ -47,6 +48,10 @@ export async function GET(req: NextRequest) {
     query = query.eq('status', status)
   }
 
+  if (source && source !== 'all') {
+    query = query.eq('source', source)
+  }
+
   // FIX: PostgreSQL NULL trap — `NOT IN (...)` also excludes rows where booking_id IS NULL.
   // Use `or(booking_id.is.null,booking_id.not.in.(...))` to keep null-booking-id leads visible.
   if (excludedBookingIds.length > 0) {
@@ -75,6 +80,9 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1)
     if (!deleted && status && status !== 'all') {
       fallbackQuery = fallbackQuery.eq('status', status)
+    }
+    if (source && source !== 'all') {
+      fallbackQuery = fallbackQuery.eq('source', source)
     }
     if (excludedBookingIds.length > 0) {
       fallbackQuery = fallbackQuery.or(
