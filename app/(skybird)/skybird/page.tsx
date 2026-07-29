@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, RefreshCw, Search } from 'lucide-react'
+import { Plus, RefreshCw, Search, AlertTriangle } from 'lucide-react'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   new:       { label: 'New',       color: '#0369a1', bg: '#e0f2fe' },
@@ -51,6 +51,7 @@ export default function SkybirdDashboardPage() {
   const [leads, setLeads]     = useState<SkybirdLead[]>([])
   const [loading, setLoading] = useState(false)
   const [search, setSearch]   = useState('')
+  const [fetchError, setFetchError] = useState('')
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_skybird_key') ?? ''
@@ -62,12 +63,21 @@ export default function SkybirdDashboardPage() {
   const fetchLeads = useCallback(async () => {
     if (!skybirdKey) return
     setLoading(true)
+    setFetchError('')
     const params = new URLSearchParams({ key: skybirdKey })
     if (search) params.set('search', search)
-    const res = await fetch(`/api/skybird/leads?${params.toString()}`)
-    if (res.ok) {
-      const data = await res.json()
-      setLeads(data.leads ?? [])
+    try {
+      const res = await fetch(`/api/skybird/leads?${params.toString()}`)
+      const data = await res.json().catch(() => null)
+      if (!res.ok) {
+        setFetchError(data?.error ?? `Could not load inquiries (${res.status}).`)
+        setLeads([])
+      } else {
+        setLeads(data?.leads ?? [])
+      }
+    } catch {
+      setFetchError('Network error while loading inquiries.')
+      setLeads([])
     }
     setLoading(false)
   }, [skybirdKey, search])
@@ -90,6 +100,13 @@ export default function SkybirdDashboardPage() {
           <Plus className="h-4 w-4" /> New Inquiry
         </Link>
       </div>
+
+      {fetchError && (
+        <div className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          {fetchError}
+        </div>
+      )}
 
       <div className="mb-4 flex items-center gap-3">
         <div className="relative flex-1 max-w-sm">
@@ -145,7 +162,7 @@ export default function SkybirdDashboardPage() {
                 </td>
               </tr>
             ))}
-            {!loading && leads.length === 0 && (
+            {!loading && !fetchError && leads.length === 0 && (
               <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No inquiries yet. Click "New Inquiry" to submit your first one.</td></tr>
             )}
           </tbody>

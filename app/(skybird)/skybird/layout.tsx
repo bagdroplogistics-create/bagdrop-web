@@ -1,8 +1,9 @@
 'use client'
 
 import { usePathname, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import Image from 'next/image'
-import { LogOut } from 'lucide-react'
+import { LogOut, ArrowLeft } from 'lucide-react'
 
 // Wraps all /skybird/* pages with a lightweight co-branded header.
 // Login page bypasses the shell and renders standalone (same pattern as
@@ -11,6 +12,10 @@ export default function SkybirdShellLayout({ children }: { children: React.React
   const pathname = usePathname()
   const router   = useRouter()
   const isLogin  = pathname === '/skybird/login'
+  // Any page other than the inquiries list itself gets a back link — keeps
+  // this automatic for future subpages under /skybird/* without needing to
+  // add a back button on each page individually.
+  const isDashboardRoot = pathname === '/skybird'
 
   if (isLogin) {
     return <>{children}</>
@@ -46,6 +51,16 @@ export default function SkybirdShellLayout({ children }: { children: React.React
           <LogOut className="h-4 w-4" /> Log out
         </button>
       </header>
+      {!isDashboardRoot && (
+        <div className="border-b border-stone-200 bg-white px-6 py-2.5">
+          <Link
+            href="/skybird"
+            className="flex w-fit items-center gap-1.5 text-sm font-medium text-gray-500 hover:text-sky-700"
+          >
+            <ArrowLeft className="h-4 w-4" /> Back to Dashboard
+          </Link>
+        </div>
+      )}
       <main>{children}</main>
       <footer className="px-6 py-4 text-center text-xs text-gray-400">
         Baggage delivery powered by Bagdrop · Skybird USA partner access only

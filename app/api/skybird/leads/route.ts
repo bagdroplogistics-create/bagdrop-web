@@ -33,19 +33,23 @@ export async function GET(req: NextRequest) {
   const limit   = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset  = (page - 1) * limit
 
+  // Deliberately narrow select — no internal-only fields. Note: does NOT use
+  // a PostgREST nested embed for the linked booking (e.g. `bookings(...)`)
+  // — that requires PostgREST to resolve the leads→bookings FK relationship
+  // at query time, which errors the ENTIRE query if the relationship isn't
+  // in its schema cache (a way this list silently came back empty before).
+  // Instead, booking info is fetched separately below and merged manually —
+  // matching how other admin routes in this codebase already do this
+  // (see /api/admin/leads GET's separate `bookings` lookup for exclude_status).
+  const LEAD_FIELDS =
+    'id, lead_number, name, phone, email, service_interest, service_type, ' +
+    'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
+    'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
+    'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt'
+
   let query = supabaseAdmin
     .from('leads')
-    .select(
-      // Deliberately narrow select — no internal-only fields (assigned_to,
-      // internal notes are on the booking, not the lead, but we still keep
-      // this explicit rather than `select('*')`).
-      'id, lead_number, name, phone, email, service_interest, service_type, ' +
-      'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
-      'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-      'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt, ' +
-      'bookings(tracking_id, status, total_amount, payment_status)',
-      { count: 'exact' }
-    )
+    .select(LEAD_FIELDS, { count: 'exact' })
     .eq('source', SKYBIRD_SOURCE)
     .is('deleted_at', null)
     .order('created_at', { ascending: false })
@@ -65,14 +69,7 @@ export async function GET(req: NextRequest) {
   if (error && error.message?.includes('deleted_at')) {
     let fallback = supabaseAdmin
       .from('leads')
-      .select(
-        'id, lead_number, name, phone, email, service_interest, service_type, ' +
-        'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
-        'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-        'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt, ' +
-        'bookings(tracking_id, status, total_amount, payment_status)',
-        { count: 'exact' }
-      )
+      .select(LEAD_FIELDS, { count: 'exact' })
       .eq('source', SKYBIRD_SOURCE)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
@@ -84,10 +81,37 @@ export async function GET(req: NextRequest) {
   }
 
   if (error) {
+    console.error('[skybird/leads GET] query failed:', error.message)
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ leads: data, total: count, page, limit })
+  // ── Attach linked booking info (tracking ID, status, amount) ──────────
+  // Fetched separately (not embedded) — see note above.
+  const bookingIds = (data ?? []).map(l => l.booking_id).filter((id): id is string => !!id)
+  let bookingsById: Record<string, { tracking_id: string; status: string; total_amount: number | null; payment_status: string | null }> = {}
+  if (bookingIds.length > 0) {
+    const { data: bookingRows, error: bookingsErr } = await supabaseAdmin
+      .from('bookings')
+      .select('id, tracking_id, status, total_amount, payment_status')
+      .in('id', bookingIds)
+    if (bookingsErr) {
+      console.error('[skybird/leads GET] booking lookup failed (non-fatal):', bookingsErr.message)
+    } else {
+      bookingsById = Object.fromEntries(
+        (bookingRows ?? []).map(b => [b.id, {
+          tracking_id: b.tracking_id, status: b.status,
+          total_amount: b.total_amount, payment_status: b.payment_status,
+        }])
+      )
+    }
+  }
+
+  const leadsWithBooking = (data ?? []).map(l => ({
+    ...l,
+    bookings: l.booking_id ? (bookingsById[l.booking_id] ?? null) : null,
+  }))
+
+  return NextResponse.json({ leads: leadsWithBooking, total: count, page, limit })
 }
 
 export async function POST(req: NextRequest) {
