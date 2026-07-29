@@ -120,13 +120,22 @@ export async function POST(req: NextRequest) {
       .select()
       .single()
 
-    if (dbError) {
+    if (dbError || !savedBooking) {
       console.error('[Skybird Bookings] Supabase insert error:', dbError)
+      // Unlike the public /api/bookings route, we surface this instead of
+      // silently returning success:true — an internal partner tool must
+      // never show a "confirmed" tracking ID that was never persisted.
+      // Most common cause: a DB migration (e.g. SKYBIRD_PARTNER_MIGRATION.sql)
+      // hasn't been run yet, so a column this insert writes doesn't exist.
+      return NextResponse.json(
+        { error: 'Could not save the inquiry. Please try again or contact Bagdrop support.' },
+        { status: 500 }
+      )
     }
 
     // ── Auto-create Lead — same as /api/bookings, force-tagged skybird ────
     let ackPromise: Promise<void> = Promise.resolve()
-    if (savedBooking) {
+    {
       try {
         const { data: existingLeadForBooking } = await supabaseAdmin
           .from('leads')
@@ -207,7 +216,7 @@ export async function POST(req: NextRequest) {
       date:        booking.date     ?? '',
       timeSlot:    timeSlotLabel,
       totalBags:   pricing?.totalBags ?? booking.bags ?? 1,
-      orderId:     savedBooking?.id   ?? trackingId,
+      orderId:     savedBooking.id,
     }
 
     const emailResults = await Promise.allSettled([
@@ -246,7 +255,7 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    return NextResponse.json({ success: true, trackingId, id: savedBooking?.id })
+    return NextResponse.json({ success: true, trackingId, id: savedBooking.id })
   } catch (err) {
     console.error('[Skybird Bookings] Unexpected error:', err)
     return NextResponse.json({ error: 'Something went wrong. Please try again.' }, { status: 500 })
