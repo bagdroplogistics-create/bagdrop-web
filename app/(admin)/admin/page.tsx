@@ -1434,6 +1434,7 @@ export default function AdminDashboard() {
                             const src = tid.startsWith('BDA-') ? { label: 'Lead', color: '#2563eb', bg: '#dbeafe' }
                                       : tid.startsWith('BDQ-') ? { label: 'Quote', color: '#7c3aed', bg: '#ede9fe' }
                                       : tid.startsWith('BDM-') ? { label: 'Mobile App', color: '#ea580c', bg: '#ffedd5' }
+                                      : tid.startsWith('BDS-') ? { label: 'Skybird USA', color: '#0369a1', bg: '#e0f2fe' }
                                       : { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
                             return (
                               <span style={{ color: src.color, background: src.bg }}
