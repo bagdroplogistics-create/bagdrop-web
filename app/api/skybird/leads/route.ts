@@ -41,11 +41,16 @@ export async function GET(req: NextRequest) {
   // Instead, booking info is fetched separately below and merged manually —
   // matching how other admin routes in this codebase already do this
   // (see /api/admin/leads GET's separate `bookings` lookup for exclude_status).
+  // `as const` keeps this a string-literal type (not widened to `string`) —
+  // supabase-js's .select() overloads parse the query string at the type
+  // level to build the row shape, and only kick in for literal types. A
+  // plain `string`-typed variable falls back to a generic/untyped result,
+  // which is why `l.booking_id` below needs this.
   const LEAD_FIELDS =
     'id, lead_number, name, phone, email, service_interest, service_type, ' +
     'from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, ' +
     'bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, ' +
-    'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt'
+    'status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt' as const
 
   let query = supabaseAdmin
     .from('leads')
