@@ -5,6 +5,7 @@ import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
 import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
+import { syncBookingReminders } from '@/lib/ops-reminders'
 import type { BookingStatus } from '@/lib/supabase'
 
 // STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
@@ -382,6 +383,22 @@ export async function PATCH(
       // Previous Step — remove the stale event rather than leave it dangling.
       await deleteBookingCalendarEvent(data)
     }
+  }
+
+  // Internal Ops WhatsApp pickup reminders — fully independent of the
+  // customer notification pipeline above (never touches notifyBookingStatus
+  // / sendLifecycleWhatsApp, never sends to the customer). Runs on every
+  // successful update, not just status changes, so a reschedule (pickup
+  // date/time edited without a status change) also updates the reminder
+  // schedule, per spec. Skipped for mark_historical for the same reason as
+  // the calendar sync above. Never throws.
+  if (mark_historical !== true && data) {
+    await syncBookingReminders({
+      id:              data.id,
+      status:          data.status,
+      pickup_date:     data.pickup_date,
+      flight_datetime: data.flight_datetime,
+    })
   }
 
   return NextResponse.json({ booking: data })

@@ -21,6 +21,11 @@ interface SettingsMap {
   notif_email?:        string
   notif_whatsapp?:     string
   notif_sms?:          string
+  ops_reminder_enabled?:             string
+  ops_reminder_whatsapp?:            string
+  ops_reminder_day_before_time?:     string
+  ops_reminder_day_of_time?:         string
+  ops_reminder_hours_before_flight?: string
 }
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -184,6 +189,50 @@ export default function SettingsPage() {
                   </div>
                 </label>
               ))}
+
+              <div className="rounded-xl border border-gray-100 p-4">
+                <h3 className="mb-1 text-xs font-bold text-gray-700">Internal Ops Pickup Reminders</h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  Automatic WhatsApp reminders sent to the Operations team (not the customer) before every Confirmed booking&apos;s pickup —
+                  once 1 day before, and once again a few hours before pickup.
+                </p>
+                <label className="mb-3 flex cursor-pointer items-start gap-3 rounded-lg border p-3 transition-colors" style={{ borderColor: settings.ops_reminder_enabled !== 'false' ? '#fed7aa' : '#f3f4f6', background: settings.ops_reminder_enabled !== 'false' ? '#fff7ed' : '#fff' }}>
+                  <input type="checkbox" checked={settings.ops_reminder_enabled !== 'false'}
+                    disabled={!isAdmin}
+                    onChange={e => isAdmin && setSettings(s => ({ ...s, ops_reminder_enabled: e.target.checked ? 'true' : 'false' }))}
+                    className="mt-0.5 h-4 w-4 accent-orange-500" />
+                  <div>
+                    <p className="text-sm font-semibold text-gray-800">Enable Ops Pickup Reminders</p>
+                    <p className="text-xs text-gray-500">Turn off to pause all reminder sends without losing the schedule.</p>
+                  </div>
+                </label>
+
+                <div className="mb-3">
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-600">Operations WhatsApp Number</label>
+                  <input type="text" value={settings.ops_reminder_whatsapp ?? ''} onChange={set('ops_reminder_whatsapp')} disabled={!isAdmin}
+                    placeholder="+91 63571 15711" className={inp + (!isAdmin ? ' bg-gray-50' : '')} />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-gray-600">Day-Before Reminder Time (IST)</label>
+                    <input type="time" value={settings.ops_reminder_day_before_time ?? '18:00'} onChange={set('ops_reminder_day_before_time')} disabled={!isAdmin}
+                      className={inp + (!isAdmin ? ' bg-gray-50' : '')} />
+                  </div>
+                  <div>
+                    <label className="mb-1.5 block text-xs font-semibold text-gray-600">Day-Of Reminder Time (IST)</label>
+                    <input type="time" value={settings.ops_reminder_day_of_time ?? '08:00'} onChange={set('ops_reminder_day_of_time')} disabled={!isAdmin}
+                      className={inp + (!isAdmin ? ' bg-gray-50' : '')} />
+                  </div>
+                </div>
+                <p className="mt-1 text-[11px] text-gray-400">Day-of default is only used when there&apos;s no flight time on file. If a flight time is on record (airport bookings), the reminder is timed off that instead.</p>
+
+                <div className="mt-3">
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-600">Hours Before Flight (airport bookings only)</label>
+                  <input type="number" min={1} max={24} value={settings.ops_reminder_hours_before_flight ?? '4'} onChange={set('ops_reminder_hours_before_flight')} disabled={!isAdmin}
+                    className={inp + (!isAdmin ? ' bg-gray-50 max-w-[120px]' : ' max-w-[120px]')} />
+                </div>
+              </div>
             </div>
           )}
 

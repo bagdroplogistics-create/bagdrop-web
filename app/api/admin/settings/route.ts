@@ -29,6 +29,9 @@ export async function PUT(req: NextRequest) {
     'company_name', 'company_gst', 'company_address', 'company_phone', 'company_email',
     'payment_upi', 'payment_bank_name', 'payment_account_no', 'payment_ifsc',
     'notif_email', 'notif_whatsapp', 'notif_sms',
+    // Internal Ops WhatsApp pickup reminders — see lib/ops-reminders.ts.
+    'ops_reminder_enabled', 'ops_reminder_whatsapp',
+    'ops_reminder_day_before_time', 'ops_reminder_day_of_time', 'ops_reminder_hours_before_flight',
   ]
 
   const upserts = Object.entries(body as Record<string, string>)
