@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -30,6 +30,7 @@ const NAV = [
   {
     group: 'Analytics',
     items: [
+      { label: 'Operations Center', href: '/admin/reports/operations', icon: ClipboardList },
       { label: 'Reports',    href: '/admin/reports',   icon: BarChart3 },
       { label: 'Settings',   href: '/admin/settings',  icon: Settings  },
     ],
