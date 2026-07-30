@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
-import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
+import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import type { BookingStatus } from '@/lib/supabase'
 
 // STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
@@ -54,10 +54,23 @@ export async function PATCH(
     driver_name, driver_phone, driver_phone_country_code, driver_phone_national,
     vehicle_number, vehicle_type, airport_location,
     pickup_instructions, flight_datetime,
+    // Historical / data-migration completion — see the mark_historical
+    // branch below. Jumps status straight to its target with zero customer
+    // notifications, for bookings fulfilled before this workflow existed.
+    mark_historical,
   } = body
 
   if (approved_without_payment && role !== 'admin') {
     return NextResponse.json({ error: 'Only admin can approve without payment' }, { status: 403 })
+  }
+
+  if (mark_historical === true) {
+    if (role !== 'admin') {
+      return NextResponse.json({ error: 'Only admin can mark a booking as historically completed' }, { status: 403 })
+    }
+    if (!status) {
+      return NextResponse.json({ error: 'status is required with mark_historical' }, { status: 400 })
+    }
   }
 
   const updates: Record<string, unknown> = {}
@@ -112,7 +125,7 @@ export async function PATCH(
   // history entry + customer status notification for this status like
   // any other.
   let sendDriverDetailsNow = false
-  if (status === 'driver_details_shared') {
+  if (status === 'driver_details_shared' && mark_historical !== true) {
     const { data: bk } = await supabaseAdmin
       .from('bookings')
       .select('service_type, driver_name, driver_phone, driver_details_sent_at')
@@ -235,42 +248,87 @@ export async function PATCH(
       .eq('id', id)
       .single()
 
-    // Lifecycle WhatsApp templates (Fast2SMS) only fire on genuine forward
-    // progress — never when an admin uses "Previous Step" to revert a
-    // booking, so reverting-and-readvancing can't spam the customer.
-    shouldSendLifecycleWhatsApp = isForwardMove(existing?.status, status)
+    if (mark_historical === true) {
+      // ── Historical / data-migration completion ──────────────────────
+      // For bookings fulfilled before this workflow (and its WhatsApp/email
+      // notifications) existed. Jumping straight to a terminal status must
+      // NOT replay every notification the customer would have gotten if
+      // they'd been moved through each step live — they already have their
+      // bags. Backfill status_history with one entry per skipped step (so
+      // the workflow timeline still shows the full path, just dated "now"
+      // and clearly tagged historical) and send nothing whatsoever.
+      const history  = Array.isArray(existing?.status_history) ? existing!.status_history : []
+      const fromIdx  = STATUS_ORDER.indexOf(existing?.status ?? 'inquiry')
+      const toIdx    = STATUS_ORDER.indexOf(status)
+      const skipped  = toIdx >= 0 ? STATUS_ORDER.slice(Math.max(fromIdx, 0) + 1, toIdx + 1) : [status]
+      const steps    = skipped.length > 0 ? skipped : [status]
+      const now      = new Date().toISOString()
 
-    const history = existing?.status_history ?? []
-    history.push({
-      from:       existing?.status ?? null,
-      to:         status,
-      timestamp:  new Date().toISOString(),
-      changed_by: role,
-      note:       reason ?? notes ?? null,   // reason takes priority; falls back to notes
-    })
-    updates.status_history = history
+      let prevStep: string | null = existing?.status ?? null
+      steps.forEach((step, i) => {
+        const isLast = i === steps.length - 1
+        history.push({
+          from:       prevStep,
+          to:         step,
+          timestamp:  now,
+          changed_by: role,
+          note:       isLast
+            ? `Marked as Completed — historical booking, backfilled by admin${reason ? ': ' + reason : ''}. No WhatsApp/email/SMS sent to customer.`
+            : 'Historical booking — step backfilled by admin, no customer notification sent.',
+        })
+        prevStep = step
+      })
+      updates.status_history = history
 
-    if (status === 'delivered' && existing) {
-      await autoCreateInvoice(id, existing)
-    }
+      // Still create the invoice record for bookkeeping if this jump passes
+      // through (or lands on) 'delivered' — matches what a normal delivery
+      // would do — but this never contacts the customer either way.
+      const deliveredIdx = STATUS_ORDER.indexOf('delivered')
+      if (existing && deliveredIdx !== -1 && toIdx >= deliveredIdx) {
+        await autoCreateInvoice(id, existing)
+      }
 
-    // Auto-create a draft quote when booking is accepted (so it appears in Quotes tab)
-    if (status === 'accepted' && existing) {
-      autoCreateDraftQuote(id, existing).catch(err =>
-        console.error('[booking patch] draft quote auto-create error:', err)
-      )
-    }
+      // Deliberately skipped for this path: notifyBookingStatus,
+      // sendLifecycleWhatsApp (shouldSendLifecycleWhatsApp stays false),
+      // autoCreateDraftQuote — nothing here may ever reach the customer.
+    } else {
+      // Lifecycle WhatsApp templates (Fast2SMS) only fire on genuine forward
+      // progress — never when an admin uses "Previous Step" to revert a
+      // booking, so reverting-and-readvancing can't spam the customer.
+      shouldSendLifecycleWhatsApp = isForwardMove(existing?.status, status)
 
-    if (existing) {
-      notifyBookingStatus({
-        customerName:  existing.customer_name,
-        customerPhone: existing.customer_phone,
-        customerEmail: existing.customer_email ?? '',
-        trackingId:    existing.tracking_id,
-        status:        status as BookingStatus,
-        fromCity:      existing.from_city,
-        toCity:        existing.to_city,
-      }).catch(err => console.error('[booking patch] notification error:', err))
+      const history = existing?.status_history ?? []
+      history.push({
+        from:       existing?.status ?? null,
+        to:         status,
+        timestamp:  new Date().toISOString(),
+        changed_by: role,
+        note:       reason ?? notes ?? null,   // reason takes priority; falls back to notes
+      })
+      updates.status_history = history
+
+      if (status === 'delivered' && existing) {
+        await autoCreateInvoice(id, existing)
+      }
+
+      // Auto-create a draft quote when booking is accepted (so it appears in Quotes tab)
+      if (status === 'accepted' && existing) {
+        autoCreateDraftQuote(id, existing).catch(err =>
+          console.error('[booking patch] draft quote auto-create error:', err)
+        )
+      }
+
+      if (existing) {
+        notifyBookingStatus({
+          customerName:  existing.customer_name,
+          customerPhone: existing.customer_phone,
+          customerEmail: existing.customer_email ?? '',
+          trackingId:    existing.tracking_id,
+          status:        status as BookingStatus,
+          fromCity:      existing.from_city,
+          toCity:        existing.to_city,
+        }).catch(err => console.error('[booking patch] notification error:', err))
+      }
     }
   }
 
