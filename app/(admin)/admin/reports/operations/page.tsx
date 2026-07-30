@@ -13,6 +13,7 @@ import Link from 'next/link'
 import {
   AlertTriangle, RefreshCw, Inbox, CalendarClock, AlertOctagon, ClipboardList,
   Loader2, ChevronRight, Plane, Truck, UserX, FileWarning, Clock,
+  Calendar, Link2, Unlink, ExternalLink, CheckCircle2, X,
 } from 'lucide-react'
 
 // ── Types (mirror the API response shape) ──────────────────────────────────
@@ -35,6 +36,7 @@ interface OverdueBooking extends BookingLike {
   overdue_reasons: Array<{ code: string; label: string }>
 }
 interface Alert { severity: 'high' | 'medium'; message: string; count: number }
+interface CalendarStatus { connected: boolean; email: string | null; calendarId: string | null }
 interface Widgets {
   todays_inquiries: number; todays_pickups: number; todays_deliveries: number
   upcoming_pickups_7d: number; pending_quotes: number; pending_payments: number
@@ -109,11 +111,64 @@ export default function OperationsCenterPage() {
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
 
+  // ── Google Calendar (shared "Bagdrop Ops" calendar) ──────────────────────
+  const [calStatus, setCalStatus]   = useState<CalendarStatus | null>(null)
+  const [calLoading, setCalLoading] = useState(false)
+  const [calSyncing, setCalSyncing] = useState(false)
+  const [calBanner, setCalBanner]   = useState('')
+
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
     if (!key) { router.replace('/admin/login'); return }
     setAdminKey(key); setAuthed(true)
+
+    // The OAuth callback redirects back here with ?calendar_connected=1 or
+    // ?calendar_error=<code> — surface it once, then clean the URL.
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('calendar_connected')) setCalBanner('Google Calendar connected. Confirmed bookings will now sync automatically.')
+    else if (params.get('calendar_error')) setCalBanner(`Google Calendar connection failed (${params.get('calendar_error')}). Please try again.`)
+    if (params.has('calendar_connected') || params.has('calendar_error')) {
+      window.history.replaceState({}, '', window.location.pathname)
+    }
   }, [router])
+
+  const fetchCalStatus = useCallback(async (key: string) => {
+    if (!key) return
+    setCalLoading(true)
+    try {
+      const res = await fetch(`/api/admin/google-calendar/status?key=${encodeURIComponent(key)}`)
+      const json = await res.json().catch(() => null)
+      if (res.ok && json) setCalStatus(json)
+    } catch { /* non-fatal — card just shows "not connected" */ }
+    setCalLoading(false)
+  }, [])
+
+  useEffect(() => { if (adminKey) fetchCalStatus(adminKey) }, [adminKey, fetchCalStatus])
+
+  const handleCalConnect = () => {
+    window.location.href = `/api/admin/google-calendar/connect?key=${encodeURIComponent(adminKey)}`
+  }
+  const handleCalDisconnect = async () => {
+    if (!confirm('Disconnect the shared Bagdrop Ops calendar? New confirmed bookings will stop syncing until reconnected.')) return
+    setCalLoading(true)
+    try {
+      await fetch(`/api/admin/google-calendar/disconnect?key=${encodeURIComponent(adminKey)}`, { method: 'POST' })
+    } catch { /* ignore */ }
+    await fetchCalStatus(adminKey)
+  }
+  const handleCalSyncNow = async () => {
+    setCalSyncing(true)
+    setCalBanner('')
+    try {
+      const res = await fetch(`/api/admin/google-calendar/sync-now?key=${encodeURIComponent(adminKey)}`, { method: 'POST' })
+      const json = await res.json().catch(() => ({}))
+      if (res.ok) setCalBanner(`Synced ${json.synced ?? 0} of ${json.total ?? 0} upcoming confirmed bookings to the calendar.`)
+      else setCalBanner(json?.error ?? 'Sync failed.')
+    } catch {
+      setCalBanner('Network error while syncing.')
+    }
+    setCalSyncing(false)
+  }
 
   const fetchData = useCallback(async () => {
     if (!adminKey) return
@@ -306,6 +361,86 @@ export default function OperationsCenterPage() {
             {/* ── Upcoming Confirmed Bookings ── */}
             {tab === 'upcoming' && (
               <div>
+                {/* ── Google Calendar (shared "Bagdrop Ops" calendar) ── */}
+                <div className="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-orange-500" />
+                      <p className="text-xs font-bold text-gray-700">Bagdrop Ops Calendar</p>
+                      {calStatus?.connected ? (
+                        <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
+                          <CheckCircle2 className="h-3 w-3" /> Connected{calStatus.email ? ` — ${calStatus.email}` : ''}
+                        </span>
+                      ) : (
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">Not connected</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {calStatus?.connected ? (
+                        <>
+                          <button
+                            onClick={handleCalSyncNow}
+                            disabled={calSyncing}
+                            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${calSyncing ? 'animate-spin' : ''}`} /> Sync Now
+                          </button>
+                          <button
+                            onClick={handleCalDisconnect}
+                            disabled={calLoading}
+                            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                          >
+                            <Unlink className="h-3.5 w-3.5" /> Disconnect
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          onClick={handleCalConnect}
+                          disabled={calLoading}
+                          className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                        >
+                          <Link2 className="h-3.5 w-3.5" /> Connect Google Calendar
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {calBanner && (
+                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-orange-50 px-4 py-2 text-xs font-medium text-orange-700">
+                      <span>{calBanner}</span>
+                      <button onClick={() => setCalBanner('')} className="text-orange-400 hover:text-orange-600"><X className="h-3.5 w-3.5" /></button>
+                    </div>
+                  )}
+
+                  {calStatus?.connected ? (
+                    <div className="p-4">
+                      <p className="mb-2 text-xs text-gray-500">
+                        Every confirmed booking automatically appears here as an all-day event on its pickup date. Team members can see reminders on their own phone by subscribing to this calendar —
+                        open Google Calendar → <strong>Other calendars → Subscribe by URL / Search for people</strong> → enter <span className="font-mono text-gray-700">{calStatus.email}</span>.
+                      </p>
+                      {calStatus.email && (
+                        <div className="overflow-hidden rounded-lg border border-gray-200">
+                          <iframe
+                            src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calStatus.email)}&ctz=Asia%2FKolkata&mode=AGENDA`}
+                            style={{ border: 0 }}
+                            width="100%"
+                            height="400"
+                            title="Bagdrop Ops Calendar"
+                          />
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="p-4 text-xs text-gray-500">
+                      Connect one Google account (any Bagdrop team Gmail works) to auto-create a calendar event for every confirmed booking — customer name, booking ID, pickup date, addresses, and contact number included.
+                      Everyone else can subscribe to that one shared calendar afterward for reminders on their own devices. Admin only.
+                      <a href="https://calendar.google.com" target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-orange-600 hover:underline">
+                        Open Google Calendar <ExternalLink className="h-3 w-3" />
+                      </a>
+                    </div>
+                  )}
+                </div>
+
                 <p className="mb-3 text-xs text-gray-400">
                   Only bookings the customer has confirmed — quotes still awaiting acceptance, rejected quotes, and inquiries that never converted are excluded.
                 </p>
@@ -355,7 +490,11 @@ export default function OperationsCenterPage() {
                         {data.upcoming_bookings.map(b => {
                           const days = daysUntil(b.pickup_date)
                           return (
-                            <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                            <tr
+                              key={b.id}
+                              onClick={() => router.push(`/admin?highlight=${b.id}`)}
+                              className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-orange-50/60"
+                            >
                               <td className="px-4 py-3 font-medium text-gray-800">{b.customer_name ?? '—'}</td>
                               <td className="px-4 py-3 font-mono text-xs text-orange-600">{b.tracking_id}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>

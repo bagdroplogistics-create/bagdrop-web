@@ -4,6 +4,7 @@ import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
 import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import type { BookingStatus } from '@/lib/supabase'
 
 // STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
@@ -12,6 +13,12 @@ import type { BookingStatus } from '@/lib/supabase'
 // without ever firing the lifecycle WhatsApp send (picked_up/in_transit/
 // out_for_delivery/delivered are normally advanced from the Trip Sheet, not
 // this route, which is why those messages were missing/delayed).
+
+// Same "confirmed onward" definition used by the Operations Center report —
+// any status at/after 'confirmed' in the canonical lifecycle. Bookings in
+// this range get a Google Calendar event; anything earlier (still just an
+// inquiry/quote) or cancelled/rejected does not.
+const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
 
 export async function GET(
   req: NextRequest,
@@ -355,6 +362,26 @@ export async function PATCH(
   // everything sendLifecycleWhatsApp needs. Never throws.
   if (shouldSendLifecycleWhatsApp && status && data) {
     await sendLifecycleWhatsApp(status, data)
+  }
+
+  // Google Calendar sync — keeps the shared "Bagdrop Ops" calendar in step
+  // with every booking change, not just status changes (a reschedule that
+  // only edits pickup_date/address should move the calendar event too).
+  // Skipped entirely for mark_historical: those bookings were already
+  // fulfilled before this feature existed, so there's nothing to schedule.
+  // Never throws — a calendar failure must not fail the booking update.
+  if (mark_historical !== true && data) {
+    const bookingStatus = data.status as string
+    const isCancelledOrRejected = bookingStatus === 'cancelled' || bookingStatus === 'rejected'
+    const isConfirmedOnward = CONFIRMED_ONWARD_STATUSES.includes(bookingStatus)
+
+    if (isConfirmedOnward && !isCancelledOrRejected) {
+      await upsertBookingCalendarEvent(data)
+    } else if (data.google_calendar_event_id) {
+      // Cancelled/rejected, or reverted back before 'confirmed' via
+      // Previous Step — remove the stale event rather than leave it dangling.
+      await deleteBookingCalendarEvent(data)
+    }
   }
 
   return NextResponse.json({ booking: data })
