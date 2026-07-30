@@ -44,6 +44,42 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     if (key in body) updates[key] = body[key]
   }
 
+  // ── Sync income from the linked booking ────────────────────
+  // trip_sheets.quote_amount is only ever set once, at trip-sheet creation
+  // (POST /api/admin/trip-sheets), from whatever the booking's total_amount
+  // was at that moment — see route.ts there. If a trip sheet gets created
+  // before a quote/amount exists on the booking (e.g. right after the
+  // inquiry, before "Generate Quote" has run), quote_amount is frozen at 0
+  // forever: nothing else in this file ever re-reads it from the booking.
+  // Once a real quote/amount is added to the booking afterward, the trip
+  // sheet silently goes stale — expenses keep accruing against a 0 income,
+  // producing a negative "profit" that has nothing to do with the real
+  // numbers. This flag lets an admin explicitly refresh quote_amount from
+  // the booking's current total_amount before recomputing income below.
+  if (body.sync_quote_from_booking === true) {
+    const { data: current } = await supabaseAdmin
+      .from('trip_sheets')
+      .select('booking_id')
+      .eq('id', id)
+      .single()
+
+    if (!current?.booking_id) {
+      return NextResponse.json({ error: 'This trip sheet has no linked booking to sync from.' }, { status: 400 })
+    }
+
+    const { data: bk, error: bkErr } = await supabaseAdmin
+      .from('bookings')
+      .select('total_amount')
+      .eq('id', current.booking_id)
+      .single()
+
+    if (bkErr || !bk) {
+      return NextResponse.json({ error: 'Linked booking not found.' }, { status: 404 })
+    }
+
+    updates.quote_amount = Number(bk.total_amount) || 0
+  }
+
   // ── Status change: append to history ──────────────────────
   if ('status' in updates) {
     const { data: current } = await supabaseAdmin
@@ -126,7 +162,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     .single()
 
   if (current) {
-    const qa   = Number(current.quote_amount)        || 0
+    const qa   = Number(updates.quote_amount ?? current.quote_amount) || 0
     const ac   = Number(updates.additional_charges ?? current.additional_charges) || 0
     const disc = Number(updates.discount            ?? current.discount)           || 0
     const tax  = Number(updates.tax_amount          ?? current.tax_amount)         || 0

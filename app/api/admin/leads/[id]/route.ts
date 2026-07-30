@@ -44,6 +44,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'quote_line_items', 'quote_subtotal', 'quote_discount_pct', 'quote_discount_amt',
     'quote_tax', 'quote_total', 'quote_subject', 'quote_notes', 'quote_terms',
     'quote_expiry_date', 'salesperson_name', 'agent_name',
+    // Return-journey quote fields — normally only written by
+    // /api/admin/zoho/generate-quote (isReturnQuote branch). Included here so
+    // an admin can clear an accidentally-generated return quote (e.g. a
+    // second "Generate Quote" click on a one-way lead) via a PATCH with all
+    // of these set to null, without touching the primary quote.
+    'return_quote_number', 'return_quote_line_items', 'return_quote_total',
+    'return_quote_subtotal', 'return_quote_tax', 'return_quote_date',
+    'return_from_city', 'return_to_city', 'return_bags_count',
+    'return_discount_amt', 'return_discount_pct', 'return_quote_notes',
+    'return_pickup_address', 'return_pickup_date',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -59,6 +69,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'pickup_address', 'drop_address',
     'quote_expiry_date', 'quote_subject', 'quote_notes', 'quote_terms',
     'salesperson_name', 'agent_name',
+    'return_quote_number', 'return_quote_total', 'return_quote_subtotal',
+    'return_quote_tax', 'return_quote_date', 'return_from_city', 'return_to_city',
+    'return_bags_count', 'return_discount_amt', 'return_discount_pct',
+    'return_quote_notes', 'return_pickup_address', 'return_pickup_date',
   ]
   for (const f of nullableFields) {
     if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null

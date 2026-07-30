@@ -7,7 +7,7 @@ import {
   CheckCircle, Clock, AlertCircle, Send,
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
-  RotateCcw, Save, ShieldCheck,
+  RotateCcw, Save, ShieldCheck, Trash2,
 } from 'lucide-react'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
@@ -2073,6 +2073,38 @@ export default function QuoteViewPage() {
                 {lead.return_quote_number}
               </span>
               <span className="ml-auto text-xs text-purple-500">{fmtDate(lead.return_quote_date)}</span>
+              <button
+                onClick={async () => {
+                  if (!key || !lead) return
+                  if (!confirm('Remove this return-journey quote? This does not change the primary (outward) quote — use this when a return quote was created by mistake, e.g. a one-way booking that had "Generate Quote" clicked twice.')) return
+                  setActing('remove_return_quote')
+                  try {
+                    const res = await fetch(`/api/admin/leads/${lead.id}`, {
+                      method:  'PATCH',
+                      headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+                      body: JSON.stringify({
+                        return_quote_number: null, return_quote_line_items: null,
+                        return_quote_total: null, return_quote_subtotal: null,
+                        return_quote_tax: null, return_quote_date: null,
+                        return_from_city: null, return_to_city: null,
+                        return_bags_count: null, return_discount_amt: null,
+                        return_discount_pct: null, return_quote_notes: null,
+                        return_pickup_address: null, return_pickup_date: null,
+                      }),
+                    })
+                    const j = await res.json().catch(() => ({}))
+                    if (!res.ok) { alert(j.error ?? 'Failed to remove return quote'); return }
+                    loadAll(key)
+                  } finally {
+                    setActing(null)
+                  }
+                }}
+                disabled={acting === 'remove_return_quote'}
+                title="Remove return quote"
+                className="ml-2 inline-flex items-center gap-1 rounded-lg border border-purple-200 px-2 py-1 text-xs font-semibold text-purple-500 hover:bg-purple-100 hover:text-purple-700 disabled:opacity-50 transition-colors"
+              >
+                {acting === 'remove_return_quote' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+              </button>
             </div>
             <div className="px-6 py-5">
               {/* Route info */}

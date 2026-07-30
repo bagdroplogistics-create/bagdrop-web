@@ -7,7 +7,7 @@ import {
   ArrowLeft, Truck, Package, MapPin, Calendar, Phone, Mail,
   User, Hash, ChevronDown, Plus, Pencil, Trash2, Save, X,
   CheckCircle, Clock, IndianRupee, TrendingUp, TrendingDown,
-  FileText, Activity, Layers, ReceiptText,
+  FileText, Activity, Layers, ReceiptText, RefreshCw,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -151,6 +151,7 @@ function TripSheetDetail({ id }: { id: string }) {
   const [tab,      setTab]      = useState(searchParams.get('tab') === 'edit' ? 'edit' : 'overview')
   const [saving,   setSaving]   = useState(false)
   const [saveMsg,  setSaveMsg]  = useState('')
+  const [syncingQuote, setSyncingQuote] = useState(false)
 
   // Edit form state
   const [editForm, setEditForm] = useState({
@@ -232,6 +233,24 @@ function TripSheetDetail({ id }: { id: string }) {
     if (res.ok) { setSaveMsg('Saved!'); fetchSheet(); setTimeout(() => setSaveMsg(''), 3000) }
     else { const d = await res.json(); setSaveMsg('Error: ' + (d.error ?? 'Failed')) }
     setSaving(false)
+  }
+
+  // Re-pulls quote_amount from the linked booking's current total_amount.
+  // Needed because quote_amount is only ever set once, at trip-sheet
+  // creation — if the trip sheet was created before a quote/amount existed
+  // on the booking (e.g. right after the inquiry), it stays frozen at 0
+  // forever even after a real quote is generated later, which silently
+  // turns every future expense into "negative profit."
+  async function syncQuoteFromBooking() {
+    setSyncingQuote(true)
+    const res = await fetch(`/api/admin/trip-sheets/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ sync_quote_from_booking: true }),
+    })
+    if (res.ok) { await fetchSheet() }
+    else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to sync income from booking') }
+    setSyncingQuote(false)
   }
 
   async function addExpense() {
@@ -744,7 +763,19 @@ function TripSheetDetail({ id }: { id: string }) {
         {tab === 'profit' && (
           <div className="space-y-4">
             <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
-              <h3 className="mb-5 text-sm font-bold text-gray-700">Income Breakdown</h3>
+              <div className="mb-5 flex items-center justify-between">
+                <h3 className="text-sm font-bold text-gray-700">Income Breakdown</h3>
+                {sheet.booking_id && (
+                  <button
+                    onClick={syncQuoteFromBooking}
+                    disabled={syncingQuote}
+                    title="Re-pull the quote amount from the linked booking — use this if the trip sheet was created before the quote was generated"
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-500 hover:border-orange-300 hover:text-orange-600 disabled:opacity-50 transition-colors"
+                  >
+                    <RefreshCw className={`h-3.5 w-3.5 ${syncingQuote ? 'animate-spin' : ''}`} /> Sync from Booking
+                  </button>
+                )}
+              </div>
               <div className="space-y-3">
                 <PLRow label="Quote Amount"       value={fmt(sheet.quote_amount)}       />
                 <PLRow label="Additional Charges" value={`+ ${fmt(sheet.additional_charges)}`} color="text-green-600" />
