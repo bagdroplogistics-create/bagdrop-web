@@ -22,11 +22,24 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .in('status', ['draft', 'sent']),
 
-    // Revenue this month (confirmed/in_transit/delivered bookings)
+    // Revenue this month.
+    // Was: .in('status', ['confirmed', 'picked_up', 'in_transit', 'delivered'])
+    // That whitelist silently excluded every other post-payment status —
+    // most notably 'completed' (a booking's actual terminal state), but also
+    // 'payment_received', 'payment_approved', 'invoice_generated',
+    // 'invoice_sent', 'pickup_scheduled', 'out_for_delivery',
+    // 'driver_details_shared', and 'trip_created' — so a booking that had
+    // genuinely been paid for and finished contributed nothing to revenue
+    // just because its exact status string wasn't one of those four.
+    // Flipped to a blacklist of the pre-revenue stages instead: anything
+    // still at inquiry/quote/payment-pending, or rejected/cancelled, is
+    // excluded; everything from the point a booking is actually committed
+    // onward counts. Adjust this list if "revenue" should instead only be
+    // recognized once payment is received (i.e. exclude 'confirmed' too).
     supabaseAdmin
       .from('bookings')
       .select('total_amount')
-      .in('status', ['confirmed', 'picked_up', 'in_transit', 'delivered'])
+      .not('status', 'in', '(inquiry,quote_created,quote_sent,payment_pending,rejected,cancelled)')
       .gte('created_at', monthStart),
 
     // Today's dispatch: bookings with pickup_date = today, not cancelled/completed
