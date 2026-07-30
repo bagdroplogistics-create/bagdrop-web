@@ -31,15 +31,19 @@ export async function GET(req: NextRequest) {
     // 'driver_details_shared', and 'trip_created' — so a booking that had
     // genuinely been paid for and finished contributed nothing to revenue
     // just because its exact status string wasn't one of those four.
-    // Flipped to a blacklist of the pre-revenue stages instead: anything
-    // still at inquiry/quote/payment-pending, or rejected/cancelled, is
-    // excluded; everything from the point a booking is actually committed
-    // onward counts. Adjust this list if "revenue" should instead only be
-    // recognized once payment is received (i.e. exclude 'confirmed' too).
+    // Flipped to a blacklist of the pre-revenue stages instead. First pass
+    // missed 'accepted' — STATUS_ORDER puts it BEFORE payment_pending (quote
+    // accepted, no money collected yet), so it was wrongly counted as
+    // revenue too, inflating this figure above what was actually paid for.
+    // Excluded now alongside the rest of the pre-payment stages; everything
+    // from 'payment_pending' onward except a rejected/cancelled booking
+    // counts. Adjust this list if "revenue" should instead only be
+    // recognized once payment is actually received (i.e. exclude
+    // 'payment_pending' and 'confirmed' too, starting at 'payment_received').
     supabaseAdmin
       .from('bookings')
       .select('total_amount')
-      .not('status', 'in', '(inquiry,quote_created,quote_sent,payment_pending,rejected,cancelled)')
+      .not('status', 'in', '(inquiry,quote_created,quote_sent,accepted,payment_pending,rejected,cancelled)')
       .gte('created_at', monthStart),
 
     // Today's dispatch: bookings with pickup_date = today, not cancelled/completed
