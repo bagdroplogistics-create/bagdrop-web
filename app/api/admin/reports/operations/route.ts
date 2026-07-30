@@ -125,17 +125,24 @@ export async function GET(req: NextRequest) {
   }
 
   const { searchParams } = req.nextUrl
-  // Upcoming-bookings window: today | tomorrow | next3 | next7 | custom
-  const rangeParam = searchParams.get('range') ?? 'next7'
+  // Upcoming-bookings window: all | today | tomorrow | next3 | next7 | custom
+  // Default is 'all' — a Confirmed booking with a pickup date further out
+  // than whatever the previous fixed default was (e.g. next month) must
+  // never silently vanish from this list just because of a lookahead
+  // window the admin didn't know was applied. Narrower presets remain
+  // available for the admin to opt into when they specifically want a
+  // near-term view.
+  const rangeParam = searchParams.get('range') ?? 'all'
   const fromParam  = searchParams.get('from')
   const toParam    = searchParams.get('to')
 
   const now        = new Date()
   const todayStr   = dateOnly(now)
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
+  const in7DaysStr = dateOnly(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000))
 
   let upcomingFrom = todayStr
-  let upcomingTo: string
+  let upcomingTo: string | null = null   // null = no upper bound ('all')
   if (rangeParam === 'today') {
     upcomingTo = todayStr
   } else if (rangeParam === 'tomorrow') {
@@ -144,12 +151,13 @@ export async function GET(req: NextRequest) {
   } else if (rangeParam === 'next3') {
     const t = new Date(now); t.setDate(t.getDate() + 3)
     upcomingTo = dateOnly(t)
+  } else if (rangeParam === 'next7') {
+    upcomingTo = in7DaysStr
   } else if (rangeParam === 'custom' && fromParam && toParam) {
     upcomingFrom = fromParam; upcomingTo = toParam
-  } else {
-    const t = new Date(now); t.setDate(t.getDate() + 7)
-    upcomingTo = dateOnly(t)
   }
+  // else: 'all' (or an unrecognized value) — upcomingTo stays null, no
+  // upper bound applied to the query below.
 
   // leads.deleted_at only exists once SOFT_DELETE_MIGRATION.sql has been run
   // (same defensive pattern as app/api/admin/leads/route.ts) — a missing
@@ -172,10 +180,25 @@ export async function GET(req: NextRequest) {
     return (data ?? []) as unknown as LeadRow[]
   }
 
+  // Upcoming CONFIRMED bookings in the requested window — see
+  // CONFIRMED_ONWARD_STATUSES above for why this isn't every booking. Built
+  // as a mutable query (same reassignment pattern already used by
+  // fetchLeadsInRange above and app/api/admin/leads/route.ts) so the upper
+  // bound can be conditionally omitted for the 'all' default instead of
+  // being forced to always cut off at some fixed date.
+  let upcomingQueryBuilder = supabaseAdmin
+    .from('bookings')
+    .select(BOOKING_SELECT)
+    .gte('pickup_date', upcomingFrom)
+    .in('status', CONFIRMED_ONWARD_STATUSES)
+  if (upcomingTo) upcomingQueryBuilder = upcomingQueryBuilder.lte('pickup_date', upcomingTo)
+  upcomingQueryBuilder = upcomingQueryBuilder.order('pickup_date', { ascending: true })
+
   const [
     leadsToday,
     leadsMonth,
     upcomingQ,
+    upcoming7dCountQ,
     allActiveQ,
     docsPending,
     revenueQ,
@@ -183,15 +206,21 @@ export async function GET(req: NextRequest) {
     fetchLeadsInRange(`${todayStr}T00:00:00`, `${todayStr}T23:59:59`),
     fetchLeadsInRange(monthStart),
 
-    // Upcoming CONFIRMED bookings in the requested window — see
-    // CONFIRMED_ONWARD_STATUSES above for why this isn't every booking.
+    upcomingQueryBuilder,
+
+    // Fixed 7-day count for the summary widget card — deliberately a
+    // separate query from the one above, so the widget always means "next
+    // 7 days" regardless of whichever range preset the admin currently has
+    // selected for the table (previously these shared one query, so the
+    // widget's number silently changed meaning whenever the table's range
+    // filter changed — e.g. showing "Today"'s count under a label that
+    // still said "7d").
     supabaseAdmin
       .from('bookings')
-      .select(BOOKING_SELECT)
-      .gte('pickup_date', upcomingFrom)
-      .lte('pickup_date', upcomingTo)
-      .in('status', CONFIRMED_ONWARD_STATUSES)
-      .order('pickup_date', { ascending: true }),
+      .select('id', { count: 'exact', head: true })
+      .gte('pickup_date', todayStr)
+      .lte('pickup_date', in7DaysStr)
+      .in('status', CONFIRMED_ONWARD_STATUSES),
 
     // Broad pull of everything not yet finished — Missed/Overdue, Today's Ops,
     // and several summary widgets all derive from this same set, so one query
@@ -357,7 +386,7 @@ export async function GET(req: NextRequest) {
     todays_inquiries:           leadsToday.length,
     todays_pickups:             todaysPickups.length,
     todays_deliveries:          todaysDeliveries.length,
-    upcoming_pickups_7d:        upcoming.length,
+    upcoming_pickups_7d:        upcoming7dCountQ.count ?? 0,
     pending_quotes:             todaysInquiriesTotals.pending_quotes,
     pending_payments:           allActive.filter(b => b.status === 'payment_pending').length,
     pending_driver_assign:      driverAssignPending,

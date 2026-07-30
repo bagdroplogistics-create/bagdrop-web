@@ -84,11 +84,12 @@ function daysUntil(pickupDate: string | null): number | null {
 }
 
 const RANGE_OPTS = [
-  { value: 'today',    label: 'Today' },
-  { value: 'tomorrow', label: 'Tomorrow' },
-  { value: 'next3',    label: 'Next 3 Days' },
-  { value: 'next7',    label: 'Next 7 Days' },
-  { value: 'custom',   label: 'Custom Range' },
+  { value: 'all',       label: 'All Upcoming' },
+  { value: 'today',     label: 'Today' },
+  { value: 'tomorrow',  label: 'Tomorrow' },
+  { value: 'next3',     label: 'Next 3 Days' },
+  { value: 'next7',     label: 'Next 7 Days' },
+  { value: 'custom',    label: 'Custom Range' },
 ]
 
 const TABS = [
@@ -107,7 +108,7 @@ export default function OperationsCenterPage() {
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
   const [tab, setTab]           = useState<TabKey>('inquiries')
-  const [range, setRange]       = useState('next7')
+  const [range, setRange]       = useState('all')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
 
@@ -464,7 +465,9 @@ export default function OperationsCenterPage() {
                       <button onClick={fetchData} className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600">Apply</button>
                     </div>
                   )}
-                  <span className="text-xs text-gray-400 ml-auto">{fmtDate(data.upcoming_range.from)} — {fmtDate(data.upcoming_range.to)}</span>
+                  <span className="text-xs text-gray-400 ml-auto">
+                    {fmtDate(data.upcoming_range.from)} — {data.upcoming_range.to ? fmtDate(data.upcoming_range.to) : 'no end date'}
+                  </span>
                 </div>
                 <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                   <div className="overflow-x-auto">
