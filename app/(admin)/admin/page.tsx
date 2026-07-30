@@ -1180,14 +1180,6 @@ export default function AdminDashboard() {
 
   if (!authed) return null
 
-  const statCards = [
-    { label: 'Total Bookings', value: stats?.total ?? 0,         icon: <Package className="h-5 w-5" />,     color: '#FF6300', bg: '#fff7f0' },
-    { label: 'New Inquiries',  value: stats?.new_inquiries ?? 0, icon: <AlertCircle className="h-5 w-5" />, color: '#d97706', bg: '#fef3c7' },
-    { label: 'In Progress',    value: stats?.in_progress ?? 0,   icon: <CheckCircle className="h-5 w-5" />, color: '#2563eb', bg: '#dbeafe' },
-    { label: 'In Transit',     value: stats?.in_transit ?? 0,    icon: <Truck className="h-5 w-5" />,       color: '#0891b2', bg: '#cffafe' },
-    { label: 'Delivered',      value: stats?.delivered ?? 0,     icon: <TrendingUp className="h-5 w-5" />,  color: '#16a34a', bg: '#dcfce7' },
-  ]
-
   // ── Pagination derived values ──────────────────────────────────
   const sortedBookings = sortBookings(bookings, sort)
   const totalPages     = Math.max(1, Math.ceil(sortedBookings.length / pageSize))
@@ -1214,19 +1206,6 @@ export default function AdminDashboard() {
       </div>
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
-
-        {/* Stat cards */}
-        <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-          {statCards.map(c => (
-            <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-500">{c.label}</p>
-                <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5">{c.icon}</div>
-              </div>
-              <p className="mt-2 text-2xl font-bold text-gray-900">{c.value}</p>
-            </div>
-          ))}
-        </div>
 
         {/* ── Booking Funnel — 12 clickable status cards ── */}
         <div className="mb-6">
