@@ -27,7 +27,7 @@ interface BookingLike {
   customer_name: string | null; customer_phone: string | null
   service_type: string | null; service_label: string | null
   from_city: string | null; to_city: string | null
-  pickup_date: string | null; delivery_date: string | null
+  pickup_date: string | null; delivery_date: string | null; time_slot: string | null
   total_bags: number | null; total_amount: number | null
   driver_name: string | null; created_at: string
 }
@@ -74,6 +74,12 @@ function fmtDate(d: string | null) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+function daysUntil(pickupDate: string | null): number | null {
+  if (!pickupDate) return null
+  const today = new Date(); today.setHours(0, 0, 0, 0)
+  const pickup = new Date(pickupDate + 'T00:00:00')
+  return Math.round((pickup.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
 
 const RANGE_OPTS = [
   { value: 'today',    label: 'Today' },
@@ -85,7 +91,7 @@ const RANGE_OPTS = [
 
 const TABS = [
   { key: 'inquiries', label: "Today's Inquiries",   icon: Inbox },
-  { key: 'upcoming',  label: 'Upcoming Bookings',    icon: CalendarClock },
+  { key: 'upcoming',  label: 'Upcoming Confirmed Bookings', icon: CalendarClock },
   { key: 'overdue',   label: 'Missed / Overdue',     icon: AlertOctagon },
   { key: 'ops',       label: "Today's Operations",   icon: ClipboardList },
 ] as const
@@ -201,7 +207,7 @@ export default function OperationsCenterPage() {
                 { label: "Today's Inquiries", value: data.widgets.todays_inquiries, color: '#2563eb', bg: '#dbeafe' },
                 { label: "Today's Pickups", value: data.widgets.todays_pickups, color: '#d97706', bg: '#fef3c7' },
                 { label: "Today's Deliveries", value: data.widgets.todays_deliveries, color: '#16a34a', bg: '#dcfce7' },
-                { label: 'Upcoming Pickups (7d)', value: data.widgets.upcoming_pickups_7d, color: '#0891b2', bg: '#cffafe' },
+                { label: 'Upcoming Confirmed Pickups (7d)', value: data.widgets.upcoming_pickups_7d, color: '#0891b2', bg: '#cffafe' },
                 { label: 'Pending Quotes', value: data.widgets.pending_quotes, color: '#7c3aed', bg: '#ede9fe' },
                 { label: 'Pending Payments', value: data.widgets.pending_payments, color: '#dc2626', bg: '#fee2e2' },
                 { label: 'Driver Assign Pending', value: data.widgets.pending_driver_assign, color: '#ea580c', bg: '#ffedd5' },
@@ -297,9 +303,12 @@ export default function OperationsCenterPage() {
               </div>
             )}
 
-            {/* ── Upcoming Bookings ── */}
+            {/* ── Upcoming Confirmed Bookings ── */}
             {tab === 'upcoming' && (
               <div>
+                <p className="mb-3 text-xs text-gray-400">
+                  Only bookings the customer has confirmed — quotes still awaiting acceptance, rejected quotes, and inquiries that never converted are excluded.
+                </p>
                 <div className="mb-3 flex flex-wrap items-center gap-2">
                   {RANGE_OPTS.map(o => (
                     <button
@@ -328,29 +337,40 @@ export default function OperationsCenterPage() {
                       <thead>
                         <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
                           <th className="px-4 py-2.5">Customer</th>
-                          <th className="px-4 py-2.5">Booking Date</th>
-                          <th className="px-4 py-2.5">Pickup Date</th>
-                          <th className="px-4 py-2.5">Delivery Date</th>
+                          <th className="px-4 py-2.5">Booking ID</th>
                           <th className="px-4 py-2.5">Service</th>
+                          <th className="px-4 py-2.5">Pickup Date</th>
+                          <th className="px-4 py-2.5">Pickup Time</th>
+                          <th className="px-4 py-2.5">Delivery Date</th>
                           <th className="px-4 py-2.5">Route</th>
                           <th className="px-4 py-2.5">Status</th>
+                          <th className="px-4 py-2.5">Driver</th>
+                          <th className="px-4 py-2.5">Days to Pickup</th>
                         </tr>
                       </thead>
                       <tbody>
                         {data.upcoming_bookings.length === 0 && (
-                          <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No bookings scheduled in this range.</td></tr>
+                          <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">No confirmed bookings scheduled in this range.</td></tr>
                         )}
-                        {data.upcoming_bookings.map(b => (
-                          <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                            <td className="px-4 py-3 font-medium text-gray-800">{b.customer_name ?? '—'}<div className="font-mono text-xs text-orange-600">{b.tracking_id}</div></td>
-                            <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(b.created_at)}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.delivery_date)}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
-                            <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
-                          </tr>
-                        ))}
+                        {data.upcoming_bookings.map(b => {
+                          const days = daysUntil(b.pickup_date)
+                          return (
+                            <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                              <td className="px-4 py-3 font-medium text-gray-800">{b.customer_name ?? '—'}</td>
+                              <td className="px-4 py-3 font-mono text-xs text-orange-600">{b.tracking_id}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600">{b.time_slot ?? '—'}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.delivery_date)}</td>
+                              <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
+                              <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
+                              <td className="px-4 py-3 text-xs text-gray-500">{b.driver_name ?? <span className="text-gray-300">Unassigned</span>}</td>
+                              <td className="px-4 py-3 text-xs font-semibold">
+                                {days === null ? '—' : days < 0 ? <span className="text-red-600">Overdue</span> : days === 0 ? <span className="text-orange-600">Today</span> : `${days}d`}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>

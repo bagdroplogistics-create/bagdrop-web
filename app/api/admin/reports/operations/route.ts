@@ -107,6 +107,18 @@ function dateOnly(d: Date): string {
 const LEAD_SELECT = 'id, lead_number, name, phone, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, assigned_to, booking_id, zoho_estimate_number, created_at'
 const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, time_slot, total_bags, total_amount, payment_status, driver_name, driver_phone, driver_details_sent_at, created_at, updated_at'
 
+// "Upcoming Confirmed Bookings" — operations only wants to see bookings the
+// customer has actually committed to (accepted the quote AND the booking has
+// been confirmed), not every quote in flight. Anything still at inquiry,
+// quote-created/sent, awaiting approval, or payment-pending is excluded —
+// those may never convert (customer rejects the quote, goes quiet, etc.) and
+// cluttering an operational "get ready for these pickups" view with them was
+// the exact complaint. Cancelled/rejected are excluded too. Derived from
+// STATUS_ORDER rather than hand-listed so any future status added after
+// 'confirmed' in that sequence is automatically included without a code
+// change here.
+const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
+
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -171,13 +183,14 @@ export async function GET(req: NextRequest) {
     fetchLeadsInRange(`${todayStr}T00:00:00`, `${todayStr}T23:59:59`),
     fetchLeadsInRange(monthStart),
 
-    // Upcoming bookings in the requested window
+    // Upcoming CONFIRMED bookings in the requested window — see
+    // CONFIRMED_ONWARD_STATUSES above for why this isn't every booking.
     supabaseAdmin
       .from('bookings')
       .select(BOOKING_SELECT)
       .gte('pickup_date', upcomingFrom)
       .lte('pickup_date', upcomingTo)
-      .not('status', 'in', '(cancelled,rejected)')
+      .in('status', CONFIRMED_ONWARD_STATUSES)
       .order('pickup_date', { ascending: true }),
 
     // Broad pull of everything not yet finished — Missed/Overdue, Today's Ops,
