@@ -786,8 +786,24 @@ export default function QuoteViewPage() {
   async function doMarkPickedUp()      { await patchBooking('mark_picked_up',     { status: 'picked_up' }) }
   async function doMarkInTransit()     { await patchBooking('mark_in_transit',    { status: 'in_transit' }) }
   async function doMarkOutForDelivery(){ await patchBooking('mark_out_delivery',  { status: 'out_for_delivery' }) }
-  async function doMarkDelivered()     { await patchBooking('mark_delivered',     { status: 'delivered' }) }
-  async function doMarkCompleted()     { await patchBooking('mark_completed',     { status: 'completed' }) }
+  // Non-blocking payment reminder — booking status (delivery lifecycle) and
+  // payment_status are tracked independently, and nothing else in this flow
+  // requires payment before delivery/completion (e.g. cash-on-delivery is
+  // legitimate). This only adds a confirm prompt so it isn't marked
+  // delivered/completed without anyone noticing payment is still pending;
+  // clicking OK proceeds exactly as before. Does not touch patchBooking,
+  // the status transition itself, or any other step in the workflow.
+  function paymentNotYetPaid(): boolean {
+    return !!booking && !['paid', 'approved_pending', 'refunded'].includes(booking.payment_status ?? 'pending')
+  }
+  async function doMarkDelivered() {
+    if (paymentNotYetPaid() && !window.confirm('Payment for this booking is not marked as Paid yet. Mark as Delivered anyway?')) return
+    await patchBooking('mark_delivered', { status: 'delivered' })
+  }
+  async function doMarkCompleted() {
+    if (paymentNotYetPaid() && !window.confirm('Payment for this booking is not marked as Paid yet. Mark as Completed anyway?')) return
+    await patchBooking('mark_completed', { status: 'completed' })
+  }
 
   // Airport Delivery only — validated server-side too (service_type gate,
   // required fields, dedup) in app/api/admin/bookings/[id]/route.ts. Sends
