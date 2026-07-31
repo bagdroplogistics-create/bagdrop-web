@@ -24,13 +24,19 @@ interface Payment {
   verified_at:       string | null
   refund_amount:     number | null
   created_at:        string
+  // Not a real row in `payments` -- derived from a confirmed booking that
+  // has no payment logged yet (see app/api/admin/payments/route.ts). Has no
+  // real payments.id to Verify/Refund against; the id is "booking:<uuid>"
+  // purely so the frontend has a stable React key.
+  is_synthetic?:     boolean
 }
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  pending:  { label: 'Pending',  color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
-  paid:     { label: 'Paid',     color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
-  failed:   { label: 'Failed',   color: '#dc2626', bg: '#fee2e2', icon: <XCircle className="h-3 w-3" /> },
-  refunded: { label: 'Refunded', color: '#7c3aed', bg: '#ede9fe', icon: <AlertCircle className="h-3 w-3" /> },
+  pending:          { label: 'Pending',          color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
+  approved_pending: { label: 'Approved (Unpaid)', color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
+  paid:             { label: 'Paid',              color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
+  failed:           { label: 'Failed',            color: '#dc2626', bg: '#fee2e2', icon: <XCircle className="h-3 w-3" /> },
+  refunded:         { label: 'Refunded',          color: '#7c3aed', bg: '#ede9fe', icon: <AlertCircle className="h-3 w-3" /> },
 }
 
 const METHOD_LABELS: Record<string, string> = {
@@ -54,10 +60,16 @@ function fmtDate(d: string | null) {
 function fmtRs(n: number) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
 
 // ── Add Payment Modal ────────────────────────────────────────────
-function AddPaymentModal({ adminKey, onSaved, onClose }: { adminKey: string; onSaved: () => void; onClose: () => void }) {
+interface PaymentFormPrefill {
+  booking_id?: string; customer_name?: string; customer_phone?: string
+  amount?: string; payment_status?: string; notes?: string
+}
+
+function AddPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey: string; initial?: PaymentFormPrefill; onSaved: () => void; onClose: () => void }) {
   const [form, setForm] = useState({
     booking_id: '', customer_name: '', customer_phone: '',
     amount: '', payment_method: 'upi', payment_status: 'pending', payment_reference: '', notes: '',
+    ...initial,
   })
   const [saving, setSaving] = useState(false)
   const [err, setErr]       = useState('')
@@ -84,7 +96,10 @@ function AddPaymentModal({ adminKey, onSaved, onClose }: { adminKey: string; onS
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
       <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl">
         <div className="flex items-center justify-between border-b border-gray-100 px-6 py-4">
-          <h2 className="text-lg font-bold text-gray-900">Record Payment</h2>
+          <div>
+            <h2 className="text-lg font-bold text-gray-900">{initial ? 'Log Payment for Booking' : 'Record Payment'}</h2>
+            {initial && <p className="mt-0.5 text-xs text-gray-400">Prefilled from a confirmed booking with no payment logged yet</p>}
+          </div>
           <button onClick={onClose}><X className="h-5 w-5 text-gray-400" /></button>
         </div>
         <div className="grid grid-cols-2 gap-4 px-6 py-5">
@@ -143,7 +158,20 @@ export default function PaymentsPage() {
   const [filter,    setFilter]    = useState('all')
   const [search,    setSearch]    = useState('')
   const [showModal, setShowModal] = useState(false)
+  const [modalPrefill, setModalPrefill] = useState<PaymentFormPrefill | undefined>(undefined)
   const [updating,  setUpdating]  = useState<string | null>(null)
+
+  function openLogPaymentModal(p: Payment) {
+    setModalPrefill({
+      booking_id: p.booking_id ?? '',
+      customer_name: p.customer_name,
+      customer_phone: p.customer_phone,
+      amount: String(p.amount),
+      payment_status: p.payment_status === 'paid' ? 'paid' : 'pending',
+      notes: 'Logged from confirmed booking (previously untracked in Payments)',
+    })
+    setShowModal(true)
+  }
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key')
@@ -189,14 +217,19 @@ export default function PaymentsPage() {
   }
 
   const totalPaid    = payments.filter(p => p.payment_status === 'paid').reduce((s, p) => s + Number(p.amount), 0)
-  const totalPending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + Number(p.amount), 0)
+  // Pending = confirmed/logged payments not yet paid and not refunded
+  // (pending + approved_pending) — same definition used by the Payment
+  // report in Reports & Analytics, so the two numbers agree.
+  const totalPending = payments.filter(p => p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
 
   if (!authed) return null
 
   return (
     <>
       {showModal && (
-        <AddPaymentModal adminKey={adminKey} onSaved={() => { setShowModal(false); fetchPayments() }} onClose={() => setShowModal(false)} />
+        <AddPaymentModal adminKey={adminKey} initial={modalPrefill}
+          onSaved={() => { setShowModal(false); setModalPrefill(undefined); fetchPayments() }}
+          onClose={() => { setShowModal(false); setModalPrefill(undefined) }} />
       )}
 
       <div className="border-b border-gray-100 bg-white px-6 py-4">
@@ -270,30 +303,46 @@ export default function PaymentsPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {payments.map(p => (
-                    <tr key={p.id} className="hover:bg-orange-50/30 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">{p.payment_id}</td>
+                    <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
+                      <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">
+                        {p.payment_id}
+                        {p.is_synthetic && (
+                          <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
+                            From Booking
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">{p.customer_name}</p>
                         <p className="text-xs text-gray-400">{p.customer_phone}</p>
                       </td>
                       <td className="px-4 py-3 font-bold text-gray-900">{fmtRs(p.amount)}</td>
                       <td className="px-4 py-3 text-gray-600">{METHOD_LABELS[p.payment_method] ?? p.payment_method}</td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{p.payment_reference || '—'}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{p.is_synthetic ? 'No payment logged yet' : (p.payment_reference || '—')}</td>
                       <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(p.created_at)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
-                          {p.payment_status === 'pending' && (
-                            <button onClick={() => verifyPayment(p.id)} disabled={updating === p.id}
-                              className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 hover:bg-green-100 disabled:opacity-40">
-                              {updating === p.id ? '…' : 'Verify'}
+                          {p.is_synthetic ? (
+                            <button onClick={() => openLogPaymentModal(p)}
+                              className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">
+                              Log Payment
                             </button>
-                          )}
-                          {p.payment_status === 'paid' && can('ISSUE_REFUND', role) && (
-                            <button onClick={() => refundPayment(p.id)} disabled={updating === p.id}
-                              className="rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:bg-purple-100 disabled:opacity-40">
-                              Refund
-                            </button>
+                          ) : (
+                            <>
+                              {p.payment_status === 'pending' && (
+                                <button onClick={() => verifyPayment(p.id)} disabled={updating === p.id}
+                                  className="rounded-lg bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-600 hover:bg-green-100 disabled:opacity-40">
+                                  {updating === p.id ? '…' : 'Verify'}
+                                </button>
+                              )}
+                              {p.payment_status === 'paid' && can('ISSUE_REFUND', role) && (
+                                <button onClick={() => refundPayment(p.id)} disabled={updating === p.id}
+                                  className="rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:bg-purple-100 disabled:opacity-40">
+                                  Refund
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       </td>
