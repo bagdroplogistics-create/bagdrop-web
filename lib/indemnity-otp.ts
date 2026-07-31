@@ -40,7 +40,13 @@ async function sendSmsOtp(mobileNumber: string, otp: string): Promise<{ ok: bool
       headers: { authorization: apiKey, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         route:   'q',
-        message: `${otp} is your Bagdrop verification code to sign your indemnity bond. Valid for 10 minutes. -Bagdrop`,
+        // The trailing "@bagdrop.co #123456" line is required by the Web
+        // OTP API (Chrome for Android) to auto-fill the code without the
+        // customer typing it — it's how the browser confirms the SMS is
+        // meant for this exact site. Must stay the last line, unchanged
+        // format, domain matching where this page is actually hosted. See
+        // the WebOTP effect in app/indemnity/[token]/page.tsx.
+        message: `${otp} is your Bagdrop verification code to sign your indemnity bond. Valid for 10 minutes.\n@bagdrop.co #${otp}`,
         numbers: digits,
         flash:   0,
       }),

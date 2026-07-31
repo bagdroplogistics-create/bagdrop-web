@@ -219,13 +219,18 @@ export default function IndemnityBondPage() {
     }
   }
 
-  async function verifyOtp() {
-    if (!otpChannel || !otpCode.trim()) return
+  // codeOverride lets the WebOTP autofill effect below verify immediately
+  // with the code it just read from the SMS, without waiting on a React
+  // state update to land first (setOtpCode is async/batched, so reading
+  // otpCode right after calling it can still see the old value).
+  async function verifyOtp(codeOverride?: string) {
+    const code = (codeOverride ?? otpCode).trim()
+    if (!otpChannel || !code) return
     setOtpVerifying(true); setOtpError(null)
     try {
       const r = await fetch(`/api/indemnity/${token}/otp/verify`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ type: otpChannel, otp: otpCode.trim() }),
+        body: JSON.stringify({ type: otpChannel, otp: code }),
       })
       const d = await r.json()
       if (!r.ok) throw new Error(d.error ?? 'Incorrect code')
@@ -236,6 +241,38 @@ export default function IndemnityBondPage() {
       setOtpVerifying(false)
     }
   }
+
+  // ── WebOTP auto-fill (mobile verification only) ────────────────────
+  // Once we've sent an SMS code, ask the browser to watch for it and hand
+  // us the code directly — supported on Chrome for Android (and Chrome-based
+  // browsers) via the Web OTP API. Requires the SMS text to end with a line
+  // like "@bagdrop.co #123456" (see lib/indemnity-otp.ts's sendSmsOtp) so
+  // the browser can confirm the code is meant for this site. No-ops
+  // silently everywhere else (desktop browsers, iOS Safari, unsupported
+  // browsers) — the customer just types the code manually there, exactly
+  // as before. iOS Safari still gets its own native one-time-code keyboard
+  // suggestion from the `autoComplete="one-time-code"` attribute on the
+  // input below, without needing this API at all.
+  useEffect(() => {
+    if (otpChannel !== 'phone' || !otpSent || otpVerified) return
+    if (typeof window === 'undefined' || !('OTPCredential' in window)) return
+
+    const ac = new AbortController()
+    const options = { otp: { transport: ['sms'] }, signal: ac.signal } as unknown as CredentialRequestOptions
+
+    navigator.credentials.get(options)
+      .then(cred => {
+        const code = (cred as unknown as { code?: string } | null)?.code
+        if (code) {
+          setOtpCode(code)
+          verifyOtp(code)
+        }
+      })
+      .catch(() => { /* dismissed / timed out / unsupported — manual entry still works */ })
+
+    return () => ac.abort()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [otpChannel, otpSent, otpVerified])
 
   async function submit() {
     if (!data) return
@@ -370,9 +407,10 @@ export default function IndemnityBondPage() {
                 Enter the 6-digit code sent to {otpSentTo ?? 'your ' + otpChannel}.
               </p>
               <input type="text" inputMode="numeric" maxLength={6} value={otpCode}
+                autoComplete="one-time-code"
                 onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
                 placeholder="000000" className={inputCls + ' text-center text-lg tracking-[0.4em] font-mono'} />
-              <button onClick={verifyOtp} disabled={otpVerifying || otpCode.trim().length < 4}
+              <button onClick={() => verifyOtp()} disabled={otpVerifying || otpCode.trim().length < 4}
                 className="w-full rounded-lg bg-orange-500 py-2.5 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-40">
                 {otpVerifying ? 'Verifying…' : 'Verify Code'}
               </button>

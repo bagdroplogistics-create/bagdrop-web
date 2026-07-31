@@ -29,7 +29,18 @@ export async function POST(
 
   const sendResult = await sendIndemnityOtp(type, contact)
   if (!sendResult.success) {
-    return NextResponse.json({ error: sendResult.error ?? 'Failed to send code. Please try again.' }, { status: 500 })
+    // Never forward the raw vendor error to the customer — it can contain
+    // internal account/billing details (e.g. Fast2SMS's own "complete a
+    // transaction of 100 INR" account-status message, which a customer
+    // signing a bond has no business seeing). Log the real reason for the
+    // team to act on, and steer the customer to the other channel instead
+    // of a dead end.
+    console.error(`[indemnity otp/send] ${type} send failed for booking ${booking.tracking_id}:`, sendResult.error)
+    return NextResponse.json({
+      error: type === 'phone'
+        ? 'We could not send an SMS code right now. Please use Email verification instead, or contact Bagdrop support.'
+        : 'We could not send an email code right now. Please try again in a moment, or contact Bagdrop support.',
+    }, { status: 500 })
   }
 
   await supabaseAdmin.from('indemnity_bonds').update({ otp_contact: contact }).eq('id', bond.id)
