@@ -86,7 +86,17 @@ const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, 
 const PAYMENT_SELECT = 'id, payment_id, booking_id, customer_name, customer_phone, amount, payment_method, payment_status, payment_reference, verified_by, created_at'
 const INDEMNITY_SELECT = 'id, booking_id, document_status, submitted_at, reviewed_at, reviewed_by, aadhaar_number, passport_number, created_at'
 
-async function fetchLeads(f: Filters, warnings: string[]): Promise<LeadRow[]> {
+// Builds a fresh leads query builder every time it's called — deliberately
+// NOT reused/mutated across the "try with deleted_at" / "retry without
+// deleted_at" attempts below. supabase-js's PostgrestFilterBuilder mutates
+// itself in place rather than returning an immutable copy, so calling
+// .order()/.limit() again on a builder that already had .is('deleted_at',
+// null) chained onto it still carries that filter — the retry would
+// silently fail the exact same way. app/api/admin/reports/operations/route.ts
+// avoids this by rebuilding the query from scratch for its retry; this does
+// the same via a shared builder function instead of duplicating the filter
+// wiring twice.
+function buildLeadsQuery(f: Filters) {
   let q = supabaseAdmin.from('leads').select(LEAD_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
@@ -94,9 +104,13 @@ async function fetchLeads(f: Filters, warnings: string[]): Promise<LeadRow[]> {
   if (f.partner) q = q.eq('partner_name', f.partner)
   if (f.service) q = q.or(`service_interest.eq.${f.service},service_type.eq.${f.service}`)
   if (f.city) q = q.or(`from_city.eq.${f.city},to_city.eq.${f.city}`)
-  let { data, error } = await q.is('deleted_at', null).order('created_at', { ascending: false }).limit(5000)
+  return q
+}
+
+async function fetchLeads(f: Filters, warnings: string[]): Promise<LeadRow[]> {
+  let { data, error } = await buildLeadsQuery(f).is('deleted_at', null).order('created_at', { ascending: false }).limit(5000)
   if (error?.message?.includes('deleted_at')) {
-    const retry = await q.order('created_at', { ascending: false }).limit(5000)
+    const retry = await buildLeadsQuery(f).order('created_at', { ascending: false }).limit(5000)
     data = retry.data; error = retry.error
   }
   if (error) {
