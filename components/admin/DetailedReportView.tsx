@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Download, FileSpreadsheet, FileText, Printer, RefreshCw, Filter as FilterIcon } from 'lucide-react'
+import { Download, FileSpreadsheet, FileText, Printer, RefreshCw, Filter as FilterIcon, AlertTriangle } from 'lucide-react'
 import { downloadCSV, downloadExcel, downloadPDF, printReport, type ReportColumn, type ReportRow } from '@/lib/report-export'
 
 // Generic filterable, exportable report table — shared by all 9 "detailed
@@ -32,7 +32,7 @@ interface Props {
   emptyRowLinkBase?: string  // href prefix, e.g. '/admin/quotes/view/'
 }
 
-interface ReportResponse { columns: ReportColumn[]; rows: ReportRow[]; summary: { label: string; value: string }[] }
+interface ReportResponse { columns: ReportColumn[]; rows: ReportRow[]; summary: { label: string; value: string }[]; warnings?: string[]; error?: string }
 
 export default function DetailedReportView({ adminKey, type, title, subtitle, filters, emptyRowLinkKey, emptyRowLinkBase }: Props) {
   const router = useRouter()
@@ -62,7 +62,12 @@ export default function DetailedReportView({ adminKey, type, title, subtitle, fi
     if (city) qs.set('city', city)
     try {
       const res = await fetch('/api/admin/reports/detailed?' + qs.toString())
-      if (res.ok) setData(await res.json())
+      const json = await res.json().catch(() => null)
+      if (json) {
+        setData(res.ok ? json : { columns: [], rows: [], summary: [], error: json.error ?? 'Failed to load report' })
+      } else {
+        setData({ columns: [], rows: [], summary: [], error: 'Failed to load report — no response from server' })
+      }
     } finally {
       setLoading(false)
     }
@@ -207,11 +212,31 @@ export default function DetailedReportView({ adminKey, type, title, subtitle, fi
         </div>
       )}
 
+      {data?.error && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <span><strong>Report failed to load.</strong> {data.error}</span>
+        </div>
+      )}
+      {data?.warnings && data.warnings.length > 0 && (
+        <div className="mb-4 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <div>
+            <strong>Some data may be missing:</strong>
+            <ul className="mt-1 list-disc pl-4">
+              {data.warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          </div>
+        </div>
+      )}
+
       <div className="overflow-x-auto rounded-xl border border-gray-100 bg-white shadow-sm">
         {loading ? (
           <div className="p-8 text-center text-xs text-gray-400">Loading…</div>
         ) : !data || data.rows.length === 0 ? (
-          <div className="p-8 text-center text-xs text-gray-400">No data for the selected filters.</div>
+          <div className="p-8 text-center text-xs text-gray-400">
+            {data?.error ? 'Could not load data — see error above.' : 'No data for the selected filters.'}
+          </div>
         ) : (
           <table className="w-full text-sm">
             <thead>

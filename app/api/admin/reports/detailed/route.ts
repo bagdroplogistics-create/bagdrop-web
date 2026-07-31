@@ -24,7 +24,7 @@ export const runtime = 'nodejs'
 type Row = Record<string, unknown>
 interface Column { key: string; label: string }
 interface SummaryItem { label: string; value: string }
-interface ReportResult { columns: Column[]; rows: Row[]; summary: SummaryItem[] }
+interface ReportResult { columns: Column[]; rows: Row[]; summary: SummaryItem[]; warnings?: string[] }
 
 interface Filters {
   from:    string | null
@@ -47,7 +47,7 @@ function toDateTimeEnd(dateStr: string): string {
 // ── Row interfaces (mirrors the field vocabulary already established in
 //    app/api/admin/reports/operations/route.ts) ────────────────────────────
 interface LeadRow {
-  id: string; lead_number: string | null; name: string; phone: string; email: string | null
+  id: string; lead_number: string | null; name: string; phone: string
   source: string | null; partner_name: string | null; service_interest: string | null; service_type: string | null
   from_city: string | null; to_city: string | null; pickup_date: string | null
   status: string; booking_id: string | null; created_at: string
@@ -74,12 +74,19 @@ interface IndemnityRow {
   aadhaar_number: string | null; passport_number: string | null; created_at: string
 }
 
-const LEAD_SELECT = 'id, lead_number, name, phone, email, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, booking_id, created_at'
+// Matches the exact field list already proven working in
+// app/api/admin/reports/operations/route.ts's LEAD_SELECT (minus
+// assigned_to/zoho_estimate_number, which this report doesn't need) —
+// deliberately not adding unverified columns (e.g. `email`) that aren't
+// confirmed present on the production leads table; an unrecognized column
+// in a .select() fails the whole query, which previously came back as a
+// silent empty result here rather than a visible error.
+const LEAD_SELECT = 'id, lead_number, name, phone, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, booking_id, created_at'
 const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, total_amount, partner_name, driver_name, driver_phone, vehicle_number, driver_details_sent_at, created_at, updated_at'
 const PAYMENT_SELECT = 'id, payment_id, booking_id, customer_name, customer_phone, amount, payment_method, payment_status, payment_reference, verified_by, created_at'
 const INDEMNITY_SELECT = 'id, booking_id, document_status, submitted_at, reviewed_at, reviewed_by, aadhaar_number, passport_number, created_at'
 
-async function fetchLeads(f: Filters): Promise<LeadRow[]> {
+async function fetchLeads(f: Filters, warnings: string[]): Promise<LeadRow[]> {
   let q = supabaseAdmin.from('leads').select(LEAD_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
@@ -92,11 +99,15 @@ async function fetchLeads(f: Filters): Promise<LeadRow[]> {
     const retry = await q.order('created_at', { ascending: false }).limit(5000)
     data = retry.data; error = retry.error
   }
-  if (error) { console.warn('[reports/detailed] leads query failed:', error.message); return [] }
+  if (error) {
+    console.warn('[reports/detailed] leads query failed:', error.message)
+    warnings.push(`Leads query failed: ${error.message}`)
+    return []
+  }
   return (data ?? []) as unknown as LeadRow[]
 }
 
-async function fetchBookings(f: Filters): Promise<BookingRow[]> {
+async function fetchBookings(f: Filters, warnings: string[]): Promise<BookingRow[]> {
   let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
@@ -105,7 +116,11 @@ async function fetchBookings(f: Filters): Promise<BookingRow[]> {
   if (f.partner) q = q.eq('partner_name', f.partner)
   if (f.city) q = q.or(`from_city.eq.${f.city},to_city.eq.${f.city}`)
   const { data, error } = await q.order('created_at', { ascending: false }).limit(5000)
-  if (error) { console.warn('[reports/detailed] bookings query failed:', error.message); return [] }
+  if (error) {
+    console.warn('[reports/detailed] bookings query failed:', error.message)
+    warnings.push(`Bookings query failed: ${error.message}`)
+    return []
+  }
   return (data ?? []) as unknown as BookingRow[]
 }
 
@@ -134,7 +149,8 @@ function lastHistoryEntryTo(history: unknown, targetStatus: string): { timestamp
 // ── Report builders ─────────────────────────────────────────────────────
 
 async function buildInquirySource(f: Filters): Promise<ReportResult> {
-  const leads = await fetchLeads(f)
+  const warnings: string[] = []
+  const leads = await fetchLeads(f, warnings)
   const columns: Column[] = [
     { key: 'lead_number', label: 'Lead #' }, { key: 'name', label: 'Name' }, { key: 'phone', label: 'Phone' },
     { key: 'source', label: 'Source' }, { key: 'partner_name', label: 'Partner' },
@@ -161,11 +177,12 @@ async function buildInquirySource(f: Filters): Promise<ReportResult> {
     { label: 'Conversion Rate', value: leads.length ? `${Math.round((converted / leads.length) * 1000) / 10}%` : '0%' },
     ...topSources.map(([src, ct]) => ({ label: src, value: String(ct) })),
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildBookingStatus(f: Filters): Promise<ReportResult> {
-  const bookings = await fetchBookings(f)
+  const warnings: string[] = []
+  const bookings = await fetchBookings(f, warnings)
   const leadMap = await leadIdsByBooking(bookings.map(b => b.id))
   const columns: Column[] = [
     { key: 'tracking_id', label: 'Tracking ID' }, { key: 'customer_name', label: 'Customer' },
@@ -194,11 +211,12 @@ async function buildBookingStatus(f: Filters): Promise<ReportResult> {
     { label: 'Total Value', value: fmtRs(totalRevenue) },
     ...topStatuses.map(([st, ct]) => ({ label: st.replace(/_/g, ' '), value: String(ct) })),
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildRoutePerformance(f: Filters): Promise<ReportResult> {
-  const bookings = await fetchBookings(f)
+  const warnings: string[] = []
+  const bookings = await fetchBookings(f, warnings)
   const columns: Column[] = [
     { key: 'route', label: 'Route' }, { key: 'bookings', label: 'Bookings' },
     { key: 'revenue', label: 'Revenue' }, { key: 'avg_order_value', label: 'Avg Order Value' },
@@ -223,11 +241,12 @@ async function buildRoutePerformance(f: Filters): Promise<ReportResult> {
     { label: 'Total Revenue', value: fmtRs(totalRevenue) },
     { label: 'Top Route', value: rows[0]?.route as string ?? '—' },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildPartner(f: Filters): Promise<ReportResult> {
-  const leads = (await fetchLeads(f)).filter(l => l.partner_name)
+  const warnings: string[] = []
+  const leads = (await fetchLeads(f, warnings)).filter(l => l.partner_name)
   const bookingIds = leads.map(l => l.booking_id).filter((id): id is string => !!id)
   let revenueByBooking: Record<string, number> = {}
   if (bookingIds.length > 0) {
@@ -260,11 +279,12 @@ async function buildPartner(f: Filters): Promise<ReportResult> {
     { label: 'Total Leads', value: String(leads.length) },
     { label: 'Total Revenue', value: fmtRs(Object.values(map).reduce((s, p) => s + p.revenue, 0)) },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildCustomer(f: Filters): Promise<ReportResult> {
-  const bookings = (await fetchBookings(f)).filter(b => b.status !== 'cancelled' && b.customer_phone)
+  const warnings: string[] = []
+  const bookings = (await fetchBookings(f, warnings)).filter(b => b.status !== 'cancelled' && b.customer_phone)
   const columns: Column[] = [
     { key: 'customer_name', label: 'Customer Name' }, { key: 'customer_phone', label: 'Phone' },
     { key: 'customer_email', label: 'Email' }, { key: 'total_bookings', label: 'Bookings' },
@@ -291,16 +311,17 @@ async function buildCustomer(f: Filters): Promise<ReportResult> {
     { label: 'Total Spent', value: fmtRs(totalSpent) },
     { label: 'Repeat Customers', value: String(Object.values(map).filter(c => c.count > 1).length) },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildPayment(f: Filters): Promise<ReportResult> {
+  const warnings: string[] = []
   let q = supabaseAdmin.from('payments').select(PAYMENT_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
   if (f.status) q = q.eq('payment_status', f.status)
   const { data, error } = await q.order('created_at', { ascending: false }).limit(5000)
-  if (error) console.warn('[reports/detailed] payments query failed:', error.message)
+  if (error) { console.warn('[reports/detailed] payments query failed:', error.message); warnings.push(`Payments query failed: ${error.message}`) }
   const payments = (error ? [] : (data ?? [])) as unknown as PaymentRow[]
 
   const bookingIds = payments.map(p => p.booking_id).filter((id): id is string => !!id)
@@ -337,10 +358,11 @@ async function buildPayment(f: Filters): Promise<ReportResult> {
     { label: 'Pending', value: fmtRs(pending) },
     { label: 'Refunded', value: fmtRs(refunded) },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildDriverOps(f: Filters): Promise<ReportResult> {
+  const warnings: string[] = []
   let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT)
   // Ops cares about pickup date, not creation date — mirrors the "Pickup
   // Today" redefinition already applied to the Operations Center.
@@ -351,7 +373,7 @@ async function buildDriverOps(f: Filters): Promise<ReportResult> {
   if (f.city) q = q.or(`from_city.eq.${f.city},to_city.eq.${f.city}`)
   q = q.not('status', 'in', '(inquiry,quote_created,quote_sent,accepted,cancelled,rejected)')
   const { data, error } = await q.order('pickup_date', { ascending: true }).limit(5000)
-  if (error) console.warn('[reports/detailed] driver-ops query failed:', error.message)
+  if (error) { console.warn('[reports/detailed] driver-ops query failed:', error.message); warnings.push(`Bookings query failed: ${error.message}`) }
   const bookings = (error ? [] : (data ?? [])) as unknown as BookingRow[]
 
   const columns: Column[] = [
@@ -374,16 +396,17 @@ async function buildDriverOps(f: Filters): Promise<ReportResult> {
     { label: 'Driver Assigned', value: String(bookings.length - unassigned) },
     { label: 'Driver Unassigned', value: String(unassigned) },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildDocument(f: Filters): Promise<ReportResult> {
+  const warnings: string[] = []
   let q = supabaseAdmin.from('indemnity_bonds').select(INDEMNITY_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
   if (f.status) q = q.eq('document_status', f.status)
   const { data, error } = await q.order('created_at', { ascending: false }).limit(5000)
-  if (error) console.warn('[reports/detailed] indemnity_bonds query failed (table may not exist yet):', error.message)
+  if (error) { console.warn('[reports/detailed] indemnity_bonds query failed (table may not exist yet):', error.message); warnings.push(`Indemnity bonds query failed: ${error.message}`) }
   const docs = (error ? [] : (data ?? [])) as unknown as IndemnityRow[]
 
   const bookingIds = docs.map(d => d.booking_id).filter(Boolean)
@@ -413,13 +436,14 @@ async function buildDocument(f: Filters): Promise<ReportResult> {
     { label: 'Documents', value: String(docs.length) },
     ...Object.entries(byStatus).map(([st, ct]) => ({ label: st.replace(/_/g, ' '), value: String(ct) })),
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 async function buildCancellation(f: Filters): Promise<ReportResult> {
+  const warnings: string[] = []
   const cancelledFilters: Filters = { ...f, status: 'cancelled' }
-  const bookings = await fetchBookings(cancelledFilters)
-  const allInRange = await fetchBookings(f) // for the cancellation-rate denominator
+  const bookings = await fetchBookings(cancelledFilters, warnings)
+  const allInRange = await fetchBookings(f, warnings) // for the cancellation-rate denominator
 
   const columns: Column[] = [
     { key: 'tracking_id', label: 'Tracking ID' }, { key: 'customer_name', label: 'Customer' },
@@ -444,7 +468,7 @@ async function buildCancellation(f: Filters): Promise<ReportResult> {
     { label: 'Revenue Lost', value: fmtRs(lostRevenue) },
     { label: 'Cancellation Rate', value: `${rate}%` },
   ]
-  return { columns, rows, summary }
+  return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
 const BUILDERS: Record<string, (f: Filters) => Promise<ReportResult>> = {
