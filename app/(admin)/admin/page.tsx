@@ -1093,7 +1093,7 @@ export default function AdminDashboard() {
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [editTarget, setEditTarget]   = useState<Booking | null>(null)
   const [crmStats, setCrmStats]       = useState<{
-    total_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number
+    total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number
   } | null>(null)
   const [tripStats, setTripStats]     = useState<{
     total: number; active: number; delivered: number
@@ -1144,13 +1144,21 @@ export default function AdminDashboard() {
     ])
     if (sr.ok) setStats(await sr.json())
     if (br.ok) setBookings((await br.json()).bookings ?? [])
-    if (cr.ok) setCrmStats(await cr.json())
+    let crmData: { total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number } | null = null
+    if (cr.ok) { crmData = await cr.json(); setCrmStats(crmData) }
     if (allR.ok) {
       const allData = await allR.json()
       const counts: Record<string, number> = {}
       for (const b of (allData.bookings ?? [])) {
         counts[b.status] = (counts[b.status] ?? 0) + 1
       }
+      // "New Inquiries" previously only counted bookings already sitting at
+      // status='inquiry' — but a booking row doesn't exist until a quote is
+      // created, so every lead that hasn't reached quote-creation yet (the
+      // majority of Total Leads) was invisible on this dashboard. Folding in
+      // leads with no linked booking makes this card, and the funnel as a
+      // whole, reconcile with the Total Leads count shown right below it.
+      if (crmData) counts['inquiry'] = (counts['inquiry'] ?? 0) + crmData.unbooked_leads
       setStatusCounts(counts)
     }
     if (tr.ok) {
@@ -1223,7 +1231,17 @@ export default function AdminDashboard() {
               { key: 'rejected',      label: 'Quotes Rejected', color: '#dc2626', bg: '#fee2e2' },
               { key: 'payment_pending', label: 'Payment Pending', color: '#d97706', bg: '#fef3c7' },
             ].map(c => (
-              <button key={c.key} onClick={() => { setFilter(c.key); setPhaseFilter('all') }}
+              <button key={c.key}
+                onClick={() => {
+                  // "New Inquiries" now includes leads that don't have a
+                  // booking row yet at all (see fetchData above) — the
+                  // bookings table this page filters can't show those, so
+                  // send that one card to the Leads list instead of trying
+                  // to filter a table that's structurally missing most of
+                  // what the count represents.
+                  if (c.key === 'inquiry') { router.push('/admin/leads'); return }
+                  setFilter(c.key); setPhaseFilter('all')
+                }}
                 className={`rounded-xl border p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow ${
                   filter === c.key ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-300' : 'border-gray-100 bg-white'
                 }`}>
@@ -1231,6 +1249,7 @@ export default function AdminDashboard() {
                 <p className="mt-1 text-xl font-bold" style={{ color: c.color }}>
                   {statusCounts[c.key] ?? 0}
                 </p>
+                {c.key === 'inquiry' && <p className="mt-0.5 text-[9px] text-gray-400">Includes not-yet-quoted leads</p>}
               </button>
             ))}
           </div>

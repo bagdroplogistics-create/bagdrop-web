@@ -12,9 +12,19 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
-  const [leadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
+  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
     // Total leads count
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
+
+    // Leads with no booking created yet at all — true "not even quoted"
+    // inquiries. The Booking Funnel on the dashboard only counts rows in
+    // `bookings`, which don't exist until a quote is generated for a lead,
+    // so this population was previously invisible everywhere on the
+    // dashboard even though it's the majority of Total Leads. Folded into
+    // the funnel's "New Inquiries" card (see app/(admin)/admin/page.tsx)
+    // so the funnel and Total Leads describe the same underlying set of
+    // inquiries instead of two different ones.
+    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('booking_id', null),
 
     // Pending quotes (draft or sent)
     supabaseAdmin
@@ -22,28 +32,28 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .in('status', ['draft', 'sent']),
 
-    // Revenue this month.
-    // Was: .in('status', ['confirmed', 'picked_up', 'in_transit', 'delivered'])
-    // That whitelist silently excluded every other post-payment status —
-    // most notably 'completed' (a booking's actual terminal state), but also
-    // 'payment_received', 'payment_approved', 'invoice_generated',
-    // 'invoice_sent', 'pickup_scheduled', 'out_for_delivery',
-    // 'driver_details_shared', and 'trip_created' — so a booking that had
-    // genuinely been paid for and finished contributed nothing to revenue
-    // just because its exact status string wasn't one of those four.
-    // Flipped to a blacklist of the pre-revenue stages instead. First pass
-    // missed 'accepted' — STATUS_ORDER puts it BEFORE payment_pending (quote
-    // accepted, no money collected yet), so it was wrongly counted as
-    // revenue too, inflating this figure above what was actually paid for.
-    // Excluded now alongside the rest of the pre-payment stages; everything
-    // from 'payment_pending' onward except a rejected/cancelled booking
-    // counts. Adjust this list if "revenue" should instead only be
-    // recognized once payment is actually received (i.e. exclude
-    // 'payment_pending' and 'confirmed' too, starting at 'payment_received').
+    // Revenue this month = value of bookings that came in this month AND
+    // have actually been paid for.
+    // Was: .not('status', 'in', '(inquiry,quote_created,quote_sent,accepted,
+    // payment_pending,rejected,cancelled)') — i.e. "status has progressed
+    // past payment_pending," which is NOT the same thing as "payment was
+    // actually received." A booking can advance all the way to
+    // 'delivered'/'completed' via the delivery lifecycle without
+    // payment_status ever being set to 'paid' (see the payment_status
+    // backfill done for exactly this reason) — that inflated this figure
+    // with bookings that hadn't actually been paid for. Switched to
+    // filtering on bookings.payment_status = 'paid' directly, which is now
+    // the single source of truth for "has this been paid" used consistently
+    // across the Payment report, the CRM Payments page, and here.
+    // "This month" is still based on when the booking/inquiry was created,
+    // not when payment was marked — i.e. this is "revenue from this
+    // month's inquiries," not "cash collected this month" (a booking
+    // created in June and paid in July counts toward June's revenue, not
+    // July's, since its inquiry happened in June).
     supabaseAdmin
       .from('bookings')
       .select('total_amount')
-      .not('status', 'in', '(inquiry,quote_created,quote_sent,accepted,payment_pending,rejected,cancelled)')
+      .eq('payment_status', 'paid')
       .gte('created_at', monthStart),
 
     // Today's dispatch: bookings with pickup_date = today, not cancelled/completed
@@ -60,9 +70,10 @@ export async function GET(req: NextRequest) {
   )
 
   return NextResponse.json({
-    total_leads:        leadsRes.count    ?? 0,
-    pending_quotes:     quotesRes.count   ?? 0,
-    today_dispatch:     dispatchRes.count ?? 0,
+    total_leads:        leadsRes.count        ?? 0,
+    unbooked_leads:      unbookedLeadsRes.count ?? 0,
+    pending_quotes:     quotesRes.count       ?? 0,
+    today_dispatch:     dispatchRes.count     ?? 0,
     revenue_this_month: revenue,
   })
 }
