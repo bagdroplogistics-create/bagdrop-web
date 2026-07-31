@@ -16,6 +16,7 @@ const NAV = [
     items: [
       { label: 'Dashboard & Bookings', href: '/admin',             icon: LayoutDashboard },
       { label: 'Trip Sheets',          href: '/admin/trip-sheets', icon: Truck           },
+      { label: 'LR / GC',              href: '/admin/lrs',         icon: FileText        },
     ],
   },
   {
@@ -39,6 +40,7 @@ const NAV = [
     group: 'Configuration',
     items: [
       { label: 'Route Pricing', href: '/admin/route-pricing', icon: Map },
+      { label: 'LR Route Master', href: '/admin/lr-routes',   icon: Map },
     ],
   },
 ]

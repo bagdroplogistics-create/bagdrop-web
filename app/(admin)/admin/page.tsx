@@ -1102,6 +1102,11 @@ export default function AdminDashboard() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  // Additive: "Generate LR" quick action from the expanded booking row —
+  // tracks which booking's LR is currently being generated so only that
+  // row's button shows a loading state. See LR_MIGRATION.sql / POST
+  // /api/admin/lrs — does not touch any existing booking status/workflow logic.
+  const [generatingLr, setGeneratingLr] = useState<string | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -1184,6 +1189,30 @@ export default function AdminDashboard() {
   function formatDate(d: string | null) {
     if (!d) return '—'
     return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+  }
+
+  // ── Additive: quick "Generate LR" action from the expanded row ─────
+  // Auto-fills consignor/consignee/route/packages straight from this
+  // booking (POST /api/admin/lrs, booking_id path — see that route for the
+  // auto-fill logic) and jumps to the new LR's detail page to finish any
+  // remaining fields (charges, vehicle, etc.). Does not change booking
+  // status or touch any other booking field — purely additive alongside
+  // the existing Edit Booking / Manage in Leads actions.
+  async function generateLr(bookingId: string) {
+    setGeneratingLr(bookingId)
+    try {
+      const res = await fetch('/api/admin/lrs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_id: bookingId }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error ?? 'Could not generate LR'); setGeneratingLr(null); return }
+      router.push(`/admin/lrs/${d.lr.id}`)
+    } catch {
+      alert('Network error — please try again')
+      setGeneratingLr(null)
+    }
   }
 
   if (!authed) return null
@@ -1481,6 +1510,15 @@ export default function AdminDashboard() {
                                     <FileText className="h-3.5 w-3.5" />
                                     Manage in Leads →
                                   </Link>
+                                  {/* Additive: generate an LR / GC for this booking —
+                                      does not touch booking status or any existing action. */}
+                                  <button
+                                    onClick={e => { e.stopPropagation(); generateLr(b.id) }}
+                                    disabled={generatingLr === b.id}
+                                    className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 shadow-sm hover:bg-gray-50 hover:border-orange-300 hover:text-orange-600 transition-colors disabled:opacity-50">
+                                    <Truck className="h-3.5 w-3.5" />
+                                    {generatingLr === b.id ? 'Generating LR…' : 'Generate LR'}
+                                  </button>
                                 </div>
                               </div>
                             </div>
