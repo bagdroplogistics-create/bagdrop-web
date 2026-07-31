@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 
 export const runtime = 'nodejs'
 
@@ -58,15 +59,10 @@ interface BookingRow {
   service_type: string | null; service_label: string | null
   from_city: string | null; to_city: string | null; pickup_date: string | null; delivery_date: string | null
   total_amount: number | null; partner_name: string | null
+  payment_status: string | null; payment_method: string | null
   driver_name: string | null; driver_phone: string | null; vehicle_number: string | null
   driver_details_sent_at: string | null
   created_at: string; updated_at: string | null
-}
-interface PaymentRow {
-  id: string; payment_id: string | null; booking_id: string | null
-  customer_name: string | null; customer_phone: string | null
-  amount: number | null; payment_method: string | null; payment_status: string | null
-  payment_reference: string | null; verified_by: string | null; created_at: string
 }
 interface IndemnityRow {
   id: string; booking_id: string; document_status: string
@@ -82,8 +78,14 @@ interface IndemnityRow {
 // in a .select() fails the whole query, which previously came back as a
 // silent empty result here rather than a visible error.
 const LEAD_SELECT = 'id, lead_number, name, phone, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, booking_id, created_at'
-const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, total_amount, partner_name, driver_name, driver_phone, vehicle_number, driver_details_sent_at, created_at, updated_at'
-const PAYMENT_SELECT = 'id, payment_id, booking_id, customer_name, customer_phone, amount, payment_method, payment_status, payment_reference, verified_by, created_at'
+const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, total_amount, partner_name, payment_status, payment_method, driver_name, driver_phone, vehicle_number, driver_details_sent_at, created_at, updated_at'
+
+// "Confirmed or later" in the main booking lifecycle — same slice used by
+// app/api/admin/reports/operations/route.ts's CONFIRMED_ONWARD_STATUSES.
+// The Payment report only cares about bookings the customer has actually
+// committed to; a quote still sitting at quote_sent/payment_pending isn't
+// a "confirmed booking" yet even though money may already be moving.
+const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
 const INDEMNITY_SELECT = 'id, booking_id, document_status, submitted_at, reviewed_at, reviewed_by, aadhaar_number, passport_number, created_at'
 
 // Builds a fresh leads query builder every time it's called — deliberately
@@ -328,49 +330,65 @@ async function buildCustomer(f: Filters): Promise<ReportResult> {
   return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
+// Payment report — driven by CONFIRMED-ONWARD BOOKINGS and their own
+// bookings.payment_status field, not the `payments` table. Rebuilt per
+// explicit request: the payments-table version undercounted, because not
+// every confirmed booking has a row in `payments` (e.g. bookings marked
+// "approved without payment" — payment_status='approved_pending' — never
+// get a payments record at all). This version guarantees every confirmed
+// booking is represented once, so "Pending" reliably means "money owed on
+// bookings we've already committed to," not "payments we happened to log."
+// bookings.payment_status values in production (confirmed by grepping every
+// write site): 'paid', 'pending', 'approved_pending', 'refunded'.
 async function buildPayment(f: Filters): Promise<ReportResult> {
   const warnings: string[] = []
-  let q = supabaseAdmin.from('payments').select(PAYMENT_SELECT)
+  let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
+  if (f.service) q = q.eq('service_type', f.service)
+  if (f.partner) q = q.eq('partner_name', f.partner)
+  // `status` filter on this tab means payment_status (paid/pending/
+  // approved_pending/refunded) — distinct from the booking lifecycle status
+  // used by every other report, per the Payment tab's own filter options.
   if (f.status) q = q.eq('payment_status', f.status)
+  q = q.in('status', CONFIRMED_ONWARD_STATUSES)
   const { data, error } = await q.order('created_at', { ascending: false }).limit(5000)
-  if (error) { console.warn('[reports/detailed] payments query failed:', error.message); warnings.push(`Payments query failed: ${error.message}`) }
-  const payments = (error ? [] : (data ?? [])) as unknown as PaymentRow[]
-
-  const bookingIds = payments.map(p => p.booking_id).filter((id): id is string => !!id)
-  let trackingByBooking: Record<string, string> = {}
-  if (bookingIds.length > 0) {
-    const { data: bkData } = await supabaseAdmin.from('bookings').select('id, tracking_id').in('id', bookingIds)
-    const rows = (bkData ?? []) as unknown as Array<{ id: string; tracking_id: string }>
-    trackingByBooking = Object.fromEntries(rows.map(r => [r.id, r.tracking_id]))
+  if (error) {
+    console.warn('[reports/detailed] payment (bookings) query failed:', error.message)
+    warnings.push(`Bookings query failed: ${error.message}`)
   }
+  const bookings = (error ? [] : (data ?? [])) as unknown as BookingRow[]
 
   const columns: Column[] = [
-    { key: 'payment_id', label: 'Payment ID' }, { key: 'tracking_id', label: 'Booking' },
-    { key: 'customer_name', label: 'Customer' }, { key: 'amount', label: 'Amount' },
-    { key: 'payment_method', label: 'Method' }, { key: 'payment_status', label: 'Status' },
-    { key: 'payment_reference', label: 'Reference' }, { key: 'verified_by', label: 'Verified By' },
-    { key: 'created_at', label: 'Created' },
+    { key: 'tracking_id', label: 'Tracking ID' }, { key: 'customer_name', label: 'Customer' },
+    { key: 'customer_phone', label: 'Phone' }, { key: 'amount', label: 'Amount' },
+    { key: 'payment_status', label: 'Payment Status' }, { key: 'payment_method', label: 'Method' },
+    { key: 'booking_status', label: 'Booking Status' }, { key: 'created_at', label: 'Created' },
   ]
-  const rows: Row[] = payments.map(p => ({
-    payment_id: p.payment_id ?? p.id.slice(0, 8),
-    tracking_id: p.booking_id ? (trackingByBooking[p.booking_id] ?? '—') : '—',
-    customer_name: p.customer_name ?? '—', amount: fmtRs(Number(p.amount) || 0),
-    payment_method: p.payment_method ?? '—', payment_status: p.payment_status ?? '—',
-    payment_reference: p.payment_reference ?? '—', verified_by: p.verified_by ?? '—',
-    created_at: p.created_at,
+  const rows: Row[] = bookings.map(b => ({
+    tracking_id: b.tracking_id, customer_name: b.customer_name ?? '—', customer_phone: b.customer_phone ?? '—',
+    amount: fmtRs(Number(b.total_amount) || 0),
+    payment_status: b.payment_status ?? 'pending', payment_method: b.payment_method ?? '—',
+    booking_status: b.status, created_at: b.created_at,
   }))
-  const total = payments.reduce((s, p) => s + (Number(p.amount) || 0), 0)
-  const paid = payments.filter(p => p.payment_status === 'paid').reduce((s, p) => s + (Number(p.amount) || 0), 0)
-  const pending = payments.filter(p => p.payment_status === 'pending').reduce((s, p) => s + (Number(p.amount) || 0), 0)
-  const refunded = payments.filter(p => p.payment_status === 'refunded').reduce((s, p) => s + (Number(p.amount) || 0), 0)
+
+  const sumWhere = (pred: (b: BookingRow) => boolean) => bookings.filter(pred).reduce((s, b) => s + (Number(b.total_amount) || 0), 0)
+  const totalValue      = sumWhere(() => true)
+  const paidAmount      = sumWhere(b => b.payment_status === 'paid')
+  // "Pending" = confirmed bookings not yet paid — pending + approved_pending.
+  // Refunded is tracked separately (money already moved, then moved back),
+  // not folded into "pending" so the two totals don't overlap/double-count.
+  const pendingAmount   = sumWhere(b => b.payment_status !== 'paid' && b.payment_status !== 'refunded')
+  const refundedAmount  = sumWhere(b => b.payment_status === 'refunded')
+  const pendingCount    = bookings.filter(b => b.payment_status !== 'paid' && b.payment_status !== 'refunded').length
+
   const summary: SummaryItem[] = [
-    { label: 'Payments', value: String(payments.length) },
-    { label: 'Total', value: fmtRs(total) },
-    { label: 'Paid', value: fmtRs(paid) },
-    { label: 'Pending', value: fmtRs(pending) },
-    { label: 'Refunded', value: fmtRs(refunded) },
+    { label: 'Confirmed Bookings', value: String(bookings.length) },
+    { label: 'Total Value', value: fmtRs(totalValue) },
+    { label: 'Paid', value: fmtRs(paidAmount) },
+    { label: 'Pending', value: fmtRs(pendingAmount) },
+    { label: 'Pending Bookings', value: String(pendingCount) },
+    { label: 'Refunded', value: fmtRs(refundedAmount) },
   ]
   return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }

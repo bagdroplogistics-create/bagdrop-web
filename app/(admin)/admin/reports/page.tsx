@@ -34,7 +34,10 @@ const BOOKING_STATUS_OPTIONS = [
   'out_for_delivery', 'driver_details_shared', 'delivered', 'trip_created', 'completed',
   'cancelled', 'rejected',
 ]
-const PAYMENT_STATUS_OPTIONS = ['pending', 'paid', 'refunded']
+// Matches bookings.payment_status values (the Payment report is now driven
+// by confirmed bookings, not the payments table) — see
+// app/api/admin/reports/detailed/route.ts's buildPayment for why.
+const PAYMENT_STATUS_OPTIONS = ['pending', 'paid', 'approved_pending', 'refunded']
 const DOCUMENT_STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'resubmission_requested']
 const LEAD_SOURCE_OPTIONS = ['manual', 'website', 'mobile-app', 'contact-form', 'referral', 'b2b', 'walk-in', 'skybird']
 
@@ -275,8 +278,8 @@ export default function ReportsPage() {
           )}
           {activeTab === 'payment' && (
             <DetailedReportView adminKey={adminKey} type="payment" title="Payment Report"
-              subtitle="Collections — paid, pending, refunded"
-              filters={{ showStatus: true, statusOptions: PAYMENT_STATUS_OPTIONS }} />
+              subtitle="All confirmed bookings — paid vs. pending amount"
+              filters={{ showService: true, showPartner: true, showStatus: true, statusOptions: PAYMENT_STATUS_OPTIONS }} />
           )}
           {activeTab === 'driver_ops' && (
             <DetailedReportView adminKey={adminKey} type="driver_ops" title="Driver & Operations Report"
