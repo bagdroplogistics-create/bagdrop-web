@@ -23,6 +23,14 @@ interface StepScheduleProps {
   onChange: (patch: Partial<BookingState>) => void
   onNext:   () => void
   onBack:   () => void
+  /**
+   * Add-on ids to exclude from the Add-ons section entirely — e.g. the
+   * Skybird Partner Dashboard hides 'insurance' (Insurance Upgrade) since
+   * it's not offered to Skybird's customers. Defaults to none, so the
+   * public website booking flow (components/booking/booking-engine.tsx)
+   * is completely unaffected.
+   */
+  hiddenAddonIds?: string[]
 }
 
 // Minimum date = tomorrow
@@ -32,9 +40,10 @@ function minDate(): string {
   return d.toISOString().split('T')[0]
 }
 
-export function StepSchedule({ state, onChange, onNext, onBack }: StepScheduleProps) {
+export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds = [] }: StepScheduleProps) {
   const valid            = isStep3Valid(state)
   const isAirportService = ['airport-delivery', 'door-to-airport'].includes(state.serviceId ?? '')
+  const visibleAddons     = ADDON_SERVICES.filter(a => !hiddenAddonIds.includes(a.id))
 
   function toggleAddon(id: AddonId) {
     const has = state.addonIds.includes(id)
@@ -202,11 +211,11 @@ export function StepSchedule({ state, onChange, onNext, onBack }: StepSchedulePr
       )}
 
       {/* ── Add-ons ── */}
-      {ADDON_SERVICES.length > 0 && (
+      {visibleAddons.length > 0 && (
         <div className="space-y-2">
           <p className="text-base font-medium text-text-primary">Add-ons (optional)</p>
           <div className="grid gap-3 sm:grid-cols-3">
-            {ADDON_SERVICES.map(addon => {
+            {visibleAddons.map(addon => {
               const IconComp = ADDON_ICONS[addon.icon] ?? ShieldCheck
               const selected = state.addonIds.includes(addon.id as AddonId)
 

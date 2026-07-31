@@ -63,14 +63,30 @@ interface SkybirdBookingEngineProps {
   onSubmitted?: (trackingId: string) => void
   /** Navigate back to the inquiries list. */
   onBackToList?: () => void
+  /**
+   * Edit mode: when set, this is the id of an existing booking to update
+   * instead of creating a new one. Requires `initialState` to pre-fill the
+   * form. Saving PATCHes /api/skybird/bookings/[id] and skips the OTP
+   * re-verification step entirely (the customer was already verified once,
+   * at creation — re-sending an OTP on every correction would be both
+   * unnecessary and annoying).
+   */
+  editBookingId?: string
+  /** Pre-filled form state when editing — ignored when editBookingId is unset. */
+  initialState?: BookingState
 }
 
-export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: SkybirdBookingEngineProps) {
-  const [{ step, booking }, dispatch] = useReducer(reducer, INITIAL)
+export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList, editBookingId, initialState }: SkybirdBookingEngineProps) {
+  const isEditMode = !!editBookingId
+  const [{ step, booking }, dispatch] = useReducer(
+    reducer,
+    isEditMode && initialState ? { step: 1, booking: initialState } : INITIAL
+  )
   const [submitting,  setSubmitting]  = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showOtpModal, setShowOtpModal] = useState(false)
   const [confirmedTrackingId, setConfirmedTrackingId] = useState<string | null>(null)
+  const [savedEdit, setSavedEdit] = useState(false)
 
   const pricing = useMemo(() => calculatePrice(booking), [booking])
 
@@ -78,12 +94,33 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: 
   const next  = () => { dispatch({ type: 'NEXT_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
   const back  = () => { dispatch({ type: 'PREV_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
-  // Called when the agent clicks "Confirm Booking" on the review step —
-  // identical flow to the website: OTP is sent to the customer's mobile
-  // number to verify before the inquiry is created.
+  // Called when the agent clicks "Confirm Booking" (create) or "Save
+  // Changes" (edit) on the review step. Create still verifies the
+  // customer's mobile via OTP before the inquiry is created, exactly as
+  // before. Edit saves immediately — no OTP.
   function handleBookingSubmit() {
     setSubmitError(null)
+    if (isEditMode) { saveEdit(); return }
     setShowOtpModal(true)
+  }
+
+  async function saveEdit() {
+    if (!editBookingId) return
+    setSubmitting(true)
+    try {
+      const res = await fetch(`/api/skybird/bookings/${editBookingId}?key=${encodeURIComponent(skybirdKey)}`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ booking, pricing }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Could not save changes')
+      setSavedEdit(true)
+      onSubmitted?.(data.trackingId ?? '')
+    } catch (err) {
+      setSubmitError(err instanceof Error ? err.message : 'Could not save changes. Please try again.')
+      setSubmitting(false)
+    }
   }
 
   async function handleOtpVerified() {
@@ -113,6 +150,27 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: 
     setConfirmedTrackingId(null)
     setSubmitting(false)
     setSubmitError(null)
+  }
+
+  // ── Edit-saved screen ──────────────────────────────────────────────
+  if (savedEdit) {
+    return (
+      <div className="mx-auto max-w-lg px-4 py-16 text-center">
+        <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-green-50">
+          <CheckCircle2 className="h-8 w-8 text-green-600" />
+        </div>
+        <h2 className="text-xl font-bold text-gray-900">Booking updated</h2>
+        <p className="mt-2 text-sm text-gray-500">Your changes have been saved to the existing booking.</p>
+        <div className="mt-8 flex justify-center">
+          <button
+            onClick={onBackToList}
+            className="flex items-center gap-2 rounded-xl bg-sky-600 px-5 py-2.5 text-sm font-bold text-white hover:opacity-90"
+          >
+            <List className="h-4 w-4" /> Back to My Inquiries
+          </button>
+        </div>
+      </div>
+    )
   }
 
   // ── Success screen (replaces the public /book/confirmation redirect) ──
@@ -168,7 +226,7 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: 
             {submitting && (
               <div className="flex items-center gap-3 rounded-xl bg-sky-50 border border-sky-200 p-4 text-sm text-sky-700">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-sky-600 border-t-transparent shrink-0" />
-                Submitting inquiry to Bagdrop…
+                {isEditMode ? 'Saving changes…' : 'Submitting inquiry to Bagdrop…'}
               </div>
             )}
             {submitError && (
@@ -187,7 +245,17 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: 
             <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
           )}
           {step === 3 && (
-            <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
+            <StepSchedule
+              key="step-schedule"
+              state={booking}
+              onChange={patch}
+              onNext={next}
+              onBack={back}
+              // Insurance Upgrade isn't offered to Skybird's customers —
+              // hidden here only; the public site's StepSchedule usage in
+              // booking-engine.tsx doesn't pass this, so it's unaffected.
+              hiddenAddonIds={['insurance']}
+            />
           )}
           {step === 4 && (
             <StepReview
@@ -196,6 +264,8 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList }: 
               onChange={patch}
               onBack={back}
               onBook={handleBookingSubmit}
+              submitLabel={isEditMode ? 'Save Changes' : 'Confirm Booking'}
+              hideVerificationNote={isEditMode}
             />
           )}
         </AnimatePresence>

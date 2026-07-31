@@ -17,9 +17,22 @@ interface StepReviewProps {
   onChange: (patch: Partial<BookingState>) => void
   onBack:   () => void
   onBook:   () => void
+  /**
+   * Overrides for the Skybird Partner Dashboard's Edit flow, where saving
+   * an existing booking neither re-verifies the customer's phone (they've
+   * already been verified once, at creation) nor says "Confirm Booking".
+   * Both default to the original public-website copy/behavior, so
+   * components/booking/booking-engine.tsx (and Skybird's own create flow)
+   * are unaffected.
+   */
+  submitLabel?: string
+  hideVerificationNote?: boolean
 }
 
-export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps) {
+export function StepReview({
+  state, onChange, onBack, onBook,
+  submitLabel = 'Confirm Booking', hideVerificationNote = false,
+}: StepReviewProps) {
   const valid = isStep4Valid(state)
 
   const fromCity  = COVERAGE_CITIES.find(c => c.id === state.fromCity)
@@ -137,12 +150,14 @@ export function StepReview({ state, onChange, onBack, onBook }: StepReviewProps)
             disabled={!valid}
           >
             <Send className="h-4 w-4" />
-            Confirm Booking
+            {submitLabel}
           </Button>
 
-          <p className="text-center text-xs text-text-muted">
-            Mobile verification required &middot; No payment now
-          </p>
+          {!hideVerificationNote && (
+            <p className="text-center text-xs text-text-muted">
+              Mobile verification required &middot; No payment now
+            </p>
+          )}
         </div>
       </div>
 

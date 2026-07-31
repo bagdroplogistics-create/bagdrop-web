@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, RefreshCw, Search, AlertTriangle } from 'lucide-react'
+import { Plus, RefreshCw, Search, AlertTriangle, Pencil } from 'lucide-react'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   new:       { label: 'New',       color: '#0369a1', bg: '#e0f2fe' },
@@ -134,36 +134,57 @@ export default function SkybirdDashboardPage() {
               <th className="px-4 py-3">Status</th>
               <th className="px-4 py-3">Booking</th>
               <th className="px-4 py-3">Created</th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100">
-            {leads.map(l => (
-              <tr key={l.id} className="hover:bg-gray-50">
-                <td className="px-4 py-3 font-mono text-xs text-gray-700">{l.lead_number ?? '—'}</td>
-                <td className="px-4 py-3">
-                  <div className="font-medium text-gray-900">{l.name}</div>
-                  <div className="text-xs text-gray-500">{l.phone}</div>
-                </td>
-                <td className="px-4 py-3 text-gray-700">
-                  {l.from_city || l.to_city ? `${l.from_city ?? '—'} → ${l.to_city ?? '—'}` : '—'}
-                </td>
-                <td className="px-4 py-3 text-gray-700">{l.bags_count}</td>
-                <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
-                <td className="px-4 py-3 text-gray-700">
-                  {l.bookings ? (
-                    <div>
-                      <div className="font-mono text-xs">{l.bookings.tracking_id}</div>
-                      <div className="text-xs text-gray-500 capitalize">{l.bookings.status?.replace(/-/g, ' ')}</div>
-                    </div>
-                  ) : '—'}
-                </td>
-                <td className="px-4 py-3 text-xs text-gray-500">
-                  {new Date(l.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
-                </td>
-              </tr>
-            ))}
+            {leads.map(l => {
+              // Editable only while the underlying booking is still at
+              // 'inquiry' — once BagDrop has started quoting/confirming it,
+              // corrections go through Bagdrop support instead (see
+              // app/api/skybird/bookings/[id]/route.ts PATCH for the same
+              // guard enforced server-side).
+              const canEdit = !!l.booking_id && (l.bookings?.status ?? 'inquiry') === 'inquiry'
+              return (
+                <tr key={l.id} className="hover:bg-gray-50">
+                  <td className="px-4 py-3 font-mono text-xs text-gray-700">{l.lead_number ?? '—'}</td>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-gray-900">{l.name}</div>
+                    <div className="text-xs text-gray-500">{l.phone}</div>
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {l.from_city || l.to_city ? `${l.from_city ?? '—'} → ${l.to_city ?? '—'}` : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-gray-700">{l.bags_count}</td>
+                  <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
+                  <td className="px-4 py-3 text-gray-700">
+                    {l.bookings ? (
+                      <div>
+                        <div className="font-mono text-xs">{l.bookings.tracking_id}</div>
+                        <div className="text-xs text-gray-500 capitalize">{l.bookings.status?.replace(/-/g, ' ')}</div>
+                      </div>
+                    ) : '—'}
+                  </td>
+                  <td className="px-4 py-3 text-xs text-gray-500">
+                    {new Date(l.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                  </td>
+                  <td className="px-4 py-3">
+                    {canEdit ? (
+                      <Link
+                        href={`/skybird/edit/${l.booking_id}`}
+                        className="inline-flex items-center gap-1.5 rounded-lg border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-xs font-semibold text-sky-700 hover:bg-sky-100"
+                      >
+                        <Pencil className="h-3.5 w-3.5" /> Edit
+                      </Link>
+                    ) : (
+                      <span className="text-xs text-gray-300">—</span>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
             {!loading && !fetchError && leads.length === 0 && (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">No inquiries yet. Click "New Inquiry" to submit your first one.</td></tr>
+              <tr><td colSpan={8} className="px-4 py-10 text-center text-sm text-gray-400">No inquiries yet. Click "New Inquiry" to submit your first one.</td></tr>
             )}
           </tbody>
         </table>
