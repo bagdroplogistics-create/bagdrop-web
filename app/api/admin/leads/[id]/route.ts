@@ -131,14 +131,6 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       'intercity':            'Intercity',
     }
 
-    const statusMap: Record<string, string> = {
-      new:       'inquiry',
-      contacted: 'document_collection',
-      qualified: 'review',
-      converted: 'accepted',
-      lost:      'rejected',
-    }
-
     const bookingUpdates: Record<string, unknown> = {}
 
     if ('name' in updates)          bookingUpdates.customer_name  = lead.name
@@ -166,38 +158,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       bookingUpdates.service_label = serviceLabelMap[sType] ?? sType
     }
 
-    // Sync lead status → booking status (only advance, never regress)
-    if ('status' in updates && body.status in statusMap) {
-      const { data: currentBooking } = await supabaseAdmin
-        .from('bookings')
-        .select('status, status_history')
-        .eq('id', lead.booking_id)
-        .single()
-
-      const bookingStatusOrder = [
-        'inquiry', 'document_collection', 'pending', 'review',
-        'accepted', 'rejected', 'quote_sent', 'payment_pending',
-        'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up',
-        'in_transit', 'out_for_delivery', 'driver_details_shared',
-        'delivered', 'completed', 'cancelled',
-      ]
-      const newBookingStatus = statusMap[body.status]
-      const currentIdx       = bookingStatusOrder.indexOf(currentBooking?.status ?? 'inquiry')
-      const newIdx           = bookingStatusOrder.indexOf(newBookingStatus)
-
-      if (newIdx > currentIdx || body.status === 'lost') {
-        bookingUpdates.status = newBookingStatus
-        const history = currentBooking?.status_history ?? []
-        history.push({
-          from:       currentBooking?.status ?? null,
-          to:         newBookingStatus,
-          timestamp:  new Date().toISOString(),
-          changed_by: 'admin',
-          note:       `Synced from lead status change: ${body.status}`,
-        })
-        bookingUpdates.status_history = history
-      }
-    }
+    // NOTE: lead.status (new/contacted/qualified/converted/lost) is
+    // intentionally NOT synced onto bookings.status here. It used to be,
+    // via a status map ('contacted' -> 'document_collection', 'qualified'
+    // -> 'review', etc.) that doesn't exist anywhere in the canonical
+    // booking lifecycle vocabulary (STATUS_ORDER in
+    // lib/lifecycle-notifications.ts and the equivalent STATUS_ORDER_BASE
+    // in app/(admin)/admin/quotes/view/[lead_id]/page.tsx) — the Booking
+    // Workflow UI's every step-enablement check, notification trigger,
+    // Google Calendar sync, and Ops reminder scheduling all key off that
+    // exact vocabulary. Writing an unrecognized status value made the
+    // whole Booking Workflow stepper appear "stuck"/all-disabled, because
+    // the current-step lookup silently returned -1 for a status it didn't
+    // recognize. The lead's own status is a lighter-weight sales/CRM
+    // categorization (has someone followed up yet) and is deliberately
+    // decoupled from the booking's real operational status, which is
+    // owned exclusively by the Booking Workflow's own explicit actions
+    // (Send Quote, Confirm Booking, etc. — see
+    // app/api/admin/bookings/[id]/route.ts). Changing a lead's status here
+    // still updates the lead itself; it just no longer reaches into the
+    // booking.
 
     if (Object.keys(bookingUpdates).length > 0) {
       const { error: bookingErr } = await supabaseAdmin
