@@ -181,9 +181,21 @@ export const COVERAGE_CITIES = [
   { id: 'hyderabad-airport',label: 'Hyderabad Airport',     code: 'HYD', airport: 'Rajiv Gandhi International' },
   { id: 'hyderabad',        label: 'Hyderabad',             code: 'HYD', airport: 'Rajiv Gandhi International' },
 
+  // ── Tamil Nadu ───────────────────────────────────────────
+  { id: 'chennai',          label: 'Chennai',               code: 'MAA', airport: 'Chennai International' },
+
+  // ── Assam ────────────────────────────────────────────────
+  { id: 'guwahati',         label: 'Guwahati',              code: 'GAU', airport: 'Lokpriya Gopinath Bordoloi International' },
+
+  // ── Gujarat (Surat) ──────────────────────────────────────
+  { id: 'surat',            label: 'Surat',                 code: 'STV', airport: 'Surat International' },
+
+  // ── Maharashtra (Navi Mumbai / Pune) ─────────────────────
+  { id: 'navi-mumbai',      label: 'Navi Mumbai',           code: 'NMI', airport: 'Navi Mumbai International' },
+  { id: 'pune',             label: 'Pune',                  code: 'PNQ', airport: 'Pune Airport' },
+
   // ── Regional / simplified booking labels ─────────────────
   { id: 'gujarat',          label: 'Gujarat',               code: null,  airport: null },
-  { id: 'rajasthan',        label: 'Rajasthan',             code: null,  airport: null },
 ] as const
 
 // Derive CityId from the cities list so it stays in sync automatically.
@@ -197,15 +209,19 @@ export const BOOKING_LOCATIONS = [
   { id: 'ahmedabad'         as const, label: 'Ahmedabad' },
   { id: 'anand'             as const, label: 'Anand' },
   { id: 'bangalore'         as const, label: 'Bangalore' },
+  { id: 'chennai'           as const, label: 'Chennai' },
   { id: 'dahod'             as const, label: 'Dahod' },
   { id: 'delhi-airport-t3'  as const, label: 'Delhi Airport' },
   { id: 'goa'               as const, label: 'Goa' },
+  { id: 'guwahati'          as const, label: 'Guwahati' },
   { id: 'hyderabad-airport' as const, label: 'Hyderabad Airport' },
   { id: 'jaipur'            as const, label: 'Jaipur' },
   { id: 'mumbai'            as const, label: 'Mumbai' },
   { id: 'mumbai-airport-t2' as const, label: 'Mumbai Airport T2' },
   { id: 'nadiad'            as const, label: 'Nadiad' },
-  { id: 'rajasthan'         as const, label: 'Rajasthan' },
+  { id: 'navi-mumbai'       as const, label: 'Navi Mumbai' },
+  { id: 'pune'              as const, label: 'Pune' },
+  { id: 'surat'             as const, label: 'Surat' },
   { id: 'udaipur'           as const, label: 'Udaipur' },
   { id: 'baroda'            as const, label: 'Vadodara' },
 ]
