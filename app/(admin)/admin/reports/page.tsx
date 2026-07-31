@@ -2,7 +2,41 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { BarChart2, TrendingUp, RefreshCw, Calendar } from 'lucide-react'
+import { BarChart2, TrendingUp, RefreshCw, Calendar, Download, FileSpreadsheet, FileText, Printer } from 'lucide-react'
+import DetailedReportView from '@/components/admin/DetailedReportView'
+import { downloadCSV, downloadExcel, downloadPDF, printReport } from '@/lib/report-export'
+
+// Report tabs — Revenue (below) is the original, unchanged report. The other
+// 9 are additive "detailed report" tabs backed by the generic
+// app/api/admin/reports/detailed/route.ts endpoint, each with cross-cutting
+// filters and CSV/Excel/PDF/Print export (Phase 2/3 of the Reports &
+// Dashboard Enhancements request — Phase 1 was the Operations Center at
+// /admin/reports/operations).
+const REPORT_TABS = [
+  { key: 'revenue',           label: 'Revenue' },
+  { key: 'inquiry_source',    label: 'Inquiry Source' },
+  { key: 'booking_status',    label: 'Booking Status' },
+  { key: 'route_performance', label: 'Route Performance' },
+  { key: 'partner',           label: 'Partner' },
+  { key: 'customer',          label: 'Customer' },
+  { key: 'payment',           label: 'Payment' },
+  { key: 'driver_ops',        label: 'Driver & Operations' },
+  { key: 'document',          label: 'Document' },
+  { key: 'cancellation',      label: 'Cancellation' },
+] as const
+
+type ReportTabKey = typeof REPORT_TABS[number]['key']
+
+const BOOKING_STATUS_OPTIONS = [
+  'inquiry', 'quote_created', 'quote_sent', 'accepted', 'payment_pending', 'payment_received',
+  'payment_approved', 'confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed',
+  'invoice_generated', 'invoice_sent', 'pickup_scheduled', 'picked_up', 'in_transit',
+  'out_for_delivery', 'driver_details_shared', 'delivered', 'trip_created', 'completed',
+  'cancelled', 'rejected',
+]
+const PAYMENT_STATUS_OPTIONS = ['pending', 'paid', 'refunded']
+const DOCUMENT_STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'resubmission_requested']
+const LEAD_SOURCE_OPTIONS = ['manual', 'website', 'mobile-app', 'contact-form', 'referral', 'b2b', 'walk-in', 'skybird']
 
 interface Summary {
   totalBookings:   number
@@ -101,6 +135,7 @@ export default function ReportsPage() {
   const [adminKey, setAdminKey] = useState('')
   const [authed,   setAuthed]   = useState(false)
   const [loading,  setLoading]  = useState(false)
+  const [activeTab, setActiveTab] = useState<ReportTabKey>('revenue')
 
   const [period,    setPeriod]    = useState('monthly')
   const [customFrom, setCustomFrom] = useState('')
@@ -137,6 +172,19 @@ export default function ReportsPage() {
 
   const maxRouteRev = Math.max(...routeRevenue.map(r => r.revenue), 1)
 
+  const REVENUE_EXPORT_COLUMNS = [
+    { key: 'route', label: 'Route' }, { key: 'bookings', label: 'Bookings' }, { key: 'revenue', label: 'Revenue' },
+  ]
+  const routeRevenueRows = routeRevenue.map(r => ({ route: r.route, bookings: r.bookings, revenue: fmtRs(r.revenue) }))
+  const summaryForExport = summary ? [
+    { label: 'Bookings', value: String(summary.totalBookings) },
+    { label: 'Revenue', value: fmtRs(summary.totalRevenue) },
+    { label: 'Delivered', value: String(summary.deliveredCount) },
+    { label: 'Cancelled', value: String(summary.cancelledCount) },
+    { label: 'Pending Payments', value: fmtRs(summary.pendingPayments) },
+    { label: 'Avg Order', value: fmtRs(summary.avgOrderValue) },
+  ] : undefined
+
   const STATUS_COLORS: Record<string, string> = {
     pending:          '#d97706',
     confirmed:        '#2563eb',
@@ -157,22 +205,24 @@ export default function ReportsPage() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Reports & Analytics</h1>
-            <p className="mt-0.5 text-sm text-gray-400">Revenue trends, route performance, booking status</p>
+            <p className="mt-0.5 text-sm text-gray-400">Revenue trends, route performance, booking status, and more</p>
           </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {PERIOD_OPTS.map(o => (
-              <button key={o.value} onClick={() => setPeriod(o.value)}
-                className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${period === o.value ? 'bg-orange-500 text-white' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
-                {o.label}
+          {activeTab === 'revenue' && (
+            <div className="flex flex-wrap items-center gap-2">
+              {PERIOD_OPTS.map(o => (
+                <button key={o.value} onClick={() => setPeriod(o.value)}
+                  className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${period === o.value ? 'bg-orange-500 text-white' : 'border border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                  {o.label}
+                </button>
+              ))}
+              <button onClick={fetchReports}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+                <RefreshCw className="h-3 w-3" /> Refresh
               </button>
-            ))}
-            <button onClick={fetchReports}
-              className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
-              <RefreshCw className="h-3 w-3" /> Refresh
-            </button>
-          </div>
+            </div>
+          )}
         </div>
-        {period === 'custom' && (
+        {activeTab === 'revenue' && period === 'custom' && (
           <div className="mt-3 flex items-center gap-2">
             <Calendar className="h-4 w-4 text-gray-400" />
             <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
@@ -183,8 +233,70 @@ export default function ReportsPage() {
             <button onClick={fetchReports} className="rounded-lg bg-orange-500 px-3 py-1 text-xs font-semibold text-white hover:bg-orange-600">Apply</button>
           </div>
         )}
+
+        {/* Report type tabs */}
+        <div className="mt-4 flex flex-wrap gap-1.5 border-t border-gray-50 pt-3">
+          {REPORT_TABS.map(t => (
+            <button key={t.key} onClick={() => setActiveTab(t.key)}
+              className={`rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors ${activeTab === t.key ? 'bg-gray-900 text-white' : 'bg-gray-50 text-gray-600 hover:bg-gray-100'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
       </div>
 
+      {activeTab !== 'revenue' && (
+        <div className="px-6 py-6">
+          {activeTab === 'inquiry_source' && (
+            <DetailedReportView adminKey={adminKey} type="inquiry_source" title="Inquiry Source Report"
+              subtitle="Leads by channel — website, referral, partner, and more"
+              filters={{ showService: true, showSource: true, showPartner: true, sourceOptions: LEAD_SOURCE_OPTIONS }} />
+          )}
+          {activeTab === 'booking_status' && (
+            <DetailedReportView adminKey={adminKey} type="booking_status" title="Booking Status Report"
+              subtitle="Click a row to open that booking"
+              filters={{ showService: true, showStatus: true, showPartner: true, showCity: true, statusOptions: BOOKING_STATUS_OPTIONS }}
+              emptyRowLinkKey="lead_id" emptyRowLinkBase="/admin/quotes/view/" />
+          )}
+          {activeTab === 'route_performance' && (
+            <DetailedReportView adminKey={adminKey} type="route_performance" title="Route Performance Report"
+              subtitle="Bookings, revenue, and cancellation rate by route"
+              filters={{ showService: true, showPartner: true }} />
+          )}
+          {activeTab === 'partner' && (
+            <DetailedReportView adminKey={adminKey} type="partner" title="Partner Report"
+              subtitle="Leads, conversion, and revenue by referring partner"
+              filters={{ showService: true, showSource: true, sourceOptions: LEAD_SOURCE_OPTIONS }} />
+          )}
+          {activeTab === 'customer' && (
+            <DetailedReportView adminKey={adminKey} type="customer" title="Customer Report"
+              subtitle="Repeat vs. new customers, lifetime spend"
+              filters={{ showCity: true, showService: true }} />
+          )}
+          {activeTab === 'payment' && (
+            <DetailedReportView adminKey={adminKey} type="payment" title="Payment Report"
+              subtitle="Collections — paid, pending, refunded"
+              filters={{ showStatus: true, statusOptions: PAYMENT_STATUS_OPTIONS }} />
+          )}
+          {activeTab === 'driver_ops' && (
+            <DetailedReportView adminKey={adminKey} type="driver_ops" title="Driver & Operations Report"
+              subtitle="Filtered by pickup date — driver assignment and vehicle details"
+              filters={{ showService: true, showStatus: true, showCity: true, statusOptions: BOOKING_STATUS_OPTIONS }} />
+          )}
+          {activeTab === 'document' && (
+            <DetailedReportView adminKey={adminKey} type="document" title="Document Report"
+              subtitle="Indemnity bond / ID document collection status"
+              filters={{ showStatus: true, statusOptions: DOCUMENT_STATUS_OPTIONS }} />
+          )}
+          {activeTab === 'cancellation' && (
+            <DetailedReportView adminKey={adminKey} type="cancellation" title="Cancellation Report"
+              subtitle="Cancelled bookings — reason, timing, revenue impact"
+              filters={{ showService: true, showPartner: true, showCity: true }} />
+          )}
+        </div>
+      )}
+
+      {activeTab === 'revenue' && (
       <div className="px-6 py-6">
         {loading && <div className="mb-4 text-center text-xs text-gray-400">Loading reports…</div>}
 
@@ -247,7 +359,29 @@ export default function ReportsPage() {
 
         {/* Route Revenue */}
         <div className="mt-4 rounded-xl border border-gray-100 bg-white p-5 shadow-sm">
-          <h2 className="mb-4 text-sm font-bold text-gray-900">Top Routes by Revenue</h2>
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-sm font-bold text-gray-900">Top Routes by Revenue</h2>
+            {routeRevenue.length > 0 && (
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => downloadCSV(REVENUE_EXPORT_COLUMNS, routeRevenueRows, 'revenue_report')}
+                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                  <Download className="h-3 w-3" /> CSV
+                </button>
+                <button onClick={() => downloadExcel(REVENUE_EXPORT_COLUMNS, routeRevenueRows, 'revenue_report', 'Revenue')}
+                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                  <FileSpreadsheet className="h-3 w-3" /> Excel
+                </button>
+                <button onClick={() => downloadPDF(REVENUE_EXPORT_COLUMNS, routeRevenueRows, 'revenue_report', 'Revenue Report — Top Routes', summaryForExport)}
+                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                  <FileText className="h-3 w-3" /> PDF
+                </button>
+                <button onClick={() => printReport(REVENUE_EXPORT_COLUMNS, routeRevenueRows, 'Revenue Report — Top Routes', summaryForExport)}
+                  className="flex items-center gap-1 rounded-lg border border-gray-200 bg-white px-2.5 py-1 text-[11px] font-medium text-gray-600 hover:bg-gray-50">
+                  <Printer className="h-3 w-3" /> Print
+                </button>
+              </div>
+            )}
+          </div>
           {routeRevenue.length === 0 ? (
             <p className="text-xs text-gray-400">No route data for this period</p>
           ) : (
@@ -277,6 +411,7 @@ export default function ReportsPage() {
           )}
         </div>
       </div>
+      )}
     </>
   )
 }
