@@ -93,7 +93,7 @@ const RANGE_OPTS = [
 ]
 
 const TABS = [
-  { key: 'inquiries', label: "Today's Inquiries",   icon: Inbox },
+  { key: 'inquiries', label: 'Pickup Today',   icon: Inbox },
   { key: 'upcoming',  label: 'Upcoming Confirmed Bookings', icon: CalendarClock },
   { key: 'overdue',   label: 'Missed / Overdue',     icon: AlertOctagon },
   { key: 'ops',       label: "Today's Operations",   icon: ClipboardList },
@@ -260,7 +260,7 @@ export default function OperationsCenterPage() {
             {/* ── Summary widgets ── */}
             <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
               {[
-                { label: "Today's Inquiries", value: data.widgets.todays_inquiries, color: '#2563eb', bg: '#dbeafe' },
+                { label: 'Inquiries — Pickup Today', value: data.widgets.todays_inquiries, color: '#2563eb', bg: '#dbeafe' },
                 { label: "Today's Pickups", value: data.widgets.todays_pickups, color: '#d97706', bg: '#fef3c7' },
                 { label: "Today's Deliveries", value: data.widgets.todays_deliveries, color: '#16a34a', bg: '#dcfce7' },
                 { label: 'Upcoming Confirmed Pickups (7d)', value: data.widgets.upcoming_pickups_7d, color: '#0891b2', bg: '#cffafe' },
@@ -303,12 +303,22 @@ export default function OperationsCenterPage() {
               })}
             </div>
 
-            {/* ── Today's Inquiries ── */}
+            {/* ── Pickup Today (was "Today's Inquiries") ──────────────────
+                Redefined at the user's request: this now lists inquiries
+                whose PICKUP DATE is today (not ones merely created today) —
+                a don't-miss-it reminder list for Ops, since an inquiry can
+                sit around for weeks before its actual pickup day arrives.
+                Every row here qualifies by definition, so every row gets
+                the urgent treatment rather than singling any out. ── */}
             {tab === 'inquiries' && (
               <div>
+                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span><strong>Pickup scheduled for today.</strong> Make sure none of these are missed.</span>
+                </div>
                 <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
                   {[
-                    { label: 'Total Today', value: data.todays_inquiries_totals.total },
+                    { label: 'Pickups Today', value: data.todays_inquiries_totals.total },
                     { label: 'Pending Quotes', value: data.todays_inquiries_totals.pending_quotes },
                     { label: 'Pending Payments', value: data.todays_inquiries_totals.pending_payments },
                     { label: 'Confirmed Bookings', value: data.todays_inquiries_totals.confirmed },
@@ -335,10 +345,10 @@ export default function OperationsCenterPage() {
                       </thead>
                       <tbody>
                         {data.todays_inquiries.length === 0 && (
-                          <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No inquiries yet today.</td></tr>
+                          <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No pickups scheduled for today.</td></tr>
                         )}
                         {data.todays_inquiries.map(l => (
-                          <tr key={l.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                          <tr key={l.id} className="border-b border-gray-50 border-l-2 border-l-amber-400 last:border-b-0 bg-amber-50/30 hover:bg-amber-50">
                             <td className="px-4 py-3 font-medium text-gray-800">{l.customer_name}<div className="text-xs text-gray-400">{l.phone}</div></td>
                             <td className="px-4 py-3">
                               <Link href={l.booking_id ? `/admin?highlight=${l.booking_id}` : '#'} className="font-mono text-xs text-orange-600 hover:underline">
@@ -347,7 +357,11 @@ export default function OperationsCenterPage() {
                             </td>
                             <td className="px-4 py-3 text-xs text-gray-600">{l.service_type ?? '—'}</td>
                             <td className="px-4 py-3 text-xs text-gray-600">{l.from_city ?? '—'} → {l.to_city ?? '—'}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(l.pickup_date)}</td>
+                            <td className="px-4 py-3 text-xs">
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">
+                                <Clock className="h-3 w-3" /> Today
+                              </span>
+                            </td>
                             <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(l.status)}</span></td>
                             <td className="px-4 py-3 text-xs text-gray-400">{l.assigned_to ?? '—'}</td>
                           </tr>

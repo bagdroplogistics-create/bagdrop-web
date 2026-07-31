@@ -180,6 +180,29 @@ export async function GET(req: NextRequest) {
     return (data ?? []) as unknown as LeadRow[]
   }
 
+  // "Today's Inquiries" means "inquiries whose pickup is scheduled for
+  // today" — not "inquiries created today". The point of this list is an
+  // Ops don't-miss-it reminder ("today is this customer's pickup"), not a
+  // new-leads-received feed; an inquiry submitted weeks ago with today's
+  // pickup date belongs here, and one submitted an hour ago with a pickup
+  // next month does not. Same deleted_at fallback as fetchLeadsInRange above.
+  async function fetchLeadsByPickupDate(dateStr: string): Promise<LeadRow[]> {
+    let { data, error } = await supabaseAdmin
+      .from('leads').select(LEAD_SELECT).eq('pickup_date', dateStr)
+      .is('deleted_at', null).order('created_at', { ascending: false })
+    if (error?.message?.includes('deleted_at')) {
+      const retry = await supabaseAdmin
+        .from('leads').select(LEAD_SELECT).eq('pickup_date', dateStr)
+        .order('created_at', { ascending: false })
+      data = retry.data; error = retry.error
+    }
+    if (error) {
+      console.warn('[reports/operations] leads-by-pickup-date query failed (non-fatal, defaulting to empty):', error.message)
+      return []
+    }
+    return (data ?? []) as unknown as LeadRow[]
+  }
+
   // Upcoming CONFIRMED bookings in the requested window — see
   // CONFIRMED_ONWARD_STATUSES above for why this isn't every booking. Built
   // as a mutable query (same reassignment pattern already used by
@@ -203,7 +226,7 @@ export async function GET(req: NextRequest) {
     docsPending,
     revenueQ,
   ] = await Promise.all([
-    fetchLeadsInRange(`${todayStr}T00:00:00`, `${todayStr}T23:59:59`),
+    fetchLeadsByPickupDate(todayStr),
     fetchLeadsInRange(monthStart),
 
     upcomingQueryBuilder,
