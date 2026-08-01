@@ -18,13 +18,15 @@ const s = StyleSheet.create({
 
   // Header
   header:    { backgroundColor: ORANGE, padding: '20 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  // White BagDrop logo mark (cropped from the founder-supplied
-  // public/logo-white.png lockup — icon only, wordmark/tagline band
-  // trimmed off since at header scale the full lockup's wordmark shrinks
-  // below legibility; the icon reads cleanly at this size). Native crop
-  // ratio is 637:1096 (~0.5812 w:h) — height fixed to fit the existing
-  // header row, width derived from that ratio so the mark isn't stretched.
-  logoMark:  { width: 21, height: 36, marginBottom: 3 },
+  // Full white BagDrop logo lockup — icon + "BAGDROP" wordmark + "BAG. BOX.
+  // DELIVERED" tagline, all baked into the official brand asset. Restored
+  // per founder feedback after an earlier icon-only crop was judged too
+  // minimal ("do not use only the icon... use the full logo exactly as our
+  // official branding"). Native crop ratio 920:1359 (~0.677 w:h); sized up
+  // from the old icon-only mark (21x36) so the wordmark stays legible —
+  // that's why the header row is now taller and logoSub below has more
+  // top margin to clear it.
+  logoFull:  { width: 57, height: 84, marginBottom: 6 },
   // react-pdf's built-in Helvetica family only ships Regular/Bold/Oblique/
   // BoldOblique — there's no true "Medium" weight available without
   // registering a custom web font (a fragile external dependency for a
@@ -32,22 +34,23 @@ const s = StyleSheet.create({
   // Approximated "Medium" here with Bold at higher opacity + a larger
   // size — bolder and more visible than the previous thin 75%-opacity
   // regular-weight line, without the risk of a missing custom font
-  // silently breaking the header.
-  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
+  // silently breaking the header. marginTop bumped 3->8 to sit clear of
+  // the now-taller full logo image above it.
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 8, textTransform: 'uppercase' },
   // Label above the quote number — was "Service Estimate", now just
   // "Estimate" ("Service" removed, "Estimate" kept per founder feedback).
-  qnLabel:   { color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
+  qnLabel:   { color: 'rgba(255,255,255,0.8)', fontSize: 7.5, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
   // Quotation Number — now the SMALLER of the two top-right lines (was
   // the large 18px headline).
-  qnValue:   { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
+  qnValue:   { color: 'rgba(255,255,255,0.9)', fontSize: 9.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
   // Date — now the PROMINENT top-right line (was the small 8px line).
   qnDate:    { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
-  qnValidTill: { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, textAlign: 'right', marginTop: 2 },
+  qnValidTill: { color: 'rgba(255,255,255,0.85)', fontSize: 8, textAlign: 'right', marginTop: 2 },
 
   // Meta strip
   strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '6 28', flexDirection: 'row', gap: 20 },
-  stripKey:  { color: '#9a3412', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
-  stripVal:  { color: DARK, fontSize: 8, fontFamily: 'Helvetica-Bold', marginTop: 1 },
+  stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
+  stripVal:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
   // Body
   body:      { padding: '16 28 0' },
@@ -56,26 +59,35 @@ const s = StyleSheet.create({
   // Cards
   card:      { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
   cardDark:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12', borderLeftWidth: 3, borderLeftColor: DARK },
-  cardLbl:   { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  cardLbl:   { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
   custName:  { color: DARK, fontSize: 14, fontFamily: 'Helvetica-Bold' },
-  custSub:   { color: '#4b5563', fontSize: 9, marginTop: 2 },
+  custSub:   { color: '#4b5563', fontSize: 9.5, marginTop: 2 },
+  // Pickup/Delivery address values — bumped from 8px/regular to 11px/Bold/
+  // dark per founder feedback ("these should be much more prominent");
+  // the "Pickup Address"/"Delivery Address" label above is unchanged
+  // (cardLbl, shared with Bill To / Journey Details labels).
+  addressVal:{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: DARK },
 
   // Journey
   jtRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   jtCity:    { color: DARK, fontSize: 12, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
-  jtLbl:     { color: GREY, fontSize: 7, textAlign: 'center', marginBottom: 2 },
+  jtLbl:     { color: GREY, fontSize: 7.5, textAlign: 'center', marginBottom: 2 },
   jtLine:    { flex: 1, borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginHorizontal: 6 },
-  jtGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '3 12' },
-  jtItem:    { fontSize: 8, color: '#4b5563', width: '48%' },
+  jtGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '4 12' },
+  // Pickup/Delivery are set to width:'100%' at their instance below (like
+  // Flight already was) so long month names (September/November/December)
+  // never wrap onto a second line within the old 48% column — Time/Bags
+  // keep the original 48% two-up layout.
+  jtItem:    { fontSize: 8.5, color: '#4b5563', width: '48%' },
   jtItemKey: { color: GREY },
   jtItemVal: { fontFamily: 'Helvetica-Bold' },
 
   // Table
   tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '7 10' },
-  tableHcell:{ color: '#fff', fontSize: 8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tableHcell:{ color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
   tableRow:  { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', padding: '8 10', alignItems: 'flex-start' },
-  tableCell: { fontSize: 9, color: '#374151' },
-  tableDesc: { fontSize: 8, color: GREY, marginTop: 2 },
+  tableCell: { fontSize: 9.5, color: '#374151' },
+  tableDesc: { fontSize: 8.5, color: GREY, marginTop: 2 },
   cellIdx:   { width: 20 },
   cellDesc:  { flex: 1 },
   cellQty:   { width: 35, textAlign: 'center' },
@@ -86,46 +98,46 @@ const s = StyleSheet.create({
   // Totals + Payment row
   tpRow:     { flexDirection: 'row', gap: 12, padding: '10 28 16' },
   payBox:    { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12' },
-  payLbl:    { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+  payLbl:    { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
   payRow:    { flexDirection: 'row', marginBottom: 3 },
-  payKey:    { color: GREY, fontSize: 8, width: 60 },
-  payVal:    { color: DARK, fontSize: 8, fontFamily: 'Helvetica-Bold', flex: 1 },
+  payKey:    { color: GREY, fontSize: 8.5, width: 60 },
+  payVal:    { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', flex: 1 },
   upiBox:    { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '4 8', marginTop: 4 },
-  upiText:   { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Bold' },
+  upiText:   { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
 
   totalsBox: { flex: 1 },
   totRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  totKey:    { color: GREY, fontSize: 9 },
-  totVal:    { color: DARK, fontSize: 9 },
+  totKey:    { color: GREY, fontSize: 9.5 },
+  totVal:    { color: DARK, fontSize: 9.5 },
   totDivider:{ borderTopWidth: 2, borderTopColor: DARK, paddingTop: 6, marginTop: 4 },
   grandKey:  { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold' },
   grandVal:  { color: ORANGE, fontSize: 15, fontFamily: 'Helvetica-Bold' },
   amtWords:  { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '5 8', marginTop: 6 },
-  amtWLabel: { color: '#9a3412', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
-  amtWText:  { color: DARK, fontSize: 8, fontFamily: 'Helvetica-Oblique' },
+  amtWLabel: { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  amtWText:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Oblique' },
 
   // Notes
   notesBox:  { margin: '0 28 10', backgroundColor: LIGHT, borderRadius: 6, padding: '8 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
-  notesLbl:  { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
-  notesText: { color: '#374151', fontSize: 9 },
+  notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  notesText: { color: '#374151', fontSize: 9.5 },
 
   // T&C
   tcSection: { margin: '0 28 10', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 10 },
-  tcTitle:   { color: '#374151', fontSize: 8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
+  tcTitle:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
   tcGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '3 12' },
   tcItem:    { flexDirection: 'row', gap: 3, width: '48%' },
-  tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 10 },
-  tcText:    { color: GREY, fontSize: 7.5, flex: 1, lineHeight: 1.4 },
+  tcNum:     { color: ORANGE, fontSize: 8.5, fontFamily: 'Helvetica-Bold', width: 10 },
+  tcText:    { color: GREY, fontSize: 8, flex: 1, lineHeight: 1.4 },
 
   // Footer
   footer:    { margin: '0 28', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   ftLeft:    { flex: 1 },
-  ftCo:      { color: '#374151', fontSize: 9, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-  ftLine:    { color: GREY, fontSize: 8, marginBottom: 1 },
+  ftCo:      { color: '#374151', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  ftLine:    { color: GREY, fontSize: 8.5, marginBottom: 1 },
   ftRight:   { alignItems: 'center', width: 120 },
   sigLine:   { borderTopWidth: 1, borderTopColor: DARK, paddingTop: 5, width: 110, textAlign: 'center' },
-  sigText:   { color: '#374151', fontSize: 8, fontFamily: 'Helvetica-Bold' },
-  sigSub:    { color: GREY, fontSize: 7, marginTop: 2 },
+  sigText:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  sigSub:    { color: GREY, fontSize: 7.5, marginTop: 2 },
 })
 
 function fmtRs(n: number | null | undefined) {
@@ -217,8 +229,8 @@ export default function QuotePDF(p: QuotePDFProps) {
         <View style={s.header}>
           <View>
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image style={s.logoMark} src="/logo-mark-white.png" />
-            <Text style={s.logoSub}>India&apos;s Digital Baggage Infrastructure</Text>
+            <Image style={s.logoFull} src="/logo-full-white.png" />
+            <Text style={s.logoSub}>India&apos;s First Digital Baggage Infrastructure</Text>
           </View>
           <View>
             <Text style={s.qnLabel}>Estimate</Text>
@@ -246,7 +258,7 @@ export default function QuotePDF(p: QuotePDFProps) {
               <Text style={s.cardLbl}>Bill To</Text>
               <Text style={s.custName}>{p.customerName}</Text>
               <Text style={s.custSub}>{p.customerPhone}</Text>
-              {p.customerEmail ? <Text style={[s.custSub, { fontSize: 8 }]}>{p.customerEmail}</Text> : null}
+              {p.customerEmail ? <Text style={[s.custSub, { fontSize: 8.5 }]}>{p.customerEmail}</Text> : null}
             </View>
 
             {/* Journey */}
@@ -278,9 +290,13 @@ export default function QuotePDF(p: QuotePDFProps) {
                 </View>
               </View>
               <View style={s.jtGrid}>
-                <Text style={s.jtItem}><Text style={s.jtItemKey}>Pickup: </Text><Text style={s.jtItemVal}>{fmtDate(p.pickupDate)}</Text></Text>
+                {/* Pickup/Delivery set to width:'100%' (like Flight below)
+                    so long month names never wrap; extra spaces after the
+                    label give the date value more breathing room, per
+                    founder feedback. */}
+                <Text style={[s.jtItem, { width: '100%' }]}><Text style={s.jtItemKey}>Pickup:   </Text><Text style={s.jtItemVal}>{fmtDate(p.pickupDate)}</Text></Text>
                 {p.pickupTime ? <Text style={s.jtItem}><Text style={s.jtItemKey}>Time: </Text><Text style={s.jtItemVal}>{p.pickupTime}</Text></Text> : null}
-                <Text style={s.jtItem}><Text style={s.jtItemKey}>Delivery: </Text><Text style={s.jtItemVal}>{fmtDate(p.deliveryDate)}</Text></Text>
+                <Text style={[s.jtItem, { width: '100%' }]}><Text style={s.jtItemKey}>Delivery:   </Text><Text style={s.jtItemVal}>{fmtDate(p.deliveryDate)}</Text></Text>
                 <Text style={s.jtItem}><Text style={s.jtItemKey}>Bags: </Text><Text style={s.jtItemVal}>{p.bagsCount ?? '—'}</Text></Text>
                 {(p.flightNumber || p.pnr) ? (
                   <Text style={[s.jtItem, { width: '100%' }]}><Text style={s.jtItemKey}>Flight: </Text><Text style={s.jtItemVal}>{p.flightNumber ?? ''}{p.pnr ? ` / ${p.pnr}` : ''}</Text></Text>
@@ -295,13 +311,13 @@ export default function QuotePDF(p: QuotePDFProps) {
               {p.pickupAddress ? (
                 <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 10' }}>
                   <Text style={[s.cardLbl, { marginBottom: 3 }]}>Pickup Address</Text>
-                  <Text style={{ fontSize: 8, color: '#374151' }}>{p.pickupAddress}</Text>
+                  <Text style={s.addressVal}>{p.pickupAddress}</Text>
                 </View>
               ) : <View style={{ flex: 1 }} />}
               {p.dropAddress ? (
                 <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 10' }}>
                   <Text style={[s.cardLbl, { marginBottom: 3 }]}>Delivery Address</Text>
-                  <Text style={{ fontSize: 8, color: '#374151' }}>{p.dropAddress}</Text>
+                  <Text style={s.addressVal}>{p.dropAddress}</Text>
                 </View>
               ) : <View style={{ flex: 1 }} />}
             </View>
@@ -328,7 +344,7 @@ export default function QuotePDF(p: QuotePDFProps) {
               </View>
               <Text style={[s.tableCell, s.cellQty]}>{li.quantity}</Text>
               <Text style={[s.tableCell, s.cellRate]}>{fmtRs(li.rate)}</Text>
-              <Text style={[s.tableCell, s.cellTax, { fontSize: 8 }]}>GST {li.tax_pct ?? 5}%</Text>
+              <Text style={[s.tableCell, s.cellTax, { fontSize: 8.5 }]}>GST {li.tax_pct ?? 5}%</Text>
               <Text style={[s.tableCell, s.cellAmt]}>{fmtRs(li.amount)}</Text>
             </View>
           ))}
@@ -355,7 +371,7 @@ export default function QuotePDF(p: QuotePDFProps) {
                   src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=upi%3A%2F%2Fpay%3Fpa%3DBAGDROP1717%40IOB%26pn%3DBagdrop%26cu%3DINR"
                   style={{ width: 78, height: 78, borderRadius: 4 }}
                 />
-                <Text style={{ fontSize: 7, color: GREY, marginTop: 3, textAlign: 'center' }}>Scan to Pay</Text>
+                <Text style={{ fontSize: 7.5, color: GREY, marginTop: 3, textAlign: 'center' }}>Scan to Pay</Text>
               </View>
             </View>
           </View>

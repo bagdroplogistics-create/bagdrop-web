@@ -5,14 +5,15 @@ import { SITE } from '@/lib/constants'
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line, pdf } from '@react-pdf/renderer'
 import React from 'react'
 
-// White BagDrop logo mark — this route renders server-side (runtime =
-// 'nodejs' below), so unlike the browser-rendered QuotePDF.tsx it can't use
-// a root-relative src resolved against window.location. Uses the same
+// Full white BagDrop logo lockup — this route renders server-side (runtime
+// = 'nodejs' below), so unlike the browser-rendered QuotePDF.tsx it can't
+// use a root-relative src resolved against window.location. Uses the same
 // absolute-HTTPS-URL pattern already used for the UPI QR code image further
-// down (react-pdf fetches remote Image srcs fine in Node). Same cropped
-// icon-mark asset as QuotePDF.tsx — see that file's comment for why the
-// full lockup (with wordmark/tagline) isn't used at this header scale.
-const LOGO_MARK_URL = `${SITE.url}/logo-mark-white.png`
+// down (react-pdf fetches remote Image srcs fine in Node). Same full-
+// lockup asset as QuotePDF.tsx (icon + "BAGDROP" wordmark + tagline) —
+// restored per founder feedback after an earlier icon-only crop was
+// judged too minimal.
+const LOGO_FULL_URL = `${SITE.url}/logo-full-white.png`
 
 // ── Helpers ────────────────────────────────────────────────────────
 function fmtDate(d: string | null) {
@@ -60,13 +61,15 @@ const s = StyleSheet.create({
   // Header
   header:       { backgroundColor: '#f97316', padding: '24 32', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   headerLeft:   { flexDirection: 'column' },
-  // Logo mark image replaces the old "BAGDROP" text wordmark — same
-  // 0.5812 w:h crop ratio as QuotePDF.tsx's logoMark style.
-  logoMark:     { width: 21, height: 36, marginBottom: 3 },
+  // Full logo lockup image replaces the icon-only mark — same 920:1359
+  // (~0.677 w:h) crop ratio as QuotePDF.tsx's logoFull style. Sized up
+  // from the old 21x36 icon-only mark so the wordmark stays legible.
+  logoFull:     { width: 57, height: 84, marginBottom: 6 },
   // Slightly larger + heavier (Bold approximating Medium — react-pdf's
   // built-in Helvetica has no true Medium weight) and darker-on-orange
-  // opacity, matching QuotePDF.tsx's logoSub treatment.
-  brandSub:     { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: 'rgba(255,255,255,0.92)', marginTop: 2, letterSpacing: 1 },
+  // opacity, matching QuotePDF.tsx's logoSub treatment. marginTop bumped
+  // 2->8 to clear the now-taller full logo image above it.
+  brandSub:     { fontSize: 9, fontFamily: 'Helvetica-Bold', color: 'rgba(255,255,255,0.92)', marginTop: 8, letterSpacing: 1 },
   headerRight:  { alignItems: 'flex-end' },
   quoteLabel:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: 'rgba(255,255,255,0.8)', letterSpacing: 2 },
   quoteNumber:  { fontSize: 16, fontFamily: 'Helvetica-Bold', color: '#ffffff', marginTop: 2 },
@@ -75,71 +78,71 @@ const s = StyleSheet.create({
   // Meta strip
   metaStrip:    { backgroundColor: '#fff7ed', borderBottom: '1 solid #fed7aa', paddingVertical: 10, paddingHorizontal: 32, flexDirection: 'row', gap: 24 },
   metaItem:     { flexDirection: 'column' },
-  metaLabel:    { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#9a3412', letterSpacing: 0.8, textTransform: 'uppercase' },
-  metaValue:    { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#111827', marginTop: 2 },
+  metaLabel:    { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', letterSpacing: 0.8, textTransform: 'uppercase' },
+  metaValue:    { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#111827', marginTop: 2 },
   // Body
   body:         { padding: '20 32' },
   row2:         { flexDirection: 'row', gap: 16, marginBottom: 16 },
   // Cards
   card:         { flex: 1, backgroundColor: '#f9fafb', borderRadius: 6, padding: '12 14', borderLeft: '3 solid #f97316' },
   cardDark:     { flex: 1, backgroundColor: '#f9fafb', borderRadius: 6, padding: '12 14', borderLeft: '3 solid #111827' },
-  cardLabel:    { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+  cardLabel:    { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
   cardName:     { fontSize: 12, fontFamily: 'Helvetica-Bold', color: '#111827' },
-  cardText:     { fontSize: 9, color: '#4b5563', marginTop: 3 },
+  cardText:     { fontSize: 9.5, color: '#4b5563', marginTop: 3 },
   // Route
   routeRow:     { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 8 },
   routeCity:    { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#111827' },
-  routeCityLbl: { fontSize: 7, color: '#4b5563', textTransform: 'uppercase' },
+  routeCityLbl: { fontSize: 7.5, color: '#4b5563', textTransform: 'uppercase' },
   routeLine:    { flex: 1, height: 1, backgroundColor: '#d1d5db' },
   grid2:        { flexDirection: 'row', gap: 8 },
   gridItem:     { flex: 1 },
-  gridLabel:    { fontSize: 7, color: '#4b5563' },
-  gridVal:      { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#111827' },
+  gridLabel:    { fontSize: 7.5, color: '#4b5563' },
+  gridVal:      { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#111827' },
   // Table
   table:        { marginBottom: 14 },
   thead:        { flexDirection: 'row', backgroundColor: '#111827', borderRadius: 4 },
-  theadCell:    { paddingVertical: 8, paddingHorizontal: 10, fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  theadCell:    { paddingVertical: 8, paddingHorizontal: 10, fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
   tbodyRow:     { flexDirection: 'row', borderBottom: '1 solid #f3f4f6', paddingVertical: 10 },
-  tcell:        { paddingHorizontal: 10, fontSize: 9, color: '#374151' },
-  tcellBold:    { paddingHorizontal: 10, fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#111827' },
+  tcell:        { paddingHorizontal: 10, fontSize: 9.5, color: '#374151' },
+  tcellBold:    { paddingHorizontal: 10, fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#111827' },
   // Totals
   totalsRow:    { flexDirection: 'row', gap: 16, marginBottom: 14 },
   bankCard:     { flex: 1, backgroundColor: '#f9fafb', borderRadius: 6, padding: '12 14' },
-  bankLabel:    { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
+  bankLabel:    { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 6 },
   bankRow:      { flexDirection: 'row', gap: 4, marginTop: 2 },
-  bankKey:      { fontSize: 8, color: '#4b5563', width: 32 },
-  bankVal:      { fontSize: 8, color: '#374151', fontFamily: 'Helvetica-Bold' },
+  bankKey:      { fontSize: 8.5, color: '#4b5563', width: 32 },
+  bankVal:      { fontSize: 8.5, color: '#374151', fontFamily: 'Helvetica-Bold' },
   upiBox:       { marginTop: 6, padding: '5 8', backgroundColor: '#fff7ed', borderRadius: 4, border: '1 solid #fed7aa' },
-  upiText:      { fontSize: 8, color: '#9a3412', fontFamily: 'Helvetica-Bold' },
+  upiText:      { fontSize: 8.5, color: '#9a3412', fontFamily: 'Helvetica-Bold' },
   totalsCard:   { flex: 1 },
   totalLine:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 5 },
-  totalKey:     { fontSize: 9, color: '#4b5563' },
-  totalVal:     { fontSize: 9, color: '#4b5563' },
+  totalKey:     { fontSize: 9.5, color: '#4b5563' },
+  totalVal:     { fontSize: 9.5, color: '#4b5563' },
   totalDivider: { borderTop: '1.5 solid #111827', marginTop: 4, marginBottom: 8 },
   grandKey:     { fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#111827' },
   grandVal:     { fontSize: 13, fontFamily: 'Helvetica-Bold', color: '#f97316' },
   amtWords:     { marginTop: 6, padding: '6 10', backgroundColor: '#fff7ed', borderRadius: 6, border: '1 solid #fed7aa' },
-  amtWordsLbl:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#9a3412', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 2 },
-  amtWordsVal:  { fontSize: 8, fontFamily: 'Helvetica-BoldOblique', color: '#111827' },
+  amtWordsLbl:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', letterSpacing: 0.8, textTransform: 'uppercase', marginBottom: 2 },
+  amtWordsVal:  { fontSize: 8.5, fontFamily: 'Helvetica-BoldOblique', color: '#111827' },
   // Notes
   notesBox:     { backgroundColor: '#f9fafb', borderRadius: 6, padding: '10 12', marginBottom: 12, borderLeft: '3 solid #f97316' },
-  notesLabel:   { fontSize: 7, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 },
-  notesText:    { fontSize: 9, color: '#374151' },
+  notesLabel:   { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#4b5563', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 3 },
+  notesText:    { fontSize: 9.5, color: '#374151' },
   // T&C
   tcSection:    { borderTop: '1 solid #f3f4f6', paddingTop: 12, marginBottom: 12 },
-  tcTitle:      { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#374151', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
+  tcTitle:      { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#374151', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 },
   tcGrid:       { flexDirection: 'row', flexWrap: 'wrap', gap: 4 },
   tcItem:       { width: '48%', flexDirection: 'row', gap: 4, marginBottom: 4 },
-  tcNum:        { fontSize: 7, color: '#f97316', fontFamily: 'Helvetica-Bold', width: 10 },
-  tcText:       { fontSize: 7, color: '#4b5563', flex: 1, lineHeight: 1.4 },
+  tcNum:        { fontSize: 7.5, color: '#f97316', fontFamily: 'Helvetica-Bold', width: 10 },
+  tcText:       { fontSize: 7.5, color: '#4b5563', flex: 1, lineHeight: 1.4 },
   // Footer
   footer:       { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', borderTop: '1 solid #f3f4f6', paddingTop: 12 },
   footerLeft:   { flexDirection: 'column' },
-  footerCo:     { fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#374151', marginBottom: 2 },
-  footerText:   { fontSize: 7, color: '#4b5563', lineHeight: 1.5 },
+  footerCo:     { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: '#374151', marginBottom: 2 },
+  footerText:   { fontSize: 7.5, color: '#4b5563', lineHeight: 1.5 },
   sig:          { alignItems: 'center' },
-  sigLine:      { width: 140, borderTop: '1 solid #374151', paddingTop: 4, fontSize: 8, color: '#374151', fontFamily: 'Helvetica-Bold', textAlign: 'center' },
-  sigSub:       { fontSize: 7, color: '#9ca3af', marginTop: 2, textAlign: 'center' },
+  sigLine:      { width: 140, borderTop: '1 solid #374151', paddingTop: 4, fontSize: 8.5, color: '#374151', fontFamily: 'Helvetica-Bold', textAlign: 'center' },
+  sigSub:       { fontSize: 7.5, color: '#4b5563', marginTop: 2, textAlign: 'center' },
 })
 
 // ── PDF Template ───────────────────────────────────────────────────
@@ -166,8 +169,8 @@ function QuotePDF({ q }: { q: Quote }) {
       // Header
       React.createElement(View, { style: s.header },
         React.createElement(View, { style: s.headerLeft },
-          React.createElement(Image, { style: s.logoMark, src: LOGO_MARK_URL }),
-          React.createElement(Text, { style: s.brandSub }, "INDIA'S DIGITAL BAGGAGE INFRASTRUCTURE")
+          React.createElement(Image, { style: s.logoFull, src: LOGO_FULL_URL }),
+          React.createElement(Text, { style: s.brandSub }, "INDIA'S FIRST DIGITAL BAGGAGE INFRASTRUCTURE")
         ),
         React.createElement(View, { style: s.headerRight },
           React.createElement(Text, { style: s.quoteLabel }, 'ESTIMATE'),
@@ -263,10 +266,10 @@ function QuotePDF({ q }: { q: Quote }) {
             )
           ),
           React.createElement(View, { style: s.tbodyRow },
-            React.createElement(Text, { style: [s.tcell, { width: 24, color: '#9ca3af' }] }, '1'),
+            React.createElement(Text, { style: [s.tcell, { width: 24, color: '#4b5563' }] }, '1'),
             React.createElement(View, { style: { flex: 1, paddingHorizontal: 10 } },
-              React.createElement(Text, { style: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#111827' } }, serviceLabel(q.service_type)),
-              React.createElement(Text, { style: { fontSize: 8, color: '#6b7280', marginTop: 2 } },
+              React.createElement(Text, { style: { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: '#111827' } }, serviceLabel(q.service_type)),
+              React.createElement(Text, { style: { fontSize: 8.5, color: '#4b5563', marginTop: 2 } },
                 `${q.from_city} to ${q.to_city} · ${q.total_bags} bag${q.total_bags !== 1 ? 's' : ''} · HSN 996511`)
             ),
             React.createElement(Text, { style: [s.tcell, { width: 60, textAlign: 'center' }] }, String(q.total_bags)),
