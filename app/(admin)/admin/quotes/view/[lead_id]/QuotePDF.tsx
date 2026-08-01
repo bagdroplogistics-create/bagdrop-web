@@ -18,7 +18,13 @@ const s = StyleSheet.create({
 
   // Header
   header:    { backgroundColor: ORANGE, padding: '20 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  logo:      { color: '#fff', fontSize: 22, fontFamily: 'Helvetica-Bold', letterSpacing: -0.5 },
+  // White BagDrop logo mark (cropped from the founder-supplied
+  // public/logo-white.png lockup — icon only, wordmark/tagline band
+  // trimmed off since at header scale the full lockup's wordmark shrinks
+  // below legibility; the icon reads cleanly at this size). Native crop
+  // ratio is 637:1096 (~0.5812 w:h) — height fixed to fit the existing
+  // header row, width derived from that ratio so the mark isn't stretched.
+  logoMark:  { width: 21, height: 36, marginBottom: 3 },
   // react-pdf's built-in Helvetica family only ships Regular/Bold/Oblique/
   // BoldOblique — there's no true "Medium" weight available without
   // registering a custom web font (a fragile external dependency for a
@@ -210,7 +216,8 @@ export default function QuotePDF(p: QuotePDFProps) {
         {/* ── Header ── */}
         <View style={s.header}>
           <View>
-            <Text style={s.logo}>BAGDROP</Text>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image style={s.logoMark} src="/logo-mark-white.png" />
             <Text style={s.logoSub}>India&apos;s Digital Baggage Infrastructure</Text>
           </View>
           <View>
