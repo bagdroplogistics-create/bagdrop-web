@@ -138,7 +138,7 @@ export default function QuotePrintPage() {
             {label:'Date',   value: fmtDate(quote.created_at)},
             {label:'Valid Until', value: fmtDate(quote.valid_until)},
             {label:'Version', value: `v${quote.version ?? 1}`},
-            {label:'GSTIN',  value: '24BDMPS7461P1ZM'},
+            {label:'GSTIN',  value: '24AAACC9320N2ZL'},
             {label:'HSN/SAC', value: '996511'},
           ].map(f => (
             <div key={f.label}>
@@ -289,7 +289,7 @@ export default function QuotePrintPage() {
             <div style={{fontSize:'10px',color:'#9ca3af',lineHeight:'1.6'}}>
               <div style={{fontWeight:700,color:'#374151',fontSize:'11px',marginBottom:'2px'}}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
-              <div>GSTIN: 24BDMPS7461P1ZM · CIN: U63090GJ2023PTC142601</div>
+              <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
               <div>📞 63 5711 5711 · ✉ info@bagdrop.co.in · 🌐 bagdrop.co.in</div>
             </div>
             <div style={{textAlign:'center'}}>

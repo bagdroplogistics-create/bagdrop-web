@@ -145,7 +145,7 @@ export default function RootLayout({
                 'description': 'India\'s premium excess baggage and luggage delivery service. Door-to-door pickup and delivery for airports, destination weddings, student relocations, and intercity travel across India.',
                 'foundingDate': '2023',
                 'legalName': 'Bagdrop Logistics Solutions Pvt. Ltd.',
-                'vatID': '24BDMPS7461P1ZM',
+                'vatID': '24AAACC9320N2ZL',
                 'address': {
                   '@type': 'PostalAddress',
                   'streetAddress': 'TF-302, Ananta Stallion, Gotri Sevasi Road',

@@ -5,16 +5,12 @@
 // labels, and the charges-ledger field list (matches the real IV Cargo
 // -style GC format supplied as a layout reference).
 //
-// PAN/GSTIN note: the rest of this codebase (QuotePDF, TripSheetPDF,
-// app/layout.tsx schema.org data, the quote print view) consistently uses
-// GSTIN 24BDMPS7461P1ZM. The reference GC sample provided for this module
-// shows a DIFFERENT registration — PAN AAACC9320N / GSTIN 24AAACC9320N2ZL
-// (a Private Limited company PAN, 4th character "C", vs. BDMPS7461P's "P"
-// for an individual/proprietor). Confirmed with the founder which to use
-// for the LR: AAACC9320N / 24AAACC9320N2ZL — used below. The two other
-// GSTINs elsewhere in the app were NOT changed (out of scope for this
-// module) — flagged for the founder to reconcile which registration is
-// actually correct across the whole site.
+// PAN/GSTIN note: GSTIN 24AAACC9320N2ZL (PAN AAACC9320N) is Bagdrop's
+// current/updated GST registration, confirmed by the founder. The old
+// GSTIN 24BDMPS7461P1ZM previously hardcoded across QuotePDF.tsx,
+// TripSheetPDF.tsx, the quote print views, upload-pdf route, and
+// app/layout.tsx schema.org data has been updated to this one everywhere —
+// see the "Update GSTIN to 24AAACC9320N2ZL app-wide" commit.
 export const LR_COMPANY = {
   name:        'BAGDROP LOGISTICS SOLUTIONS PRIVATE LIMITED',
   shortName:   'Bagdrop',

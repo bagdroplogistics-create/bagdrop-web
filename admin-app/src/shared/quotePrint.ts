@@ -48,7 +48,7 @@ export interface QuotePrintData {
 
 // ── Bagdrop's fixed legal/bank details, verbatim from the website's
 // quote document (QuotePDF.tsx / page.tsx) ─────────────────────────────
-const GSTIN = '24BDMPS7461P1ZM'
+const GSTIN = '24AAACC9320N2ZL'
 const SAC_CODE = '996511'
 const BANK_NAME = 'Indian Overseas Bank'
 const BANK_ACCOUNT = '171702000001297'

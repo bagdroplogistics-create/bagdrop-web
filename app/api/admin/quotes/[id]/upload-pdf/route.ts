@@ -170,7 +170,7 @@ function QuotePDF({ q }: { q: Quote }) {
           { label: 'DATE',      val: fmtDate(q.created_at) },
           { label: 'VALID UNTIL', val: fmtDate(q.valid_until) },
           { label: 'VERSION',   val: `v${q.version ?? 1}` },
-          { label: 'GSTIN',     val: '24BDMPS7461P1ZM' },
+          { label: 'GSTIN',     val: '24AAACC9320N2ZL' },
           { label: 'HSN/SAC',   val: '996511' },
         ].map(f =>
           React.createElement(View, { key: f.label, style: s.metaItem },
@@ -319,7 +319,7 @@ function QuotePDF({ q }: { q: Quote }) {
           React.createElement(View, { style: s.footerLeft },
             React.createElement(Text, { style: s.footerCo }, 'BAGDROP LOGISTICS SOLUTIONS PVT. LTD.'),
             React.createElement(Text, { style: s.footerText }, 'TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara - 391101'),
-            React.createElement(Text, { style: s.footerText }, 'GSTIN: 24BDMPS7461P1ZM · CIN: U63090GJ2023PTC142601'),
+            React.createElement(Text, { style: s.footerText }, 'GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601'),
             React.createElement(Text, { style: s.footerText }, '+91 63 5711 5711 · info@bagdrop.co.in · bagdrop.co.in')
           ),
           React.createElement(View, { style: s.sig },

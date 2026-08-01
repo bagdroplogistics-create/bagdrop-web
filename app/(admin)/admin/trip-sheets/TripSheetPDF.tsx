@@ -375,7 +375,7 @@ export default function TripSheetPDF(p: TripSheetPDFProps) {
           <View style={s.ftLeft}>
             <Text style={s.ftCo}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</Text>
             <Text style={s.ftLine}>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</Text>
-            <Text style={s.ftLine}>GSTIN: 24BDMPS7461P1ZM  ·  CIN: U63090GJ2023PTC142601</Text>
+            <Text style={s.ftLine}>GSTIN: 24AAACC9320N2ZL  ·  CIN: U63090GJ2023PTC142601</Text>
             <Text style={s.ftLine}>📞 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
           </View>
           <View style={s.ftRight}>

@@ -1081,7 +1081,7 @@ export default function QuoteViewPage() {
           {/* Meta strip */}
           <div style={{ background: '#fff7ed', borderBottom: '1px solid #fed7aa', padding: '10px 36px', display: 'flex', gap: '28px', flexWrap: 'wrap', fontSize: '11px' }}>
             {[
-              { label: 'GSTIN',    value: '24BDMPS7461P1ZM' },
+              { label: 'GSTIN',    value: '24AAACC9320N2ZL' },
               { label: 'SAC Code', value: '996511' },
               { label: 'Lead #',   value: lead.lead_number },
               ...(lead.salesperson_name ? [{ label: 'Salesperson', value: lead.salesperson_name }] : []),
@@ -1294,7 +1294,7 @@ export default function QuoteViewPage() {
             <div style={{ fontSize: '10px', color: '#9ca3af', lineHeight: '1.6' }}>
               <div style={{ fontWeight: 700, color: '#374151', fontSize: '11px', marginBottom: '2px' }}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
-              <div>GSTIN: 24BDMPS7461P1ZM · CIN: U63090GJ2023PTC142601</div>
+              <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
               <div>📞 63 5711 5711 · ✉ info@bagdrop.co · 🌐 bagdrop.co</div>
             </div>
             <div style={{ textAlign: 'center' }}>
