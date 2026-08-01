@@ -72,7 +72,7 @@ function EditRow({
       </td>
       <td className="px-4 py-2">
         <input value={form.to_city} onChange={e => setForm(f => ({ ...f, to_city: e.target.value }))}
-          className={inp} placeholder="baroda" />
+          className={inp} placeholder="vadodara" />
       </td>
       <td className="px-4 py-2">
         <input type="number" min="0" value={form.base_price}
@@ -142,7 +142,7 @@ function AddRow({
       </td>
       <td className="px-4 py-2">
         <input value={form.to_city} onChange={e => setForm(f => ({ ...f, to_city: e.target.value }))}
-          className={inp} placeholder="e.g. baroda" />
+          className={inp} placeholder="e.g. vadodara" />
       </td>
       <td className="px-4 py-2">
         <input type="number" min="0" value={form.base_price}

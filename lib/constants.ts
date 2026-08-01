@@ -154,7 +154,7 @@ export const BAG_TYPES: Record<
 export const COVERAGE_CITIES = [
   // ── Gujarat ─────────────────────────────────────────────
   { id: 'ahmedabad',        label: 'Ahmedabad',             code: 'AMD', airport: 'Sardar Vallabhbhai Patel International' },
-  { id: 'baroda',           label: 'Baroda',                code: 'BDQ', airport: null },
+  { id: 'baroda',           label: 'Vadodara',              code: 'BDQ', airport: null },
   { id: 'anand',            label: 'Anand',                 code: null,  airport: null },
   { id: 'dahod',            label: 'Dahod',                 code: null,  airport: null },
   { id: 'nadiad',           label: 'Nadiad',                code: null,  airport: null },
@@ -231,7 +231,7 @@ export const BOOKING_LOCATIONS = [
 // To add a new route: add one entry here (and ensure both cities
 // exist in COVERAGE_CITIES above).
 export const VALID_ROUTES: ReadonlyArray<{ from: CityId; to: CityId }> = [
-  // Baroda routes
+  // Vadodara routes (internal id stays 'baroda' — see lib/city-normalize.ts)
   { from: 'baroda',           to: 'mumbai-airport-t2' },
   { from: 'baroda',           to: 'mumbai' },
   { from: 'baroda',           to: 'delhi-airport-t3' },

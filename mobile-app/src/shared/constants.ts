@@ -93,7 +93,7 @@ export const BAG_TYPES: Record<
 // ─── Coverage — Cities & Airport Terminals ──────────────────
 export const COVERAGE_CITIES = [
   { id: 'ahmedabad', label: 'Ahmedabad', code: 'AMD' },
-  { id: 'baroda', label: 'Baroda', code: 'BDQ' },
+  { id: 'baroda', label: 'Vadodara', code: 'BDQ' },
   { id: 'anand', label: 'Anand', code: null },
   { id: 'dahod', label: 'Dahod', code: null },
   { id: 'nadiad', label: 'Nadiad', code: null },
