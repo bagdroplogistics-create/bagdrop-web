@@ -151,7 +151,12 @@ export async function POST(
   }
   await sendIndemnityWhatsApp('resubmission_requested', {
     customerPhone: booking.customer_phone, customerName: booking.customer_name, trackingId: booking.tracking_id,
-  }, [booking.customer_name ?? 'Customer', booking.tracking_id, secureLink]).catch(() => {})
+  }, [
+    booking.customer_name ?? 'Customer',
+    booking.tracking_id,
+    note ?? 'Please review and resubmit your documents.',
+    secureLink,
+  ]).catch(() => {})
 
   // Booking's workflow status also needs to go back so Step 7c reappears
   // for tracking — otherwise the admin has no visibility that a bond is
