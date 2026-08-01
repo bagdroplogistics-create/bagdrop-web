@@ -1,10 +1,15 @@
 import {
-  Document, Page, Text, View, StyleSheet, Image,
+  Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line,
 } from '@react-pdf/renderer'
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
-const GREY   = '#6b7280'
+// Darkened from the previous #6b7280 (Tailwind gray-500) — that read too
+// light/washed-out against the white card backgrounds. #4b5563 (gray-600)
+// keeps the same "muted label" role throughout the doc (card labels,
+// journey sub-labels, table descriptions, payment/total keys, T&C body,
+// footer lines) while meeting a noticeably better contrast ratio on white.
+const GREY   = '#4b5563'
 const LIGHT  = '#f9fafb'
 const AMBER  = '#fff7ed'
 
@@ -14,10 +19,21 @@ const s = StyleSheet.create({
   // Header
   header:    { backgroundColor: ORANGE, padding: '20 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logo:      { color: '#fff', fontSize: 22, fontFamily: 'Helvetica-Bold', letterSpacing: -0.5 },
-  logoSub:   { color: 'rgba(255,255,255,0.75)', fontSize: 7, letterSpacing: 1.5, marginTop: 2, textTransform: 'uppercase' },
-  qnLabel:   { color: 'rgba(255,255,255,0.75)', fontSize: 7, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
-  qnValue:   { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
-  qnDate:    { color: 'rgba(255,255,255,0.8)', fontSize: 8, textAlign: 'right', marginTop: 2 },
+  // react-pdf's built-in Helvetica family only ships Regular/Bold/Oblique/
+  // BoldOblique — there's no true "Medium" weight available without
+  // registering a custom web font (a fragile external dependency for a
+  // document that also needs to render reliably offline/server-side).
+  // Approximated "Medium" here with Bold at higher opacity + a larger
+  // size — bolder and more visible than the previous thin 75%-opacity
+  // regular-weight line, without the risk of a missing custom font
+  // silently breaking the header.
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
+  // Quotation Number — now the SMALLER of the two top-right lines (was
+  // the large 18px headline). "Service Estimate" label removed entirely.
+  qnValue:   { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4 },
+  // Date — now the PROMINENT top-right line (was the small 8px line).
+  qnDate:    { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
+  qnValidTill: { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, textAlign: 'right', marginTop: 2 },
 
   // Meta strip
   strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '6 28', flexDirection: 'row', gap: 20 },
@@ -40,7 +56,6 @@ const s = StyleSheet.create({
   jtCity:    { color: DARK, fontSize: 12, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
   jtLbl:     { color: GREY, fontSize: 7, textAlign: 'center', marginBottom: 2 },
   jtLine:    { flex: 1, borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginHorizontal: 6 },
-  jtPlane:   { color: GREY, fontSize: 10 },
   jtGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '3 12' },
   jtItem:    { fontSize: 8, color: '#4b5563', width: '48%' },
   jtItemKey: { color: GREY },
@@ -196,12 +211,9 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.logoSub}>India&apos;s Digital Baggage Infrastructure</Text>
           </View>
           <View>
-            <Text style={s.qnLabel}>Service Estimate</Text>
             <Text style={s.qnValue}>{p.quoteNumber}</Text>
-            <Text style={s.qnDate}>
-              Date: {fmtDate(p.quoteDate)}
-              {p.expiryDate ? `  ·  Valid till: ${fmtDate(p.expiryDate)}` : ''}
-            </Text>
+            <Text style={s.qnDate}>{fmtDate(p.quoteDate)}</Text>
+            {p.expiryDate ? <Text style={s.qnValidTill}>Valid till {fmtDate(p.expiryDate)}</Text> : null}
           </View>
         </View>
 
@@ -235,7 +247,19 @@ export default function QuotePDF(p: QuotePDFProps) {
                   <Text style={s.jtCity}>{p.fromCity ?? '—'}</Text>
                 </View>
                 <View style={s.jtLine} />
-                <Text style={s.jtPlane}>✈</Text>
+                {/* Luggage/trolley-bag icon — replaces the previous
+                    airplane glyph, drawn as a small vector via react-pdf's
+                    Svg primitives (no icon font/emoji glyph is reliably
+                    available in a Helvetica-only PDF) so it renders
+                    consistently everywhere the PDF is opened. */}
+                <Svg width={14} height={14} viewBox="0 0 24 24" style={{ marginHorizontal: 4 }}>
+                  <Rect x={5} y={8} width={14} height={13} rx={2} stroke={GREY} strokeWidth={1.6} fill="none" />
+                  <Rect x={9.5} y={4} width={5} height={4.5} rx={1} stroke={GREY} strokeWidth={1.6} fill="none" />
+                  <Line x1={9.5} y1={8} x2={9.5} y2={21} stroke={GREY} strokeWidth={1} />
+                  <Line x1={14.5} y1={8} x2={14.5} y2={21} stroke={GREY} strokeWidth={1} />
+                  <Line x1={8} y1={23} x2={8} y2={24} stroke={GREY} strokeWidth={1.6} />
+                  <Line x1={16} y1={23} x2={16} y2={24} stroke={GREY} strokeWidth={1.6} />
+                </Svg>
                 <View style={s.jtLine} />
                 <View>
                   <Text style={s.jtLbl}>To</Text>
