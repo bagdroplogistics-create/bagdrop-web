@@ -1,7 +1,21 @@
 import {
-  Document, Page, Text, View, StyleSheet,
+  Document, Page, Text, View, StyleSheet, Image,
 } from '@react-pdf/renderer'
 import { LR_COMPANY, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
+
+// QR code: generated on the fly via the same api.qrserver.com endpoint
+// already used for the UPI payment QR in app/api/admin/bookings/[id]/route.ts
+// (sendPaymentRequestEmail) — no new dependency, react-pdf's <Image> accepts
+// a remote URL directly. Encodes a compact verification string (GC number,
+// date, route) rather than a public tracking URL, since there's no public
+// per-LR tracking page yet.
+function qrCodeUrl(data: string, size = 120) {
+  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
+}
+
+// Company stamp/seal, supplied by the founder — public/legal/bagdrop-stamp.png
+// (transparent PNG, same folder as the indemnity bond template).
+const STAMP_URL = '/legal/bagdrop-stamp.png'
 
 // Grid layout follows the real IV Cargo -style GC (Goods Consignment) form
 // supplied as a reference: header identity block, PAN/GSTIN/Vehicle/Route
@@ -31,6 +45,8 @@ const s = StyleSheet.create({
   gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 6.5, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
   gcValue: { color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
   gcDate:  { color: 'rgba(255,255,255,0.85)', fontSize: 7, textAlign: 'right', marginTop: 2 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  qrBox:   { width: 40, height: 40, backgroundColor: '#fff', borderRadius: 3, padding: 2 },
 
   // Company strip
   coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 24', flexDirection: 'row', justifyContent: 'space-between' },
@@ -79,6 +95,7 @@ const s = StyleSheet.create({
   sigCo:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
   sigLine2: { fontSize: 6.5, color: GREY, marginBottom: 1 },
   sigRight: { alignItems: 'center', width: 130 },
+  stampImg: { width: 72, height: 72, marginBottom: 2 },
   sigBox:   { borderTopWidth: 1, borderColor: DARK, paddingTop: 4, width: 120, textAlign: 'center' },
   sigTxt:   { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK },
   sigSub:   { fontSize: 6, color: GREY, marginTop: 2 },
@@ -169,10 +186,16 @@ export default function LRPDF(p: LRPDFProps) {
             <Text style={s.titleTxt}>Consignment Note</Text>
             <Text style={s.titleSub}>At Owner&apos;s Risk</Text>
           </View>
-          <View>
-            <Text style={s.gcLabel}>GC No.</Text>
-            <Text style={s.gcValue}>{p.lrNumber}</Text>
-            <Text style={s.gcDate}>Date: {fmtDate(p.lrDate)}</Text>
+          <View style={s.headerRight}>
+            <Image
+              style={s.qrBox}
+              src={qrCodeUrl(`BAGDROP LR:${p.lrNumber} DATE:${p.lrDate ?? ''} ${p.fromCity ?? ''}->${p.toCity ?? ''}`)}
+            />
+            <View>
+              <Text style={s.gcLabel}>GC No.</Text>
+              <Text style={s.gcValue}>{p.lrNumber}</Text>
+              <Text style={s.gcDate}>Date: {fmtDate(p.lrDate)}</Text>
+            </View>
           </View>
         </View>
 
@@ -353,6 +376,7 @@ export default function LRPDF(p: LRPDFProps) {
             <Text style={s.sigLine2}>Prepared By: {p.preparedBy ?? 'admin'}</Text>
           </View>
           <View style={s.sigRight}>
+            <Image style={s.stampImg} src={STAMP_URL} />
             <View style={s.sigBox}>
               <Text style={s.sigTxt}>Authorized Signatory</Text>
               <Text style={s.sigSub}>For {LR_COMPANY.shortName}</Text>
