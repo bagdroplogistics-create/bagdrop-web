@@ -1046,6 +1046,49 @@ export default function QuoteViewPage() {
               : <><Download className="h-3.5 w-3.5" /> Download PDF</>
             }
           </button>
+          {/* Delete this quote only — clears the quote_* fields on the lead
+              row (mirrors the "Remove return quote" pattern further down
+              this page). Never touches the lead/inquiry itself: no DELETE
+              call is made, and lead.name/phone/email/lead_number etc. are
+              untouched. Only shown once a quote actually exists. */}
+          {lead.quote_number && (
+            <button
+              onClick={async () => {
+                if (!key || !lead) return
+                if (!confirm(
+                  `Delete quote ${lead.quote_number}? This only clears the quote data on this lead — the customer inquiry (${lead.lead_number}, ${lead.name}) will NOT be deleted. This cannot be undone.`
+                )) return
+                setActing('delete_quote')
+                try {
+                  const res = await fetch(`/api/admin/leads/${lead.id}`, {
+                    method:  'PATCH',
+                    headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+                    body: JSON.stringify({
+                      quote_number: null, quote_line_items: null, quote_total: null,
+                      quote_subtotal: null, quote_tax: null,
+                      quote_discount_pct: null, quote_discount_amt: null,
+                      quote_date: null, quote_expiry_date: null,
+                      quote_notes: null, quote_terms: null, quote_subject: null,
+                      salesperson_name: null, agent_name: null,
+                      zoho_estimate_id: null, zoho_estimate_number: null,
+                    }),
+                  })
+                  const j = await res.json().catch(() => ({}))
+                  if (!res.ok) { alert(j.error ?? 'Failed to delete quote'); return }
+                  router.push('/admin/quotes')
+                } finally {
+                  setActing(null)
+                }
+              }}
+              disabled={acting === 'delete_quote'}
+              title="Delete this quote (keeps the inquiry)"
+              className="flex items-center gap-1.5 rounded-lg border border-red-200 px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50 transition-colors">
+              {acting === 'delete_quote'
+                ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Deleting…</>
+                : <><Trash2 className="h-3.5 w-3.5" /> Delete Quote</>
+              }
+            </button>
+          )}
         </div>
       </div>
 
@@ -1059,14 +1102,19 @@ export default function QuoteViewPage() {
           {/* Orange header */}
           <div style={{ background: '#f97316', padding: '28px 36px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
+              {/* Full logo lockup (icon + "BAGDROP" wordmark + tagline,
+                  all baked into the official brand asset) — restored per
+                  founder feedback after an icon-only crop was judged too
+                  minimal. Sized up from the old 26x45 icon-only mark, so
+                  the coded tagline below has extra marginTop to clear it. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
-                src="/logo-mark-white.png"
+                src="/logo-full-white.png"
                 alt="Bagdrop"
-                style={{ width: '26px', height: '45px', display: 'block' }}
+                style={{ width: '57px', height: '84px', display: 'block' }}
               />
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginTop: '5px', letterSpacing: '1px', textTransform: 'uppercase' }}>
-                India&apos;s Digital Baggage Infrastructure
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginTop: '10px', letterSpacing: '1px', textTransform: 'uppercase' }}>
+                India&apos;s First Digital Baggage Infrastructure
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
@@ -1097,8 +1145,8 @@ export default function QuoteViewPage() {
               ...(lead.agent_name       ? [{ label: 'Agent',       value: lead.agent_name       }] : []),
             ].map(f => (
               <div key={f.label}>
-                <div style={{ fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.8px', fontSize: '9px' }}>{f.label}</div>
-                <div style={{ fontWeight: 600, color: '#111', marginTop: '2px' }}>{f.value}</div>
+                <div style={{ fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.8px', fontSize: '9.5px' }}>{f.label}</div>
+                <div style={{ fontWeight: 600, color: '#111', marginTop: '2px', fontSize: '11.5px' }}>{f.value}</div>
               </div>
             ))}
           </div>
@@ -1107,17 +1155,17 @@ export default function QuoteViewPage() {
           <div style={{ padding: '24px 36px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #f97316' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Bill To</div>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Bill To</div>
               <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>{lead.name}</div>
-              <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '3px' }}>{lead.phone}</div>
-              {lead.email && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>{lead.email}</div>}
+              <div style={{ fontSize: '12.5px', color: '#4b5563', marginTop: '3px' }}>{lead.phone}</div>
+              {lead.email && <div style={{ fontSize: '11.5px', color: '#4b5563', marginTop: '2px' }}>{lead.email}</div>}
             </div>
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #111' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Journey Details</div>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Journey Details</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: '#4b5563', textTransform: 'uppercase' }}>From</div>
+                  <div style={{ fontSize: '9.5px', color: '#4b5563', textTransform: 'uppercase' }}>From</div>
                   <div style={{ fontSize: '14px', fontWeight: 800, color: '#111', textTransform: 'uppercase' }}>{lead.from_city ?? '—'}</div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1135,14 +1183,20 @@ export default function QuoteViewPage() {
                   <div style={{ flex: 1, height: '1px', background: '#d1d5db' }} />
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: '#4b5563', textTransform: 'uppercase' }}>To</div>
+                  <div style={{ fontSize: '9.5px', color: '#4b5563', textTransform: 'uppercase' }}>To</div>
                   <div style={{ fontSize: '14px', fontWeight: 800, color: '#111', textTransform: 'uppercase' }}>{lead.to_city ?? '—'}</div>
                 </div>
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', fontSize: '11px', color: '#4b5563' }}>
-                <div><span style={{ color: '#4b5563' }}>Pickup: </span><strong>{fmtDate(lead.pickup_date)}</strong></div>
+              {/* Pickup/Delivery span the full width (gridColumn: '1 / -1')
+                  with whiteSpace:'nowrap' so long month names (September/
+                  November/December) never wrap onto a second line — Time/
+                  Bags keep the original 2-up layout. Extra spacing after
+                  the label (wordSpacing + a couple of literal spaces) adds
+                  the requested gap before the date value. */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px', fontSize: '11.5px', color: '#4b5563' }}>
+                <div style={{ gridColumn: '1 / -1', whiteSpace: 'nowrap' }}><span style={{ color: '#4b5563' }}>Pickup:   </span><strong>{fmtDate(lead.pickup_date)}</strong></div>
                 {lead.pickup_time && <div><span style={{ color: '#4b5563' }}>Time: </span><strong>{lead.pickup_time}</strong></div>}
-                <div><span style={{ color: '#4b5563' }}>Delivery: </span><strong>{fmtDate(lead.delivery_date)}</strong></div>
+                <div style={{ gridColumn: '1 / -1', whiteSpace: 'nowrap' }}><span style={{ color: '#4b5563' }}>Delivery:   </span><strong>{fmtDate(lead.delivery_date)}</strong></div>
                 <div><span style={{ color: '#4b5563' }}>Bags: </span><strong>{lead.bags_count ?? '—'}</strong></div>
                 {lead.flight_number && (
                   <div style={{ gridColumn: '1 / -1' }}>
@@ -1156,17 +1210,20 @@ export default function QuoteViewPage() {
 
           {/* Addresses */}
           {(lead.pickup_address || lead.drop_address) && (
-            <div style={{ padding: '12px 36px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '11px' }}>
+            <div style={{ padding: '12px 36px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '11.5px' }}>
               {lead.pickup_address && (
                 <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '4px' }}>Pickup Address</div>
-                  <div style={{ color: '#374151' }}>{lead.pickup_address}</div>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '5px' }}>Pickup Address</div>
+                  {/* Address value made much more prominent per founder
+                      feedback — was 11px/regular/#374151, now 15px/Bold/
+                      dark so it stands out clearly. */}
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>{lead.pickup_address}</div>
                 </div>
               )}
               {lead.drop_address && (
                 <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '4px' }}>Delivery Address</div>
-                  <div style={{ color: '#374151' }}>{lead.drop_address}</div>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '5px' }}>Delivery Address</div>
+                  <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>{lead.drop_address}</div>
                 </div>
               )}
             </div>
@@ -1174,7 +1231,7 @@ export default function QuoteViewPage() {
 
           {/* Line Items Table */}
           <div style={{ padding: '20px 36px 0' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12.5px' }}>
               <thead>
                 <tr style={{ background: '#111827', color: '#fff' }}>
                   <th style={{ padding: '10px 14px', textAlign: 'left', fontWeight: 700, borderRadius: '6px 0 0 0' }}>#</th>
@@ -1191,18 +1248,18 @@ export default function QuoteViewPage() {
                     <td style={{ padding: '12px 14px', color: '#4b5563' }}>{idx + 1}</td>
                     <td style={{ padding: '12px 14px' }}>
                       <div style={{ fontWeight: 700, color: '#111' }}>{li.name}</div>
-                      {li.description && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>{li.description}</div>}
+                      {li.description && <div style={{ fontSize: '11.5px', color: '#4b5563', marginTop: '2px' }}>{li.description}</div>}
                     </td>
                     <td style={{ padding: '12px 14px', textAlign: 'center', color: '#374151' }}>{li.quantity}</td>
                     <td style={{ padding: '12px 14px', textAlign: 'right', color: '#374151' }}>{fmtRs(li.rate)}</td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#4b5563', fontSize: '11px' }}>
+                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#4b5563', fontSize: '11.5px' }}>
                       GST {li.tax_pct ?? 5}%
                     </td>
                     <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#111' }}>{fmtRs(li.amount)}</td>
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={6} style={{ padding: '20px 14px', textAlign: 'center', color: '#4b5563', fontSize: '12px' }}>
+                    <td colSpan={6} style={{ padding: '20px 14px', textAlign: 'center', color: '#4b5563', fontSize: '12.5px' }}>
                       No line items — generate a quote first.
                     </td>
                   </tr>
@@ -1216,9 +1273,9 @@ export default function QuoteViewPage() {
 
             {/* Payment details */}
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Payment Details</div>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Payment Details</div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
-                <div style={{ flex: 1, fontSize: '11px', color: '#374151', lineHeight: '1.8' }}>
+                <div style={{ flex: 1, fontSize: '11.5px', color: '#374151', lineHeight: '1.8' }}>
                   <div><span style={{ color: '#4b5563' }}>Bank: </span>Indian Overseas Bank</div>
                   <div><span style={{ color: '#4b5563' }}>A/C No: </span><strong>171702000001297</strong></div>
                   <div><span style={{ color: '#4b5563' }}>IFSC: </span>IOBA0001717 · Gotri Road Branch</div>
@@ -1234,7 +1291,7 @@ export default function QuoteViewPage() {
                     alt="UPI QR"
                     style={{ width: '76px', height: '76px', display: 'block', borderRadius: '4px', border: '1px solid #e5e7eb' }}
                   />
-                  <div style={{ fontSize: '8px', color: '#4b5563', marginTop: '3px' }}>Scan to Pay</div>
+                  <div style={{ fontSize: '8.5px', color: '#4b5563', marginTop: '3px' }}>Scan to Pay</div>
                 </div>
               </div>
             </div>
@@ -1242,11 +1299,11 @@ export default function QuoteViewPage() {
             {/* Totals */}
             <div>
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#4b5563', marginBottom: '6px' }}>
                   <span>Sub Total</span><span>{fmtRs(subtotal)}</span>
                 </div>
                 {(lead.quote_discount_amt ?? 0) > 0 && (
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#dc2626', fontWeight: 700, marginBottom: '6px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#dc2626', fontWeight: 700, marginBottom: '6px' }}>
                     <span>
                       {lead.quote_discount_pct
                         ? `Discount (${lead.quote_discount_pct}%)`
@@ -1255,10 +1312,10 @@ export default function QuoteViewPage() {
                     <span>− {fmtRs(lead.quote_discount_amt!)}</span>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#4b5563', marginBottom: '6px' }}>
                   <span>CGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#4b5563', marginBottom: '8px' }}>
                   <span>SGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #111', paddingTop: '10px' }}>
@@ -1268,8 +1325,8 @@ export default function QuoteViewPage() {
               </div>
               {grandTotal > 0 && (
                 <div style={{ marginTop: '10px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '8px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '3px' }}>Amount in Words</div>
-                  <div style={{ fontSize: '11px', fontWeight: 600, color: '#111', fontStyle: 'italic' }}>{toWords(grandTotal)}</div>
+                  <div style={{ fontSize: '9.5px', fontWeight: 700, color: '#9a3412', textTransform: 'uppercase', letterSpacing: '0.8px', marginBottom: '3px' }}>Amount in Words</div>
+                  <div style={{ fontSize: '11.5px', fontWeight: 600, color: '#111', fontStyle: 'italic' }}>{toWords(grandTotal)}</div>
                 </div>
               )}
             </div>
@@ -1278,18 +1335,18 @@ export default function QuoteViewPage() {
           {/* Notes */}
           {(lead.quote_notes ?? lead.notes) && (
             <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
-              <div style={{ fontSize: '12px', color: '#374151' }}>{lead.quote_notes ?? lead.notes}</div>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
+              <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes ?? lead.notes}</div>
             </div>
           )}
 
           {/* Terms */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>
-            <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#374151', marginBottom: '8px' }}>Terms &amp; Conditions</div>
+            <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#374151', marginBottom: '8px' }}>Terms &amp; Conditions</div>
             {lead.quote_terms ? (
-              <div style={{ fontSize: '10px', color: '#4b5563', lineHeight: '1.6' }}>{lead.quote_terms}</div>
+              <div style={{ fontSize: '10.5px', color: '#4b5563', lineHeight: '1.6' }}>{lead.quote_terms}</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10px', color: '#4b5563', lineHeight: '1.5' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10.5px', color: '#4b5563', lineHeight: '1.5' }}>
                 {[
                   'All bookings confirmed on receipt of full payment. A CN number will be issued for reference.',
                   'Only services mentioned above are included. Company reserves the right to cancel at any point.',
@@ -1309,17 +1366,17 @@ export default function QuoteViewPage() {
 
           {/* Footer */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', padding: '14px 0 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div style={{ fontSize: '10px', color: '#4b5563', lineHeight: '1.6' }}>
-              <div style={{ fontWeight: 700, color: '#374151', fontSize: '11px', marginBottom: '2px' }}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
+            <div style={{ fontSize: '10.5px', color: '#4b5563', lineHeight: '1.6' }}>
+              <div style={{ fontWeight: 700, color: '#374151', fontSize: '11.5px', marginBottom: '2px' }}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
               <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
               <div>📞 63 5711 5711 · ✉ info@bagdrop.co · 🌐 bagdrop.co</div>
             </div>
             <div style={{ textAlign: 'center' }}>
-              <div style={{ width: '140px', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10px', color: '#374151', fontWeight: 600 }}>
+              <div style={{ width: '140px', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10.5px', color: '#374151', fontWeight: 600 }}>
                 Authorized Signatory
               </div>
-              <div style={{ fontSize: '9px', color: '#4b5563', marginTop: '2px' }}>
+              <div style={{ fontSize: '9.5px', color: '#4b5563', marginTop: '2px' }}>
                 For Bagdrop Logistics Solutions Pvt. Ltd.
               </div>
             </div>
