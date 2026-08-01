@@ -125,14 +125,19 @@ export async function POST(req: NextRequest) {
     ? (formatCustomerName(booking.title as string | null, booking.customer_name as string) || (booking.customer_name as string))
     : null
 
-  const consignorName    = booking ? bookingDisplayName! : body.consignor_name.trim()
-  const consignorMobile  = booking ? (booking.customer_phone as string) : (body.consignor_mobile?.trim() || null)
-  const consignorEmail   = booking ? ((booking.customer_email as string) ?? null) : (body.consignor_email?.trim() || null)
-  const consignorAddress = booking ? ((booking.pickup_address as string) ?? null) : (body.consignor_address?.trim() || null)
+  // Body values always win when present — the "New LR" admin screen
+  // pre-fills these from the booking (see selectBooking() client-side)
+  // but lets the admin correct them before generating, so an override
+  // must actually take effect instead of being silently discarded in
+  // favor of the raw booking record.
+  const consignorName    = body.consignor_name?.trim()    || bookingDisplayName || ''
+  const consignorMobile  = body.consignor_mobile?.trim()  || (booking ? ((booking.customer_phone as string) ?? null) : null)
+  const consignorEmail   = body.consignor_email?.trim()   || (booking ? ((booking.customer_email as string) ?? null) : null)
+  const consignorAddress = body.consignor_address?.trim() || (booking ? ((booking.pickup_address as string) ?? null) : null)
 
-  const consigneeName    = booking ? bookingDisplayName! : body.consignee_name.trim()
-  const consigneeMobile  = booking ? (booking.customer_phone as string) : (body.consignee_mobile?.trim() || null)
-  const consigneeAddress = booking ? ((booking.drop_address as string) ?? null) : (body.consignee_address?.trim() || null)
+  const consigneeName    = body.consignee_name?.trim()    || bookingDisplayName || ''
+  const consigneeMobile  = body.consignee_mobile?.trim()  || (booking ? ((booking.customer_phone as string) ?? null) : null)
+  const consigneeAddress = body.consignee_address?.trim() || (booking ? ((booking.drop_address as string) ?? null) : null)
 
   const insertPayload = {
     lr_number:      lrNumber,

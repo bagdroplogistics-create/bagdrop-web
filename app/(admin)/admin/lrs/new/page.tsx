@@ -168,6 +168,23 @@ export default function NewLRPage() {
     return e.tracking_id.toLowerCase().includes(q) || e.customer_name.toLowerCase().includes(q) || e.customer_phone.includes(q)
   })
 
+  // Selecting a booking pre-fills the same editable Consignor/Consignee
+  // cards used in Create Manually mode (booking's own name/phone for both,
+  // pickup address for Consignor, drop address for Consignee) — the admin
+  // can still correct any of it before generating, same as manual mode.
+  function selectBooking(e: BookingEntry) {
+    setSelected(e)
+    const name = formatCustomerName(e.title, e.customer_name) || e.customer_name
+    setConsignorName(name)
+    setConsignorMobile(e.customer_phone ?? '')
+    setConsignorAddress(e.pickup_address ?? '')
+    setConsignorGstin('')
+    setConsigneeName(name)
+    setConsigneeMobile(e.customer_phone ?? '')
+    setConsigneeAddress(e.drop_address ?? '')
+    setConsigneeGstin('')
+  }
+
   function setCharge(key: string, value: string) {
     setCharges(prev => ({ ...prev, [key]: value }))
   }
@@ -190,11 +207,16 @@ export default function NewLRPage() {
             ? { booking_id: selected!.booking_id }
             : {
                 manual: true,
-                consignor_name: consignorName.trim(), consignor_mobile: consignorMobile.trim() || null, consignor_address: consignorAddress.trim() || null,
-                consignee_name: consigneeName.trim(), consignee_mobile: consigneeMobile.trim() || null, consignee_address: consigneeAddress.trim() || null,
                 from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
                 total_bags: Number(totalBags) || 1,
               }),
+          // Consignor/Consignee overrides — always sent. In manual mode
+          // these are the only source; in select mode they start
+          // pre-filled from the booking (see selectBooking()) but the
+          // API still prefers whatever's here over the raw booking data,
+          // so edits made on this screen actually take effect.
+          consignor_name: consignorName.trim() || null, consignor_mobile: consignorMobile.trim() || null, consignor_address: consignorAddress.trim() || null,
+          consignee_name: consigneeName.trim() || null, consignee_mobile: consigneeMobile.trim() || null, consignee_address: consigneeAddress.trim() || null,
           consignor_gstin: consignorGstin.trim() || null,
           consignee_gstin: consigneeGstin.trim() || null,
 
@@ -293,7 +315,7 @@ export default function NewLRPage() {
             ) : filtered.map(e => {
               const isSelected = selected?.booking_id === e.booking_id
               return (
-                <button key={e.booking_id} onClick={() => setSelected(e)}
+                <button key={e.booking_id} onClick={() => selectBooking(e)}
                   className={`w-full rounded-xl border p-3 text-left transition-all ${isSelected ? 'border-orange-400 bg-orange-50 shadow-sm ring-1 ring-orange-300' : 'border-gray-200 bg-white hover:border-orange-200 hover:bg-orange-50/50'}`}>
                   <div className="flex items-start justify-between gap-2 mb-1.5">
                     <span className="font-mono text-xs font-bold text-orange-600">{e.tracking_id}</span>
@@ -341,8 +363,23 @@ export default function NewLRPage() {
                 </Card>
               )}
 
-              {/* ── 2. Consignor / Consignee (manual mode only) ── */}
-              {mode === 'manual' && (
+              {mode === 'select' && selected && (
+                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
+                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-500">Auto-filled from Booking</p>
+                  <div className="grid grid-cols-3 gap-3 text-sm">
+                    <div><p className="text-xs text-gray-400">Route</p><p className="font-semibold text-gray-800">{selected.from_city ?? '—'} → {selected.to_city ?? '—'}</p></div>
+                    <div><p className="text-xs text-gray-400">Bags</p><p className="font-semibold text-gray-800">{selected.total_bags ?? '—'}</p></div>
+                    <div><p className="text-xs text-gray-400">Amount</p><p className="font-semibold text-gray-800">{fmtRs(selected.total_amount)}</p></div>
+                  </div>
+                </div>
+              )}
+
+              {/* ── 2. Consignor / Consignee — editable in both modes. In
+                  Select Booking mode these start pre-filled from the
+                  booking (name/phone for both, pickup/drop address) via
+                  selectBooking() above, but the admin can still correct
+                  anything before generating, same as Create Manually. ── */}
+              {(mode === 'manual' || (mode === 'select' && selected)) && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
                     <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700"><User className="h-4 w-4 text-orange-400" /> Consignor</h3>
@@ -361,18 +398,6 @@ export default function NewLRPage() {
                       <FInput label="Address" value={consigneeAddress} onChange={setConsigneeAddress} />
                       <FInput label="GSTIN" value={consigneeGstin} onChange={setConsigneeGstin} placeholder="Optional" />
                     </div>
-                  </div>
-                </div>
-              )}
-
-              {mode === 'select' && selected && (
-                <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
-                  <p className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-500">Auto-filled from Booking</p>
-                  <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    <div><p className="text-xs text-gray-400">Customer</p><p className="font-semibold text-gray-800">{formatCustomerName(selected.title, selected.customer_name) || selected.customer_name}</p></div>
-                    <div><p className="text-xs text-gray-400">Route</p><p className="font-semibold text-gray-800">{selected.from_city ?? '—'} → {selected.to_city ?? '—'}</p></div>
-                    <div><p className="text-xs text-gray-400">Bags</p><p className="font-semibold text-gray-800">{selected.total_bags ?? '—'}</p></div>
-                    <div><p className="text-xs text-gray-400">Amount</p><p className="font-semibold text-gray-800">{fmtRs(selected.total_amount)}</p></div>
                   </div>
                 </div>
               )}
