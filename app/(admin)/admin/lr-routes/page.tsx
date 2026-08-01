@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, Pencil, Trash2, Check, ToggleLeft, ToggleRight, Map,
+  Plus, Pencil, Trash2, Check, ToggleLeft, ToggleRight, Map, Download,
 } from 'lucide-react'
 
 interface LrRoute {
@@ -153,6 +153,8 @@ export default function LrRoutesPage() {
   const [adding,   setAdding]   = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [err,      setErr]      = useState('')
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -188,6 +190,27 @@ export default function LrRoutesPage() {
     fetchRoutes()
   }
 
+  // Scans every booking that has reached the final "Completed" status
+  // and adds any From→To city pair that isn't already a Route Master
+  // entry — a one-click way to backfill routes for all the business
+  // we've actually completed, instead of adding each pair by hand.
+  async function importFromCompleted() {
+    setImporting(true); setImportMsg(''); setErr('')
+    const res = await fetch('/api/admin/lr-routes/import-completed', {
+      method: 'POST',
+      headers: { 'x-admin-key': adminKey },
+    })
+    const d = await res.json()
+    setImporting(false)
+    if (!res.ok) { setErr(d.error ?? 'Import failed'); return }
+    setImportMsg(
+      d.added_count > 0
+        ? `Added ${d.added_count} new route${d.added_count === 1 ? '' : 's'} from ${d.scanned_completed_bookings} completed booking${d.scanned_completed_bookings === 1 ? '' : 's'} (${d.skipped_existing_count} already configured). New routes default to Intrastate — review GST type per row.`
+        : `No new routes to add — all ${d.distinct_routes_found} route(s) from ${d.scanned_completed_bookings} completed booking${d.scanned_completed_bookings === 1 ? '' : 's'} are already configured.`
+    )
+    fetchRoutes()
+  }
+
   if (!authed) return null
 
   return (
@@ -198,15 +221,25 @@ export default function LrRoutesPage() {
             <h1 className="text-lg font-bold text-gray-900">LR Route Master</h1>
             <p className="text-xs text-gray-400 mt-0.5">Configure Origin↔Destination pairs used when generating an LR — branch codes, default vehicle type, and GST treatment (CGST+SGST vs IGST).</p>
           </div>
-          <button onClick={() => { setAdding(true); setEditId(null); setErr('') }}
-            className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
-            <Plus className="h-4 w-4" /> Add Route
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={importFromCompleted} disabled={importing}
+              className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 shadow-sm hover:bg-orange-50 transition-colors disabled:opacity-50">
+              {importing
+                ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-orange-400 border-t-transparent" />
+                : <Download className="h-4 w-4" />}
+              {importing ? 'Importing…' : 'Import from Completed Bookings'}
+            </button>
+            <button onClick={() => { setAdding(true); setEditId(null); setErr('') }}
+              className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
+              <Plus className="h-4 w-4" /> Add Route
+            </button>
+          </div>
         </div>
       </div>
 
       <main className="px-6 py-6">
         {err && <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{err}</div>}
+        {importMsg && <div className="mb-4 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-700">{importMsg}</div>}
 
         <div className="mb-5 rounded-xl border border-blue-100 bg-blue-50 px-4 py-3 text-sm text-blue-700">
           <span className="font-semibold">GST logic:</span> Intrastate routes (consignor/consignee in the same state) split tax as CGST 2.5% + SGST 2.5%. Interstate routes charge IGST 5% instead — same 5% total rate used across the app, applied automatically to any LR matched against this route.
