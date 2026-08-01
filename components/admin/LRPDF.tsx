@@ -206,7 +206,7 @@ export default function LRPDF(p: LRPDFProps) {
             <Text style={s.coLine}>{LR_COMPANY.addressLine1}, {LR_COMPANY.addressLine2}</Text>
           </View>
           <View>
-            <Text style={s.coLine}>Tel: {LR_COMPANY.phone}  ·  {LR_COMPANY.email}</Text>
+            <Text style={s.coLine}>Tel: {LR_COMPANY.phone} / {LR_COMPANY.phone2}  ·  {LR_COMPANY.email}</Text>
             <Text style={s.coLine}>{LR_COMPANY.web}</Text>
           </View>
         </View>

@@ -20,8 +20,9 @@ export const LR_COMPANY = {
   gstin:       '24AAACC9320N2ZL',
   cin:         'U63090GJ2023PTC142601',
   phone:       '+91 63571 15711',
+  phone2:      '+91 63573 35733',
   email:       'info@bagdrop.co',
-  web:         'www.bagdrop.co.in',
+  web:         'www.bagdrop.co',
 } as const
 
 export const LR_STATUS_LABELS: Record<string, { label: string; color: string; bg: string }> = {
