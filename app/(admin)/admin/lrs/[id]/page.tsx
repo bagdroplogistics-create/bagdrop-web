@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Download, Loader2, Save, Truck, Package, User, MapPin,
-  IndianRupee, FileText, CheckCircle,
+  IndianRupee, FileText, CheckCircle, Pencil, X,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS, LR_TYPE_OPTIONS, PAYMENT_TERMS_OPTIONS, GST_PAYABLE_BY_OPTIONS, MODE_OPTIONS } from '@/lib/lr-constants'
 
@@ -29,6 +29,28 @@ interface LR {
   [key: string]: unknown
 }
 
+// Every field the "Edit LR" mode below can change, in one place — used
+// both to seed the form from a freshly-fetched LR and to build the PATCH
+// payload on Save. Keys match the lrs table columns 1:1 (see LR_MIGRATION.sql
+// and the `allowed` list in PATCH /api/admin/lrs/[id]).
+const EDITABLE_TEXT_FIELDS = [
+  'booking_office', 'vehicle_number', 'from_city', 'to_city',
+  'consignor_name', 'consignor_address', 'consignor_mobile', 'consignor_email', 'consignor_gstin',
+  'consignee_name', 'consignee_address', 'consignee_mobile', 'consignee_gstin',
+  'billed_to_name', 'billed_to_gstin', 'delivery_address',
+  'invoice_number', 'eway_bill_number',
+  'content_description', 'private_mark',
+  'delivery_at', 'remarks', 'prepared_by',
+  'driver_name', 'driver_mobile', 'vehicle_type',
+] as const
+const EDITABLE_NUMBER_FIELDS = [
+  'invoice_value', 'total_bags', 'actual_weight', 'chargeable_weight', 'size_l', 'size_w', 'size_h',
+] as const
+const EDITABLE_SELECT_FIELDS = ['mode', 'gst_payable_by', 'payment_terms', 'lr_type'] as const
+const EDITABLE_DATE_FIELDS = ['lr_date'] as const
+
+type FormState = Record<string, string> & { insurance_by_customer: boolean }
+
 function fmtRs(n: number | null | undefined) {
   return '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })
 }
@@ -36,6 +58,8 @@ function fmtDate(d: string | null) {
   if (!d) return '—'
   return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
+
+const inp = 'w-full rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-sm text-gray-900 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200'
 
 const Card = ({ title, icon, children }: { title: string; icon: React.ReactNode; children: React.ReactNode }) => (
   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -64,6 +88,8 @@ export default function LRDetailPage() {
   const [saving, setSaving] = useState(false)
   const [editingCharges, setEditingCharges] = useState(false)
   const [chargeForm, setChargeForm] = useState<Record<string, string>>({})
+  const [editMode, setEditMode] = useState(false)
+  const [form, setForm] = useState<FormState>({ insurance_by_customer: false })
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -72,6 +98,15 @@ export default function LRDetailPage() {
     setAdminKey(key); setAuthed(true)
   }, [router])
 
+  function seedForm(data: LR) {
+    const next: FormState = { insurance_by_customer: !!data.insurance_by_customer }
+    for (const k of EDITABLE_TEXT_FIELDS)   next[k] = (data[k] as string) ?? ''
+    for (const k of EDITABLE_NUMBER_FIELDS) next[k] = data[k] != null ? String(data[k]) : ''
+    for (const k of EDITABLE_SELECT_FIELDS) next[k] = (data[k] as string) ?? ''
+    for (const k of EDITABLE_DATE_FIELDS)   next[k] = (data[k] as string) ?? ''
+    setForm(next)
+  }
+
   const fetchLr = useCallback(async () => {
     if (!adminKey || !params.id) return
     setLoading(true)
@@ -79,6 +114,7 @@ export default function LRDetailPage() {
     if (res.ok) {
       const d = await res.json()
       setLr(d.lr)
+      seedForm(d.lr)
       const cf: Record<string, string> = {}
       for (const f of LR_CHARGE_FIELDS) cf[f.key] = String(d.lr[f.key] ?? 0)
       setChargeForm(cf)
@@ -113,6 +149,35 @@ export default function LRDetailPage() {
       body: JSON.stringify(payload),
     })
     if (res.ok) { setEditingCharges(false); fetchLr() } else { const d = await res.json(); setErr(d.error ?? 'Save failed') }
+    setSaving(false)
+  }
+
+  function startEdit() {
+    if (lr) seedForm(lr)
+    setErr('')
+    setEditMode(true)
+  }
+
+  function cancelEdit() {
+    if (lr) seedForm(lr)
+    setEditMode(false)
+  }
+
+  async function saveLr() {
+    if (!lr) return
+    setSaving(true); setErr('')
+    const payload: Record<string, unknown> = { insurance_by_customer: form.insurance_by_customer }
+    for (const k of EDITABLE_TEXT_FIELDS)   payload[k] = form[k]?.trim() || null
+    for (const k of EDITABLE_NUMBER_FIELDS) payload[k] = form[k] !== '' ? Number(form[k]) : null
+    for (const k of EDITABLE_SELECT_FIELDS) payload[k] = form[k] || null
+    for (const k of EDITABLE_DATE_FIELDS)   payload[k] = form[k] || null
+
+    const res = await fetch(`/api/admin/lrs/${lr.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify(payload),
+    })
+    if (res.ok) { setEditMode(false); fetchLr() } else { const d = await res.json(); setErr(d.error ?? 'Save failed') }
     setSaving(false)
   }
 
@@ -163,6 +228,33 @@ export default function LRDetailPage() {
 
   const st = LR_STATUS_LABELS[lr.status] ?? { label: lr.status, color: '#6b7280', bg: '#f3f4f6' }
 
+  // Renders either the read-only value or the matching input, depending on
+  // editMode — a single small helper keeps every card below to one line
+  // per field instead of duplicating the whole card twice.
+  function EField({ label, k, display, type = 'text' }: {
+    label: string; k: string; display?: React.ReactNode; type?: 'text' | 'number' | 'date'
+  }) {
+    if (!editMode) return <Field label={label} value={display !== undefined ? display : (lr![k] as React.ReactNode)} />
+    return (
+      <div className="mb-2.5">
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
+        <input type={type} value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp} />
+      </div>
+    )
+  }
+  function ESelect({ label, k, options }: { label: string; k: string; options: readonly string[] }) {
+    if (!editMode) return <Field label={label} value={lr![k] as React.ReactNode} />
+    return (
+      <div className="mb-2.5">
+        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
+        <select value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp}>
+          <option value="">Select…</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    )
+  }
+
   return (
     <>
       <div className="border-b border-orange-100 bg-white px-6 py-4">
@@ -175,6 +267,7 @@ export default function LRDetailPage() {
               <div className="flex items-center gap-2">
                 <h1 className="text-lg font-bold text-gray-900 font-mono">{lr.lr_number}</h1>
                 <span style={{ color: st.color, background: st.bg }} className="rounded-full px-2.5 py-1 text-xs font-semibold">{st.label}</span>
+                {editMode && <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">Editing</span>}
               </div>
               <p className="text-xs text-gray-400 mt-0.5">Generated {fmtDate(lr.created_at)}
                 {lr.booking_id ? <> · <Link href={`/admin`} className="text-orange-500 hover:underline">Linked booking</Link></> : ' · Manual entry'}
@@ -182,14 +275,33 @@ export default function LRDetailPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <select value={lr.status} onChange={e => updateStatus(e.target.value)} disabled={saving}
-              className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none">
-              {Object.entries(LR_STATUS_LABELS).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
-            </select>
-            <button onClick={downloadPdf} disabled={downloading}
-              className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-50">
-              {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download PDF
-            </button>
+            {!editMode ? (
+              <>
+                <select value={lr.status} onChange={e => updateStatus(e.target.value)} disabled={saving}
+                  className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none">
+                  {Object.entries(LR_STATUS_LABELS).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+                </select>
+                <button onClick={startEdit}
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
+                  <Pencil className="h-4 w-4" /> Edit LR
+                </button>
+                <button onClick={downloadPdf} disabled={downloading}
+                  className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-50">
+                  {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />} Download PDF
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={cancelEdit} disabled={saving}
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-50">
+                  <X className="h-4 w-4" /> Cancel
+                </button>
+                <button onClick={saveLr} disabled={saving}
+                  className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-50">
+                  {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Changes
+                </button>
+              </>
+            )}
           </div>
         </div>
       </div>
@@ -200,54 +312,69 @@ export default function LRDetailPage() {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <Card title="Route & Vehicle" icon={<Truck className="h-4 w-4" />}>
             <div className="grid grid-cols-2 gap-x-3">
-              <Field label="From" value={lr.from_city} />
-              <Field label="To" value={lr.to_city} />
-              <Field label="Booking Office" value={lr.booking_office} />
-              <Field label="Vehicle No." value={lr.vehicle_number} />
-              <Field label="Mode" value={lr.mode} />
-              <Field label="LR Date" value={fmtDate(lr.lr_date)} />
-              <Field label="Driver" value={lr.driver_name} />
-              <Field label="Driver Mobile" value={lr.driver_mobile} />
+              <EField label="From" k="from_city" />
+              <EField label="To" k="to_city" />
+              <EField label="Booking Office" k="booking_office" />
+              <EField label="Vehicle No." k="vehicle_number" />
+              <ESelect label="Mode" k="mode" options={MODE_OPTIONS} />
+              <EField label="LR Date" k="lr_date" type="date" display={fmtDate(lr.lr_date)} />
+              <EField label="Driver" k="driver_name" />
+              <EField label="Driver Mobile" k="driver_mobile" />
             </div>
           </Card>
 
           <Card title="Packages" icon={<Package className="h-4 w-4" />}>
             <div className="grid grid-cols-2 gap-x-3">
-              <Field label="Total Bags (Pkgs)" value={lr.total_bags} />
-              <Field label="Content" value={lr.content_description} />
-              <Field label="Actual Weight" value={lr.actual_weight != null ? `${lr.actual_weight} kg` : null} />
-              <Field label="Chargeable Weight" value={lr.chargeable_weight != null ? `${lr.chargeable_weight} kg` : null} />
-              <Field label="Size (L×W×H)" value={lr.size_l != null ? `${lr.size_l} × ${lr.size_w} × ${lr.size_h}` : null} />
-              <Field label="Private Mark" value={lr.private_mark} />
+              <EField label="Total Bags (Pkgs)" k="total_bags" type="number" />
+              <EField label="Content" k="content_description" />
+              <EField label="Actual Weight (kg)" k="actual_weight" type="number" display={lr.actual_weight != null ? `${lr.actual_weight} kg` : null} />
+              <EField label="Chargeable Weight (kg)" k="chargeable_weight" type="number" display={lr.chargeable_weight != null ? `${lr.chargeable_weight} kg` : null} />
+              <EField label="Size L (cm)" k="size_l" type="number" />
+              <EField label="Size W (cm)" k="size_w" type="number" />
+              <EField label="Size H (cm)" k="size_h" type="number" />
+              <EField label="Private Mark" k="private_mark" />
             </div>
           </Card>
 
           <Card title="Consignor" icon={<User className="h-4 w-4" />}>
-            <Field label="Name" value={lr.consignor_name} />
-            <Field label="Address" value={lr.consignor_address} />
-            <Field label="Mobile" value={lr.consignor_mobile} />
-            <Field label="GSTIN" value={lr.consignor_gstin} />
+            <EField label="Name" k="consignor_name" />
+            <EField label="Address" k="consignor_address" />
+            <EField label="Mobile" k="consignor_mobile" />
+            <EField label="Email" k="consignor_email" />
+            <EField label="GSTIN" k="consignor_gstin" />
           </Card>
 
           <Card title="Consignee" icon={<User className="h-4 w-4" />}>
-            <Field label="Name" value={lr.consignee_name} />
-            <Field label="Address" value={lr.consignee_address} />
-            <Field label="Mobile" value={lr.consignee_mobile} />
-            <Field label="GSTIN" value={lr.consignee_gstin} />
+            <EField label="Name" k="consignee_name" />
+            <EField label="Address" k="consignee_address" />
+            <EField label="Mobile" k="consignee_mobile" />
+            <EField label="GSTIN" k="consignee_gstin" />
           </Card>
 
           <Card title="Billed To / Delivery" icon={<MapPin className="h-4 w-4" />}>
-            <Field label="Billed To" value={lr.billed_to_name} />
-            <Field label="Billed To GSTIN" value={lr.billed_to_gstin} />
-            <Field label="Delivery Address" value={lr.delivery_address} />
+            <EField label="Billed To" k="billed_to_name" />
+            <EField label="Billed To GSTIN" k="billed_to_gstin" />
+            <EField label="Delivery Address" k="delivery_address" />
           </Card>
 
           <Card title="Invoice / E-way" icon={<FileText className="h-4 w-4" />}>
             <div className="grid grid-cols-2 gap-x-3">
-              <Field label="Invoice No." value={lr.invoice_number} />
-              <Field label="Invoice Value" value={lr.invoice_value != null ? fmtRs(lr.invoice_value) : null} />
-              <Field label="E-way Bill No." value={lr.eway_bill_number} />
-              <Field label="Insurance by Customer" value={lr.insurance_by_customer ? 'Yes' : 'No'} />
+              <EField label="Invoice No." k="invoice_number" />
+              <EField label="Invoice Value" k="invoice_value" type="number" display={lr.invoice_value != null ? fmtRs(lr.invoice_value) : null} />
+              <EField label="E-way Bill No." k="eway_bill_number" />
+              {!editMode ? (
+                <Field label="Insurance by Customer" value={lr.insurance_by_customer ? 'Yes' : 'No'} />
+              ) : (
+                <div className="mb-2.5">
+                  <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">Insurance by Customer</label>
+                  <select value={form.insurance_by_customer ? 'yes' : 'no'}
+                    onChange={e => setForm(f => ({ ...f, insurance_by_customer: e.target.value === 'yes' }))}
+                    className={inp}>
+                    <option value="no">No</option>
+                    <option value="yes">Yes</option>
+                  </select>
+                </div>
+              )}
             </div>
           </Card>
         </div>
@@ -303,15 +430,13 @@ export default function LRDetailPage() {
         {/* Footer info */}
         <Card title="Terms & Remarks" icon={<CheckCircle className="h-4 w-4" />}>
           <div className="grid grid-cols-2 gap-x-3 sm:grid-cols-4">
-            <Field label="GST Payable By" value={lr.gst_payable_by} />
-            <Field label="Payment Terms" value={lr.payment_terms} />
-            <Field label="LR Type" value={lr.lr_type} />
-            <Field label="Delivery At" value={lr.delivery_at} />
+            <ESelect label="GST Payable By" k="gst_payable_by" options={GST_PAYABLE_BY_OPTIONS} />
+            <ESelect label="Payment Terms" k="payment_terms" options={PAYMENT_TERMS_OPTIONS} />
+            <ESelect label="LR Type" k="lr_type" options={LR_TYPE_OPTIONS} />
+            <EField label="Delivery At" k="delivery_at" />
           </div>
-          <Field label="Remarks" value={lr.remarks} />
-          <p className="mt-1 text-[10px] text-gray-300">
-            Valid options — LR Type: {LR_TYPE_OPTIONS.join(', ')} · Payment Terms: {PAYMENT_TERMS_OPTIONS.join(', ')} · GST Payable By: {GST_PAYABLE_BY_OPTIONS.join(', ')} · Mode: {MODE_OPTIONS.join(', ')}
-          </p>
+          <EField label="Remarks" k="remarks" />
+          <EField label="Prepared By" k="prepared_by" />
         </Card>
       </main>
     </>

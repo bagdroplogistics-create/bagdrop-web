@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Eye, Download, Loader2, Trash2, Truck, IndianRupee, Package,
-  User, MapPin, CheckCircle2,
+  User, MapPin, CheckCircle2, Pencil,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
 
@@ -370,8 +370,14 @@ export default function LRsPage() {
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
                             <Link href={`/admin/lrs/${l.id}`}
+                              title="View LR"
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">
                               <Eye className="h-3.5 w-3.5" />
+                            </Link>
+                            <Link href={`/admin/lrs/${l.id}`}
+                              title="Edit LR"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors">
+                              <Pencil className="h-3.5 w-3.5" />
                             </Link>
                             <button onClick={() => downloadLr(l.id)} disabled={downloading === l.id}
                               title="Download LR PDF"
