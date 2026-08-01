@@ -2,9 +2,10 @@
 
 import * as React from 'react'
 import { Mail, Phone, MessageCircle, MapPin, Clock, Send, CheckCircle2 } from 'lucide-react'
+import { TITLE_OPTIONS, DEFAULT_TITLE } from '@/lib/constants'
 
 export default function ContactPage() {
-  const [form, setForm]           = React.useState({ name: '', email: '', phone: '', subject: '', message: '' })
+  const [form, setForm]           = React.useState({ title: DEFAULT_TITLE as string, name: '', email: '', phone: '', subject: '', message: '' })
   const [loading, setLoading]     = React.useState(false)
   const [submitted, setSubmitted] = React.useState(false)
   const [error, setError]         = React.useState('')
@@ -193,7 +194,7 @@ export default function ContactPage() {
                   <h3 className="font-display text-xl font-bold text-text-primary">Message Sent!</h3>
                   <p className="mt-2 text-text-secondary">{"Our team will contact you shortly."}</p>
                   <button
-                    onClick={() => { setSubmitted(false); setForm({ name: '', email: '', phone: '', subject: '', message: '' }) }}
+                    onClick={() => { setSubmitted(false); setForm({ title: DEFAULT_TITLE, name: '', email: '', phone: '', subject: '', message: '' }) }}
                     className="mt-6 text-sm font-semibold text-brand hover:underline"
                   >
                     Send another message
@@ -210,7 +211,18 @@ export default function ContactPage() {
                         value={hp} onChange={e => setHp(e.target.value)}
                       />
                     </div>
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="grid gap-4 sm:grid-cols-[100px_1fr_1fr]">
+                      <div>
+                        <label className="mb-1.5 block text-sm font-medium text-text-secondary">Title *</label>
+                        <select
+                          required value={form.title} onChange={e => update('title', e.target.value)}
+                          className="w-full rounded-xl border border-stone-200 bg-stone-50 px-4 py-3 text-sm text-text-primary focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/20"
+                        >
+                          {TITLE_OPTIONS.map(t => (
+                            <option key={t} value={t}>{t}</option>
+                          ))}
+                        </select>
+                      </div>
                       <div>
                         <label className="mb-1.5 block text-sm font-medium text-text-secondary">Name *</label>
                         <input

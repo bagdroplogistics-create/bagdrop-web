@@ -304,3 +304,32 @@ export const ADDON_SERVICES = [
     icon: 'shield-check',
   },
 ] as const
+
+// ─── Customer Title ──────────────────────────────────────────
+// Used on every form that captures a customer's name (website booking,
+// admin lead/quote/booking forms, Skybird partner dashboard, both
+// mobile apps). Stored alongside customer_name on bookings/leads/quotes
+// (there is no single normalized `customers` table in this schema).
+// Mirrored verbatim in admin-app/src/shared/constants.ts and
+// mobile-app/src/shared/constants.ts — keep all three in sync.
+export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.'] as const
+
+export type TitleId = (typeof TITLE_OPTIONS)[number]
+
+export const DEFAULT_TITLE: TitleId = 'Mr.'
+
+/**
+ * Formats a customer's title + name for display, e.g. "Mr. Rahul Patel".
+ * Use this everywhere a customer's name is shown — dashboards, tables,
+ * PDFs (Quote/Invoice/LR), email/WhatsApp/SMS templates, search results,
+ * activity logs, reports, and both mobile apps.
+ *
+ * Falls back gracefully if title is missing/invalid (older records,
+ * partial data) so display code never has to null-check separately.
+ */
+export function formatCustomerName(title: string | null | undefined, name: string | null | undefined): string {
+  const safeName = (name ?? '').trim()
+  if (!safeName) return ''
+  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : DEFAULT_TITLE
+  return `${safeTitle} ${safeName}`
+}

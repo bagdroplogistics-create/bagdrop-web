@@ -12,11 +12,13 @@ import {
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 interface Booking {
   id: string
   tracking_id: string
   status: string
+  title?: string | null
   customer_name: string
   customer_email: string
   customer_phone: string
@@ -210,7 +212,7 @@ function DetailRow({ icon, label, val }: { icon: React.ReactNode; label: string;
 
 
 interface EditForm {
-  customer_name: string; customer_phone: string; customer_phone_country_iso2: string; customer_email: string
+  title: string; customer_name: string; customer_phone: string; customer_phone_country_iso2: string; customer_email: string
   total_bags: string; pickup_date: string; pickup_address: string
   drop_address: string; notes: string
 }
@@ -224,6 +226,7 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
   // (mangled) or, for genuinely Indian numbers, worked by coincidence.
   const initialPhone = parseStoredPhone(booking.customer_phone)
   const [form, setForm] = useState<EditForm>({
+    title: booking.title && TITLE_OPTIONS.includes(booking.title as never) ? booking.title : DEFAULT_TITLE,
     customer_name:  booking.customer_name,
     customer_phone: booking.customer_phone_national || initialPhone.nationalNumber,
     customer_phone_country_iso2: booking.customer_phone_country_code || initialPhone.iso2,
@@ -247,6 +250,7 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
+          title:          form.title,
           customer_name:  form.customer_name.trim(),
           customer_phone: toE164(form.customer_phone, form.customer_phone_country_iso2),
           customer_phone_country_code: form.customer_phone_country_iso2,
@@ -288,7 +292,15 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
         )}
         <div className="space-y-4 p-6">
           <div className="grid grid-cols-2 gap-4">
-            <div className="col-span-2 space-y-1">
+            <div className="space-y-1">
+              <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Title</label>
+              <select value={form.title} disabled={isLocked}
+                onChange={e => set('title', e.target.value)}
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 disabled:bg-gray-50 disabled:text-gray-500">
+                {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </div>
+            <div className="space-y-1">
               <label className="block text-xs font-semibold uppercase tracking-wide text-gray-500">Customer Name</label>
               <input type="text" value={form.customer_name} disabled={isLocked}
                 onChange={e => set('customer_name', e.target.value)}
@@ -461,7 +473,7 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
-        booking_id: booking.id, customer_name: booking.customer_name,
+        booking_id: booking.id, title: booking.title, customer_name: booking.customer_name,
         customer_phone: booking.customer_phone, customer_email: booking.customer_email,
         service_type: booking.service_label || 'Baggage Delivery',
         from_city: booking.from_city, to_city: booking.to_city,
@@ -575,7 +587,7 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
     const upiDeepLink = `upi://pay?pa=${upi}&pn=Bagdrop&am=${amount}&cu=INR&tn=${booking.tracking_id}`
     const qrImgUrl    = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiDeepLink)}`
     const message = [
-      `Hi ${booking.customer_name}! 🧳`, ``,
+      `Hi ${formatCustomerName(booking.title, booking.customer_name) || booking.customer_name}! 🧳`, ``,
       `Your Bagdrop quote for *${booking.from_city} → ${booking.to_city}* is ready for payment.`, ``,
       `💰 *Amount Due: ₹${amount.toLocaleString('en-IN')}*`, ``,
       `━━━━━━━━━━━━━━━━━━━━`,
@@ -1449,7 +1461,7 @@ export default function AdminDashboard() {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-gray-900">{b.customer_name}</p>
+                          <p className="text-sm font-semibold text-gray-900">{formatCustomerName(b.title, b.customer_name) || b.customer_name}</p>
                           <p className="text-xs text-gray-400">{formatDate(b.created_at)}</p>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">

@@ -10,11 +10,13 @@ import {
 import Link from 'next/link'
 import { getRoleFromSession, can } from '@/lib/roles'
 import type { AdminRole } from '@/lib/admin-auth'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 interface Quote {
   id:             string
   quote_number:   string
   booking_id:     string | null
+  title?:         string | null
   customer_name:  string
   customer_phone: string
   customer_email: string | null
@@ -67,6 +69,7 @@ function EditQuoteModal({ quote, adminKey, onSaved, onClose }: {
   quote: Quote; adminKey: string; onSaved: () => void; onClose: () => void
 }) {
   const [form, setForm] = useState({
+    title:          (quote.title && TITLE_OPTIONS.includes(quote.title as never) ? quote.title : DEFAULT_TITLE) as string,
     customer_name:  quote.customer_name,
     customer_phone: quote.customer_phone,
     customer_email: quote.customer_email ?? '',
@@ -119,6 +122,12 @@ function EditQuoteModal({ quote, adminKey, onSaved, onClose }: {
           <div>
             <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-gray-400">Customer</h3>
             <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="mb-1.5 block text-xs font-semibold text-gray-600">Title</label>
+                <select value={form.title} onChange={set('title')} className={sel}>
+                  {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-gray-600">Name</label>
                 <input type="text" value={form.customer_name} onChange={set('customer_name')} className={inp} />
@@ -281,7 +290,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
       const e164   = digits.startsWith('91') ? digits : '91' + digits
       const total  = Number(quote.total_amount)
       const msg =
-        `Hi ${quote.customer_name}! 🧳\n\n` +
+        `Hi ${formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}! 🧳\n\n` +
         `Your Bagdrop service quote is ready.\n\n` +
         `📋 Quote: *${quote.quote_number}*\n` +
         `🗺️ Route: ${quote.from_city} → ${quote.to_city}\n` +
@@ -336,7 +345,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
     const qrData    = upiLink ?? `upi://pay?pa=${upi}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
     const qrImgUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`
     const msg =
-      `Hi ${quote.customer_name}! 🧳\n\n` +
+      `Hi ${formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}! 🧳\n\n` +
       `Your Bagdrop quote *${quote.quote_number}* is ready for payment.\n\n` +
       `💰 *Amount Due: ₹${amount.toLocaleString('en-IN')}*\n\n` +
       `━━━━━━━━━━━━━━━━━━━━\n` +
@@ -373,7 +382,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
           {/* Customer */}
           <div className="rounded-xl bg-gray-50 px-4 py-3">
             <p className="text-xs font-semibold text-gray-400 mb-1">Customer</p>
-            <p className="font-semibold text-gray-900">{quote.customer_name}</p>
+            <p className="font-semibold text-gray-900">{formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}</p>
             <p className="text-sm text-gray-500 flex items-center gap-1 mt-0.5"><Phone className="h-3 w-3" /> {quote.customer_phone}</p>
             {quote.customer_email && <p className="text-xs text-gray-400 mt-0.5">✉ {quote.customer_email}</p>}
           </div>
@@ -660,7 +669,7 @@ export default function QuotesPage() {
                       <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">{q.quote_number}</td>
                       <td className="px-4 py-3 text-xs text-gray-400">v{q.version ?? 1}</td>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{q.customer_name}</p>
+                        <p className="font-semibold text-gray-900">{formatCustomerName(q.title, q.customer_name) || q.customer_name}</p>
                         <p className="text-xs text-gray-400">{q.customer_phone}</p>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{q.from_city} → {q.to_city}</td>

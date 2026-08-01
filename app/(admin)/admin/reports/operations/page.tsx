@@ -15,16 +15,18 @@ import {
   Loader2, ChevronRight, Plane, Truck, UserX, FileWarning, Clock,
   Calendar, Link2, Unlink, ExternalLink, CheckCircle2, X,
 } from 'lucide-react'
+import { formatCustomerName } from '@/lib/constants'
 
 // ── Types (mirror the API response shape) ──────────────────────────────────
 interface TodayInquiry {
-  id: string; lead_number: string | null; customer_name: string; phone: string
+  id: string; lead_number: string | null; title?: string | null; customer_name: string; phone: string
   booking_id: string | null; tracking_id: string | null
   service_type: string | null; from_city: string | null; to_city: string | null
   pickup_date: string | null; status: string; assigned_to: string | null; has_quote: boolean
 }
 interface BookingLike {
   id: string; tracking_id: string; status: string
+  title?: string | null
   customer_name: string | null; customer_phone: string | null
   service_type: string | null; service_label: string | null
   from_city: string | null; to_city: string | null
@@ -349,7 +351,7 @@ export default function OperationsCenterPage() {
                         )}
                         {data.todays_inquiries.map(l => (
                           <tr key={l.id} className="border-b border-gray-50 border-l-2 border-l-amber-400 last:border-b-0 bg-amber-50/30 hover:bg-amber-50">
-                            <td className="px-4 py-3 font-medium text-gray-800">{l.customer_name}<div className="text-xs text-gray-400">{l.phone}</div></td>
+                            <td className="px-4 py-3 font-medium text-gray-800">{formatCustomerName(l.title, l.customer_name) || l.customer_name}<div className="text-xs text-gray-400">{l.phone}</div></td>
                             <td className="px-4 py-3">
                               <Link href={l.booking_id ? `/admin?highlight=${l.booking_id}` : '#'} className="font-mono text-xs text-orange-600 hover:underline">
                                 {l.tracking_id ?? l.lead_number ?? '—'}
@@ -512,7 +514,7 @@ export default function OperationsCenterPage() {
                               onClick={() => router.push(`/admin?highlight=${b.id}`)}
                               className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-orange-50/60"
                             >
-                              <td className="px-4 py-3 font-medium text-gray-800">{b.customer_name ?? '—'}</td>
+                              <td className="px-4 py-3 font-medium text-gray-800">{(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}</td>
                               <td className="px-4 py-3 font-mono text-xs text-orange-600">{b.tracking_id}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
                               <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>
@@ -554,7 +556,7 @@ export default function OperationsCenterPage() {
                       )}
                       {data.overdue.map(b => (
                         <tr key={b.id} className="border-b border-red-50 bg-red-50/40 last:border-0 hover:bg-red-50">
-                          <td className="px-4 py-3 font-medium text-gray-800">{b.customer_name ?? '—'}<div className="font-mono text-xs text-red-600">{b.tracking_id}</div></td>
+                          <td className="px-4 py-3 font-medium text-gray-800">{(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}<div className="font-mono text-xs text-red-600">{b.tracking_id}</div></td>
                           <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
                           <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
                           <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>

@@ -15,6 +15,7 @@
 
 import { supabaseAdmin } from './supabase'
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { formatCustomerName } from './constants'
 
 // Full booking status sequence (superset — includes the airport-only
 // 'driver_details_shared' step, harmless for non-airport bookings since
@@ -50,6 +51,7 @@ export function isForwardMove(oldStatus: string | null | undefined, newStatus: s
 interface BookingLike {
   id:                 string
   tracking_id:        string
+  title?:             string | null
   customer_name:      string | null
   customer_phone:     string | null
   from_city:          string | null
@@ -113,7 +115,7 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     }
 
     const templateId = process.env[envVar] ?? ''
-    const name        = booking.customer_name?.trim() || 'Customer'
+    const name        = (formatCustomerName(booking.title, booking.customer_name) || booking.customer_name?.trim()) || 'Customer'
     const route       = [booking.from_city, booking.to_city].filter(Boolean).join(' → ')
 
     let variables: string[] = []

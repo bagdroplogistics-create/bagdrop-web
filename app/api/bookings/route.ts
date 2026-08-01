@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendCustomerConfirmation, sendInquiryNotification, type BookingEmailData } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
-import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS } from '@/lib/constants'
+import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 
@@ -45,6 +45,7 @@ export async function POST(req: Request) {
       ? (timeSlotObj.label + (timeSlotObj.range ? ' (' + timeSlotObj.range + ')' : ''))
       : (booking.timeSlotId ?? '')
 
+    const customerTitle: TitleId = TITLE_OPTIONS.includes(booking?.title) ? booking.title : DEFAULT_TITLE
     const customerName  = booking.name.trim()
     const customerEmail = booking.email?.trim().toLowerCase() ?? ''
     const rawPhone      = booking.phone?.replace(/\D/g, '') ?? ''
@@ -68,6 +69,7 @@ export async function POST(req: Request) {
         // matched any workflow step card. 'inquiry' is step 1, same starting
         // point admin-created leads use.
         status:         'inquiry',
+        title:          customerTitle,
         customer_name:  customerName,
         customer_email: customerEmail,
         customer_phone: customerPhone,
@@ -160,6 +162,7 @@ export async function POST(req: Request) {
 
           const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,
+            title:            customerTitle,
             name:             customerName,
             phone:            customerPhone,
             email:            customerEmail || null,
@@ -189,6 +192,7 @@ export async function POST(req: Request) {
             if (newLead) {
               ackPromise = sendLeadAcknowledgment({
                 id:    newLead.id,
+                title: customerTitle,
                 name:  customerName,
                 phone: customerPhone,
                 email: customerEmail,
@@ -207,6 +211,7 @@ export async function POST(req: Request) {
     // ── End Auto-create Lead ────────────────────────────────────────
 
     const emailData: BookingEmailData = {
+      customerTitle,
       customerName,
       customerEmail,
       customerPhone,
@@ -228,6 +233,7 @@ export async function POST(req: Request) {
       sendInquiryNotification({
         inquiryNumber:   trackingId,
         source:          bookingSource,
+        customerTitle,
         customerName,
         customerPhone,
         customerEmail,

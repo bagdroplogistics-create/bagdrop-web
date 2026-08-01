@@ -8,7 +8,7 @@ import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
 import { fetchAdminStats, fetchCrmStats, fetchAdminBookings, AdminStats, CrmStats, AdminBooking } from '@/lib/api'
 import { BOOKING_FUNNEL, statusLabel } from '@/shared/statuses'
-import { formatCurrency, timeAgo } from '@/shared/format'
+import { formatCurrency, timeAgo, formatCustomerName } from '@/shared/format'
 
 export default function Dashboard() {
   const { adminKey, role } = useAdminAuth()
@@ -140,7 +140,7 @@ export default function Dashboard() {
             <Card key={b.id} style={{ marginBottom: 10 }}>
               <View style={styles.activityRow}>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.activityTitle}>{b.customer_name || 'Unknown customer'}</Text>
+                  <Text style={styles.activityTitle}>{(formatCustomerName(b.title, b.customer_name) || b.customer_name) || 'Unknown customer'}</Text>
                   <Text style={styles.activityMeta}>{b.tracking_id} · {statusLabel(b.status)}</Text>
                 </View>
                 <Text style={styles.activityTime}>{timeAgo(b.updated_at || b.created_at)}</Text>

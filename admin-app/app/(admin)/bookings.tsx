@@ -10,7 +10,7 @@ import { useAdminAuth } from '@/context/AdminAuthContext'
 import { fetchAdminBookings, AdminBooking } from '@/lib/api'
 import { BOOKING_FUNNEL, statusLabel } from '@/shared/statuses'
 import { rupees } from '@/shared/quotes'
-import { timeAgo } from '@/shared/format'
+import { timeAgo, formatCustomerName } from '@/shared/format'
 
 const FILTERS = [{ key: 'all', label: 'All' }, ...BOOKING_FUNNEL.map(s => ({ key: s.key, label: s.label }))]
 
@@ -100,7 +100,7 @@ export default function Bookings() {
                 <View style={styles.row}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.trackingId}>{item.tracking_id}</Text>
-                    <Text style={styles.name}>{item.customer_name || 'Unknown customer'}</Text>
+                    <Text style={styles.name}>{(formatCustomerName(item.title, item.customer_name) || item.customer_name) || 'Unknown customer'}</Text>
                     <Text style={styles.meta}>
                       {(item.from_city as string) || '—'} → {(item.to_city as string) || '—'} · {timeAgo(item.updated_at || item.created_at)}
                     </Text>

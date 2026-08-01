@@ -18,9 +18,11 @@ import { PICKUP_LOCATIONS, OTHERS_VALUE } from '@/shared/locations'
 import { TIME_OPTIONS } from '@/shared/time-options'
 import { toE164 } from '@/shared/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/shared/phone-countries'
+import { TITLE_OPTIONS, DEFAULT_TITLE } from '@/shared/format'
 
 export default function NewLead() {
   const { adminKey } = useAdminAuth()
+  const [title, setTitle] = useState<string>(DEFAULT_TITLE)
   const [name, setName] = useState('')
   const [phone, setPhone] = useState('')
   const [countryIso2, setCountryIso2] = useState(DEFAULT_COUNTRY_ISO2)
@@ -87,6 +89,7 @@ export default function NewLead() {
     setSaving(true)
     try {
       await createLead(adminKey, {
+        title,
         name: name.trim(),
         phone: toE164(phone, countryIso2),
         phone_country_code: countryIso2,
@@ -133,6 +136,12 @@ export default function NewLead() {
       <Text style={styles.sub}>Same route, schedule, and item fields as the New Quote form.</Text>
 
       <Text style={styles.sectionTitle}>Contact</Text>
+      <SelectField
+        label="Title"
+        value={title}
+        options={TITLE_OPTIONS.map(t => ({ value: t, label: t }))}
+        onChange={setTitle}
+      />
       <TextField label="Name" value={name} onChangeText={setName} placeholder="Customer name" />
       <PhoneInput
         label="Phone"

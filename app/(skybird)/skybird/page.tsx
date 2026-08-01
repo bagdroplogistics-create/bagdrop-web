@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Plus, RefreshCw, Search, AlertTriangle, Pencil } from 'lucide-react'
+import { formatCustomerName } from '@/lib/constants'
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   new:       { label: 'New',       color: '#0369a1', bg: '#e0f2fe' },
@@ -16,6 +17,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 interface SkybirdLead {
   id: string
   lead_number: string | null
+  title?: string | null
   name: string
   phone: string
   email: string | null
@@ -149,7 +151,7 @@ export default function SkybirdDashboardPage() {
                 <tr key={l.id} className="hover:bg-gray-50">
                   <td className="px-4 py-3 font-mono text-xs text-gray-700">{l.lead_number ?? '—'}</td>
                   <td className="px-4 py-3">
-                    <div className="font-medium text-gray-900">{l.name}</div>
+                    <div className="font-medium text-gray-900">{formatCustomerName(l.title, l.name) || l.name}</div>
                     <div className="text-xs text-gray-500">{l.phone}</div>
                   </td>
                   <td className="px-4 py-3 text-gray-700">

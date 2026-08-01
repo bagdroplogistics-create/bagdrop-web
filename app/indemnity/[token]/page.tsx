@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { CheckCircle2, Loader2, AlertCircle, PenLine, Upload, ShieldCheck, RotateCcw } from 'lucide-react'
+import { formatCustomerName } from '@/lib/constants'
 
 // ── Types ──────────────────────────────────────────────────────────────
 
 interface BondData {
   booking: {
     tracking_id: string
+    title?: string | null
     customer_name: string | null
     customer_email_masked: string | null
     customer_phone_masked: string | null
@@ -359,7 +361,7 @@ export default function IndemnityBondPage() {
           <CheckCircle2 className="h-12 w-12 text-green-500" />
           <p className="text-lg font-bold text-gray-800">Indemnity Bond Submitted</p>
           <p className="text-sm text-gray-500 max-w-sm">
-            Thank you, {data.booking.customer_name}. We've received your signed bond and documents for booking{' '}
+            Thank you, {formatCustomerName(data.booking.title, data.booking.customer_name) || data.booking.customer_name}. We've received your signed bond and documents for booking{' '}
             <span className="font-mono font-semibold text-orange-600">{data.booking.tracking_id}</span>.
             Our team will review them shortly and notify you once approved.
           </p>
@@ -429,7 +431,7 @@ export default function IndemnityBondPage() {
           </div>
 
           <div className="rounded-xl border border-gray-100 bg-gray-50 p-4 text-sm text-gray-600 leading-relaxed">
-            I, <strong>{data.booking.customer_name}</strong>, hereby confirm that I hold the identity document(s) below,
+            I, <strong>{formatCustomerName(data.booking.title, data.booking.customer_name) || data.booking.customer_name}</strong>, hereby confirm that I hold the identity document(s) below,
             and I have engaged Bagdrop Logistics Solutions for the purpose of moving my baggage / household goods.
             I declare the goods are used, not new, not for sale, and contain no valuables, cash, jewelry, illegal, or
             hazardous items. I understand Bagdrop will take utmost care, though loss or breakage during transportation

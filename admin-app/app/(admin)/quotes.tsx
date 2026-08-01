@@ -10,7 +10,7 @@ import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
 import { fetchLeads, AdminLead } from '@/lib/api'
 import { rupees } from '@/shared/quotes'
-import { timeAgo } from '@/shared/format'
+import { timeAgo, formatCustomerName } from '@/shared/format'
 
 const PAYMENT_META: Record<string, { label: string; color: string; bg: string }> = {
   received: { label: 'Paid', color: '#15803d', bg: '#dcfce7' },
@@ -105,7 +105,7 @@ export default function Quotes() {
                 <View style={styles.row}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.quoteNo}>{item.quote_number as string}</Text>
-                    <Text style={styles.name}>{item.name}</Text>
+                    <Text style={styles.name}>{formatCustomerName(item.title, item.name) || item.name}</Text>
                     <Text style={styles.meta}>
                       {(item.from_city as string) || '—'} → {(item.to_city as string) || '—'} · {timeAgo((item.quote_date as string) ?? item.updated_at)}
                     </Text>

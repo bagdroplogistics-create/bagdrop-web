@@ -6,11 +6,13 @@ import {
   Receipt, Search, RefreshCw, ChevronDown, Eye,
   Download, Mail, MessageCircle, CheckCircle, Clock,
 } from 'lucide-react'
+import { formatCustomerName } from '@/lib/constants'
 
 interface Invoice {
   id:                string
   invoice_number:    string
   booking_id:        string | null
+  title?:            string | null
   customer_name:     string
   customer_phone:    string
   customer_email:    string | null
@@ -175,7 +177,7 @@ export default function InvoicesPage() {
                     <tr key={inv.id} className="hover:bg-orange-50/30 transition-colors">
                       <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">{inv.invoice_number}</td>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{inv.customer_name}</p>
+                        <p className="font-semibold text-gray-900">{formatCustomerName(inv.title, inv.customer_name) || inv.customer_name}</p>
                         <p className="text-xs text-gray-400">{inv.customer_phone}</p>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{inv.from_city} → {inv.to_city}</td>

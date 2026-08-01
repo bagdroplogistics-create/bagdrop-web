@@ -26,6 +26,7 @@ import { TIME_OPTIONS, timeLabel } from '@/shared/time-options'
 import { buildQuoteHtml, openQuotePrint } from '@/shared/quotePrint'
 import { parseStoredPhone, toE164 } from '@/shared/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/shared/phone-countries'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/shared/format'
 
 let _rowId = 0
 const uid = () => `row_${++_rowId}_${Date.now()}`
@@ -46,6 +47,7 @@ export default function NewQuote() {
   const [error, setError] = useState('')
 
   // Customer (editable only when no lead was passed in)
+  const [custTitle, setCustTitle] = useState<string>(DEFAULT_TITLE)
   const [custName, setCustName] = useState('')
   const [custPhone, setCustPhone] = useState('')       // national digits only
   const [custCountryIso2, setCustCountryIso2] = useState(DEFAULT_COUNTRY_ISO2)
@@ -136,6 +138,7 @@ export default function NewQuote() {
     try {
       const { lead: l } = await fetchLead(adminKey, leadIdParam)
       setLead(l)
+      setCustTitle(l.title && TITLE_OPTIONS.includes(l.title as never) ? l.title : DEFAULT_TITLE)
       setCustName(l.name ?? '')
       // Re-parses the stored E.164 string so the correct flag/dial code
       // shows automatically instead of always assuming India.
@@ -282,6 +285,7 @@ export default function NewQuote() {
       if (!resolvedLeadId) {
         try {
           const created = await createLead(adminKey, {
+            title: custTitle,
             name: effectiveName,
             phone: effectivePhone,
             phone_country_code: effectivePhoneCountryCode,
@@ -362,7 +366,7 @@ export default function NewQuote() {
       quoteNumber: source.estimate_number || source.quote_number,
       leadNumber: lead?.lead_number,
       quoteDate: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-      customerName: lead?.name ?? custName,
+      customerName: formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName),
       customerPhone: lead?.phone ?? toE164(custPhone, custCountryIso2),
       customerEmail: (lead?.email ?? custEmail) || undefined,
       fromCity, toCity,
@@ -469,7 +473,7 @@ export default function NewQuote() {
         </Text>
 
         <Card style={{ marginTop: 20, marginBottom: 16 }}>
-          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Customer</Text><Text style={styles.summaryValue}>{lead?.name ?? custName}</Text></View>
+          <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Customer</Text><Text style={styles.summaryValue}>{formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName)}</Text></View>
           <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Route</Text><Text style={styles.summaryValue}>{fromCity} → {toCity}</Text></View>
           <View style={styles.summaryRow}><Text style={styles.summaryLabel}>Total</Text><Text style={[styles.summaryValue, { color: colors.brand, fontWeight: '800' }]}>{rupees(result.total)}</Text></View>
           {result.sent_to_customer ? (
@@ -511,6 +515,13 @@ export default function NewQuote() {
       ) : null}
 
       <Text style={styles.sectionTitle}>Customer</Text>
+      <SelectField
+        label="Title"
+        value={custTitle}
+        options={TITLE_OPTIONS.map(t => ({ value: t, label: t }))}
+        onChange={setCustTitle}
+        disabled={custReadOnly}
+      />
       <TextField label="Full Name" value={custName} onChangeText={setCustName} editable={!custReadOnly} placeholder="Customer name" />
       <PhoneInput
         label="Phone"

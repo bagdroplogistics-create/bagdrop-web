@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -30,6 +31,7 @@ const COMPETITOR_KEYWORDS = [
 export async function POST(req: Request) {
   const body = await req.json().catch(() => ({}))
   const { name, email, phone, subject, message, _hp, _ts } = body
+  const title: TitleId = TITLE_OPTIONS.includes(body.title) ? body.title : DEFAULT_TITLE
 
   // Capture submitter IP for pattern tracking
   const ip = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim()
@@ -124,6 +126,7 @@ export async function POST(req: Request) {
       .insert({
         tracking_id:    trackingId,
         status:         'inquiry',
+        title,
         customer_name:  (name as string).trim(),
         customer_email: cleanEmail || '',
         customer_phone: normalizedPhone,
@@ -152,6 +155,7 @@ export async function POST(req: Request) {
 
     const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
       lead_number:      leadNumber,
+      title,
       name:             (name as string).trim(),
       phone:            normalizedPhone,
       email:            cleanEmail || null,
@@ -172,6 +176,7 @@ export async function POST(req: Request) {
       if (newLead) {
         await sendLeadAcknowledgment({
           id:    newLead.id,
+          title,
           name:  (name as string).trim(),
           phone: normalizedPhone,
           email: cleanEmail,
@@ -190,8 +195,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true })
   }
 
+  const displayName = formatCustomerName(title, name as string) || name
+
   const html = [
-    '<p><strong>Name:</strong> ' + name + '</p>',
+    '<p><strong>Name:</strong> ' + displayName + '</p>',
     '<p><strong>Email:</strong> ' + email + '</p>',
     '<p><strong>Phone:</strong> ' + phone + '</p>',
     '<p><strong>Subject:</strong> ' + (subject || 'Not specified') + '</p>',
@@ -211,7 +218,7 @@ export async function POST(req: Request) {
     body: JSON.stringify({
       from: FROM,
       to: [ADMIN],
-      subject: 'Website Contact: ' + (subject || 'New Message') + ' — ' + name,
+      subject: 'Website Contact: ' + (subject || 'New Message') + ' — ' + displayName,
       html,
     }),
   })

@@ -30,3 +30,19 @@ export function timeAgo(iso: string): string {
   if (days < 7) return `${days}d ago`
   return formatDateTime(iso)
 }
+
+// ─── Customer Title ──────────────────────────────────────────
+// Kept identical to the website's lib/constants.ts TITLE_OPTIONS /
+// formatCustomerName and to mobile-app/src/shared/format.ts.
+export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.'] as const
+
+export type TitleId = (typeof TITLE_OPTIONS)[number]
+
+export const DEFAULT_TITLE: TitleId = 'Mr.'
+
+export function formatCustomerName(title: string | null | undefined, name: string | null | undefined): string {
+  const safeName = (name ?? '').trim()
+  if (!safeName) return ''
+  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : DEFAULT_TITLE
+  return `${safeTitle} ${safeName}`
+}

@@ -10,6 +10,7 @@ const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confi
 
 interface PaymentRecord {
   id: string; payment_id: string; booking_id: string | null
+  title?: string | null
   customer_name: string; customer_phone: string; amount: number
   payment_method: string; payment_status: string; payment_reference: string | null
   notes: string | null; verified_by: string | null; verified_at: string | null
@@ -40,20 +41,21 @@ async function nextPaymentId(): Promise<string> {
 async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Promise<PaymentRecord[]> {
   const { data, error } = await supabaseAdmin
     .from('bookings')
-    .select('id, tracking_id, status, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at')
+    .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at')
     .in('status', CONFIRMED_ONWARD_STATUSES)
     .limit(5000)
   if (error) {
     console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', error.message)
     return []
   }
-  type Row = { id: string; tracking_id: string; status: string; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string }
+  type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string }
   return ((data ?? []) as unknown as Row[])
     .filter(b => !existingBookingIds.has(b.id))
     .map(b => ({
       id:                `booking:${b.id}`,
       payment_id:        b.tracking_id,
       booking_id:        b.id,
+      title:             b.title,
       customer_name:     b.customer_name ?? 'Unknown',
       customer_phone:    b.customer_phone ?? '',
       amount:            Number(b.total_amount) || 0,

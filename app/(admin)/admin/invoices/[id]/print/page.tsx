@@ -2,9 +2,11 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { formatCustomerName } from '@/lib/constants'
 
 interface Invoice {
   id: string; invoice_number: string; booking_id: string | null
+  title?: string | null
   customer_name: string; customer_phone: string; customer_email: string | null; customer_address: string | null
   service_type: string | null; from_city: string; to_city: string; total_bags: number
   base_amount: number; cgst: number; sgst: number; total_amount: number
@@ -84,7 +86,7 @@ export default function InvoicePrintPage() {
         <div className="mb-8 grid grid-cols-2 gap-8">
           <div>
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Bill To</p>
-            <p className="text-base font-bold text-gray-900">{invoice.customer_name}</p>
+            <p className="text-base font-bold text-gray-900">{formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name}</p>
             <p className="text-sm text-gray-600">{invoice.customer_phone}</p>
             {invoice.customer_email && <p className="text-sm text-gray-600">{invoice.customer_email}</p>}
             {invoice.customer_address && <p className="text-sm text-gray-500 mt-1">{invoice.customer_address}</p>}

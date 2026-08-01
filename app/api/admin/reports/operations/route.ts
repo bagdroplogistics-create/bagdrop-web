@@ -48,6 +48,7 @@ interface BookingRow {
   tracking_id:                 string
   status:                      string
   status_history:              unknown
+  title:                       string | null
   customer_name:               string | null
   customer_phone:              string | null
   customer_email:              string | null
@@ -71,6 +72,7 @@ interface BookingRow {
 interface LeadRow {
   id:                    string
   lead_number:           string | null
+  title:                 string | null
   name:                  string
   phone:                 string
   source:                string | null
@@ -104,8 +106,8 @@ function dateOnly(d: Date): string {
   return d.toISOString().slice(0, 10)
 }
 
-const LEAD_SELECT = 'id, lead_number, name, phone, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, assigned_to, booking_id, zoho_estimate_number, created_at'
-const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, time_slot, total_bags, total_amount, payment_status, driver_name, driver_phone, driver_details_sent_at, created_at, updated_at'
+const LEAD_SELECT = 'id, lead_number, title, name, phone, source, partner_name, service_interest, service_type, from_city, to_city, pickup_date, status, assigned_to, booking_id, zoho_estimate_number, created_at'
+const BOOKING_SELECT = 'id, tracking_id, status, status_history, title, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_date, delivery_date, time_slot, total_bags, total_amount, payment_status, driver_name, driver_phone, driver_details_sent_at, created_at, updated_at'
 
 // "Upcoming Confirmed Bookings" — operations only wants to see bookings the
 // customer has actually committed to (accepted the quote AND the booking has
@@ -302,6 +304,7 @@ export async function GET(req: NextRequest) {
   const todaysInquiries = leadsToday.map(l => ({
     id:              l.id,
     lead_number:     l.lead_number,
+    title:           l.title,
     customer_name:   l.name,
     phone:           l.phone,
     booking_id:      l.booking_id,

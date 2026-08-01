@@ -10,10 +10,12 @@ import {
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
   id:                   string
+  title?:               string | null
   name:                 string
   phone:                string
   email:                string | null
@@ -160,7 +162,7 @@ function Section({ icon, title, children }: { icon: React.ReactNode; title: stri
 
 // ── Lead Form Interface ──────────────────────────────────────────
 interface LeadForm {
-  name: string; phone: string; countryIso2: string; email: string; source: string
+  title: string; name: string; phone: string; countryIso2: string; email: string; source: string
   service_interest: string; from_city: string; to_city: string
   // Address fields
   pickup_address: string; drop_address: string
@@ -174,7 +176,7 @@ interface LeadForm {
 }
 
 const EMPTY_FORM: LeadForm = {
-  name: '', phone: '', countryIso2: 'IN', email: '', source: 'manual',
+  title: DEFAULT_TITLE, name: '', phone: '', countryIso2: 'IN', email: '', source: 'manual',
   service_interest: '', from_city: '', to_city: '',
   pickup_address: '', drop_address: '',
   travel_date: '', pickup_date: '', delivery_date: '', pickup_time: '',
@@ -199,6 +201,7 @@ function LeadModal({
   const [form, setForm] = useState<LeadForm>(
     lead
       ? {
+          title:             (lead.title && TITLE_OPTIONS.includes(lead.title as never) ? lead.title : DEFAULT_TITLE) as string,
           name:              lead.name,
           phone:             initialPhone!.nationalNumber,
           countryIso2:       initialPhone!.iso2,
@@ -388,6 +391,19 @@ function LeadModal({
 
           {/* ── Customer Info ── */}
           <Section icon={<Users className="h-4 w-4" />} title="Customer Information">
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                Title<span className="ml-0.5 text-orange-500">*</span>
+              </label>
+              <select
+                value={form.title} onChange={set('title')} required
+                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+              >
+                {TITLE_OPTIONS.map(t => (
+                  <option key={t} value={t}>{t}</option>
+                ))}
+              </select>
+            </div>
             <Field label="Full Name" required value={form.name}  onChange={set('name')}  placeholder="Amit Shah" />
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-gray-600">
@@ -913,7 +929,7 @@ export default function LeadsPage() {
                         <span className="font-mono text-xs font-bold text-gray-500">{l.lead_number ?? '—'}</span>
                       </td>
                       <td className="px-4 py-3">
-                        <p className="text-sm font-semibold text-gray-900">{l.name}</p>
+                        <p className="text-sm font-semibold text-gray-900">{formatCustomerName(l.title, l.name) || l.name}</p>
                         <div className="flex items-center gap-1 text-xs text-gray-400">
                           <Phone className="h-3 w-3" />{l.phone}
                         </div>

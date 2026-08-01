@@ -13,7 +13,7 @@ import { useAdminAuth } from '@/context/AdminAuthContext'
 import { fetchAdminBooking, updateBooking, AdminBooking } from '@/lib/api'
 import { BOOKING_FUNNEL, statusLabel } from '@/shared/statuses'
 import { rupees } from '@/shared/quotes'
-import { formatDateTime } from '@/shared/format'
+import { formatDateTime, formatCustomerName } from '@/shared/format'
 
 const PAYMENT_OPTIONS = [
   { value: 'pending', label: 'Pending' },
@@ -111,7 +111,7 @@ export default function BookingDetail() {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.trackingId}>{booking.tracking_id}</Text>
-          <Text style={styles.title}>{booking.customer_name}</Text>
+          <Text style={styles.title}>{formatCustomerName(booking.title, booking.customer_name) || booking.customer_name}</Text>
           <Text style={styles.sub}>Updated {formatDateTime(booking.updated_at || booking.created_at)}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: meta?.bg ?? '#f3f4f6' }]}>

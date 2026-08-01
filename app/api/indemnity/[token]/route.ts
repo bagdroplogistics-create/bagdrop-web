@@ -22,6 +22,7 @@ export async function GET(
   return NextResponse.json({
     booking: {
       tracking_id:   booking.tracking_id,
+      title:         booking.title,
       customer_name: booking.customer_name,
       customer_email_masked: maskEmail(booking.customer_email),
       customer_phone_masked: maskPhone(booking.customer_phone),

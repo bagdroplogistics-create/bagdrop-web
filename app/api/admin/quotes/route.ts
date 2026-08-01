@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 
 // ── Quote number: BDQ-YYYY-NNNN ──────────────────────────────────
 // Uses MAX of existing quote numbers (not COUNT) so deletions never cause collisions.
@@ -79,7 +80,10 @@ export async function POST(req: NextRequest) {
   const bookingId   = body.booking_id ?? null
   const sendStatus  = body.status ?? 'draft'
 
+  const quoteTitle: TitleId = TITLE_OPTIONS.includes(body.title) ? body.title : DEFAULT_TITLE
+
   const quoteFields = {
+    title:          quoteTitle,
     customer_name:  body.customer_name.trim(),
     customer_phone: body.customer_phone.trim(),
     customer_email: body.customer_email?.trim() || null,
@@ -156,6 +160,7 @@ export async function POST(req: NextRequest) {
     // Always update the existing booking — never create a second one
     await supabaseAdmin.from('bookings').update({
       status:         bookingStatus,
+      title:          quoteTitle,
       total_amount:   totalAmount,
       service_type:   quoteFields.service_type,
       service_label:  serviceLabel,
@@ -180,7 +185,7 @@ export async function POST(req: NextRequest) {
       let email_sent = false
       if (sendStatus === 'sent' && quoteFields.customer_email) {
         email_sent = await sendQuoteEmail({
-          to: quoteFields.customer_email, customerName: quoteFields.customer_name,
+          to: quoteFields.customer_email, customerTitle: quoteFields.title, customerName: quoteFields.customer_name,
           quoteNumber: existingQuote.quote_number, serviceType: quoteFields.service_type,
           fromCity: quoteFields.from_city, toCity: quoteFields.to_city,
           pickupDate: quoteFields.pickup_date, totalBags: quoteFields.total_bags,
@@ -218,6 +223,7 @@ export async function POST(req: NextRequest) {
       .insert({
         tracking_id:    trackingId,
         status:         bookingStatus,
+        title:          quoteTitle,
         customer_name:  quoteFields.customer_name,
         customer_phone: quoteFields.customer_phone,
         customer_email: quoteFields.customer_email,
@@ -270,6 +276,7 @@ export async function POST(req: NextRequest) {
           .from('leads')
           .insert({
             lead_number:       leadNumber,
+            title:              quoteTitle,
             name:               quoteFields.customer_name,
             phone:              quoteFields.customer_phone,
             email:              quoteFields.customer_email,
@@ -295,6 +302,7 @@ export async function POST(req: NextRequest) {
             sendInquiryNotification({
               inquiryNumber:  leadNumber,
               source:         'admin',
+              customerTitle:  quoteTitle,
               customerName:   quoteFields.customer_name,
               customerPhone:  quoteFields.customer_phone,
               customerEmail:  quoteFields.customer_email,
@@ -309,6 +317,7 @@ export async function POST(req: NextRequest) {
             newLead
               ? sendLeadAcknowledgment({
                   id:    newLead.id,
+                  title: quoteTitle,
                   name:  quoteFields.customer_name,
                   phone: quoteFields.customer_phone,
                   email: quoteFields.customer_email,
@@ -351,7 +360,7 @@ export async function POST(req: NextRequest) {
   let email_sent = false
   if (sendStatus === 'sent' && quoteFields.customer_email) {
     email_sent = await sendQuoteEmail({
-      to: quoteFields.customer_email, customerName: quoteFields.customer_name,
+      to: quoteFields.customer_email, customerTitle: quoteFields.title, customerName: quoteFields.customer_name,
       quoteNumber: (data as Record<string, unknown>)?.quote_number as string ?? '',
       serviceType: quoteFields.service_type,
       fromCity: quoteFields.from_city, toCity: quoteFields.to_city,
@@ -365,13 +374,14 @@ export async function POST(req: NextRequest) {
 
 // ── Send quote email via Resend ───────────────────────────────────
 async function sendQuoteEmail(p: {
-  to: string; customerName: string; quoteNumber: string; serviceType: string
+  to: string; customerTitle?: string | null; customerName: string; quoteNumber: string; serviceType: string
   fromCity: string; toCity: string; pickupDate: string | null; totalBags: number
   basePrice: number; cgst: number; sgst: number; totalAmount: number; notes: string | null
 }): Promise<boolean> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) { console.warn('[quotes] RESEND_API_KEY not set'); return false }
 
+  const displayName = formatCustomerName(p.customerTitle, p.customerName) || p.customerName
   const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 })
   const pickupLine = p.pickupDate
     ? new Date(p.pickupDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
@@ -387,7 +397,7 @@ async function sendQuoteEmail(p: {
   <p style="margin:4px 0 0;font-size:13px;color:#ffe0cc">Baggage Delivered. Journey Simplified.</p>
 </td></tr>
 <tr><td style="padding:32px">
-  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${p.customerName}</strong>,</p>
+  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${displayName}</strong>,</p>
   <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6">Thank you for choosing Bagdrop. Please find your service quote below.</p>
   <div style="background:#fff7f0;border:1px solid #ffedd5;border-radius:8px;padding:12px 16px;margin-bottom:24px;display:inline-block">
     <span style="font-size:12px;color:#9a3412;font-weight:600;text-transform:uppercase;letter-spacing:1px">Quote Number</span><br>
@@ -395,7 +405,7 @@ async function sendQuoteEmail(p: {
   </div>
   <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #e5e7eb;border-radius:8px;overflow:hidden;margin-bottom:24px">
     <tr style="background:#f9fafb"><td colspan="2" style="padding:12px 16px;font-size:11px;font-weight:700;color:#6b7280;text-transform:uppercase;letter-spacing:1px">Service Details</td></tr>
-    <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6;width:40%">Customer</td><td style="padding:10px 16px;font-size:14px;color:#111827;font-weight:800;border-top:1px solid #f3f4f6">${p.customerName}</td></tr>
+    <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6;width:40%">Customer</td><td style="padding:10px 16px;font-size:14px;color:#111827;font-weight:800;border-top:1px solid #f3f4f6">${displayName}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6;width:40%">Service</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${p.serviceType}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6">Route</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${p.fromCity} → ${p.toCity}</td></tr>
     <tr><td style="padding:10px 16px;font-size:13px;color:#6b7280;border-top:1px solid #f3f4f6">Pickup Date</td><td style="padding:10px 16px;font-size:13px;color:#111827;font-weight:600;border-top:1px solid #f3f4f6">${pickupLine}</td></tr>

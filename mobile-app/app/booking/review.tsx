@@ -14,7 +14,7 @@ import { type } from '@/theme/typography'
 import { useBooking } from '@/context/BookingContext'
 import { useAuth } from '@/context/AuthContext'
 import { isStep4Valid } from '@/shared/booking-types'
-import { BOOKING_LOCATIONS, ADDON_SERVICES, TIME_SLOTS } from '@/shared/constants'
+import { BOOKING_LOCATIONS, ADDON_SERVICES, TIME_SLOTS, TITLE_OPTIONS } from '@/shared/constants'
 import { formatCurrency } from '@/shared/format'
 import { createBooking } from '@/lib/api'
 
@@ -136,6 +136,12 @@ export default function Review() {
         </Card>
 
         <Text style={styles.sectionTitleLoose}>Your details</Text>
+        <SelectField
+          label="Title"
+          value={state.title}
+          options={TITLE_OPTIONS.map(t => ({ value: t, label: t }))}
+          onChange={v => update({ title: v as typeof state.title })}
+        />
         <TextField label="Full name" placeholder="Your name" value={state.name} onChangeText={v => update({ name: v })} />
         <PhoneInput
           label="Mobile number"

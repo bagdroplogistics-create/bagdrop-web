@@ -8,7 +8,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { cn } from '@/lib/utils'
-import { COVERAGE_CITIES, SERVICE_TYPES, BAG_TYPES, ADDON_SERVICES } from '@/lib/constants'
+import { COVERAGE_CITIES, SERVICE_TYPES, BAG_TYPES, ADDON_SERVICES, TITLE_OPTIONS } from '@/lib/constants'
 import type { BookingState } from '@/lib/booking-types'
 import { isStep4Valid } from '@/lib/booking-types'
 
@@ -80,6 +80,21 @@ export function StepReview({
         {/* Left: customer form */}
         <div className="rounded-2xl border border-border bg-white p-5 space-y-4">
           <h3 className="font-display text-sm font-semibold text-text-primary">Your details</h3>
+          <div className="space-y-1.5">
+            <label htmlFor="title" className="block text-sm font-medium text-text-primary">
+              Title<span className="ml-0.5 text-brand">*</span>
+            </label>
+            <select
+              id="title"
+              value={state.title}
+              onChange={e => onChange({ title: e.target.value as typeof state.title })}
+              className="input-base"
+            >
+              {TITLE_OPTIONS.map(t => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+          </div>
           <FormField
             id="name" label="Full name" icon={User} required
             type="text" placeholder="Priya Mehta"

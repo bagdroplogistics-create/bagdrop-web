@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
+import { formatCustomerName } from '@/lib/constants'
 
 interface Quote {
   id: string
   quote_number: string
+  title?: string | null
   customer_name: string
   customer_phone: string
   customer_email: string | null
@@ -157,7 +159,7 @@ export default function QuotePrintPage() {
             {/* Customer */}
             <div style={{background:'#f9fafb',borderRadius:'10px',padding:'16px 18px',borderLeft:'3px solid #f97316'}}>
               <div style={{fontSize:'9px',fontWeight:700,textTransform:'uppercase',letterSpacing:'1px',color:'#9ca3af',marginBottom:'8px'}}>Billed To</div>
-              <div style={{fontSize:'15px',fontWeight:800,color:'#111827'}}>{quote.customer_name}</div>
+              <div style={{fontSize:'15px',fontWeight:800,color:'#111827'}}>{formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}</div>
               <div style={{fontSize:'12px',color:'#4b5563',marginTop:'4px'}}>{quote.customer_phone}</div>
               {quote.customer_email && <div style={{fontSize:'11px',color:'#6b7280',marginTop:'2px'}}>{quote.customer_email}</div>}
             </div>

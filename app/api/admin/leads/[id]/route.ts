@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { parseStoredPhone } from '@/lib/phone-format'
+import { TITLE_OPTIONS } from '@/lib/constants'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAdminAuth(req)) {
@@ -29,6 +30,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
   const allowed = [
+    'title',
     'name', 'phone', 'phone_country_code', 'phone_national', 'email', 'source', 'service_interest', 'service_type',
     'from_city', 'to_city', 'travel_date', 'pickup_date', 'delivery_date',
     'pickup_time', 'pickup_address', 'drop_address', 'bags_count', 'status', 'notes', 'assigned_to',
@@ -64,6 +66,12 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // Reject an invalid title rather than silently writing bad data past the
+  // DB CHECK constraint (which would surface as an opaque 500).
+  if ('title' in updates && !TITLE_OPTIONS.includes(updates.title as never)) {
+    return NextResponse.json({ error: 'title must be one of Mr., Mrs., Ms.' }, { status: 400 })
   }
 
   // Convert empty strings to null for date/optional columns
@@ -139,6 +147,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
     const bookingUpdates: Record<string, unknown> = {}
 
+    if ('title' in updates)          bookingUpdates.title          = lead.title
     if ('name' in updates)          bookingUpdates.customer_name  = lead.name
     if ('phone' in updates) {
       bookingUpdates.customer_phone = lead.phone

@@ -7,6 +7,7 @@ import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecy
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import { syncBookingReminders } from '@/lib/ops-reminders'
 import type { BookingStatus } from '@/lib/supabase'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 // STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
 // shared with app/api/admin/trip-sheets/[id]/route.ts, which needed the same
@@ -51,7 +52,7 @@ export async function PATCH(
   const body   = await req.json().catch(() => ({}))
 
   const {
-    status, notes, customer_name, customer_phone, customer_phone_country_code, customer_phone_national, customer_email,
+    status, notes, title, customer_name, customer_phone, customer_phone_country_code, customer_phone_national, customer_email,
     total_bags, total_amount, pickup_date, pickup_address, drop_address,
     payment_status, payment_method, payment_reference,
     approved_without_payment, delivery_date,
@@ -83,6 +84,12 @@ export async function PATCH(
 
   const updates: Record<string, unknown> = {}
 
+  if (title !== undefined) {
+    if (!TITLE_OPTIONS.includes(title)) {
+      return NextResponse.json({ error: 'title must be one of Mr., Mrs., Ms.' }, { status: 400 })
+    }
+    updates.title = title
+  }
   if (total_amount         !== undefined) updates.total_amount         = Number(total_amount)
   if (customer_name        !== undefined) updates.customer_name        = customer_name.trim()
   if (customer_phone       !== undefined) {
@@ -169,14 +176,14 @@ export async function PATCH(
   if (body.send_quote_email) {
     const { data: bk } = await supabaseAdmin
       .from('bookings')
-      .select('customer_email, customer_name, total_amount, tracking_id, from_city, to_city, service_type, service_label, total_bags, pickup_date')
+      .select('customer_email, customer_name, title, total_amount, tracking_id, from_city, to_city, service_type, service_label, total_bags, pickup_date')
       .eq('id', id)
       .single()
 
     if (bk?.customer_email) {
       const { data: lead } = await supabaseAdmin
         .from('leads')
-        .select('quote_number, quote_total, quote_subtotal, quote_tax, quote_notes, name, bags_count')
+        .select('quote_number, quote_total, quote_subtotal, quote_tax, quote_notes, name, title, bags_count')
         .eq('booking_id', id)
         .maybeSingle()
 
@@ -188,7 +195,7 @@ export async function PATCH(
 
       await sendQuoteEmail({
         to:           bk.customer_email,
-        customerName: bk.customer_name ?? lead?.name ?? 'Customer',
+        customerName: formatCustomerName(bk.title ?? lead?.title, bk.customer_name ?? lead?.name) || (bk.customer_name ?? lead?.name ?? 'Customer'),
         quoteNumber:  lead?.quote_number ?? bk.tracking_id ?? '',
         serviceType:  (bk.service_label ?? bk.service_type ?? 'Baggage Delivery') as string,
         fromCity:     (bk.from_city ?? '') as string,
@@ -252,7 +259,7 @@ export async function PATCH(
 
     const { data: existing } = await supabaseAdmin
       .from('bookings')
-      .select('status, status_history, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+      .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
       .eq('id', id)
       .single()
 
@@ -328,6 +335,7 @@ export async function PATCH(
 
       if (existing) {
         notifyBookingStatus({
+          customerTitle: existing.title,
           customerName:  existing.customer_name,
           customerPhone: existing.customer_phone,
           customerEmail: existing.customer_email ?? '',
@@ -413,6 +421,7 @@ async function autoCreateInvoice(bookingId: string, booking: Record<string, unkn
 
   const invoicePayload = {
     booking_id:        bookingId,
+    title:             (booking.title as string) ?? DEFAULT_TITLE,
     customer_name:     booking.customer_name as string,
     customer_phone:    booking.customer_phone as string,
     customer_email:    (booking.customer_email as string) ?? null,
@@ -494,6 +503,7 @@ async function autoCreateDraftQuote(bookingId: string, booking: Record<string, u
   const { error } = await supabaseAdmin.from('quotes').insert({
     quote_number:   quoteNumber,
     booking_id:     bookingId,
+    title:          (booking.title as string) ?? DEFAULT_TITLE,
     customer_name:  booking.customer_name  as string,
     customer_phone: booking.customer_phone as string,
     customer_email: (booking.customer_email as string) ?? null,
@@ -524,6 +534,7 @@ async function sendPaymentRequestEmail(p: {
   const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 })
   const upiLink = `upi://pay?pa=${p.upiId}&pn=Bagdrop&am=${p.amount}&cu=INR&tn=${p.booking.tracking_id}`
   const qrUrl   = `https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(upiLink)}`
+  const displayName = formatCustomerName(p.booking.title as string | null, p.booking.customer_name as string) || (p.booking.customer_name as string)
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#f9fafb;font-family:Arial,sans-serif">
@@ -535,7 +546,7 @@ async function sendPaymentRequestEmail(p: {
   <p style="margin:4px 0 0;font-size:13px;color:#ffe0cc">Baggage Delivered. Journey Simplified.</p>
 </td></tr>
 <tr><td style="padding:32px">
-  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${p.booking.customer_name}</strong>,</p>
+  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${displayName}</strong>,</p>
   <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6">
     Your Bagdrop quote for <strong>${p.booking.from_city} → ${p.booking.to_city}</strong> has been prepared.
     Please complete your payment to confirm the booking.

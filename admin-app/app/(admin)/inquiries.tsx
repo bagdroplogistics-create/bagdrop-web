@@ -10,7 +10,7 @@ import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
 import { fetchLeads, AdminLead } from '@/lib/api'
 import { LEAD_STATUSES, leadStatusMeta } from '@/shared/leads'
-import { timeAgo } from '@/shared/format'
+import { timeAgo, formatCustomerName } from '@/shared/format'
 
 const FILTERS = [{ key: 'all', label: 'All' }, ...LEAD_STATUSES.map(s => ({ key: s.key, label: s.label }))]
 
@@ -100,7 +100,7 @@ export default function Inquiries() {
               <Card style={{ marginBottom: 10 }}>
                 <View style={styles.row}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.name}>{item.name}</Text>
+                    <Text style={styles.name}>{formatCustomerName(item.title, item.name) || item.name}</Text>
                     <Text style={styles.meta}>{item.phone}{item.email ? ` · ${item.email}` : ''}</Text>
                     <Text style={styles.meta}>{item.lead_number} · {timeAgo(item.created_at)}</Text>
                   </View>

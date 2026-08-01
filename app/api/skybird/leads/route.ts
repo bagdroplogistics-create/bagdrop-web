@@ -4,6 +4,7 @@ import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/
 import { sendInquiryNotification } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped leads API
@@ -30,6 +31,7 @@ import { parseStoredPhone } from '@/lib/phone-format'
 interface SkybirdLeadRow {
   id: string
   lead_number: string | null
+  title: string | null
   name: string
   phone: string
   email: string | null
@@ -83,7 +85,7 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from('leads')
     .select(
-      'id, lead_number, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+      'id, lead_number, title, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
       { count: 'exact' }
     )
     .eq('source', SKYBIRD_SOURCE)
@@ -106,7 +108,7 @@ export async function GET(req: NextRequest) {
     let fallback = supabaseAdmin
       .from('leads')
       .select(
-        'id, lead_number, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
+        'id, lead_number, title, name, phone, email, service_interest, service_type, from_city, to_city, travel_date, pickup_date, delivery_date, pickup_time, bags_count, pnr, flight_number, flight_time, pickup_address, drop_address, status, notes, created_at, booking_id, zoho_estimate_number, quote_discount_pct, quote_discount_amt',
         { count: 'exact' }
       )
       .eq('source', SKYBIRD_SOURCE)
@@ -167,6 +169,8 @@ export async function POST(req: NextRequest) {
   if (!body?.name || !body?.phone) {
     return NextResponse.json({ error: 'name and phone are required' }, { status: 400 })
   }
+
+  const bodyTitle: TitleId = TITLE_OPTIONS.includes(body.title) ? body.title : DEFAULT_TITLE
 
   const serviceVal = (body.service_interest || body.service_type || '').trim() || null
   const nullDate = (v: unknown) => (typeof v === 'string' ? v.trim() : '') || null
@@ -247,6 +251,7 @@ export async function POST(req: NextRequest) {
 
   const bookingPayload = {
     tracking_id:    trackingId,
+    title:          bodyTitle,
     customer_name:  body.name.trim(),
     customer_phone: normPhone,
     customer_phone_country_code: phoneCountryCode,
@@ -290,6 +295,7 @@ export async function POST(req: NextRequest) {
     .from('leads')
     .insert({
       lead_number: leadNumber,
+      title: bodyTitle,
       name:  body.name.trim(),
       phone: normPhone,
       phone_country_code: phoneCountryCode,
@@ -332,6 +338,7 @@ export async function POST(req: NextRequest) {
     sendInquiryNotification({
       inquiryNumber: leadNumber,
       source: 'Skybird USA (Partner)',
+      customerTitle: lead.title,
       customerName: lead.name, customerPhone: lead.phone, customerEmail: lead.email,
       serviceType: lead.service_interest, fromCity: lead.from_city, toCity: lead.to_city,
       pickupAddress: lead.pickup_address, deliveryAddress: lead.drop_address,
@@ -340,7 +347,7 @@ export async function POST(req: NextRequest) {
       flightNumber: lead.flight_number, pnr: lead.pnr, notes: lead.notes,
       submittedAt: lead.created_at ?? new Date().toISOString(),
     }),
-    sendLeadAcknowledgment({ id: lead.id, name: lead.name, phone: lead.phone, email: lead.email }),
+    sendLeadAcknowledgment({ id: lead.id, title: lead.title, name: lead.name, phone: lead.phone, email: lead.email }),
   ]).catch(err => console.error('[skybird/leads POST] notification error:', err))
 
   return NextResponse.json(

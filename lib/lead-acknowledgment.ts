@@ -31,9 +31,11 @@
 import { supabaseAdmin } from './supabase'
 import { sendInquiryAcknowledgmentEmail } from './email'
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { formatCustomerName } from './constants'
 
 export interface AcknowledgeableLead {
   id:     string
+  title?: string | null
   name:   string
   phone?: string | null
   email?: string | null
@@ -88,10 +90,11 @@ export async function sendLeadAcknowledgment(lead: AcknowledgeableLead): Promise
     const newEntries: CommunicationLogEntry[] = []
 
     const name = lead.name?.trim() || 'Customer'
+    const displayName = (formatCustomerName(lead.title, name) || name)
 
     // ── Email ───────────────────────────────────────────────────────
     if (lead.email) {
-      const result = await sendInquiryAcknowledgmentEmail({ customerName: name, customerEmail: lead.email })
+      const result = await sendInquiryAcknowledgmentEmail({ customerTitle: lead.title, customerName: name, customerEmail: lead.email })
       newEntries.push({
         type:      'acknowledgment',
         channel:   'email',
@@ -111,7 +114,7 @@ export async function sendLeadAcknowledgment(lead: AcknowledgeableLead): Promise
     // message to a customer who hasn't messaged us first) ─────────────
     if (lead.phone) {
       const templateId = process.env.FAST2SMS_ACK_MESSAGE_ID ?? ''
-      const result = await sendWhatsAppTemplateFast2SMS(lead.phone, templateId, [name])
+      const result = await sendWhatsAppTemplateFast2SMS(lead.phone, templateId, [displayName])
       newEntries.push({
         type:      'acknowledgment',
         channel:   'whatsapp',

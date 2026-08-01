@@ -3,6 +3,8 @@
  * Sends Email (Resend) and WhatsApp (Meta Cloud API) on booking status changes.
  */
 
+import { formatCustomerName } from './constants'
+
 export type BookingStatus =
   | 'pending'
   | 'confirmed'
@@ -15,6 +17,7 @@ export type BookingStatus =
   | 'cancelled'
 
 interface NotificationData {
+  customerTitle?: string | null
   customerName: string
   customerPhone: string
   customerEmail: string
@@ -260,8 +263,15 @@ export async function notifyBookingStatus(
   const msg = STATUS_MESSAGES[data.status]
   if (!msg) return
 
+  // Format once here so every channel (email + WhatsApp) below shows
+  // "Mr./Mrs./Ms. Name" without each template needing its own logic.
+  const formatted: NotificationData = {
+    ...data,
+    customerName: formatCustomerName(data.customerTitle, data.customerName) || data.customerName,
+  }
+
   await Promise.allSettled([
-    sendEmail(data, msg),
-    sendWhatsApp(data, msg),
+    sendEmail(formatted, msg),
+    sendWhatsApp(formatted, msg),
   ])
 }

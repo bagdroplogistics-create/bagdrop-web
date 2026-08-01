@@ -11,6 +11,7 @@ import {
 } from 'lucide-react'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
+import { formatCustomerName } from '@/lib/constants'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +28,7 @@ interface LineItem {
 interface Lead {
   id: string
   lead_number: string
+  title?: string | null
   name: string
   phone: string
   email: string | null
@@ -418,7 +420,7 @@ export default function QuoteViewPage() {
           leadNumber:    lead.lead_number,
           salesperson:   lead.salesperson_name,
           agentName:     lead.agent_name,
-          customerName:  lead.name,
+          customerName:  formatCustomerName(lead.title, lead.name) || lead.name,
           customerPhone: lead.phone,
           customerEmail: lead.email,
           fromCity:      lead.from_city,
@@ -1156,7 +1158,7 @@ export default function QuoteViewPage() {
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #f97316' }}>
               <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Bill To</div>
-              <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>{lead.name}</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>{formatCustomerName(lead.title, lead.name) || lead.name}</div>
               <div style={{ fontSize: '12.5px', color: '#4b5563', marginTop: '3px' }}>{lead.phone}</div>
               {lead.email && <div style={{ fontSize: '11.5px', color: '#4b5563', marginTop: '2px' }}>{lead.email}</div>}
             </div>
@@ -1483,7 +1485,7 @@ export default function QuoteViewPage() {
                       <button
                         onClick={() => {
                           if (!lead || !booking) return
-                          const name   = lead.name ?? 'Customer'
+                          const name   = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
                           const qnum   = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
                           const from   = lead.from_city ?? booking?.tracking_id ?? ''
                           const to     = lead.to_city   ?? ''

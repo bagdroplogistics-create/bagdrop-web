@@ -8,9 +8,11 @@ import {
   IndianRupee, CheckCircle, Pencil, ChevronRight, AlertCircle,
 } from 'lucide-react'
 import { MODE_OPTIONS } from '@/lib/lr-constants'
+import { formatCustomerName } from '@/lib/constants'
 
 interface BookingEntry {
   booking_id: string; tracking_id: string
+  title?: string | null
   customer_name: string; customer_phone: string
   from_city: string | null; to_city: string | null
   pickup_address: string | null; drop_address: string | null
@@ -84,6 +86,7 @@ export default function NewLRPage() {
       const all: BookingEntry[] = results.flatMap((d: any) =>
         (Array.isArray(d.bookings) ? d.bookings : []).map((b: any) => ({
           booking_id: b.id, tracking_id: b.tracking_id,
+          title: b.title ?? null,
           customer_name: b.customer_name, customer_phone: b.customer_phone,
           from_city: b.from_city ?? null, to_city: b.to_city ?? null,
           pickup_address: b.pickup_address ?? null, drop_address: b.drop_address ?? null,
@@ -206,7 +209,7 @@ export default function NewLRPage() {
                   </div>
                   <div className="flex items-center gap-1.5 mb-1">
                     <User className="h-3 w-3 text-gray-400 shrink-0" />
-                    <span className="text-sm font-semibold text-gray-800">{e.customer_name}</span>
+                    <span className="text-sm font-semibold text-gray-800">{formatCustomerName(e.title, e.customer_name) || e.customer_name}</span>
                   </div>
                   {(e.from_city || e.to_city) && (
                     <div className="flex items-center gap-1.5 mb-1">
@@ -269,7 +272,7 @@ export default function NewLRPage() {
                 <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
                   <p className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-500">Auto-filled from Booking</p>
                   <div className="grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
-                    <div><p className="text-xs text-gray-400">Customer</p><p className="font-semibold text-gray-800">{selected.customer_name}</p></div>
+                    <div><p className="text-xs text-gray-400">Customer</p><p className="font-semibold text-gray-800">{formatCustomerName(selected.title, selected.customer_name) || selected.customer_name}</p></div>
                     <div><p className="text-xs text-gray-400">Route</p><p className="font-semibold text-gray-800">{selected.from_city ?? '—'} → {selected.to_city ?? '—'}</p></div>
                     <div><p className="text-xs text-gray-400">Bags</p><p className="font-semibold text-gray-800">{selected.total_bags ?? '—'}</p></div>
                     <div><p className="text-xs text-gray-400">Amount</p><p className="font-semibold text-gray-800">{fmtRs(selected.total_amount)}</p></div>

@@ -8,11 +8,13 @@ import {
 } from 'lucide-react'
 import { getRoleFromSession, can } from '@/lib/roles'
 import type { AdminRole } from '@/lib/admin-auth'
+import { formatCustomerName } from '@/lib/constants'
 
 interface Payment {
   id:                string
   payment_id:        string
   booking_id:        string | null
+  title?:            string | null
   customer_name:     string
   customer_phone:    string
   amount:            number
@@ -313,7 +315,7 @@ export default function PaymentsPage() {
                         )}
                       </td>
                       <td className="px-4 py-3">
-                        <p className="font-semibold text-gray-900">{p.customer_name}</p>
+                        <p className="font-semibold text-gray-900">{formatCustomerName(p.title, p.customer_name) || p.customer_name}</p>
                         <p className="text-xs text-gray-400">{p.customer_phone}</p>
                       </td>
                       <td className="px-4 py-3 font-bold text-gray-900">{fmtRs(p.amount)}</td>

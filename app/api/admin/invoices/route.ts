@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -59,6 +60,7 @@ export async function POST(req: NextRequest) {
   const sgst    = parseFloat((baseAmt * 0.025).toFixed(2))
 
   const payload = {
+    title:             booking.title ?? DEFAULT_TITLE,
     customer_name:     booking.customer_name,
     customer_phone:    booking.customer_phone,
     customer_email:    booking.customer_email ?? null,
@@ -90,7 +92,7 @@ export async function POST(req: NextRequest) {
     if (body.send_email && payload.customer_email) {
       email_sent = await sendInvoiceEmail({
         to:               payload.customer_email,
-        customerName:     payload.customer_name,
+        customerName:     formatCustomerName(payload.title, payload.customer_name) || payload.customer_name,
         invoiceNumber:    existingInv.invoice_number,
         serviceType:      payload.service_type ?? 'Baggage Delivery',
         fromCity:         payload.from_city,

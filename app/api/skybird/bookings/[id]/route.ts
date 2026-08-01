@@ -4,6 +4,7 @@ import { SERVICE_TYPES, COVERAGE_CITIES } from '@/lib/constants'
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { requireSkybirdAuth, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — edit an existing booking
@@ -31,7 +32,7 @@ import { requireSkybirdAuth, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
 // own status_history, same as any other edit trail in this codebase.
 // ============================================================================
 
-const BOOKING_SELECT = 'id, tracking_id, status, status_history, partner_name, customer_name, customer_email, customer_phone, customer_phone_country_code, customer_phone_national, service_type, service_label, from_city, to_city, pickup_address, drop_address, pickup_date, delivery_date, time_slot, flight_number, flight_datetime, total_bags, bag_details, total_amount, add_ons, notes'
+const BOOKING_SELECT = 'id, tracking_id, status, status_history, partner_name, title, customer_name, customer_email, customer_phone, customer_phone_country_code, customer_phone_national, service_type, service_label, from_city, to_city, pickup_address, drop_address, pickup_date, delivery_date, time_slot, flight_number, flight_datetime, total_bags, bag_details, total_amount, add_ons, notes'
 
 async function loadOwnedBooking(id: string) {
   const { data, error } = await supabaseAdmin.from('bookings').select(BOOKING_SELECT).eq('id', id).maybeSingle()
@@ -98,6 +99,7 @@ export async function PATCH(
     // to how the value was originally stored at creation.
     const timeSlotLabel = booking.timeSlotId ?? ''
 
+    const customerTitle: TitleId = TITLE_OPTIONS.includes(booking?.title) ? booking.title : DEFAULT_TITLE
     const customerName  = booking.name.trim()
     const customerEmail = booking.email?.trim().toLowerCase() ?? ''
     const rawPhone       = booking.phone?.replace(/\D/g, '') ?? ''
@@ -139,6 +141,7 @@ export async function PATCH(
     })
 
     const updatePayload = {
+      title:          customerTitle,
       customer_name:  customerName,
       customer_email: customerEmail,
       customer_phone: customerPhone,
@@ -182,6 +185,7 @@ export async function PATCH(
     const { error: leadUpdateErr } = await supabaseAdmin
       .from('leads')
       .update({
+        title: customerTitle,
         name:  customerName,
         phone: customerPhone,
         email: customerEmail || null,

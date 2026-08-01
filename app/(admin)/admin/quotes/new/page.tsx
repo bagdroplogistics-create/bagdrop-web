@@ -11,6 +11,7 @@ import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
+import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
 // ── Types ──────────────────────────────────────────────────────────────
 interface QuoteLineItem {
@@ -24,7 +25,7 @@ interface QuoteLineItem {
 }
 
 interface Lead {
-  id: string; lead_number: string | null; name: string; phone: string
+  id: string; lead_number: string | null; title?: string | null; name: string; phone: string
   phone_country_code?: string | null; phone_national?: string | null
   email: string | null; source: string; service_interest: string | null
   from_city: string | null; to_city: string | null
@@ -205,6 +206,7 @@ function QuotePageInner() {
   const [saving,   setSaving]   = useState(false)  // for edit mode save
 
   // ── Customer fields (editable in both new-quote and edit mode) ─────
+  const [custTitle,   setCustTitle]   = useState<string>(DEFAULT_TITLE)
   const [custName,    setCustName]    = useState('')
   const [custPhone,   setCustPhone]   = useState('')       // national digits only — see PhoneInput
   const [custCountryIso2, setCustCountryIso2] = useState('IN')
@@ -291,6 +293,7 @@ function QuotePageInner() {
       // Populate editable customer fields (always, used in edit mode).
       // Re-parses the stored E.164 string so the correct flag/dial code
       // shows automatically instead of defaulting back to India.
+      setCustTitle(d.title && TITLE_OPTIONS.includes(d.title) ? d.title : DEFAULT_TITLE)
       setCustName(d.name)
       const parsedPhone = parseStoredPhone(d.phone)
       setCustPhone(parsedPhone.nationalNumber)
@@ -448,6 +451,7 @@ function QuotePageInner() {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
+        title:            custTitle,
         name:             custName.trim(),
         phone:            toE164(custPhone, custCountryIso2),
         phone_country_code: custCountryIso2,
@@ -498,7 +502,7 @@ function QuotePageInner() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
-          name: effectiveName, phone: effectivePhone,
+          title: custTitle, name: effectiveName, phone: effectivePhone,
           phone_country_code: effectivePhoneCountryCode, phone_national: effectivePhoneNational,
           email: custEmail.trim() || null,
           source: custSource, service_interest: custService || null, service_type: custService || null,
@@ -539,7 +543,7 @@ function QuotePageInner() {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
             body: JSON.stringify({
-              name: effectiveName, email: custEmail.trim() || null,
+              title: custTitle, name: effectiveName, email: custEmail.trim() || null,
               service_interest: custService || null, service_type: custService || null,
               from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
               pickup_date: pickupDate || null, delivery_date: deliveryDate || null, pickup_time: pickupTime || null,
@@ -638,7 +642,7 @@ function QuotePageInner() {
           {result.is_return_quote ? 'Return quote' : 'Quote'}: <span className="font-mono font-bold text-blue-700">{result.estimate_number}</span>
         </p>
         <div className="mt-6 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4 text-left text-sm">
-          <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-semibold">{lead?.name ?? custName}</span></div>
+          <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-semibold">{formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName)}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Route</span><span className="font-semibold">{fromCity} → {toCity}</span></div>
           <div className="flex justify-between"><span className="text-gray-500">Total</span><span className="font-bold text-orange-600">{rupees(result.total)}</span></div>
           {result.sent_to_customer && (
@@ -669,7 +673,7 @@ function QuotePageInner() {
   if (leadId && loading) return <div className="flex min-h-[50vh] items-center justify-center"><Loader2 className="h-7 w-7 animate-spin text-orange-400" /></div>
   if (leadId && !loading && !lead) return <div className="flex min-h-[50vh] items-center justify-center"><p className="text-sm text-gray-400">{err || 'Lead not found'}</p></div>
 
-  const displayName  = lead?.name  ?? custName
+  const displayName  = formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName)
   const displayPhone = lead?.phone ?? toE164(custPhone, custCountryIso2)
   const displayPhoneNational = lead?.phone_national ?? custPhone
 
@@ -739,6 +743,13 @@ function QuotePageInner() {
 
             {/* Always editable when: no lead (new quote) OR isEdit mode */}
             <div className="grid grid-cols-2 gap-3 mb-3">
+              <div>
+                <label className={lbl}>Title <span className="text-red-400">*</span></label>
+                <select value={custTitle} onChange={e => setCustTitle(e.target.value)}
+                  disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
+                  {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
               <div>
                 <label className={lbl}>Full Name <span className="text-red-400">*</span></label>
                 <div className="relative">

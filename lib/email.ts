@@ -1,6 +1,8 @@
 // BAGDROP — lib/email.ts
 // Transactional email via Resend REST API.
 
+import { formatCustomerName } from './constants'
+
 const RESEND_API   = 'https://api.resend.com/emails'
 const FROM         = 'Bagdrop <info@bagdrop.co>'
 const BRAND        = '#FF6300'
@@ -154,6 +156,7 @@ const SOURCE_LABELS: Record<string, string> = {
 export interface InquiryEmailData {
   inquiryNumber:    string          // lead_number or tracking_id
   source:           string          // website / admin / whatsapp / etc.
+  customerTitle?:   string | null
   customerName:     string
   customerPhone:    string
   customerEmail?:   string | null
@@ -174,6 +177,7 @@ export interface InquiryEmailData {
 
 export async function sendInquiryNotification(data: InquiryEmailData) {
   const sourceLabel = SOURCE_LABELS[data.source?.toLowerCase() ?? ''] ?? data.source ?? 'Unknown'
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const serviceMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',
@@ -204,7 +208,7 @@ export async function sendInquiryNotification(data: InquiryEmailData) {
     // Details table
     '<h3 style="margin:0 0 10px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Inquiry Details</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
-    row('Customer Name',    data.customerName) +
+    row('Customer Name',    displayName) +
     row('Contact Number',   data.customerPhone) +
     row('Email Address',    data.customerEmail || '—') +
     row('Source',           sourceLabel) +
@@ -231,7 +235,7 @@ export async function sendInquiryNotification(data: InquiryEmailData) {
 
   const subject =
     'New Inquiry ' + data.inquiryNumber +
-    ' — ' + data.customerName +
+    ' — ' + displayName +
     (data.fromCity && data.toCity ? ' — ' + data.fromCity + ' → ' + data.toCity : '') +
     ' [' + sourceLabel + ']'
 
@@ -244,6 +248,7 @@ export async function sendInquiryNotification(data: InquiryEmailData) {
 // ── Customer Confirmation ─────────────────────────────────────────────
 
 export interface BookingEmailData {
+  customerTitle?: string | null
   customerName:  string
   customerEmail: string
   customerPhone: string
@@ -259,6 +264,7 @@ export interface BookingEmailData {
 
 export async function sendCustomerConfirmation(data: BookingEmailData) {
   const dateFormatted = formatDate(data.date) ?? data.date
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const steps = [
     'Our team will contact you shortly to confirm your pickup details.',
@@ -278,7 +284,7 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
 
   const body =
     '<h1 style="margin:0 0 4px;font-size:22px;font-weight:800;color:#111;">Booking Request Received!</h1>' +
-    '<p style="margin:0 0 28px;font-size:15px;color:#555;">Hi ' + data.customerName + ', we have received your booking request and our team will contact you shortly to confirm.</p>' +
+    '<p style="margin:0 0 28px;font-size:15px;color:#555;">Hi ' + displayName + ', we have received your booking request and our team will contact you shortly to confirm.</p>' +
 
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:16px 20px;margin-bottom:28px;text-align:center;">' +
     '<p style="margin:0;font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
@@ -318,16 +324,18 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
 // idempotency, WhatsApp, and communication_log — that calls this.
 
 export interface InquiryAcknowledgmentEmailData {
+  customerTitle?: string | null
   customerName:  string
   customerEmail: string
 }
 
 export async function sendInquiryAcknowledgmentEmail(data: InquiryAcknowledgmentEmailData) {
   if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Thank You for Your Inquiry</h2>' +
-    '<p style="margin:20px 0 0;font-size:14px;color:#333;line-height:1.6;">Dear ' + data.customerName + ',</p>' +
+    '<p style="margin:20px 0 0;font-size:14px;color:#333;line-height:1.6;">Dear ' + displayName + ',</p>' +
     '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Thank you for contacting Bagdrop.</p>' +
     '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">' +
     'We have successfully received your inquiry. Our team will review the details and get in touch with you shortly ' +
@@ -349,6 +357,7 @@ export async function sendInquiryAcknowledgmentEmail(data: InquiryAcknowledgment
 // ── Quote Email (to customer) ─────────────────────────────────────────
 
 export interface QuoteEmailData {
+  customerTitle?:  string | null
   customerName:    string
   customerEmail:   string
   quoteNumber:     string
@@ -370,6 +379,7 @@ export interface QuoteEmailData {
 
 export async function sendQuoteEmail(data: QuoteEmailData) {
   if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const fmt = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
 
@@ -387,7 +397,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Your Quote from Bagdrop</h2>' +
-    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + data.customerName + ', please find your estimate below. Contact us to confirm your booking.</p>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + displayName + ', please find your estimate below. Contact us to confirm your booking.</p>' +
 
     // Quote number highlight
     '<div style="background:#fff7f0;border-left:4px solid ' + BRAND + ';border-radius:6px;padding:14px 18px;margin-bottom:24px;">' +
@@ -398,7 +408,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
     // Journey summary
     '<h3 style="margin:0 0 10px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Journey Details</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
-    row('Customer Name', data.customerName) +
+    row('Customer Name', displayName) +
     row('Route',         data.fromCity + ' → ' + data.toCity) +
     row('No. of Bags',  String(data.bagsCount)) +
     row('Pickup Date',  data.pickupDate   ? formatDate(data.pickupDate)   ?? data.pickupDate   : null) +
@@ -459,7 +469,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 
   return sendEmail(
     data.customerEmail,
-    'Quote ' + data.quoteNumber + ' for ' + data.customerName + ' — ' + data.fromCity + ' → ' + data.toCity + ' | Bagdrop',
+    'Quote ' + data.quoteNumber + ' for ' + displayName + ' — ' + data.fromCity + ' → ' + data.toCity + ' | Bagdrop',
     baseTemplate(body),
     data.quoteNumber,
   )
@@ -473,6 +483,7 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
 // for the orchestration (dedup guard, WhatsApp, history logging).
 
 export interface DriverDetailsEmailData {
+  customerTitle?: string | null
   customerName:  string
   customerEmail: string
   trackingId:    string
@@ -485,10 +496,11 @@ const SUPPORT_PHONE_TEL     = '+916357115711'
 
 export async function sendDriverDetailsEmail(data: DriverDetailsEmailData) {
   if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Your Driver Details</h2>' +
-    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + data.customerName + ', your driver is on the way. Details below.</p>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + displayName + ', your driver is on the way. Details below.</p>' +
 
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:20px;margin-bottom:24px;">' +
     '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
@@ -522,6 +534,7 @@ export async function sendDriverDetailsEmail(data: DriverDetailsEmailData) {
 // Fast2SMS template exists — see lib/indemnity-notifications.ts.
 
 export interface IndemnityBondSentEmailData {
+  customerTitle?: string | null
   customerName:  string
   customerEmail: string
   trackingId:    string
@@ -531,10 +544,11 @@ export interface IndemnityBondSentEmailData {
 
 export async function sendIndemnityBondEmail(data: IndemnityBondSentEmailData) {
   if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Complete Your Indemnity Bond</h2>' +
-    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + data.customerName + ', before we schedule your pickup, please review and digitally sign your indemnity bond. It only takes a couple of minutes.</p>' +
+    '<p style="margin:0 0 24px;font-size:14px;color:#555;">Hi ' + displayName + ', before we schedule your pickup, please review and digitally sign your indemnity bond. It only takes a couple of minutes.</p>' +
 
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:20px;margin-bottom:24px;">' +
     '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
@@ -564,6 +578,7 @@ export async function sendIndemnityBondEmail(data: IndemnityBondSentEmailData) {
 // since the only thing that differs is the wording, not the layout.
 
 export interface IndemnityBondStatusEmailData {
+  customerTitle?: string | null
   customerName:  string
   customerEmail: string
   trackingId:    string
@@ -574,10 +589,11 @@ export interface IndemnityBondStatusEmailData {
 
 export async function sendIndemnityBondStatusEmail(data: IndemnityBondStatusEmailData) {
   if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">' + data.headline + '</h2>' +
-    '<p style="margin:0 0 20px;font-size:14px;color:#555;">Hi ' + data.customerName + ', ' + data.message + '</p>' +
+    '<p style="margin:0 0 20px;font-size:14px;color:#555;">Hi ' + displayName + ', ' + data.message + '</p>' +
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:16px 20px;margin-bottom:20px;">' +
     '<p style="margin:0 0 4px;font-size:11px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
     '<p style="margin:0;font-size:18px;font-weight:900;color:' + BRAND + ';letter-spacing:1px;">' + data.trackingId + '</p>' +
@@ -616,6 +632,7 @@ export async function sendIndemnityBondStatusEmail(data: IndemnityBondStatusEmai
 export interface IndemnityBondAdminNotifyData {
   trackingId:      string
   leadId:          string | null
+  customerTitle?:  string | null
   customerName:    string | null
   customerPhone:   string | null
   documentStatus:  string
@@ -633,6 +650,9 @@ export async function sendIndemnityBondAdminNotification(
   const adminLink = data.leadId
     ? 'https://bagdrop.co/admin/quotes/view/' + data.leadId
     : 'https://bagdrop.co/admin/leads'
+  const displayName = data.customerName
+    ? (formatCustomerName(data.customerTitle, data.customerName) || data.customerName)
+    : null
 
   const body =
     '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Indemnity Bond Signed & Submitted</h2>' +
@@ -649,7 +669,7 @@ export async function sendIndemnityBondAdminNotification(
 
     '<h3 style="margin:0 0 10px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Submission Details</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
-    row('Customer Name',   data.customerName) +
+    row('Customer Name',   displayName) +
     row('Contact Number',  data.customerPhone) +
     row('Document Status', data.documentStatus) +
     row('Aadhaar Number',  data.aadhaarNumber) +
@@ -663,7 +683,7 @@ export async function sendIndemnityBondAdminNotification(
     'font-size:13px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;">Review in Admin Panel</a>' +
     '</div>'
 
-  const subject = 'Indemnity Bond Submitted — ' + data.trackingId + ' — ' + (data.customerName ?? 'Customer')
+  const subject = 'Indemnity Bond Submitted — ' + data.trackingId + ' — ' + (displayName ?? 'Customer')
 
   // Send one independent email per admin — Resend can silently drop array recipients
   return Promise.allSettled(
@@ -680,6 +700,7 @@ export async function sendAdminNotification(data: BookingEmailData) {
   await sendInquiryNotification({
     inquiryNumber:  data.trackingId,
     source:         'website',
+    customerTitle:  data.customerTitle,
     customerName:   data.customerName,
     customerPhone:  data.customerPhone,
     customerEmail:  data.customerEmail,

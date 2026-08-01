@@ -30,6 +30,7 @@ export interface BookingSummary {
   tracking_id:     string
   status:          string
   status_history:  Array<Record<string, unknown>> | null
+  title?:          string | null
   customer_name:   string | null
   customer_phone:  string | null
   customer_email:  string | null
@@ -83,7 +84,7 @@ export async function resolveIndemnityToken(token: string): Promise<TokenLookupR
   // pattern.
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, tracking_id, status, status_history, customer_name, customer_phone, customer_email, service_type, service_label')
+    .select('id, tracking_id, status, status_history, title, customer_name, customer_phone, customer_email, service_type, service_label')
     .eq('id', bond.booking_id)
     .single()
 

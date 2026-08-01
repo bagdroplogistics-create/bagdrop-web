@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { findRouteMatch } from '@/lib/city-normalize'
 import { computeLrCharges } from '@/lib/lr-constants'
+import { formatCustomerName } from '@/lib/constants'
 
 export const runtime = 'nodejs'
 
@@ -120,12 +121,16 @@ export async function POST(req: NextRequest) {
 
   const lrNumber = await nextLrNumber()
 
-  const consignorName    = booking ? (booking.customer_name  as string) : body.consignor_name.trim()
+  const bookingDisplayName = booking
+    ? (formatCustomerName(booking.title as string | null, booking.customer_name as string) || (booking.customer_name as string))
+    : null
+
+  const consignorName    = booking ? bookingDisplayName! : body.consignor_name.trim()
   const consignorMobile  = booking ? (booking.customer_phone as string) : (body.consignor_mobile?.trim() || null)
   const consignorEmail   = booking ? ((booking.customer_email as string) ?? null) : (body.consignor_email?.trim() || null)
   const consignorAddress = booking ? ((booking.pickup_address as string) ?? null) : (body.consignor_address?.trim() || null)
 
-  const consigneeName    = booking ? (booking.customer_name  as string) : body.consignee_name.trim()
+  const consigneeName    = booking ? bookingDisplayName! : body.consignee_name.trim()
   const consigneeMobile  = booking ? (booking.customer_phone as string) : (body.consignee_mobile?.trim() || null)
   const consigneeAddress = booking ? ((booking.drop_address as string) ?? null) : (body.consignee_address?.trim() || null)
 

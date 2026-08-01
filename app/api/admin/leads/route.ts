@@ -4,6 +4,7 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -119,6 +120,8 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     )
   }
+
+  const bodyTitle: TitleId = TITLE_OPTIONS.includes(body.title) ? body.title : DEFAULT_TITLE
 
   const serviceVal =
     (body.service_interest || body.service_type || '').trim() || null
@@ -238,6 +241,7 @@ export async function POST(req: NextRequest) {
     const { data: updated, error: updateErr } = await supabaseAdmin
       .from('bookings')
       .update({
+        title:          bodyTitle,
         customer_name:  body.name.trim(),
         customer_email: body.email?.trim()?.toLowerCase() || '',
         service_type:   serviceVal || '',
@@ -271,6 +275,7 @@ export async function POST(req: NextRequest) {
 
     const bookingPayload = {
       tracking_id:    trackingId,
+      title:          bodyTitle,
       customer_name:  body.name.trim(),
       customer_phone: normPhone,
       customer_phone_country_code: phoneCountryCode,
@@ -329,6 +334,7 @@ export async function POST(req: NextRequest) {
     .insert({
       lead_number: leadNumber,
 
+      title: bodyTitle,
       name:  body.name.trim(),
       phone: normPhone,
       phone_country_code: phoneCountryCode,
@@ -394,6 +400,7 @@ export async function POST(req: NextRequest) {
     sendInquiryNotification({
       inquiryNumber:   leadNumber,
       source:          body.source ?? 'admin',
+      customerTitle:   lead.title,
       customerName:    lead.name,
       customerPhone:   lead.phone,
       customerEmail:   lead.email,
@@ -416,6 +423,7 @@ export async function POST(req: NextRequest) {
     // leads through this endpoint. See lib/lead-acknowledgment.ts.
     sendLeadAcknowledgment({
       id:    lead.id,
+      title: lead.title,
       name:  lead.name,
       phone: lead.phone,
       email: lead.email,

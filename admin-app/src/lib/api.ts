@@ -60,6 +60,7 @@ export interface AdminBooking {
   id: string
   tracking_id: string
   status: string
+  title?: string | null
   customer_name: string
   customer_email: string | null
   customer_phone: string | null
@@ -130,6 +131,7 @@ export interface BookingPatch {
   status?: string
   reason?: string
   notes?: string
+  title?: string
   customer_name?: string
   customer_phone?: string
   customer_email?: string
@@ -157,6 +159,7 @@ export function updateBooking(key: string, id: string, patch: BookingPatch) {
 export interface AdminLead {
   id: string
   lead_number: string
+  title?: string | null
   name: string
   phone: string
   phone_country_code?: string | null
@@ -209,6 +212,7 @@ export function fetchLead(key: string, id: string) {
 }
 
 export interface CreateLeadPayload {
+  title?: string
   name: string
   phone: string
   phone_country_code?: string

@@ -11,7 +11,7 @@ import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
 import { AdminLead, SavedQuoteLineItem, fetchLead } from '@/lib/api'
 import { rupees, rupeesDecimal } from '@/shared/quotes'
-import { formatDateTime } from '@/shared/format'
+import { formatDateTime, formatCustomerName } from '@/shared/format'
 import { buildQuoteHtml, openQuotePrint } from '@/shared/quotePrint'
 
 const PAYMENT_META: Record<string, { label: string; color: string; bg: string }> = {
@@ -72,7 +72,7 @@ export default function QuoteDetail() {
       quoteNumber: lead.quote_number as string,
       leadNumber: lead.lead_number,
       quoteDate,
-      customerName: lead.name,
+      customerName: formatCustomerName(lead.title, lead.name) || lead.name,
       customerPhone: lead.phone,
       customerEmail: lead.email ?? undefined,
       fromCity: (lead.from_city as string) || '',
@@ -106,7 +106,7 @@ export default function QuoteDetail() {
       <View style={styles.headerRow}>
         <View>
           <Text style={styles.quoteNo}>{lead.quote_number as string}</Text>
-          <Text style={styles.title}>{lead.name}</Text>
+          <Text style={styles.title}>{formatCustomerName(lead.title, lead.name) || lead.name}</Text>
           <Text style={styles.sub}>{lead.lead_number} · Created {lead.quote_date ? formatDateTime(lead.quote_date as string) : '—'}</Text>
         </View>
         <View style={[styles.badge, { backgroundColor: meta.bg }]}>

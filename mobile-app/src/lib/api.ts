@@ -58,6 +58,7 @@ export function createBooking(state: BookingState, pricing: PricingBreakdown) {
     body: JSON.stringify({
       booking: {
         source: 'mobile-app',
+        title: state.title,
         name: state.name,
         email: state.email,
         phone: state.phone,

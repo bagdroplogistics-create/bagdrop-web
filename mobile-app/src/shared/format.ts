@@ -1,5 +1,7 @@
 // Ported from the website's lib/utils.ts formatting helpers.
 
+import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from './constants'
+
 export function formatCurrency(amount: number): string {
   return new Intl.NumberFormat('en-IN', {
     style: 'currency',
@@ -33,4 +35,18 @@ export function formatDateTime(iso: string): string {
     hour: '2-digit',
     minute: '2-digit',
   }).format(new Date(iso))
+}
+
+// ─── Customer Title ──────────────────────────────────────────
+// TITLE_OPTIONS/DEFAULT_TITLE now live in ./constants (matching the
+// website's lib/constants.ts) — re-exported here so existing imports of
+// formatCustomerName from './format' keep working unchanged.
+export { TITLE_OPTIONS, DEFAULT_TITLE }
+export type { TitleId }
+
+export function formatCustomerName(title: string | null | undefined, name: string | null | undefined): string {
+  const safeName = (name ?? '').trim()
+  if (!safeName) return ''
+  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : DEFAULT_TITLE
+  return `${safeTitle} ${safeName}`
 }

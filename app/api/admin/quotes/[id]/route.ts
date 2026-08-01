@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, requireAdmin } from '@/lib/admin-auth'
+import { TITLE_OPTIONS, formatCustomerName } from '@/lib/constants'
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAdminAuth(req)) {
@@ -32,7 +33,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const sendWhatsApp = body.send_whatsapp === true
 
   const allowed = [
-    'customer_name', 'customer_phone', 'customer_email',
+    'title', 'customer_name', 'customer_phone', 'customer_email',
     'service_type', 'from_city', 'to_city', 'pickup_date', 'time_slot',
     'total_bags', 'base_price', 'status', 'valid_until', 'notes',
     'lead_id', 'booking_id',
@@ -41,6 +42,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  if ('title' in updates && !TITLE_OPTIONS.includes(updates.title as never)) {
+    return NextResponse.json({ error: 'title must be one of Mr., Mrs., Ms.' }, { status: 400 })
   }
 
   if ('base_price' in updates) {
@@ -101,9 +106,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       .eq('id', linkedBooking)
   }
 
+  // Keep the linked booking's title in sync when it's edited on the quote
+  if ('title' in updates && linkedBooking) {
+    await supabaseAdmin
+      .from('bookings')
+      .update({ title: updates.title })
+      .eq('id', linkedBooking)
+  }
+
   // ── Send Email ───────────────────────────────────────────────────
   let email_sent    = false
   let whatsapp_sent = false
+
+  const quoteDisplayName = formatCustomerName(
+    (updates.title ?? quote.title) as string | null | undefined,
+    quote.customer_name,
+  ) || quote.customer_name
 
   if (sendEmail && quote.customer_email) {
     const apiKey = process.env.RESEND_API_KEY
@@ -125,7 +143,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   <p style="margin:4px 0 0;font-size:13px;color:#ffe0cc">Baggage Delivered. Journey Simplified.</p>
 </td></tr>
 <tr><td style="padding:32px">
-  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${quote.customer_name}</strong>,</p>
+  <p style="margin:0 0 8px;font-size:15px;color:#374151">Hi <strong>${quoteDisplayName}</strong>,</p>
   <p style="margin:0 0 24px;font-size:15px;color:#374151;line-height:1.6">Thank you for choosing Bagdrop. Please find your service quote below.</p>
   <div style="background:#fff7f0;border:1px solid #ffedd5;border-radius:8px;padding:12px 16px;margin-bottom:24px;display:inline-block">
     <span style="font-size:12px;color:#9a3412;font-weight:600;text-transform:uppercase;letter-spacing:1px">Quote Number</span><br>
@@ -177,7 +195,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       const digits = quote.customer_phone.replace(/\D/g, '')
       const e164   = digits.startsWith('91') ? digits : '91' + digits
       const total  = Number(updates.total_amount ?? quote.total_amount)
-      const text   = `Hi ${quote.customer_name}! 🧳\n\nYour Bagdrop service quote is ready.\n\n` +
+      const text   = `Hi ${quoteDisplayName}! 🧳\n\nYour Bagdrop service quote is ready.\n\n` +
         `📋 Quote: *${quote.quote_number}*\n` +
         `🗺️ Route: ${updates.from_city ?? quote.from_city} → ${updates.to_city ?? quote.to_city}\n` +
         `💰 Total: *₹${total.toLocaleString('en-IN')}*\n\n` +

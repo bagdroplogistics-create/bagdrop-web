@@ -172,3 +172,12 @@ export const ADDON_SERVICES = [
     price: 299,
   },
 ] as const
+
+// ─── Customer Title ──────────────────────────────────────────
+// Kept identical to the website's lib/constants.ts TITLE_OPTIONS /
+// formatCustomerName and to admin-app/src/shared/format.ts.
+export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.'] as const
+
+export type TitleId = (typeof TITLE_OPTIONS)[number]
+
+export const DEFAULT_TITLE: TitleId = 'Mr.'

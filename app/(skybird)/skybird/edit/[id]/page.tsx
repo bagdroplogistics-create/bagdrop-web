@@ -8,6 +8,7 @@ import { SkybirdBookingEngine } from '@/components/booking/skybird-booking-engin
 import { COVERAGE_CITIES } from '@/lib/constants'
 import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
 import type { BookingState, AddonId } from '@/lib/booking-types'
+import { TITLE_OPTIONS, DEFAULT_TITLE } from '@/lib/constants'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — Edit an existing booking
@@ -32,6 +33,7 @@ import type { BookingState, AddonId } from '@/lib/booking-types'
 
 interface BookingRow {
   id: string; tracking_id: string; status: string
+  title: string | null
   customer_name: string | null; customer_email: string | null; customer_phone: string | null
   customer_phone_country_code: string | null; customer_phone_national: string | null
   service_type: string | null
@@ -85,6 +87,7 @@ function mapBookingToState(b: BookingRow): BookingState {
     weddingDropLocation:        isWedding ? ((weddingInfo?.weddingDropLocation as string) ?? '') : '',
     weddingSpecialInstructions: isWedding ? ((weddingInfo?.weddingSpecialInstructions as string) ?? '') : '',
     addonIds:    [] as AddonId[],   // Insurance Upgrade is hidden/unsupported in Skybird either way
+    title:       (b.title && TITLE_OPTIONS.includes(b.title as never) ? b.title : DEFAULT_TITLE) as BookingState['title'],
     name:        b.customer_name ?? '',
     email:       b.customer_email ?? '',
     phone:       b.customer_phone_national ?? (b.customer_phone ?? '').replace(/\D/g, '').slice(-10),

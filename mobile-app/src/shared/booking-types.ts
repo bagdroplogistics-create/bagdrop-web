@@ -3,7 +3,8 @@
 // Ported from the website's lib/booking-types.ts — keep in sync.
 // ─────────────────────────────────────────────────────────────
 
-import type { BagTypeId, CityId } from './constants'
+import type { BagTypeId, CityId, TitleId } from './constants'
+import { DEFAULT_TITLE } from './constants'
 import { isValidPhoneForCountry } from './phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from './phone-countries'
 
@@ -58,6 +59,7 @@ export interface BookingState {
 
   addonIds: AddonId[]
 
+  title: TitleId
   name: string
   email: string
   phone: string        // national digits only, no dial code
@@ -84,6 +86,7 @@ export const INITIAL_BOOKING_STATE: BookingState = {
   weddingDropLocation: '',
   weddingSpecialInstructions: '',
   addonIds: [],
+  title: DEFAULT_TITLE,
   name: '',
   email: '',
   phone: '',

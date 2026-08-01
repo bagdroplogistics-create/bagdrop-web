@@ -9,6 +9,7 @@ import {
   User, MapPin, CheckCircle2, Pencil,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
+import { formatCustomerName } from '@/lib/constants'
 
 interface LR {
   id:              string
@@ -31,6 +32,7 @@ interface LR {
 interface ConfirmedBooking {
   id:            string
   tracking_id:   string
+  title?:        string | null
   customer_name: string
   from_city:     string | null
   to_city:       string | null
@@ -106,7 +108,7 @@ export default function LRsPage() {
         .filter((b: { id: string }) => !coveredBookingIds.has(b.id))
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         .map((b: any) => ({
-          id: b.id, tracking_id: b.tracking_id, customer_name: b.customer_name,
+          id: b.id, tracking_id: b.tracking_id, title: b.title ?? null, customer_name: b.customer_name,
           from_city: b.from_city ?? null, to_city: b.to_city ?? null,
           total_bags: b.total_bags ?? null, total_amount: b.total_amount ?? null,
           pickup_date: b.pickup_date ?? null,
@@ -271,7 +273,7 @@ export default function LRsPage() {
                     <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
                       <td className="px-5 py-3 font-mono text-xs font-bold text-orange-500">{b.tracking_id}</td>
                       <td className="px-5 py-3">
-                        <div className="flex items-center gap-1.5 text-sm text-gray-800"><User className="h-3.5 w-3.5 text-gray-400" />{b.customer_name}</div>
+                        <div className="flex items-center gap-1.5 text-sm text-gray-800"><User className="h-3.5 w-3.5 text-gray-400" />{formatCustomerName(b.title, b.customer_name) || b.customer_name}</div>
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap"><MapPin className="h-3.5 w-3.5 text-gray-400" />{b.from_city ?? '—'} → {b.to_city ?? '—'}</div>
