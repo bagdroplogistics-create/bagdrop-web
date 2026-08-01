@@ -4,21 +4,27 @@
 -- https://supabase.com/dashboard  →  your project  →  SQL Editor
 -- ================================================================
 --
--- Your database is currently missing the `title` column entirely —
--- that's why running the backfill script alone failed with
--- "column title does not exist". This single script does both steps
--- in the right order, so there's no way to run them out of sequence:
+-- Your database was missing the `title` column entirely — that's why
+-- the backfill-only script failed with "column title does not
+-- exist". A later attempt also failed with "relation
+-- female_first_names does not exist" — Supabase's SQL editor runs
+-- each statement as its own connection, so a CREATE TEMP TABLE (or a
+-- WITH ... AS CTE) from one statement isn't visible to the next one.
+--
+-- This version has NO temp tables and NO cross-statement state —
+-- every statement below is fully self-contained, using an inline
+-- ARRAY[...] literal repeated in each one. It will work regardless
+-- of how the SQL editor batches or pools statements.
 --
 --   PART 1 — adds the `title` column (+ CHECK constraint) to
 --            bookings, leads, quotes, invoices, and payments.
 --            Every existing row is auto-backfilled to 'Mr.' by the
---            column default (this is standard Postgres behavior,
---            not a bug — see PART 2).
+--            column default (standard Postgres behavior).
 --
 --   PART 2 — corrects that default for existing records where the
 --            name clearly indicates otherwise: flips 'Mr.' → 'Ms.'
 --            for any row whose first name matches a curated list of
---            ~250 common Indian/international female first names,
+--            ~340 common Indian/international female first names,
 --            skipping anything that looks like a business name
 --            (PVT, LTD, LLP, Enterprises, Traders, etc.).
 --
@@ -79,102 +85,270 @@ END $$;
 
 -- ================================================================
 -- PART 2 — corrective gender backfill for legacy records
+-- Each statement below is fully self-contained (no temp table, no
+-- CTE) — the same female-name array is inlined into every UPDATE.
 -- ================================================================
 
--- Curated list of common Indian + international female first names.
--- Add more any time you spot a record this pass missed.
-CREATE TEMP TABLE female_first_names (name text);
-INSERT INTO female_first_names (name) VALUES
-  ('priya'),('neha'),('pooja'),('anjali'),('kavita'),('sunita'),('meera'),('sneha'),
-  ('divya'),('ritu'),('anita'),('nisha'),('swati'),('deepa'),('rekha'),('usha'),
-  ('geeta'),('seema'),('shweta'),('vandana'),('aarti'),('arti'),('aparna'),('bhavna'),
-  ('bhavana'),('chitra'),('darshana'),('falguni'),('hetal'),('ila'),('jyoti'),('kajal'),
-  ('lata'),('madhuri'),('nalini'),('payal'),('radha'),('sangeeta'),('trupti'),('urvashi'),
-  ('vaishali'),('yamini'),('mansi'),('nikita'),('pallavi'),('ragini'),('sonal'),('trisha'),
-  ('varsha'),('aisha'),('fatima'),('sana'),('ayesha'),('zara'),('amita'),('rupali'),
-  ('purnima'),('poornima'),('kiran'),('preeti'),('priti'),('shilpa'),('sonia'),('sunanda'),
-  ('sudha'),('vidya'),('yogita'),('reema'),('rima'),('simran'),('sarika'),('sarita'),
-  ('shobha'),('shobhna'),('smita'),('vaidehi'),('vibha'),('vinita'),('roshni'),('ruchi'),
-  ('ruchika'),('rutuja'),('sakshi'),('samiksha'),('sejal'),('shefali'),('sheetal'),('shital'),
-  ('shraddha'),('sindhu'),('sonam'),('sujata'),('surbhi'),('tanvi'),('tanya'),('tejal'),
-  ('urmila'),('vidhi'),('zeenat'),('alka'),('anagha'),('anisha'),('archana'),
-  ('asha'),('bina'),('binita'),('bhumika'),('charu'),('daksha'),('damini'),('dimple'),
-  ('dipika'),('deepika'),('drashti'),('foram'),('gauri'),('gayatri'),('hansa'),('harshita'),
-  ('heena'),('hina'),('indu'),('ishita'),('jagruti'),('jaya'),('jigisha'),('juhi'),
-  ('kalpana'),('kamini'),('kanchan'),('karishma'),('karuna'),('khushbu'),('khushi'),('komal'),
-  ('krupa'),('kruti'),('kusum'),('leena'),('lina'),('mala'),('mamta'),
-  ('manisha'),('manju'),('meena'),('minal'),('mital'),('mitali'),('monika'),('mrunal'),
-  ('mrunali'),('namrata'),('nandini'),('nayana'),('neelam'),('neeta'),('niti'),('nupur'),
-  ('padma'),('pankti'),('parul'),('pinky'),('poonam'),('pratiksha'),('pratima'),
-  ('priyal'),('priyanka'),('rachana'),('rachna'),('rachita'),('rajni'),('rashi'),
-  ('rashmi'),('renu'),('reshma'),('richa'),('rina'),('riddhi'),('rohini'),('roopa'),
-  ('rupa'),('sadhna'),('sadhana'),('sameera'),('sanjana'),('sarla'),('savita'),('shalini'),
-  ('shama'),('shanta'),('sharda'),('sharmila'),('shilpi'),('shivani'),
-  ('shreya'),('shruti'),('shubhangi'),('shubhi'),('sonali'),('sulekha'),
-  ('supriya'),('sushma'),('tanuja'),('tara'),('tasneem'),('tina'),
-  ('tripti'),('twinkle'),('uma'),('urvi'),('vaishnavi'),
-  ('vasudha'),('veena'),('vineeta'),('yashvi'),('yesha'),('yuvika'),
-  ('zainab'),('aditi'),('akansha'),('akanksha'),('alisha'),('alpa'),('amisha'),('ami'),
-  ('amrita'),('anushka'),('apeksha'),('apoorva'),('avni'),('bansi'),('bela'),('bhairavi'),
-  ('bindi'),('chandni'),('charmi'),('chhaya'),('devika'),('disha'),('diti'),('drishti'),
-  ('ekta'),('gargi'),('garima'),('gunjan'),('harleen'),('harsha'),('hemal'),('hemangi'),
-  ('hetvi'),('ishani'),('janki'),('janvi'),('jhanvi'),('jinal'),('kajol'),('kanika'),
-  ('kavya'),('keerti'),('khyati'),('kimaya'),('krisha'),('krishna'),('kriti'),('kritika'),
-  ('kshama'),('lavanya'),('maitri'),('malti'),('maya'),('megha'),('mehak'),
-  ('milan'),('mili'),('mona'),('naina'),('naisha'),('nandita'),('naomi'),('nayantara'),
-  ('nazia'),('neelima'),('neerja'),('nehal'),('nidhi'),('nikki'),('nimisha'),('niral'),
-  ('nishtha'),('nita'),('palak'),('pari'),('parineeta'),('parisha'),
-  ('poornima'),('pragya'),('prakriti'),('prapti'),('prisha'),('purvi'),
-  ('rajvi'),('rakhi'),('rani'),('rasika'),('raveena'),('reet'),('reeva'),('renuka'),
-  ('riya'),('roshan'),('ruhi'),('sagarika'),('saloni'),('samta'),
-  ('sanya'),('sapna'),('sarah'),('shaina'),('shivangi'),('shrishti'),
-  ('siddhi'),('simar'),('snigdha'),('sonakshi'),('sonu'),('sristi'),('suhani'),
-  ('sushila'),('svara'),('taniya'),('tanisha'),('tanushree'),('tejaswini'),('trishala'),
-  ('urja'),('urshila'),('vaani'),('vandita'),('vanshika'),('varda'),
-  ('vidisha'),('vrinda'),('yachna'),('yashika'),('zoya')
-;
-
--- Apply the correction to all five tables.
 UPDATE bookings
 SET title = 'Ms.'
 WHERE title = 'Mr.'
-  AND lower(split_part(trim(customer_name), ' ', 1)) IN (SELECT name FROM female_first_names)
+  AND lower(split_part(trim(customer_name), ' ', 1)) = ANY (ARRAY[
+    'aarti','aditi','aisha','akanksha','akansha','alisha','alka','alpa',
+    'ami','amisha','amita','amrita','anagha','anisha','anita','anjali',
+    'anushka','aparna','apeksha','apoorva','archana','arti','asha','avni',
+    'ayesha','bansi','bela','bhairavi','bhavana','bhavna','bhumika','bina',
+    'bindi','binita','chandni','charmi','charu','chhaya','chitra','daksha',
+    'damini','darshana','deepa','deepika','devika','dimple','dipika','disha',
+    'diti','divya','drashti','drishti','ekta','falguni','fatima','foram',
+    'gargi','garima','gauri','gayatri','geeta','gunjan','hansa','harleen',
+    'harsha','harshita','heena','hemal','hemangi','hetal','hetvi','hina',
+    'ila','indu','ishani','ishita','jagruti','janki','janvi','jaya',
+    'jhanvi','jigisha','jinal','juhi','jyoti','kajal','kajol','kalpana',
+    'kamini','kanchan','kanika','karishma','karuna','kavita','kavya','keerti',
+    'khushbu','khushi','khyati','kimaya','kiran','komal','krisha','krishna',
+    'kriti','kritika','krupa','kruti','kshama','kusum','lata','lavanya',
+    'leena','lina','madhuri','maitri','mala','malti','mamta','manisha',
+    'manju','mansi','maya','meena','meera','megha','mehak','milan',
+    'mili','minal','mital','mitali','mona','monika','mrunal','mrunali',
+    'naina','naisha','nalini','namrata','nandini','nandita','naomi','nayana',
+    'nayantara','nazia','neelam','neelima','neerja','neeta','neha','nehal',
+    'nidhi','nikita','nikki','nimisha','niral','nisha','nishtha','nita',
+    'niti','nupur','padma','palak','pallavi','pankti','pari','parineeta',
+    'parisha','parul','payal','pinky','pooja','poonam','poornima','pragya',
+    'prakriti','prapti','pratiksha','pratima','preeti','prisha','priti','priya',
+    'priyal','priyanka','purnima','purvi','rachana','rachita','rachna','radha',
+    'ragini','rajni','rajvi','rakhi','rani','rashi','rashmi','rasika',
+    'raveena','reema','reet','reeva','rekha','renu','renuka','reshma',
+    'richa','riddhi','rima','rina','ritu','riya','rohini','roopa',
+    'roshan','roshni','ruchi','ruchika','ruhi','rupa','rupali','rutuja',
+    'sadhana','sadhna','sagarika','sakshi','saloni','sameera','samiksha','samta',
+    'sana','sangeeta','sanjana','sanya','sapna','sarah','sarika','sarita',
+    'sarla','savita','seema','sejal','shaina','shalini','shama','shanta',
+    'sharda','sharmila','sheetal','shefali','shilpa','shilpi','shital','shivangi',
+    'shivani','shobha','shobhna','shraddha','shreya','shrishti','shruti','shubhangi',
+    'shubhi','shweta','siddhi','simar','simran','sindhu','smita','sneha',
+    'snigdha','sonakshi','sonal','sonali','sonam','sonia','sonu','sristi',
+    'sudha','suhani','sujata','sulekha','sunanda','sunita','supriya','surbhi',
+    'sushila','sushma','svara','swati','tanisha','taniya','tanuja','tanushree',
+    'tanvi','tanya','tara','tasneem','tejal','tejaswini','tina','tripti',
+    'trisha','trishala','trupti','twinkle','uma','urja','urmila','urshila',
+    'urvashi','urvi','usha','vaani','vaidehi','vaishali','vaishnavi','vandana',
+    'vandita','vanshika','varda','varsha','vasudha','veena','vibha','vidhi',
+    'vidisha','vidya','vineeta','vinita','vrinda','yachna','yamini','yashika',
+    'yashvi','yesha','yogita','yuvika','zainab','zara','zeenat','zoya'
+  ]::text[])
   AND customer_name !~* '(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)';
 
 UPDATE leads
 SET title = 'Ms.'
 WHERE title = 'Mr.'
-  AND lower(split_part(trim(name), ' ', 1)) IN (SELECT name FROM female_first_names)
+  AND lower(split_part(trim(name), ' ', 1)) = ANY (ARRAY[
+    'aarti','aditi','aisha','akanksha','akansha','alisha','alka','alpa',
+    'ami','amisha','amita','amrita','anagha','anisha','anita','anjali',
+    'anushka','aparna','apeksha','apoorva','archana','arti','asha','avni',
+    'ayesha','bansi','bela','bhairavi','bhavana','bhavna','bhumika','bina',
+    'bindi','binita','chandni','charmi','charu','chhaya','chitra','daksha',
+    'damini','darshana','deepa','deepika','devika','dimple','dipika','disha',
+    'diti','divya','drashti','drishti','ekta','falguni','fatima','foram',
+    'gargi','garima','gauri','gayatri','geeta','gunjan','hansa','harleen',
+    'harsha','harshita','heena','hemal','hemangi','hetal','hetvi','hina',
+    'ila','indu','ishani','ishita','jagruti','janki','janvi','jaya',
+    'jhanvi','jigisha','jinal','juhi','jyoti','kajal','kajol','kalpana',
+    'kamini','kanchan','kanika','karishma','karuna','kavita','kavya','keerti',
+    'khushbu','khushi','khyati','kimaya','kiran','komal','krisha','krishna',
+    'kriti','kritika','krupa','kruti','kshama','kusum','lata','lavanya',
+    'leena','lina','madhuri','maitri','mala','malti','mamta','manisha',
+    'manju','mansi','maya','meena','meera','megha','mehak','milan',
+    'mili','minal','mital','mitali','mona','monika','mrunal','mrunali',
+    'naina','naisha','nalini','namrata','nandini','nandita','naomi','nayana',
+    'nayantara','nazia','neelam','neelima','neerja','neeta','neha','nehal',
+    'nidhi','nikita','nikki','nimisha','niral','nisha','nishtha','nita',
+    'niti','nupur','padma','palak','pallavi','pankti','pari','parineeta',
+    'parisha','parul','payal','pinky','pooja','poonam','poornima','pragya',
+    'prakriti','prapti','pratiksha','pratima','preeti','prisha','priti','priya',
+    'priyal','priyanka','purnima','purvi','rachana','rachita','rachna','radha',
+    'ragini','rajni','rajvi','rakhi','rani','rashi','rashmi','rasika',
+    'raveena','reema','reet','reeva','rekha','renu','renuka','reshma',
+    'richa','riddhi','rima','rina','ritu','riya','rohini','roopa',
+    'roshan','roshni','ruchi','ruchika','ruhi','rupa','rupali','rutuja',
+    'sadhana','sadhna','sagarika','sakshi','saloni','sameera','samiksha','samta',
+    'sana','sangeeta','sanjana','sanya','sapna','sarah','sarika','sarita',
+    'sarla','savita','seema','sejal','shaina','shalini','shama','shanta',
+    'sharda','sharmila','sheetal','shefali','shilpa','shilpi','shital','shivangi',
+    'shivani','shobha','shobhna','shraddha','shreya','shrishti','shruti','shubhangi',
+    'shubhi','shweta','siddhi','simar','simran','sindhu','smita','sneha',
+    'snigdha','sonakshi','sonal','sonali','sonam','sonia','sonu','sristi',
+    'sudha','suhani','sujata','sulekha','sunanda','sunita','supriya','surbhi',
+    'sushila','sushma','svara','swati','tanisha','taniya','tanuja','tanushree',
+    'tanvi','tanya','tara','tasneem','tejal','tejaswini','tina','tripti',
+    'trisha','trishala','trupti','twinkle','uma','urja','urmila','urshila',
+    'urvashi','urvi','usha','vaani','vaidehi','vaishali','vaishnavi','vandana',
+    'vandita','vanshika','varda','varsha','vasudha','veena','vibha','vidhi',
+    'vidisha','vidya','vineeta','vinita','vrinda','yachna','yamini','yashika',
+    'yashvi','yesha','yogita','yuvika','zainab','zara','zeenat','zoya'
+  ]::text[])
   AND name !~* '(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)';
 
 UPDATE quotes
 SET title = 'Ms.'
 WHERE title = 'Mr.'
-  AND lower(split_part(trim(customer_name), ' ', 1)) IN (SELECT name FROM female_first_names)
+  AND lower(split_part(trim(customer_name), ' ', 1)) = ANY (ARRAY[
+    'aarti','aditi','aisha','akanksha','akansha','alisha','alka','alpa',
+    'ami','amisha','amita','amrita','anagha','anisha','anita','anjali',
+    'anushka','aparna','apeksha','apoorva','archana','arti','asha','avni',
+    'ayesha','bansi','bela','bhairavi','bhavana','bhavna','bhumika','bina',
+    'bindi','binita','chandni','charmi','charu','chhaya','chitra','daksha',
+    'damini','darshana','deepa','deepika','devika','dimple','dipika','disha',
+    'diti','divya','drashti','drishti','ekta','falguni','fatima','foram',
+    'gargi','garima','gauri','gayatri','geeta','gunjan','hansa','harleen',
+    'harsha','harshita','heena','hemal','hemangi','hetal','hetvi','hina',
+    'ila','indu','ishani','ishita','jagruti','janki','janvi','jaya',
+    'jhanvi','jigisha','jinal','juhi','jyoti','kajal','kajol','kalpana',
+    'kamini','kanchan','kanika','karishma','karuna','kavita','kavya','keerti',
+    'khushbu','khushi','khyati','kimaya','kiran','komal','krisha','krishna',
+    'kriti','kritika','krupa','kruti','kshama','kusum','lata','lavanya',
+    'leena','lina','madhuri','maitri','mala','malti','mamta','manisha',
+    'manju','mansi','maya','meena','meera','megha','mehak','milan',
+    'mili','minal','mital','mitali','mona','monika','mrunal','mrunali',
+    'naina','naisha','nalini','namrata','nandini','nandita','naomi','nayana',
+    'nayantara','nazia','neelam','neelima','neerja','neeta','neha','nehal',
+    'nidhi','nikita','nikki','nimisha','niral','nisha','nishtha','nita',
+    'niti','nupur','padma','palak','pallavi','pankti','pari','parineeta',
+    'parisha','parul','payal','pinky','pooja','poonam','poornima','pragya',
+    'prakriti','prapti','pratiksha','pratima','preeti','prisha','priti','priya',
+    'priyal','priyanka','purnima','purvi','rachana','rachita','rachna','radha',
+    'ragini','rajni','rajvi','rakhi','rani','rashi','rashmi','rasika',
+    'raveena','reema','reet','reeva','rekha','renu','renuka','reshma',
+    'richa','riddhi','rima','rina','ritu','riya','rohini','roopa',
+    'roshan','roshni','ruchi','ruchika','ruhi','rupa','rupali','rutuja',
+    'sadhana','sadhna','sagarika','sakshi','saloni','sameera','samiksha','samta',
+    'sana','sangeeta','sanjana','sanya','sapna','sarah','sarika','sarita',
+    'sarla','savita','seema','sejal','shaina','shalini','shama','shanta',
+    'sharda','sharmila','sheetal','shefali','shilpa','shilpi','shital','shivangi',
+    'shivani','shobha','shobhna','shraddha','shreya','shrishti','shruti','shubhangi',
+    'shubhi','shweta','siddhi','simar','simran','sindhu','smita','sneha',
+    'snigdha','sonakshi','sonal','sonali','sonam','sonia','sonu','sristi',
+    'sudha','suhani','sujata','sulekha','sunanda','sunita','supriya','surbhi',
+    'sushila','sushma','svara','swati','tanisha','taniya','tanuja','tanushree',
+    'tanvi','tanya','tara','tasneem','tejal','tejaswini','tina','tripti',
+    'trisha','trishala','trupti','twinkle','uma','urja','urmila','urshila',
+    'urvashi','urvi','usha','vaani','vaidehi','vaishali','vaishnavi','vandana',
+    'vandita','vanshika','varda','varsha','vasudha','veena','vibha','vidhi',
+    'vidisha','vidya','vineeta','vinita','vrinda','yachna','yamini','yashika',
+    'yashvi','yesha','yogita','yuvika','zainab','zara','zeenat','zoya'
+  ]::text[])
   AND customer_name !~* '(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)';
 
 UPDATE invoices
 SET title = 'Ms.'
 WHERE title = 'Mr.'
-  AND lower(split_part(trim(customer_name), ' ', 1)) IN (SELECT name FROM female_first_names)
+  AND lower(split_part(trim(customer_name), ' ', 1)) = ANY (ARRAY[
+    'aarti','aditi','aisha','akanksha','akansha','alisha','alka','alpa',
+    'ami','amisha','amita','amrita','anagha','anisha','anita','anjali',
+    'anushka','aparna','apeksha','apoorva','archana','arti','asha','avni',
+    'ayesha','bansi','bela','bhairavi','bhavana','bhavna','bhumika','bina',
+    'bindi','binita','chandni','charmi','charu','chhaya','chitra','daksha',
+    'damini','darshana','deepa','deepika','devika','dimple','dipika','disha',
+    'diti','divya','drashti','drishti','ekta','falguni','fatima','foram',
+    'gargi','garima','gauri','gayatri','geeta','gunjan','hansa','harleen',
+    'harsha','harshita','heena','hemal','hemangi','hetal','hetvi','hina',
+    'ila','indu','ishani','ishita','jagruti','janki','janvi','jaya',
+    'jhanvi','jigisha','jinal','juhi','jyoti','kajal','kajol','kalpana',
+    'kamini','kanchan','kanika','karishma','karuna','kavita','kavya','keerti',
+    'khushbu','khushi','khyati','kimaya','kiran','komal','krisha','krishna',
+    'kriti','kritika','krupa','kruti','kshama','kusum','lata','lavanya',
+    'leena','lina','madhuri','maitri','mala','malti','mamta','manisha',
+    'manju','mansi','maya','meena','meera','megha','mehak','milan',
+    'mili','minal','mital','mitali','mona','monika','mrunal','mrunali',
+    'naina','naisha','nalini','namrata','nandini','nandita','naomi','nayana',
+    'nayantara','nazia','neelam','neelima','neerja','neeta','neha','nehal',
+    'nidhi','nikita','nikki','nimisha','niral','nisha','nishtha','nita',
+    'niti','nupur','padma','palak','pallavi','pankti','pari','parineeta',
+    'parisha','parul','payal','pinky','pooja','poonam','poornima','pragya',
+    'prakriti','prapti','pratiksha','pratima','preeti','prisha','priti','priya',
+    'priyal','priyanka','purnima','purvi','rachana','rachita','rachna','radha',
+    'ragini','rajni','rajvi','rakhi','rani','rashi','rashmi','rasika',
+    'raveena','reema','reet','reeva','rekha','renu','renuka','reshma',
+    'richa','riddhi','rima','rina','ritu','riya','rohini','roopa',
+    'roshan','roshni','ruchi','ruchika','ruhi','rupa','rupali','rutuja',
+    'sadhana','sadhna','sagarika','sakshi','saloni','sameera','samiksha','samta',
+    'sana','sangeeta','sanjana','sanya','sapna','sarah','sarika','sarita',
+    'sarla','savita','seema','sejal','shaina','shalini','shama','shanta',
+    'sharda','sharmila','sheetal','shefali','shilpa','shilpi','shital','shivangi',
+    'shivani','shobha','shobhna','shraddha','shreya','shrishti','shruti','shubhangi',
+    'shubhi','shweta','siddhi','simar','simran','sindhu','smita','sneha',
+    'snigdha','sonakshi','sonal','sonali','sonam','sonia','sonu','sristi',
+    'sudha','suhani','sujata','sulekha','sunanda','sunita','supriya','surbhi',
+    'sushila','sushma','svara','swati','tanisha','taniya','tanuja','tanushree',
+    'tanvi','tanya','tara','tasneem','tejal','tejaswini','tina','tripti',
+    'trisha','trishala','trupti','twinkle','uma','urja','urmila','urshila',
+    'urvashi','urvi','usha','vaani','vaidehi','vaishali','vaishnavi','vandana',
+    'vandita','vanshika','varda','varsha','vasudha','veena','vibha','vidhi',
+    'vidisha','vidya','vineeta','vinita','vrinda','yachna','yamini','yashika',
+    'yashvi','yesha','yogita','yuvika','zainab','zara','zeenat','zoya'
+  ]::text[])
   AND customer_name !~* '(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)';
 
 UPDATE payments
 SET title = 'Ms.'
 WHERE title = 'Mr.'
-  AND lower(split_part(trim(customer_name), ' ', 1)) IN (SELECT name FROM female_first_names)
+  AND lower(split_part(trim(customer_name), ' ', 1)) = ANY (ARRAY[
+    'aarti','aditi','aisha','akanksha','akansha','alisha','alka','alpa',
+    'ami','amisha','amita','amrita','anagha','anisha','anita','anjali',
+    'anushka','aparna','apeksha','apoorva','archana','arti','asha','avni',
+    'ayesha','bansi','bela','bhairavi','bhavana','bhavna','bhumika','bina',
+    'bindi','binita','chandni','charmi','charu','chhaya','chitra','daksha',
+    'damini','darshana','deepa','deepika','devika','dimple','dipika','disha',
+    'diti','divya','drashti','drishti','ekta','falguni','fatima','foram',
+    'gargi','garima','gauri','gayatri','geeta','gunjan','hansa','harleen',
+    'harsha','harshita','heena','hemal','hemangi','hetal','hetvi','hina',
+    'ila','indu','ishani','ishita','jagruti','janki','janvi','jaya',
+    'jhanvi','jigisha','jinal','juhi','jyoti','kajal','kajol','kalpana',
+    'kamini','kanchan','kanika','karishma','karuna','kavita','kavya','keerti',
+    'khushbu','khushi','khyati','kimaya','kiran','komal','krisha','krishna',
+    'kriti','kritika','krupa','kruti','kshama','kusum','lata','lavanya',
+    'leena','lina','madhuri','maitri','mala','malti','mamta','manisha',
+    'manju','mansi','maya','meena','meera','megha','mehak','milan',
+    'mili','minal','mital','mitali','mona','monika','mrunal','mrunali',
+    'naina','naisha','nalini','namrata','nandini','nandita','naomi','nayana',
+    'nayantara','nazia','neelam','neelima','neerja','neeta','neha','nehal',
+    'nidhi','nikita','nikki','nimisha','niral','nisha','nishtha','nita',
+    'niti','nupur','padma','palak','pallavi','pankti','pari','parineeta',
+    'parisha','parul','payal','pinky','pooja','poonam','poornima','pragya',
+    'prakriti','prapti','pratiksha','pratima','preeti','prisha','priti','priya',
+    'priyal','priyanka','purnima','purvi','rachana','rachita','rachna','radha',
+    'ragini','rajni','rajvi','rakhi','rani','rashi','rashmi','rasika',
+    'raveena','reema','reet','reeva','rekha','renu','renuka','reshma',
+    'richa','riddhi','rima','rina','ritu','riya','rohini','roopa',
+    'roshan','roshni','ruchi','ruchika','ruhi','rupa','rupali','rutuja',
+    'sadhana','sadhna','sagarika','sakshi','saloni','sameera','samiksha','samta',
+    'sana','sangeeta','sanjana','sanya','sapna','sarah','sarika','sarita',
+    'sarla','savita','seema','sejal','shaina','shalini','shama','shanta',
+    'sharda','sharmila','sheetal','shefali','shilpa','shilpi','shital','shivangi',
+    'shivani','shobha','shobhna','shraddha','shreya','shrishti','shruti','shubhangi',
+    'shubhi','shweta','siddhi','simar','simran','sindhu','smita','sneha',
+    'snigdha','sonakshi','sonal','sonali','sonam','sonia','sonu','sristi',
+    'sudha','suhani','sujata','sulekha','sunanda','sunita','supriya','surbhi',
+    'sushila','sushma','svara','swati','tanisha','taniya','tanuja','tanushree',
+    'tanvi','tanya','tara','tasneem','tejal','tejaswini','tina','tripti',
+    'trisha','trishala','trupti','twinkle','uma','urja','urmila','urshila',
+    'urvashi','urvi','usha','vaani','vaidehi','vaishali','vaishnavi','vandana',
+    'vandita','vanshika','varda','varsha','vasudha','veena','vibha','vidhi',
+    'vidisha','vidya','vineeta','vinita','vrinda','yachna','yamini','yashika',
+    'yashvi','yesha','yogita','yuvika','zainab','zara','zeenat','zoya'
+  ]::text[])
   AND customer_name !~* '(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)';
 
--- Final check — rows still at 'Mr.' whose first name ISN'T in the
--- dictionary above. Could be a correctly-male name, an unlisted
--- female name, a company, or a single/ambiguous entry. Fix any of
--- these by hand via the admin Lead / Quote / Booking edit forms
--- (Title dropdown).
+-- ================================================================
+-- PART 3 — final check: rows still at 'Mr.' whose first name ISN'T
+-- in the dictionary above. Could be a correctly-male name, an
+-- unlisted female name, a company, or a single/ambiguous entry.
+-- Fix any of these by hand via the admin Lead / Quote / Booking
+-- edit forms (Title dropdown).
+-- ================================================================
 SELECT 'bookings' AS table_name, id, tracking_id, customer_name, title FROM bookings WHERE title = 'Mr.'
 UNION ALL
 SELECT 'leads', id, lead_number, name, title FROM leads WHERE title = 'Mr.'
 UNION ALL
 SELECT 'quotes', id, quote_number, customer_name, title FROM quotes WHERE title = 'Mr.'
 ORDER BY 1, 3;
-
-DROP TABLE female_first_names;
