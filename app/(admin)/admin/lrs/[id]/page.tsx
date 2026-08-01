@@ -49,8 +49,6 @@ const EDITABLE_NUMBER_FIELDS = [
 const EDITABLE_SELECT_FIELDS = ['mode', 'gst_payable_by', 'payment_terms', 'lr_type'] as const
 const EDITABLE_DATE_FIELDS = ['lr_date'] as const
 
-type FormState = Record<string, string> & { insurance_by_customer: boolean }
-
 function fmtRs(n: number | null | undefined) {
   return '₹' + Number(n ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2 })
 }
@@ -89,7 +87,8 @@ export default function LRDetailPage() {
   const [editingCharges, setEditingCharges] = useState(false)
   const [chargeForm, setChargeForm] = useState<Record<string, string>>({})
   const [editMode, setEditMode] = useState(false)
-  const [form, setForm] = useState<FormState>({ insurance_by_customer: false })
+  const [form, setForm] = useState<Record<string, string>>({})
+  const [insuranceByCustomer, setInsuranceByCustomer] = useState(false)
   const [err, setErr] = useState('')
 
   useEffect(() => {
@@ -99,12 +98,13 @@ export default function LRDetailPage() {
   }, [router])
 
   function seedForm(data: LR) {
-    const next: FormState = { insurance_by_customer: !!data.insurance_by_customer }
+    const next: Record<string, string> = {}
     for (const k of EDITABLE_TEXT_FIELDS)   next[k] = (data[k] as string) ?? ''
     for (const k of EDITABLE_NUMBER_FIELDS) next[k] = data[k] != null ? String(data[k]) : ''
     for (const k of EDITABLE_SELECT_FIELDS) next[k] = (data[k] as string) ?? ''
     for (const k of EDITABLE_DATE_FIELDS)   next[k] = (data[k] as string) ?? ''
     setForm(next)
+    setInsuranceByCustomer(!!data.insurance_by_customer)
   }
 
   const fetchLr = useCallback(async () => {
@@ -166,7 +166,7 @@ export default function LRDetailPage() {
   async function saveLr() {
     if (!lr) return
     setSaving(true); setErr('')
-    const payload: Record<string, unknown> = { insurance_by_customer: form.insurance_by_customer }
+    const payload: Record<string, unknown> = { insurance_by_customer: insuranceByCustomer }
     for (const k of EDITABLE_TEXT_FIELDS)   payload[k] = form[k]?.trim() || null
     for (const k of EDITABLE_NUMBER_FIELDS) payload[k] = form[k] !== '' ? Number(form[k]) : null
     for (const k of EDITABLE_SELECT_FIELDS) payload[k] = form[k] || null
@@ -367,8 +367,8 @@ export default function LRDetailPage() {
               ) : (
                 <div className="mb-2.5">
                   <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">Insurance by Customer</label>
-                  <select value={form.insurance_by_customer ? 'yes' : 'no'}
-                    onChange={e => setForm(f => ({ ...f, insurance_by_customer: e.target.value === 'yes' }))}
+                  <select value={insuranceByCustomer ? 'yes' : 'no'}
+                    onChange={e => setInsuranceByCustomer(e.target.value === 'yes')}
                     className={inp}>
                     <option value="no">No</option>
                     <option value="yes">Yes</option>
