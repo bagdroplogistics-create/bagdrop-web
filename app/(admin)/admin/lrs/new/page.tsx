@@ -5,9 +5,11 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Search, Loader2, FileText, User, MapPin, Package,
-  IndianRupee, CheckCircle, Pencil, ChevronRight, AlertCircle,
+  IndianRupee, CheckCircle, Pencil, ChevronRight, AlertCircle, Receipt, ListChecks,
 } from 'lucide-react'
-import { MODE_OPTIONS } from '@/lib/lr-constants'
+import {
+  MODE_OPTIONS, LR_CHARGE_FIELDS, GST_PAYABLE_BY_OPTIONS, PAYMENT_TERMS_OPTIONS, LR_TYPE_OPTIONS,
+} from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
 
 interface BookingEntry {
@@ -34,10 +36,38 @@ function FInput({ label, value, onChange, type = 'text', placeholder = '' }: {
   )
 }
 
+function FSelect({ label, value, onChange, options }: {
+  label: string; value: string; onChange: (v: string) => void; options: readonly string[]
+}) {
+  return (
+    <div>
+      <label className={lbl}>{label}</label>
+      <select value={value} onChange={e => onChange(e.target.value)} className={inp}>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
+
+function Card({ title, icon, children, cols = 2 }: {
+  title: string; icon: React.ReactNode; children: React.ReactNode; cols?: number
+}) {
+  return (
+    <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+      <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700">{icon} {title}</h3>
+      <div className={`grid gap-4 ${cols === 3 ? 'sm:grid-cols-3' : cols === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-2'}`}>
+        {children}
+      </div>
+    </div>
+  )
+}
+
 function fmtRs(n: number | null | undefined) {
   if (n == null) return '—'
   return '₹' + Number(n).toLocaleString('en-IN')
 }
+
+const EMPTY_CHARGES: Record<string, string> = Object.fromEntries(LR_CHARGE_FIELDS.map(f => [f.key, '']))
 
 export default function NewLRPage() {
   const router = useRouter()
@@ -51,22 +81,52 @@ export default function NewLRPage() {
   const [creating, setCreating] = useState(false)
   const [error, setError] = useState('')
 
-  // Manual fields
-  const [consignorName, setConsignorName] = useState('')
-  const [consignorMobile, setConsignorMobile] = useState('')
-  const [consignorAddress, setConsignorAddress] = useState('')
-  const [consigneeName, setConsigneeName] = useState('')
-  const [consigneeMobile, setConsigneeMobile] = useState('')
-  const [consigneeAddress, setConsigneeAddress] = useState('')
+  // ── Route (manual mode only — auto-filled from booking otherwise) ──
   const [fromCity, setFromCity] = useState('')
   const [toCity, setToCity] = useState('')
   const [totalBags, setTotalBags] = useState('1')
 
-  // LR-specific fields (apply to both modes)
+  // ── Consignor / Consignee (manual mode only) ──
+  const [consignorName, setConsignorName] = useState('')
+  const [consignorMobile, setConsignorMobile] = useState('')
+  const [consignorAddress, setConsignorAddress] = useState('')
+  const [consignorGstin, setConsignorGstin] = useState('')
+  const [consigneeName, setConsigneeName] = useState('')
+  const [consigneeMobile, setConsigneeMobile] = useState('')
+  const [consigneeAddress, setConsigneeAddress] = useState('')
+  const [consigneeGstin, setConsigneeGstin] = useState('')
+
+  // ── Billing & Invoice (both modes — mirrors the LR PDF's Billed To /
+  // Delivery Address / Invoice / E-way Bill row) ──
+  const [billedToName, setBilledToName] = useState('')
+  const [billedToGstin, setBilledToGstin] = useState('')
+  const [deliveryAddress, setDeliveryAddress] = useState('')
+  const [invoiceNumber, setInvoiceNumber] = useState('')
+  const [invoiceValue, setInvoiceValue] = useState('')
+  const [ewayBillNumber, setEwayBillNumber] = useState('')
+
+  // ── LR Details (both modes) ──
   const [vehicleNumber, setVehicleNumber] = useState('')
   const [lrMode, setLrMode] = useState('Air')
   const [contentDescription, setContentDescription] = useState('HOUSEHOLD BAGGAGE')
   const [actualWeight, setActualWeight] = useState('')
+  const [chargeableWeight, setChargeableWeight] = useState('')
+  const [sizeL, setSizeL] = useState('')
+  const [sizeW, setSizeW] = useState('')
+  const [sizeH, setSizeH] = useState('')
+  const [privateMark, setPrivateMark] = useState('')
+
+  // ── Charges ledger (both modes) ──
+  const [charges, setCharges] = useState<Record<string, string>>({ ...EMPTY_CHARGES })
+
+  // ── Terms & footer (both modes) ──
+  const [insuranceByCustomer, setInsuranceByCustomer] = useState(false)
+  const [gstPayableBy, setGstPayableBy] = useState<string>(GST_PAYABLE_BY_OPTIONS[0])
+  const [paymentTerms, setPaymentTerms] = useState<string>(PAYMENT_TERMS_OPTIONS[0])
+  const [lrType, setLrType] = useState<string>(LR_TYPE_OPTIONS[0])
+  const [deliveryAt, setDeliveryAt] = useState('Door Dly')
+  const [remarks, setRemarks] = useState('')
+  const [preparedBy, setPreparedBy] = useState('admin')
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -108,6 +168,10 @@ export default function NewLRPage() {
     return e.tracking_id.toLowerCase().includes(q) || e.customer_name.toLowerCase().includes(q) || e.customer_phone.includes(q)
   })
 
+  function setCharge(key: string, value: string) {
+    setCharges(prev => ({ ...prev, [key]: value }))
+  }
+
   async function create() {
     if (mode === 'select' && !selected) return
     if (mode === 'manual' && (!consignorName.trim() || !consigneeName.trim())) {
@@ -115,6 +179,9 @@ export default function NewLRPage() {
     }
     setCreating(true); setError('')
     try {
+      const chargePayload = Object.fromEntries(
+        LR_CHARGE_FIELDS.map(f => [f.key, charges[f.key] ? Number(charges[f.key]) : 0])
+      )
       const res = await fetch('/api/admin/lrs', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
@@ -128,10 +195,35 @@ export default function NewLRPage() {
                 from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
                 total_bags: Number(totalBags) || 1,
               }),
+          consignor_gstin: consignorGstin.trim() || null,
+          consignee_gstin: consigneeGstin.trim() || null,
+
+          billed_to_name:   billedToName.trim()   || null,
+          billed_to_gstin:  billedToGstin.trim()   || null,
+          delivery_address: deliveryAddress.trim() || null,
+          invoice_number:   invoiceNumber.trim()   || null,
+          invoice_value:    invoiceValue ? Number(invoiceValue) : null,
+          eway_bill_number: ewayBillNumber.trim()  || null,
+
           vehicle_number: vehicleNumber.trim() || null,
           mode: lrMode,
           content_description: contentDescription.trim() || null,
-          actual_weight: actualWeight ? Number(actualWeight) : null,
+          actual_weight:     actualWeight     ? Number(actualWeight)     : null,
+          chargeable_weight: chargeableWeight ? Number(chargeableWeight) : null,
+          size_l: sizeL ? Number(sizeL) : null,
+          size_w: sizeW ? Number(sizeW) : null,
+          size_h: sizeH ? Number(sizeH) : null,
+          private_mark: privateMark.trim() || null,
+
+          ...chargePayload,
+
+          insurance_by_customer: insuranceByCustomer,
+          gst_payable_by: gstPayableBy,
+          payment_terms:  paymentTerms,
+          lr_type:        lrType,
+          delivery_at:    deliveryAt.trim() || null,
+          remarks:        remarks.trim() || null,
+          prepared_by:    preparedBy.trim() || 'admin',
         }),
       })
       const d = await res.json()
@@ -181,7 +273,7 @@ export default function NewLRPage() {
                   className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-3 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200" />
               </div>
             ) : (
-              <p className="text-xs text-gray-400">No booking needed — fill in consignor/consignee details on the right.</p>
+              <p className="text-xs text-gray-400">No booking needed — fill in the route, consignor/consignee, and LR details on the right.</p>
             )}
           </div>
 
@@ -239,6 +331,17 @@ export default function NewLRPage() {
             </div>
           ) : (
             <div className="p-6 space-y-4">
+
+              {/* ── 1. Route (manual mode only — first, as requested) ── */}
+              {mode === 'manual' && (
+                <Card title="Route" icon={<MapPin className="h-4 w-4 text-orange-400" />} cols={3}>
+                  <FInput label="From" value={fromCity} onChange={setFromCity} placeholder="Origin city" />
+                  <FInput label="To" value={toCity} onChange={setToCity} placeholder="Destination city" />
+                  <FInput label="Total Bags" value={totalBags} onChange={setTotalBags} type="number" />
+                </Card>
+              )}
+
+              {/* ── 2. Consignor / Consignee (manual mode only) ── */}
               {mode === 'manual' && (
                 <div className="grid gap-4 sm:grid-cols-2">
                   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -247,6 +350,7 @@ export default function NewLRPage() {
                       <FInput label="Name *" value={consignorName} onChange={setConsignorName} placeholder="Sender name" />
                       <FInput label="Mobile" value={consignorMobile} onChange={setConsignorMobile} type="tel" />
                       <FInput label="Address" value={consignorAddress} onChange={setConsignorAddress} />
+                      <FInput label="GSTIN" value={consignorGstin} onChange={setConsignorGstin} placeholder="24AAACC9320N2ZL" />
                     </div>
                   </div>
                   <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
@@ -255,14 +359,7 @@ export default function NewLRPage() {
                       <FInput label="Name *" value={consigneeName} onChange={setConsigneeName} placeholder="Receiver name" />
                       <FInput label="Mobile" value={consigneeMobile} onChange={setConsigneeMobile} type="tel" />
                       <FInput label="Address" value={consigneeAddress} onChange={setConsigneeAddress} />
-                    </div>
-                  </div>
-                  <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm sm:col-span-2">
-                    <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700"><MapPin className="h-4 w-4 text-orange-400" /> Route</h3>
-                    <div className="grid gap-4 sm:grid-cols-3">
-                      <FInput label="From" value={fromCity} onChange={setFromCity} placeholder="Origin city" />
-                      <FInput label="To" value={toCity} onChange={setToCity} placeholder="Destination city" />
-                      <FInput label="Total Bags" value={totalBags} onChange={setTotalBags} type="number" />
+                      <FInput label="GSTIN" value={consigneeGstin} onChange={setConsigneeGstin} placeholder="Optional" />
                     </div>
                   </div>
                 </div>
@@ -280,20 +377,65 @@ export default function NewLRPage() {
                 </div>
               )}
 
-              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
-                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700"><FileText className="h-4 w-4 text-orange-400" /> LR Details</h3>
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <FInput label="Vehicle Number" value={vehicleNumber} onChange={setVehicleNumber} placeholder="e.g. GJ-06-AB-1234" />
-                  <div>
-                    <label className={lbl}>Mode</label>
-                    <select value={lrMode} onChange={e => setLrMode(e.target.value)} className={inp}>
-                      {MODE_OPTIONS.map(m => <option key={m} value={m}>{m}</option>)}
-                    </select>
+              {/* ── Billing & Invoice (both modes — Billed To / Delivery Address / Invoice / E-way Bill, per the LR PDF) ── */}
+              <Card title="Billing &amp; Invoice" icon={<Receipt className="h-4 w-4 text-orange-400" />}>
+                <FInput label="Billed To (defaults to Consignor)" value={billedToName} onChange={setBilledToName} placeholder="Leave blank to use Consignor name" />
+                <FInput label="Billed To GSTIN" value={billedToGstin} onChange={setBilledToGstin} />
+                <FInput label="Delivery Address (defaults to Consignee address)" value={deliveryAddress} onChange={setDeliveryAddress} />
+                <FInput label="Invoice Number" value={invoiceNumber} onChange={setInvoiceNumber} />
+                <FInput label="Invoice Value (₹)" value={invoiceValue} onChange={setInvoiceValue} type="number" />
+                <FInput label="E-way Bill Number" value={ewayBillNumber} onChange={setEwayBillNumber} />
+              </Card>
+
+              {/* ── 3. LR Details (both modes) ── */}
+              <Card title="LR Details" icon={<FileText className="h-4 w-4 text-orange-400" />}>
+                <FInput label="Vehicle Number" value={vehicleNumber} onChange={setVehicleNumber} placeholder="e.g. GJ-06-AB-1234" />
+                <FSelect label="Mode" value={lrMode} onChange={setLrMode} options={MODE_OPTIONS} />
+                <FInput label="Content Description" value={contentDescription} onChange={setContentDescription} placeholder="HOUSEHOLD BAGGAGE" />
+                <FInput label="Actual Weight (kg)" value={actualWeight} onChange={setActualWeight} type="number" />
+                <FInput label="Chargeable Weight (kg)" value={chargeableWeight} onChange={setChargeableWeight} type="number" />
+                <FInput label="Private Mark" value={privateMark} onChange={setPrivateMark} />
+                <div className="sm:col-span-2">
+                  <label className={lbl}>Size — L × W × H (cm)</label>
+                  <div className="grid grid-cols-3 gap-3">
+                    <input type="number" value={sizeL} onChange={e => setSizeL(e.target.value)} placeholder="L" className={inp} />
+                    <input type="number" value={sizeW} onChange={e => setSizeW(e.target.value)} placeholder="W" className={inp} />
+                    <input type="number" value={sizeH} onChange={e => setSizeH(e.target.value)} placeholder="H" className={inp} />
                   </div>
-                  <FInput label="Content Description" value={contentDescription} onChange={setContentDescription} placeholder="HOUSEHOLD BAGGAGE" />
-                  <FInput label="Actual Weight (kg)" value={actualWeight} onChange={setActualWeight} type="number" />
                 </div>
+              </Card>
+
+              {/* ── Charges Ledger (both modes) — matches the GC's right-side charges column ── */}
+              <div className="rounded-2xl border border-gray-100 bg-white p-5 shadow-sm">
+                <h3 className="mb-4 flex items-center gap-2 text-sm font-bold text-gray-700"><IndianRupee className="h-4 w-4 text-orange-400" /> Charges Ledger</h3>
+                <div className="grid gap-3 sm:grid-cols-4">
+                  {LR_CHARGE_FIELDS.map(f => (
+                    <div key={f.key}>
+                      <label className={lbl}>{f.label}</label>
+                      <input type="number" min="0" value={charges[f.key]} onChange={e => setCharge(f.key, e.target.value)}
+                        placeholder="0" className={inp} />
+                    </div>
+                  ))}
+                </div>
+                <p className="mt-3 text-xs text-gray-400">Sub Total and GST (CGST+SGST or IGST, based on the matched Route Master entry) are computed automatically when the LR is generated.</p>
               </div>
+
+              {/* ── Terms & Footer (both modes) ── */}
+              <Card title="Terms &amp; Footer" icon={<ListChecks className="h-4 w-4 text-orange-400" />}>
+                <FSelect label="GST Payable By" value={gstPayableBy} onChange={setGstPayableBy} options={GST_PAYABLE_BY_OPTIONS} />
+                <FSelect label="Payment Terms" value={paymentTerms} onChange={setPaymentTerms} options={PAYMENT_TERMS_OPTIONS} />
+                <FSelect label="LR Type" value={lrType} onChange={setLrType} options={LR_TYPE_OPTIONS} />
+                <FInput label="Delivery At" value={deliveryAt} onChange={setDeliveryAt} placeholder="Door Dly" />
+                <FInput label="Prepared By" value={preparedBy} onChange={setPreparedBy} />
+                <label className="flex items-center gap-2 pt-6 text-sm text-gray-700">
+                  <input type="checkbox" checked={insuranceByCustomer} onChange={e => setInsuranceByCustomer(e.target.checked)}
+                    className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
+                  Material Insured by Customer
+                </label>
+                <div className="sm:col-span-2">
+                  <FInput label="Remarks" value={remarks} onChange={setRemarks} />
+                </div>
+              </Card>
 
               {error && (
                 <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
@@ -305,7 +447,7 @@ export default function NewLRPage() {
                 className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors shadow-sm">
                 {creating ? <><Loader2 className="h-4 w-4 animate-spin" /> Generating LR…</> : <><FileText className="h-4 w-4" /> Generate LR{mode === 'select' ? ` for ${selected!.tracking_id}` : ''}</>}
               </button>
-              <p className="text-center text-xs text-gray-400">Charges, GST, and remaining fields can be edited from the LR detail page after creation.</p>
+              <p className="text-center text-xs text-gray-400">Every field above can still be edited from the LR detail page after creation.</p>
             </div>
           )}
         </div>
