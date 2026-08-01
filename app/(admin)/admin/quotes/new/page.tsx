@@ -293,7 +293,7 @@ function QuotePageInner() {
       // Populate editable customer fields (always, used in edit mode).
       // Re-parses the stored E.164 string so the correct flag/dial code
       // shows automatically instead of defaulting back to India.
-      setCustTitle(d.title && TITLE_OPTIONS.includes(d.title) ? d.title : DEFAULT_TITLE)
+      setCustTitle(d.title && TITLE_OPTIONS.includes(d.title as never) ? d.title : DEFAULT_TITLE)
       setCustName(d.name)
       const parsedPhone = parseStoredPhone(d.phone)
       setCustPhone(parsedPhone.nationalNumber)
