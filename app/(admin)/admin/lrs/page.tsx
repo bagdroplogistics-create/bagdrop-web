@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Eye, Download, Loader2, Trash2, Truck, IndianRupee, Package,
+  User, MapPin, CheckCircle2,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
 
@@ -23,6 +24,19 @@ interface LR {
   total_bags:      number | null
   total_amount:    number
   created_at:      string
+}
+
+// Confirmed bookings that don't have an LR yet — the queue of "confirmed
+// incoming inquiries" ready to be turned into an LR/GC with one click.
+interface ConfirmedBooking {
+  id:            string
+  tracking_id:   string
+  customer_name: string
+  from_city:     string | null
+  to_city:       string | null
+  total_bags:    number | null
+  total_amount:  number | null
+  pickup_date:   string | null
 }
 
 function fmt(n: number | null | undefined) {
@@ -45,6 +59,11 @@ export default function LRsPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
 
+  // Confirmed-bookings queue
+  const [confirmedBookings, setConfirmedBookings] = useState<ConfirmedBooking[]>([])
+  const [loadingQueue, setLoadingQueue] = useState(true)
+  const [generatingId, setGeneratingId] = useState<string | null>(null)
+
   const totalAmount = lrs.reduce((s, l) => s + (l.total_amount || 0), 0)
   const totalBags   = lrs.reduce((s, l) => s + (l.total_bags || 0), 0)
 
@@ -65,7 +84,56 @@ export default function LRsPage() {
     setLoading(false)
   }, [adminKey, filter, search])
 
-  useEffect(() => { if (authed) fetchLrs() }, [authed, fetchLrs])
+  // Confirmed bookings still waiting on an LR — cross-referenced against
+  // every LR ever generated (not just the current filtered/searched view
+  // above), so a booking already covered by an LR never shows up twice
+  // regardless of what filter/search is active on the main table.
+  const fetchQueue = useCallback(async () => {
+    if (!adminKey) return
+    setLoadingQueue(true)
+    try {
+      const [bookingsRes, allLrsRes] = await Promise.all([
+        fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200`),
+        fetch(`/api/admin/lrs?key=${adminKey}&limit=1000`),
+      ])
+      const bookingsData = bookingsRes.ok ? await bookingsRes.json() : { bookings: [] }
+      const lrsData      = allLrsRes.ok  ? await allLrsRes.json()  : { lrs: [] }
+      const coveredBookingIds = new Set(
+        (lrsData.lrs ?? []).map((l: LR) => l.booking_id).filter(Boolean)
+      )
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pending: ConfirmedBooking[] = (bookingsData.bookings ?? [])
+        .filter((b: { id: string }) => !coveredBookingIds.has(b.id))
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        .map((b: any) => ({
+          id: b.id, tracking_id: b.tracking_id, customer_name: b.customer_name,
+          from_city: b.from_city ?? null, to_city: b.to_city ?? null,
+          total_bags: b.total_bags ?? null, total_amount: b.total_amount ?? null,
+          pickup_date: b.pickup_date ?? null,
+        }))
+      setConfirmedBookings(pending)
+    } catch { /* non-fatal — queue just stays empty */ }
+    setLoadingQueue(false)
+  }, [adminKey])
+
+  useEffect(() => { if (authed) { fetchLrs(); fetchQueue() } }, [authed, fetchLrs, fetchQueue])
+
+  async function generateLr(bookingId: string) {
+    setGeneratingId(bookingId)
+    try {
+      const res = await fetch('/api/admin/lrs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_id: bookingId }),
+      })
+      const d = await res.json()
+      if (!res.ok) { alert(d.error ?? 'Could not generate LR'); setGeneratingId(null); return }
+      router.push(`/admin/lrs/${d.lr.id}`)
+    } catch {
+      alert('Network error — please try again')
+      setGeneratingId(null)
+    }
+  }
 
   async function deleteLr(id: string) {
     if (!confirm('Delete this LR? This cannot be undone.')) return
@@ -73,6 +141,7 @@ export default function LRsPage() {
     await fetch('/api/admin/lrs/' + id, { method: 'DELETE', headers: { 'x-admin-key': adminKey } })
     setDeleting(null)
     fetchLrs()
+    fetchQueue()
   }
 
   async function downloadLr(id: string) {
@@ -162,6 +231,67 @@ export default function LRsPage() {
               <p className="text-xl font-bold text-gray-900">{c.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* ── Confirmed bookings awaiting an LR ── */}
+        <div className="mb-6 rounded-2xl border border-blue-100 bg-blue-50/40 shadow-sm overflow-hidden">
+          <div className="flex items-center justify-between border-b border-blue-100 bg-blue-50 px-5 py-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 text-blue-500" />
+              <h2 className="text-sm font-bold text-gray-800">Confirmed Bookings — Awaiting LR</h2>
+              {!loadingQueue && (
+                <span className="rounded-full bg-blue-500 px-2 py-0.5 text-xs font-bold text-white">{confirmedBookings.length}</span>
+              )}
+            </div>
+            <button onClick={fetchQueue} className="flex items-center gap-1.5 text-xs font-medium text-blue-600 hover:text-blue-700">
+              <RefreshCw className="h-3 w-3" /> Refresh
+            </button>
+          </div>
+
+          {loadingQueue ? (
+            <div className="flex items-center justify-center py-10">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+            </div>
+          ) : confirmedBookings.length === 0 ? (
+            <p className="px-5 py-6 text-center text-sm text-gray-400">
+              No confirmed bookings waiting on an LR right now — new confirmed inquiries will show up here automatically.
+            </p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-blue-100">
+                <thead>
+                  <tr>
+                    {['Tracking ID', 'Customer', 'Route', 'Bags', 'Amount', ''].map(h => (
+                      <th key={h} className="px-5 py-2 text-left text-[11px] font-semibold uppercase tracking-wide text-blue-400 whitespace-nowrap">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-blue-50 bg-white">
+                  {confirmedBookings.map(b => (
+                    <tr key={b.id} className="hover:bg-blue-50/40 transition-colors">
+                      <td className="px-5 py-3 font-mono text-xs font-bold text-orange-500">{b.tracking_id}</td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1.5 text-sm text-gray-800"><User className="h-3.5 w-3.5 text-gray-400" />{b.customer_name}</div>
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-1.5 text-sm text-gray-600 whitespace-nowrap"><MapPin className="h-3.5 w-3.5 text-gray-400" />{b.from_city ?? '—'} → {b.to_city ?? '—'}</div>
+                      </td>
+                      <td className="px-5 py-3 text-sm text-gray-700">{b.total_bags ?? '—'}</td>
+                      <td className="px-5 py-3 text-sm font-semibold text-gray-900">{fmt(b.total_amount)}</td>
+                      <td className="px-5 py-3">
+                        <button onClick={() => generateLr(b.id)} disabled={generatingId === b.id}
+                          className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-50 whitespace-nowrap">
+                          {generatingId === b.id
+                            ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                            : <><FileText className="h-3.5 w-3.5" /> Generate LR</>}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
 
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
