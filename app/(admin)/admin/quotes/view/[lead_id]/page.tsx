@@ -1059,22 +1059,31 @@ export default function QuoteViewPage() {
           {/* Orange header */}
           <div style={{ background: '#f97316', padding: '28px 36px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              <div style={{ fontSize: '26px', fontWeight: 900, color: '#fff', letterSpacing: '-0.5px', lineHeight: 1 }}>BAGDROP</div>
-              <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.8)', marginTop: '3px', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src="/logo-mark-white.png"
+                alt="Bagdrop"
+                style={{ width: '26px', height: '45px', display: 'block' }}
+              />
+              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginTop: '5px', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 India&apos;s Digital Baggage Infrastructure
               </div>
             </div>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.75)', letterSpacing: '2px', textTransform: 'uppercase' }}>
-                Service Estimate
+              <div style={{ fontSize: '10px', fontWeight: 700, color: 'rgba(255,255,255,0.8)', letterSpacing: '2px', textTransform: 'uppercase' }}>
+                Estimate
               </div>
-              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fff', marginTop: '2px' }}>
+              <div style={{ fontSize: '13px', fontWeight: 700, color: 'rgba(255,255,255,0.9)', marginTop: '2px', letterSpacing: '0.4px' }}>
                 {quoteNumber}
               </div>
-              <div style={{ fontSize: '11px', color: 'rgba(255,255,255,0.8)', marginTop: '3px' }}>
-                Date: {fmtDate(quoteDate)}
-                {lead.quote_expiry_date ? ` · Valid till: ${fmtDate(lead.quote_expiry_date)}` : ''}
+              <div style={{ fontSize: '24px', fontWeight: 900, color: '#fff', marginTop: '4px' }}>
+                {fmtDate(quoteDate)}
               </div>
+              {lead.quote_expiry_date && (
+                <div style={{ fontSize: '10px', color: 'rgba(255,255,255,0.85)', marginTop: '3px' }}>
+                  Valid till {fmtDate(lead.quote_expiry_date)}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1098,37 +1107,46 @@ export default function QuoteViewPage() {
           <div style={{ padding: '24px 36px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #f97316' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '8px' }}>Bill To</div>
+              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Bill To</div>
               <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>{lead.name}</div>
               <div style={{ fontSize: '12px', color: '#4b5563', marginTop: '3px' }}>{lead.phone}</div>
-              {lead.email && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{lead.email}</div>}
+              {lead.email && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>{lead.email}</div>}
             </div>
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #111' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '8px' }}>Journey Details</div>
+              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Journey Details</div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: '#9ca3af', textTransform: 'uppercase' }}>From</div>
+                  <div style={{ fontSize: '9px', color: '#4b5563', textTransform: 'uppercase' }}>From</div>
                   <div style={{ fontSize: '14px', fontWeight: 800, color: '#111', textTransform: 'uppercase' }}>{lead.from_city ?? '—'}</div>
                 </div>
                 <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <div style={{ flex: 1, height: '1px', background: '#d1d5db' }} />
-                  <span style={{ fontSize: '18px' }}>✈</span>
+                  {/* Luggage/trolley-bag icon — matches QuotePDF.tsx's Journey
+                      Details icon (was a plane emoji). */}
+                  <svg width="14" height="14" viewBox="0 0 24 24" style={{ marginLeft: '2px', marginRight: '2px', flexShrink: 0 }}>
+                    <rect x="5" y="8" width="14" height="13" rx="2" stroke="#4b5563" strokeWidth="1.6" fill="none" />
+                    <rect x="9.5" y="4" width="5" height="4.5" rx="1" stroke="#4b5563" strokeWidth="1.6" fill="none" />
+                    <line x1="9.5" y1="8" x2="9.5" y2="21" stroke="#4b5563" strokeWidth="1" />
+                    <line x1="14.5" y1="8" x2="14.5" y2="21" stroke="#4b5563" strokeWidth="1" />
+                    <line x1="8" y1="23" x2="8" y2="24" stroke="#4b5563" strokeWidth="1.6" />
+                    <line x1="16" y1="23" x2="16" y2="24" stroke="#4b5563" strokeWidth="1.6" />
+                  </svg>
                   <div style={{ flex: 1, height: '1px', background: '#d1d5db' }} />
                 </div>
                 <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontSize: '9px', color: '#9ca3af', textTransform: 'uppercase' }}>To</div>
+                  <div style={{ fontSize: '9px', color: '#4b5563', textTransform: 'uppercase' }}>To</div>
                   <div style={{ fontSize: '14px', fontWeight: 800, color: '#111', textTransform: 'uppercase' }}>{lead.to_city ?? '—'}</div>
                 </div>
               </div>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '5px', fontSize: '11px', color: '#4b5563' }}>
-                <div><span style={{ color: '#9ca3af' }}>Pickup: </span><strong>{fmtDate(lead.pickup_date)}</strong></div>
-                {lead.pickup_time && <div><span style={{ color: '#9ca3af' }}>Time: </span><strong>{lead.pickup_time}</strong></div>}
-                <div><span style={{ color: '#9ca3af' }}>Delivery: </span><strong>{fmtDate(lead.delivery_date)}</strong></div>
-                <div><span style={{ color: '#9ca3af' }}>Bags: </span><strong>{lead.bags_count ?? '—'}</strong></div>
+                <div><span style={{ color: '#4b5563' }}>Pickup: </span><strong>{fmtDate(lead.pickup_date)}</strong></div>
+                {lead.pickup_time && <div><span style={{ color: '#4b5563' }}>Time: </span><strong>{lead.pickup_time}</strong></div>}
+                <div><span style={{ color: '#4b5563' }}>Delivery: </span><strong>{fmtDate(lead.delivery_date)}</strong></div>
+                <div><span style={{ color: '#4b5563' }}>Bags: </span><strong>{lead.bags_count ?? '—'}</strong></div>
                 {lead.flight_number && (
                   <div style={{ gridColumn: '1 / -1' }}>
-                    <span style={{ color: '#9ca3af' }}>Flight: </span>
+                    <span style={{ color: '#4b5563' }}>Flight: </span>
                     <strong>{lead.flight_number}{lead.pnr ? ` / ${lead.pnr}` : ''}</strong>
                   </div>
                 )}
@@ -1141,13 +1159,13 @@ export default function QuoteViewPage() {
             <div style={{ padding: '12px 36px 0', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px', fontSize: '11px' }}>
               {lead.pickup_address && (
                 <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: '4px' }}>Pickup Address</div>
+                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '4px' }}>Pickup Address</div>
                   <div style={{ color: '#374151' }}>{lead.pickup_address}</div>
                 </div>
               )}
               {lead.drop_address && (
                 <div style={{ background: '#f9fafb', borderRadius: '8px', padding: '10px 12px' }}>
-                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#9ca3af', marginBottom: '4px' }}>Delivery Address</div>
+                  <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '4px' }}>Delivery Address</div>
                   <div style={{ color: '#374151' }}>{lead.drop_address}</div>
                 </div>
               )}
@@ -1170,21 +1188,21 @@ export default function QuoteViewPage() {
               <tbody>
                 {lineItems.length > 0 ? lineItems.map((li, idx) => (
                   <tr key={idx} style={{ borderBottom: '1px solid #f3f4f6' }}>
-                    <td style={{ padding: '12px 14px', color: '#9ca3af' }}>{idx + 1}</td>
+                    <td style={{ padding: '12px 14px', color: '#4b5563' }}>{idx + 1}</td>
                     <td style={{ padding: '12px 14px' }}>
                       <div style={{ fontWeight: 700, color: '#111' }}>{li.name}</div>
-                      {li.description && <div style={{ fontSize: '11px', color: '#6b7280', marginTop: '2px' }}>{li.description}</div>}
+                      {li.description && <div style={{ fontSize: '11px', color: '#4b5563', marginTop: '2px' }}>{li.description}</div>}
                     </td>
                     <td style={{ padding: '12px 14px', textAlign: 'center', color: '#374151' }}>{li.quantity}</td>
                     <td style={{ padding: '12px 14px', textAlign: 'right', color: '#374151' }}>{fmtRs(li.rate)}</td>
-                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#6b7280', fontSize: '11px' }}>
+                    <td style={{ padding: '12px 14px', textAlign: 'center', color: '#4b5563', fontSize: '11px' }}>
                       GST {li.tax_pct ?? 5}%
                     </td>
                     <td style={{ padding: '12px 14px', textAlign: 'right', fontWeight: 700, color: '#111' }}>{fmtRs(li.amount)}</td>
                   </tr>
                 )) : (
                   <tr>
-                    <td colSpan={6} style={{ padding: '20px 14px', textAlign: 'center', color: '#9ca3af', fontSize: '12px' }}>
+                    <td colSpan={6} style={{ padding: '20px 14px', textAlign: 'center', color: '#4b5563', fontSize: '12px' }}>
                       No line items — generate a quote first.
                     </td>
                   </tr>
@@ -1198,12 +1216,12 @@ export default function QuoteViewPage() {
 
             {/* Payment details */}
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '8px' }}>Payment Details</div>
+              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Payment Details</div>
               <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-start' }}>
                 <div style={{ flex: 1, fontSize: '11px', color: '#374151', lineHeight: '1.8' }}>
-                  <div><span style={{ color: '#9ca3af' }}>Bank: </span>Indian Overseas Bank</div>
-                  <div><span style={{ color: '#9ca3af' }}>A/C No: </span><strong>171702000001297</strong></div>
-                  <div><span style={{ color: '#9ca3af' }}>IFSC: </span>IOBA0001717 · Gotri Road Branch</div>
+                  <div><span style={{ color: '#4b5563' }}>Bank: </span>Indian Overseas Bank</div>
+                  <div><span style={{ color: '#4b5563' }}>A/C No: </span><strong>171702000001297</strong></div>
+                  <div><span style={{ color: '#4b5563' }}>IFSC: </span>IOBA0001717 · Gotri Road Branch</div>
                   <div style={{ marginTop: '6px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '6px 10px' }}>
                     <span style={{ color: '#9a3412', fontWeight: 700 }}>UPI: </span>
                     <strong style={{ color: '#111' }}>BAGDROP1717@IOB</strong>
@@ -1216,7 +1234,7 @@ export default function QuoteViewPage() {
                     alt="UPI QR"
                     style={{ width: '76px', height: '76px', display: 'block', borderRadius: '4px', border: '1px solid #e5e7eb' }}
                   />
-                  <div style={{ fontSize: '8px', color: '#9ca3af', marginTop: '3px' }}>Scan to Pay</div>
+                  <div style={{ fontSize: '8px', color: '#4b5563', marginTop: '3px' }}>Scan to Pay</div>
                 </div>
               </div>
             </div>
@@ -1224,7 +1242,7 @@ export default function QuoteViewPage() {
             {/* Totals */}
             <div>
               <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '12px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '6px' }}>
                   <span>Sub Total</span><span>{fmtRs(subtotal)}</span>
                 </div>
                 {(lead.quote_discount_amt ?? 0) > 0 && (
@@ -1237,10 +1255,10 @@ export default function QuoteViewPage() {
                     <span>− {fmtRs(lead.quote_discount_amt!)}</span>
                   </div>
                 )}
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '6px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '6px' }}>
                   <span>CGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#6b7280', marginBottom: '8px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#4b5563', marginBottom: '8px' }}>
                   <span>SGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #111', paddingTop: '10px' }}>
@@ -1260,7 +1278,7 @@ export default function QuoteViewPage() {
           {/* Notes */}
           {(lead.quote_notes ?? lead.notes) && (
             <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
-              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#9ca3af', marginBottom: '4px' }}>Notes</div>
+              <div style={{ fontSize: '9px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
               <div style={{ fontSize: '12px', color: '#374151' }}>{lead.quote_notes ?? lead.notes}</div>
             </div>
           )}
@@ -1269,9 +1287,9 @@ export default function QuoteViewPage() {
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>
             <div style={{ fontSize: '10px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#374151', marginBottom: '8px' }}>Terms &amp; Conditions</div>
             {lead.quote_terms ? (
-              <div style={{ fontSize: '10px', color: '#6b7280', lineHeight: '1.6' }}>{lead.quote_terms}</div>
+              <div style={{ fontSize: '10px', color: '#4b5563', lineHeight: '1.6' }}>{lead.quote_terms}</div>
             ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10px', color: '#6b7280', lineHeight: '1.5' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10px', color: '#4b5563', lineHeight: '1.5' }}>
                 {[
                   'All bookings confirmed on receipt of full payment. A CN number will be issued for reference.',
                   'Only services mentioned above are included. Company reserves the right to cancel at any point.',
@@ -1291,7 +1309,7 @@ export default function QuoteViewPage() {
 
           {/* Footer */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', padding: '14px 0 28px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-            <div style={{ fontSize: '10px', color: '#9ca3af', lineHeight: '1.6' }}>
+            <div style={{ fontSize: '10px', color: '#4b5563', lineHeight: '1.6' }}>
               <div style={{ fontWeight: 700, color: '#374151', fontSize: '11px', marginBottom: '2px' }}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
               <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
@@ -1301,7 +1319,7 @@ export default function QuoteViewPage() {
               <div style={{ width: '140px', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10px', color: '#374151', fontWeight: 600 }}>
                 Authorized Signatory
               </div>
-              <div style={{ fontSize: '9px', color: '#9ca3af', marginTop: '2px' }}>
+              <div style={{ fontSize: '9px', color: '#4b5563', marginTop: '2px' }}>
                 For Bagdrop Logistics Solutions Pvt. Ltd.
               </div>
             </div>
