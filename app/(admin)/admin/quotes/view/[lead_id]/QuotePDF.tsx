@@ -28,9 +28,12 @@ const s = StyleSheet.create({
   // regular-weight line, without the risk of a missing custom font
   // silently breaking the header.
   logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
+  // Label above the quote number — was "Service Estimate", now just
+  // "Estimate" ("Service" removed, "Estimate" kept per founder feedback).
+  qnLabel:   { color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
   // Quotation Number — now the SMALLER of the two top-right lines (was
-  // the large 18px headline). "Service Estimate" label removed entirely.
-  qnValue:   { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4 },
+  // the large 18px headline).
+  qnValue:   { color: 'rgba(255,255,255,0.9)', fontSize: 9, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
   // Date — now the PROMINENT top-right line (was the small 8px line).
   qnDate:    { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
   qnValidTill: { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, textAlign: 'right', marginTop: 2 },
@@ -211,6 +214,7 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.logoSub}>India&apos;s Digital Baggage Infrastructure</Text>
           </View>
           <View>
+            <Text style={s.qnLabel}>Estimate</Text>
             <Text style={s.qnValue}>{p.quoteNumber}</Text>
             <Text style={s.qnDate}>{fmtDate(p.quoteDate)}</Text>
             {p.expiryDate ? <Text style={s.qnValidTill}>Valid till {fmtDate(p.expiryDate)}</Text> : null}
