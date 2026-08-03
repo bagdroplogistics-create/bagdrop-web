@@ -7,12 +7,31 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  const { searchParams } = req.nextUrl
+
   const now        = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
   const today = new Date().toISOString().split('T')[0]
 
-  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
+  // Optional date-range scope for the Booking Funnel's range control (see
+  // app/(admin)/admin/page.tsx). Only affects unbooked_leads — the piece
+  // this endpoint contributes to the funnel's "New Inquiries" card — so the
+  // funnel's date filter reconciles with what /api/admin/bookings returns
+  // for the same range. Every other figure here (total_leads, pending_quotes,
+  // total_completed, total_rejected, revenue_this_month) stays all-time or
+  // fixed-to-calendar-month by design, same as before.
+  const dateFrom = searchParams.get('date_from')
+  const dateTo   = searchParams.get('date_to')
+
+  let unbookedLeadsQuery = supabaseAdmin
+    .from('leads')
+    .select('*', { count: 'exact', head: true })
+    .is('booking_id', null)
+  if (dateFrom) unbookedLeadsQuery = unbookedLeadsQuery.gte('created_at', dateFrom)
+  if (dateTo)   unbookedLeadsQuery = unbookedLeadsQuery.lt('created_at', dateTo)
+
+  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes, completedRes, rejectedRes] = await Promise.all([
     // Total leads count
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
 
@@ -24,7 +43,7 @@ export async function GET(req: NextRequest) {
     // the funnel's "New Inquiries" card (see app/(admin)/admin/page.tsx)
     // so the funnel and Total Leads describe the same underlying set of
     // inquiries instead of two different ones.
-    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('booking_id', null),
+    unbookedLeadsQuery,
 
     // Pending quotes (draft or sent)
     supabaseAdmin
@@ -62,6 +81,20 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('pickup_date', today)
       .not('status', 'in', '(cancelled,completed)'),
+
+    // Total completed inquiries (all-time) — replaces "Today's Dispatch" on
+    // the CRM quick-links row.
+    supabaseAdmin
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'completed'),
+
+    // Total rejected inquiries (all-time) — replaces "Pending Quotes" on
+    // the CRM quick-links row.
+    supabaseAdmin
+      .from('bookings')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'rejected'),
   ])
 
   const revenue = (revenueRes.data ?? []).reduce(
@@ -74,6 +107,8 @@ export async function GET(req: NextRequest) {
     unbooked_leads:      unbookedLeadsRes.count ?? 0,
     pending_quotes:     quotesRes.count       ?? 0,
     today_dispatch:     dispatchRes.count     ?? 0,
+    total_completed:    completedRes.count    ?? 0,
+    total_rejected:     rejectedRes.count     ?? 0,
     revenue_this_month: revenue,
   })
 }

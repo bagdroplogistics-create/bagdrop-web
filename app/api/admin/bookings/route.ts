@@ -13,6 +13,8 @@ export async function GET(req: NextRequest) {
   const excludeStatus  = searchParams.get('exclude_status')  // single status to exclude (e.g. 'cancelled')
   const search         = searchParams.get('search')
   const leadId         = searchParams.get('lead_id')         // lookup by lead_id
+  const dateFrom       = searchParams.get('date_from')       // inclusive, ISO date/datetime — filters created_at
+  const dateTo         = searchParams.get('date_to')         // exclusive, ISO date/datetime — filters created_at
   const page           = parseInt(searchParams.get('page') ?? '1', 10)
   const limit          = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset         = (page - 1) * limit
@@ -54,6 +56,11 @@ export async function GET(req: NextRequest) {
       `customer_name.ilike.%${search}%,customer_email.ilike.%${search}%,tracking_id.ilike.%${search}%,customer_phone.ilike.%${search}%`
     )
   }
+
+  // Date-range filter (used by the Booking Funnel's range control on the
+  // dashboard) — scopes counts/rows to bookings created in [date_from, date_to).
+  if (dateFrom) query = query.gte('created_at', dateFrom)
+  if (dateTo)   query = query.lt('created_at', dateTo)
 
   const { data, error, count } = await query
 

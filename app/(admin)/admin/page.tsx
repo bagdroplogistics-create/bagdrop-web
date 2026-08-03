@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package, Clock, CheckCircle, Truck,
+  Package, Clock, CheckCircle, XCircle, Truck,
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
@@ -1105,8 +1105,15 @@ export default function AdminDashboard() {
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [editTarget, setEditTarget]   = useState<Booking | null>(null)
   const [crmStats, setCrmStats]       = useState<{
-    total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number
+    total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number
+    total_completed: number; total_rejected: number; revenue_this_month: number
   } | null>(null)
+  // Booking Funnel date-range control — scopes the 12 funnel cards (and the
+  // "New Inquiries" leads count folded into them) to a window instead of
+  // always showing all-time totals. Defaults to This Month.
+  const [funnelRange, setFunnelRange] = useState<'today' | 'this_month' | 'last_month' | 'all' | 'custom'>('this_month')
+  const [customFrom, setCustomFrom]   = useState('')
+  const [customTo, setCustomTo]       = useState('')
   const [tripStats, setTripStats]     = useState<{
     total: number; active: number; delivered: number
     totalIncome: number; totalExpense: number; netProfit: number
@@ -1135,6 +1142,34 @@ export default function AdminDashboard() {
     sessionStorage.setItem('bagdrop_dashboard_sort', val)
   }
 
+  // Resolves the current funnelRange selection to a [from, to) ISO window
+  // for the API's date_from/date_to params. Returns {} for 'all' (no filter).
+  function getFunnelDateRange(): { from?: string; to?: string } {
+    const now = new Date()
+    if (funnelRange === 'today') {
+      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+      const to   = new Date(from); to.setDate(to.getDate() + 1)
+      return { from: from.toISOString(), to: to.toISOString() }
+    }
+    if (funnelRange === 'this_month') {
+      const from = new Date(now.getFullYear(), now.getMonth(), 1)
+      const to   = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      return { from: from.toISOString(), to: to.toISOString() }
+    }
+    if (funnelRange === 'last_month') {
+      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const to   = new Date(now.getFullYear(), now.getMonth(), 1)
+      return { from: from.toISOString(), to: to.toISOString() }
+    }
+    if (funnelRange === 'custom' && customFrom) {
+      const from = new Date(customFrom + 'T00:00:00')
+      const to   = new Date((customTo || customFrom) + 'T00:00:00')
+      to.setDate(to.getDate() + 1) // end date inclusive
+      return { from: from.toISOString(), to: to.toISOString() }
+    }
+    return {}
+  }
+
   const fetchData = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
@@ -1152,16 +1187,29 @@ export default function AdminDashboard() {
       qs += '&exclude_status=cancelled'
     }
     if (search) qs += '&search=' + encodeURIComponent(search)
+
+    // Booking Funnel date-range window — applied to both the raw bookings
+    // scan (allR, below) and crm-stats' unbooked_leads count, so "New
+    // Inquiries" reconciles with the rest of the funnel for the same window.
+    const range = getFunnelDateRange()
+    let funnelQs = '?key=' + adminKey + '&limit=2000'
+    let crmQs    = '?key=' + adminKey
+    if (range.from) { funnelQs += '&date_from=' + encodeURIComponent(range.from); crmQs += '&date_from=' + encodeURIComponent(range.from) }
+    if (range.to)   { funnelQs += '&date_to='   + encodeURIComponent(range.to);   crmQs += '&date_to='   + encodeURIComponent(range.to) }
+
     const [sr, br, cr, tr, allR] = await Promise.all([
       fetch('/api/admin/stats?key=' + adminKey),
       fetch('/api/admin/bookings' + qs),
-      fetch('/api/admin/crm-stats?key=' + adminKey),
+      fetch('/api/admin/crm-stats' + crmQs),
       fetch('/api/admin/trip-sheets?limit=200&key=' + adminKey),
-      fetch('/api/admin/bookings?key=' + adminKey + '&limit=2000'),
+      fetch('/api/admin/bookings' + funnelQs),
     ])
     if (sr.ok) setStats(await sr.json())
     if (br.ok) setBookings((await br.json()).bookings ?? [])
-    let crmData: { total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number; revenue_this_month: number } | null = null
+    let crmData: {
+      total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number
+      total_completed: number; total_rejected: number; revenue_this_month: number
+    } | null = null
     if (cr.ok) { crmData = await cr.json(); setCrmStats(crmData) }
     if (allR.ok) {
       const allData = await allR.json()
@@ -1191,7 +1239,7 @@ export default function AdminDashboard() {
       })
     }
     setLoading(false)
-  }, [adminKey, filter, phaseFilter, search])
+  }, [adminKey, filter, phaseFilter, search, funnelRange, customFrom, customTo])
 
   useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
 
@@ -1258,9 +1306,39 @@ export default function AdminDashboard() {
 
         {/* ── Booking Funnel — 12 clickable status cards ── */}
         <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Booking Funnel</p>
             <span className="text-[10px] text-gray-400">Click any card to filter</span>
+          </div>
+          {/* Date-range control — scopes every card below (and the leads
+              folded into "New Inquiries") to a window instead of all-time. */}
+          <div className="mb-3 flex flex-wrap items-center gap-1.5">
+            {([
+              { key: 'today',      label: 'Today' },
+              { key: 'this_month', label: 'This Month' },
+              { key: 'last_month', label: 'Last Month' },
+              { key: 'all',        label: 'All Time' },
+              { key: 'custom',     label: 'Custom' },
+            ] as const).map(r => (
+              <button key={r.key}
+                onClick={() => setFunnelRange(r.key)}
+                className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
+                  funnelRange === r.key
+                    ? 'border-orange-400 bg-orange-500 text-white'
+                    : 'border-gray-200 bg-white text-gray-500 hover:border-orange-300'
+                }`}>
+                {r.label}
+              </button>
+            ))}
+            {funnelRange === 'custom' && (
+              <span className="flex items-center gap-1.5">
+                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px]" />
+                <span className="text-[11px] text-gray-400">to</span>
+                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px]" />
+              </span>
+            )}
           </div>
           {/* Row 1: Inquiry → Quote */}
           <div className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
@@ -1317,29 +1395,53 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* CRM quick links */}
+        {/* CRM quick links — all-time totals (independent of the funnel's
+            date-range control above, same as Total Leads always was). */}
         <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Total Leads',       value: crmStats?.total_leads ?? '—',      icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe', href: '/admin/leads' },
-            { label: "Today's Dispatch",  value: crmStats?.today_dispatch ?? '—',   icon: <Package className="h-4 w-4" />,     color: '#7c3aed', bg: '#ede9fe', href: '/admin' },
-            { label: 'Pending Quotes',    value: crmStats?.pending_quotes ?? '—',   icon: <FileText className="h-4 w-4" />,    color: '#ea580c', bg: '#ffedd5', href: '/admin/leads' },
+            { label: 'Total Leads', value: crmStats?.total_leads ?? '—', icon: <Users className="h-4 w-4" />, color: '#2563eb', bg: '#dbeafe', href: '/admin/leads' as string | undefined, onClick: undefined as (() => void) | undefined },
+            {
+              label: 'Total Completed Inquiries', value: crmStats?.total_completed ?? '—',
+              icon: <CheckCircle className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7',
+              href: undefined as string | undefined,
+              onClick: () => { setFilter('completed'); setPhaseFilter('all') },
+            },
+            {
+              label: 'Total Rejected Inquiries', value: crmStats?.total_rejected ?? '—',
+              icon: <XCircle className="h-4 w-4" />, color: '#dc2626', bg: '#fee2e2',
+              href: undefined as string | undefined,
+              onClick: () => { setFilter('rejected'); setPhaseFilter('all') },
+            },
             {
               label: 'Revenue This Month',
               value: crmStats
                 ? ('Rs.' + crmStats.revenue_this_month.toLocaleString('en-IN', { maximumFractionDigits: 0 }))
                 : '—',
-              icon: <IndianRupee className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7', href: '/admin/customers',
+              icon: <IndianRupee className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7',
+              href: '/admin/customers' as string | undefined, onClick: undefined as (() => void) | undefined,
             },
-          ].map(c => (
-            <Link key={c.label} href={c.href}
-              className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:border-orange-200 transition-colors">
-              <div className="flex items-center justify-between">
-                <p className="text-xs font-medium text-gray-500">{c.label}</p>
-                <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5">{c.icon}</div>
-              </div>
-              <p className="mt-2 text-xl font-bold text-gray-900">{c.value}</p>
-            </Link>
-          ))}
+          ].map(c => {
+            const body = (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs font-medium text-gray-500">{c.label}</p>
+                  <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5">{c.icon}</div>
+                </div>
+                <p className="mt-2 text-xl font-bold text-gray-900">{c.value}</p>
+              </>
+            )
+            return c.onClick ? (
+              <button key={c.label} onClick={c.onClick}
+                className="rounded-xl border border-gray-100 bg-white p-4 text-left shadow-sm hover:border-orange-200 transition-colors">
+                {body}
+              </button>
+            ) : (
+              <Link key={c.label} href={c.href!}
+                className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm hover:border-orange-200 transition-colors">
+                {body}
+              </Link>
+            )
+          })}
         </div>
 
         {/* Trip Operations quick stats */}
