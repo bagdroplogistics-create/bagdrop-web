@@ -124,14 +124,26 @@ function monthWindowISO(offsetMonths: number) {
   return { from: from.toISOString(), to: to.toISOString() }
 }
 
+// Same month window as monthWindowISO, but as plain "YYYY-MM-DD" (no time/
+// timezone component) — matches the bookings API's completed_from/
+// completed_to params, which compare directly against the DATE-typed
+// delivery_date/pickup_date columns.
+function monthWindowDateOnly(offsetMonths: number) {
+  const base = new Date()
+  const from = new Date(base.getFullYear(), base.getMonth() + offsetMonths, 1)
+  const to   = new Date(base.getFullYear(), base.getMonth() + offsetMonths + 1, 1)
+  const fmt = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
+  return { from: fmt(from), to: fmt(to) }
+}
+
 // A KPI card's click target — filters the bookings table below without
 // touching any status/workflow logic. `statuses` restricts to a set of
 // booking statuses (matches the bookings API's `statuses=` param); `month`
 // restricts to bookings CREATED in that calendar month (matches how the
 // Total Inquiries KPIs are computed); `completedMonth` restricts to
-// bookings that REACHED 'completed' during that calendar month (matches
-// how the Completed Bookings KPIs are computed — see the updated_at-based
-// logic in app/api/admin/dashboard-analytics/route.ts). month and
+// bookings whose delivery_date (falling back to pickup_date) falls in that
+// calendar month — matches how the Completed Bookings KPIs are computed
+// (see app/api/admin/dashboard-analytics/route.ts). month and
 // completedMonth are mutually exclusive.
 interface KpiView {
   statuses?: string[]
@@ -1221,8 +1233,8 @@ export default function AdminDashboard() {
         qs += '&date_from=' + encodeURIComponent(from) + '&date_to=' + encodeURIComponent(to)
       }
       if (kpiView.completedMonth) {
-        const { from, to } = monthWindowISO(kpiView.completedMonth === 'current' ? 0 : -1)
-        qs += '&updated_from=' + encodeURIComponent(from) + '&updated_to=' + encodeURIComponent(to)
+        const { from, to } = monthWindowDateOnly(kpiView.completedMonth === 'current' ? 0 : -1)
+        qs += '&completed_from=' + encodeURIComponent(from) + '&completed_to=' + encodeURIComponent(to)
       }
     } else if (filter === 'cancelled') {
       // Explicitly requested — show cancelled

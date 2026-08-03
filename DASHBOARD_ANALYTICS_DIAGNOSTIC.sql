@@ -31,3 +31,33 @@ FROM leads l
 LEFT JOIN bookings b ON b.id = l.booking_id
 WHERE l.deleted_at IS NULL
 ORDER BY l.created_at ASC;
+
+-- 4. "Last Month Completed Bookings" investigation — every completed
+--    booking with every date field that could plausibly represent "when
+--    this was actually completed." The Dashboard currently uses updated_at
+--    (bookings_updated_at below), but that column gets stamped with
+--    whatever moment the row was last written — including a "Mark as
+--    Completed — Historical Booking" backfill, which always writes "now"
+--    (the day the admin did the data entry), NOT the real historical
+--    completion date. If any of these rows were backfilled that way, their
+--    updated_at will show today/recently, not July/June.
+--    Look at pickup_date and delivery_date too — one of those may actually
+--    reflect the real month, and if so, tell me which column to use.
+SELECT
+  b.tracking_id,
+  b.customer_name,
+  b.status,
+  b.created_at   AS booking_created_at,
+  b.updated_at   AS booking_updated_at,
+  b.pickup_date,
+  b.delivery_date,
+  -- The single 'completed' entry from status_history, if present — its
+  -- own timestamp is a second read on when 'completed' was actually set,
+  -- but note this ALSO gets stamped "now" for historical backfills, so it
+  -- can match updated_at exactly and be just as wrong for those rows.
+  (SELECT h->>'timestamp' FROM jsonb_array_elements(b.status_history) h WHERE h->>'to' = 'completed' ORDER BY (h->>'timestamp') DESC LIMIT 1) AS completed_status_history_timestamp,
+  -- Any status_history note mentioning "historical" flags a backfilled row.
+  (SELECT h->>'note' FROM jsonb_array_elements(b.status_history) h WHERE h->>'to' = 'completed' ORDER BY (h->>'timestamp') DESC LIMIT 1) AS completed_note
+FROM bookings b
+WHERE b.status = 'completed'
+ORDER BY b.updated_at DESC;
