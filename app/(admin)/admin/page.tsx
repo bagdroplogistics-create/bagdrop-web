@@ -399,7 +399,7 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
             <div className="flex items-center gap-2">
               <input type="month" value={monthOverride} onChange={e => setMonthOverride(e.target.value)}
                 className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400" />
-              <button onClick={saveMonthOverride} disabled={savingMonth}
+              <button onClick={() => saveMonthOverride()} disabled={savingMonth}
                 className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
                 {savingMonth ? 'Saving…' : 'Save'}
               </button>
