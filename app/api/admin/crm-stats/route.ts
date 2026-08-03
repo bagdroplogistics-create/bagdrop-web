@@ -15,35 +15,32 @@ export async function GET(req: NextRequest) {
   const today = new Date().toISOString().split('T')[0]
 
   // Optional date-range scope for the Booking Funnel's range control (see
-  // app/(admin)/admin/page.tsx). Only affects unbooked_leads — the piece
-  // this endpoint contributes to the funnel's "New Inquiries" card — so the
-  // funnel's date filter reconciles with what /api/admin/bookings returns
-  // for the same range. Every other figure here (total_leads, pending_quotes,
-  // total_completed, total_rejected, revenue_this_month) stays all-time or
-  // fixed-to-calendar-month by design, same as before.
+  // app/(admin)/admin/page.tsx). Drives leads_in_range only — total_leads,
+  // pending_quotes, total_completed, total_rejected, revenue_this_month
+  // stay all-time or fixed-to-calendar-month, same as before.
   const dateFrom = searchParams.get('date_from')
   const dateTo   = searchParams.get('date_to')
 
-  let unbookedLeadsQuery = supabaseAdmin
-    .from('leads')
-    .select('*', { count: 'exact', head: true })
-    .is('booking_id', null)
-  if (dateFrom) unbookedLeadsQuery = unbookedLeadsQuery.gte('created_at', dateFrom)
-  if (dateTo)   unbookedLeadsQuery = unbookedLeadsQuery.lt('created_at', dateTo)
+  // Leads created within the selected window, regardless of current
+  // booking_id — i.e. "how many inquiries actually came in during this
+  // period," not "how many are still sitting unquoted today." These are
+  // different questions: a lead captured in July that got quoted (and even
+  // rejected) by August no longer has booking_id = null, so filtering on
+  // unbooked_leads for a past month undercounts real inflow (most of a past
+  // month's leads have, by now, moved past "unbooked"). The funnel's "New
+  // Inquiries" card needs the former for any range other than All Time.
+  let leadsInRangeQuery = supabaseAdmin.from('leads').select('*', { count: 'exact', head: true })
+  if (dateFrom) leadsInRangeQuery = leadsInRangeQuery.gte('created_at', dateFrom)
+  if (dateTo)   leadsInRangeQuery = leadsInRangeQuery.lt('created_at', dateTo)
 
-  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes, completedRes, rejectedRes] = await Promise.all([
-    // Total leads count
+  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes, completedRes, rejectedRes, leadsInRangeRes] = await Promise.all([
+    // Total leads count (all-time)
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
 
-    // Leads with no booking created yet at all — true "not even quoted"
-    // inquiries. The Booking Funnel on the dashboard only counts rows in
-    // `bookings`, which don't exist until a quote is generated for a lead,
-    // so this population was previously invisible everywhere on the
-    // dashboard even though it's the majority of Total Leads. Folded into
-    // the funnel's "New Inquiries" card (see app/(admin)/admin/page.tsx)
-    // so the funnel and Total Leads describe the same underlying set of
-    // inquiries instead of two different ones.
-    unbookedLeadsQuery,
+    // Leads with no booking created yet at all (all-time, unscoped) — the
+    // live "still needs action" backlog, unaffected by the funnel's date
+    // range. Used only when the funnel is set to All Time.
+    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('booking_id', null),
 
     // Pending quotes (draft or sent)
     supabaseAdmin
@@ -95,6 +92,8 @@ export async function GET(req: NextRequest) {
       .from('bookings')
       .select('*', { count: 'exact', head: true })
       .eq('status', 'rejected'),
+
+    leadsInRangeQuery,
   ])
 
   const revenue = (revenueRes.data ?? []).reduce(
@@ -109,6 +108,7 @@ export async function GET(req: NextRequest) {
     today_dispatch:     dispatchRes.count     ?? 0,
     total_completed:    completedRes.count    ?? 0,
     total_rejected:     rejectedRes.count     ?? 0,
+    leads_in_range:     leadsInRangeRes.count  ?? 0,
     revenue_this_month: revenue,
   })
 }

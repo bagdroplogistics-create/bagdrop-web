@@ -1208,7 +1208,7 @@ export default function AdminDashboard() {
     if (br.ok) setBookings((await br.json()).bookings ?? [])
     let crmData: {
       total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number
-      total_completed: number; total_rejected: number; revenue_this_month: number
+      total_completed: number; total_rejected: number; leads_in_range: number; revenue_this_month: number
     } | null = null
     if (cr.ok) { crmData = await cr.json(); setCrmStats(crmData) }
     if (allR.ok) {
@@ -1221,9 +1221,24 @@ export default function AdminDashboard() {
       // status='inquiry' — but a booking row doesn't exist until a quote is
       // created, so every lead that hasn't reached quote-creation yet (the
       // majority of Total Leads) was invisible on this dashboard. Folding in
-      // leads with no linked booking makes this card, and the funnel as a
-      // whole, reconcile with the Total Leads count shown right below it.
-      if (crmData) counts['inquiry'] = (counts['inquiry'] ?? 0) + crmData.unbooked_leads
+      // leads makes this card, and the funnel as a whole, reconcile with the
+      // Total Leads count shown right below it.
+      //
+      // For "All Time" we fold in unbooked_leads (the live backlog of leads
+      // that still have no booking at all) — the "what still needs action
+      // right now" view this card always showed pre-date-range.
+      //
+      // For any actual date window (Today/This Month/Last Month/Custom) we
+      // instead fold in leads_in_range — ALL leads created in that window,
+      // regardless of whether they've since been quoted/rejected/booked.
+      // unbooked_leads would undercount here: a lead captured last month
+      // that got quoted (even rejected) by today no longer has booking_id
+      // = null, so filtering last month by "still unbooked" showed almost
+      // none of what actually came in that month.
+      if (crmData) {
+        counts['inquiry'] = (counts['inquiry'] ?? 0) +
+          (funnelRange === 'all' ? crmData.unbooked_leads : crmData.leads_in_range)
+      }
       setStatusCounts(counts)
     }
     if (tr.ok) {
