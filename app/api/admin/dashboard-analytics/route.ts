@@ -43,25 +43,35 @@ export const runtime = 'nodejs'
 // with no booking yet is 'pending'.
 //
 // current_month_completed / last_month_completed: counts bookings whose
-// delivery_date (falling back to pickup_date when delivery_date isn't
-// set) falls in that calendar month — i.e. the real day the job was
-// actually completed/delivered, independent of which month the underlying
+// pickup_date falls in that calendar month — i.e. the month the job
+// actually happened in, independent of which month the underlying
 // inquiry/lead was created in.
 //
-// IMPORTANT — do not switch this back to bookings.updated_at. That was
-// tried and is wrong: there's a "Mark as Completed — Historical Booking"
-// action (app/api/admin/bookings/[id]/route.ts, mark_historical branch)
-// for backfilling bookings that were fulfilled before this workflow
-// existed. It stamps status_history and (via the DB's updated_at trigger)
-// updated_at with the moment the admin does the *data entry*, not the
-// real historical completion date — it only records the actual date as a
-// free-text note. Verified directly against a full export of this
-// database's 17 completed bookings: bucketing by updated_at put 7 of them
-// in the wrong month (the ones backfilled together on 1 Aug showed up as
-// "completed in August" regardless of when they actually happened),
-// while bucketing by delivery_date/pickup_date matched the real-world
-// timeline the user confirmed (15 in July, 1 in June, 1 in August for a
-// booking picked up 29 Jul but not delivered until 1 Aug).
+// IMPORTANT — two things were tried here and are wrong, do not revert to
+// either:
+//
+// 1. bookings.updated_at. There's a "Mark as Completed — Historical
+//    Booking" action (app/api/admin/bookings/[id]/route.ts,
+//    mark_historical branch) for backfilling bookings fulfilled before
+//    this workflow existed. It stamps status_history and (via the DB's
+//    updated_at trigger) updated_at with the moment the admin does the
+//    *data entry*, not the real historical completion date. Verified
+//    against a full export of the database's completed bookings at the
+//    time: bucketing by updated_at put 7 of 17 in the wrong month (all
+//    backfilled together on 1 Aug showed as "completed in August"
+//    regardless of when they actually happened).
+//
+// 2. delivery_date (falling back to pickup_date only when delivery_date
+//    is null). This looked right at first (matched 15 of 17 rows against
+//    the user's own count) but got the one cross-month booking backwards:
+//    a booking picked up 29 Jul but not delivered until 1 Aug landed in
+//    "August" under this rule, and the user confirmed that booking should
+//    count as JULY (the pickup month) — current_month_completed showed 1
+//    when it should have been 0. So pickup_date is the actual source of
+//    truth, not delivery_date; a booking belongs to the month it was
+//    picked up/actioned, not whichever month delivery happened to land in.
+//    pickup_date is always present on a real booking, so no fallback is
+//    needed.
 
 const ACTIVE_STATUSES = new Set([
   // Paid and actively moving, but not yet at the final Completed status —
@@ -92,9 +102,9 @@ function monthWindow(base: Date, offsetMonths: number) {
 }
 
 // "YYYY-MM" for a calendar month relative to `base` — compared as a plain
-// string prefix against DATE columns (delivery_date/pickup_date store
-// "YYYY-MM-DD" with no time/timezone component), so this has zero
-// timezone risk, unlike comparing Date object timestamps.
+// string prefix against DATE columns (pickup_date stores "YYYY-MM-DD"
+// with no time/timezone component), so this has zero timezone risk,
+// unlike comparing Date object timestamps.
 function monthKey(base: Date, offsetMonths: number) {
   const d = new Date(base.getFullYear(), base.getMonth() + offsetMonths, 1)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -143,7 +153,7 @@ export async function GET(req: NextRequest) {
   // accidentally trigger-created rows.
   const bookingsRes = await supabaseAdmin
     .from('bookings')
-    .select('id, status, delivery_date, pickup_date')
+    .select('id, status, pickup_date')
     .not('tracking_id', 'is', null)
     .limit(20000)
   if (bookingsRes.error) return NextResponse.json({ error: bookingsRes.error.message }, { status: 500 })
@@ -193,13 +203,12 @@ export async function GET(req: NextRequest) {
   const currentMonthLeads = inWindow(leads, thisMonth.from, thisMonth.to)
   const lastMonthLeads    = inWindow(leads, lastMonth.from, lastMonth.to)
 
-  // Completed-in-month: based on delivery_date (falling back to
-  // pickup_date), not updated_at or the lead's created_at — see module
-  // comment above for why.
+  // Completed-in-month: based on pickup_date, not updated_at, delivery_date,
+  // or the lead's created_at — see module comment above for why.
   const completedInMonth = (key: string) =>
     (bookingsRes.data ?? []).filter(b => {
       if ((b.status as string) !== 'completed') return false
-      const dateStr = (b.delivery_date as string | null) || (b.pickup_date as string | null)
+      const dateStr = b.pickup_date as string | null
       if (!dateStr) return false
       return dateStr.slice(0, 7) === key
     }).length

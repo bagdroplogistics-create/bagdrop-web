@@ -127,7 +127,7 @@ function monthWindowISO(offsetMonths: number) {
 // Same month window as monthWindowISO, but as plain "YYYY-MM-DD" (no time/
 // timezone component) — matches the bookings API's completed_from/
 // completed_to params, which compare directly against the DATE-typed
-// delivery_date/pickup_date columns.
+// pickup_date column.
 function monthWindowDateOnly(offsetMonths: number) {
   const base = new Date()
   const from = new Date(base.getFullYear(), base.getMonth() + offsetMonths, 1)
@@ -141,10 +141,10 @@ function monthWindowDateOnly(offsetMonths: number) {
 // booking statuses (matches the bookings API's `statuses=` param); `month`
 // restricts to bookings CREATED in that calendar month (matches how the
 // Total Inquiries KPIs are computed); `completedMonth` restricts to
-// bookings whose delivery_date (falling back to pickup_date) falls in that
-// calendar month — matches how the Completed Bookings KPIs are computed
-// (see app/api/admin/dashboard-analytics/route.ts). month and
-// completedMonth are mutually exclusive.
+// bookings whose pickup_date falls in that calendar month — matches how
+// the Completed Bookings KPIs are computed (see
+// app/api/admin/dashboard-analytics/route.ts). month and completedMonth
+// are mutually exclusive.
 interface KpiView {
   statuses?: string[]
   month?: 'current' | 'last'

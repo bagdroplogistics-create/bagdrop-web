@@ -17,7 +17,7 @@ export async function GET(req: NextRequest) {
   const dateTo         = searchParams.get('date_to')         // exclusive, ISO date/datetime — filters created_at
   const updatedFrom    = searchParams.get('updated_from')    // inclusive, ISO date/datetime — filters updated_at
   const updatedTo      = searchParams.get('updated_to')      // exclusive, ISO date/datetime — filters updated_at
-  const completedFrom  = searchParams.get('completed_from')  // inclusive, "YYYY-MM-DD" — filters delivery_date (fallback pickup_date), status='completed'
+  const completedFrom  = searchParams.get('completed_from')  // inclusive, "YYYY-MM-DD" — filters pickup_date, status='completed'
   const completedTo    = searchParams.get('completed_to')    // exclusive, "YYYY-MM-DD"
   const page           = parseInt(searchParams.get('page') ?? '1', 10)
   const limit          = parseInt(searchParams.get('limit') ?? '50', 10)
@@ -47,18 +47,14 @@ export async function GET(req: NextRequest) {
 
   if (completedFrom && completedTo) {
     // Used by the Dashboard Analytics "Current/Last Month Completed
-    // Bookings" KPI cards — matches the same delivery_date-falling-back-
-    // to-pickup_date logic the KPI number itself is computed from (see
-    // app/api/admin/dashboard-analytics/route.ts). Deliberately not based
-    // on updated_at/created_at — see that file's module comment for why
-    // (the "Mark as Completed — Historical Booking" backfill flow stamps
-    // those with the data-entry date, not the real completion date).
+    // Bookings" KPI cards — matches the same pickup_date-based logic the
+    // KPI number itself is computed from (see
+    // app/api/admin/dashboard-analytics/route.ts's module comment for why
+    // this is pickup_date and not updated_at/created_at/delivery_date).
     query = query
       .eq('status', 'completed')
-      .or(
-        `and(delivery_date.gte.${completedFrom},delivery_date.lt.${completedTo}),` +
-        `and(delivery_date.is.null,pickup_date.gte.${completedFrom},pickup_date.lt.${completedTo})`
-      )
+      .gte('pickup_date', completedFrom)
+      .lt('pickup_date', completedTo)
   } else if (statuses) {
     // Phase filter: match any of the statuses in the list
     query = query.in('status', statuses.split(','))
