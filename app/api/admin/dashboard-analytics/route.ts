@@ -14,15 +14,25 @@ export const runtime = 'nodejs'
 // (app/api/admin/leads/route.ts), Skybird partner bookings/leads
 // (app/api/skybird/*/route.ts) — always writes exactly one row to `leads`,
 // linked forward to its booking (once one exists) via leads.booking_id. A
-// booking is never created without a linked lead in the normal flow (the
-// one lazy-create path, admin/zoho/generate-quote, only fires for a lead
-// that doesn't have a booking yet).
+// booking is never created without a linked lead in the normal flow.
 //
-// So `leads` is the canonical inquiry list — counting its rows (instead of
-// adding leads.count + bookings.count, which double-counts every inquiry
-// that has progressed past "just a lead") gives a true unique count. Each
-// lead is bucketed by its linked booking's current status; a lead with no
-// booking yet is 'pending'.
+// On top of that, the same real customer can legitimately have more than
+// one lead row — most commonly a return-trip pair (e.g. Doorstep→Airport
+// plus the Airport→Doorstep leg back), each created as its own booking/
+// lead. Confirmed against real data: no dummy/test rows in this dataset
+// (one known exception, deleted via the Leads tab's own Delete action —
+// see PATCH .../leads/[id] with deleted_at, already excluded below). So
+// "unique inquiry" here means unique CUSTOMER, not unique lead row —
+// leads sharing the same phone number are the same person and collapse
+// into a single inquiry, counted once no matter how many bookings
+// (onward + return, or a genuine repeat visit) they generated.
+//
+// Each customer is bucketed by the most-advanced status across all of
+// their bookings (completed beats active beats pending beats cancelled —
+// e.g. a customer with one completed leg and one cancelled leg still
+// counts as a completed customer, not cancelled), and dated by their
+// earliest inquiry (first lead created), which is what Monthly Inquiry
+// Statistics and the funnel's date-range filter key off.
 
 const ACTIVE_STATUSES = new Set([
   // Paid and actively moving, but not yet at the final Completed status —
@@ -32,6 +42,10 @@ const ACTIVE_STATUSES = new Set([
 
 type Bucket = 'completed' | 'cancelled' | 'active' | 'pending'
 
+const BUCKET_PRIORITY: Record<Bucket, number> = {
+  completed: 3, active: 2, pending: 1, cancelled: 0,
+}
+
 function bucketFor(status: string | null): Bucket {
   if (status === 'completed') return 'completed'
   if (status === 'cancelled') return 'cancelled'
@@ -40,6 +54,15 @@ function bucketFor(status: string | null): Bucket {
   // i.e. still needs action, hasn't reached active fulfillment or an
   // end state.
   return 'pending'
+}
+
+// Normalizes a phone number to its last 10 digits so the same customer
+// grouped across slightly different formats (with/without +91, spaces,
+// dashes) still matches. India mobile numbers are 10 digits; this is
+// robust enough without needing full E.164 parsing here.
+function normalizePhone(phone: string | null | undefined): string {
+  const digits = (phone ?? '').replace(/\D/g, '')
+  return digits.length > 10 ? digits.slice(-10) : digits
 }
 
 function monthWindow(base: Date, offsetMonths: number) {
@@ -62,20 +85,16 @@ export async function GET(req: NextRequest) {
 
   // Excludes soft-deleted leads (leads.deleted_at IS NOT NULL) — the exact
   // same default filter the Leads tab itself applies (see
-  // app/api/admin/leads/route.ts). Without this, a lead the admin already
-  // deleted (duplicate/test entry, via the Leads tab's delete action) was
-  // still being counted here, inflating Total Inquiries above what the
-  // Leads tab or Dashboard actually show. Falls back to an unfiltered
-  // query if the column doesn't exist yet (migration not run), same
-  // defensive pattern used in admin/leads/route.ts.
-  let leadsQuery = supabaseAdmin
+  // app/api/admin/leads/route.ts). Falls back to an unfiltered query if
+  // the column doesn't exist yet (migration not run), same defensive
+  // pattern used in admin/leads/route.ts.
+  let leadsRes = await supabaseAdmin
     .from('leads')
-    .select('id, created_at, booking_id')
+    .select('id, created_at, booking_id, phone')
     .is('deleted_at', null)
     .limit(20000)
-  let leadsRes = await leadsQuery
   if (leadsRes.error?.message?.includes('deleted_at')) {
-    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id').limit(20000)
+    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id, phone').limit(20000)
   }
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
 
@@ -92,48 +111,68 @@ export async function GET(req: NextRequest) {
   const statusByBookingId = new Map<string, string>()
   for (const b of bookingsRes.data ?? []) statusByBookingId.set(b.id as string, b.status as string)
 
-  const leads = (leadsRes.data ?? []).map(l => ({
+  const rawLeads = (leadsRes.data ?? []).map(l => ({
+    phoneKey:   normalizePhone(l.phone as string | null),
     created_at: l.created_at as string,
-    bucket: bucketFor(l.booking_id ? (statusByBookingId.get(l.booking_id as string) ?? null) : null),
+    bucket:     bucketFor(l.booking_id ? (statusByBookingId.get(l.booking_id as string) ?? null) : null),
   }))
 
-  const inWindow = (list: typeof leads, from: Date, to: Date) =>
-    list.filter(l => {
-      const t = new Date(l.created_at).getTime()
+  // ── Collapse same-customer leads (return-trip pairs, repeat inquiries)
+  // into one row per unique phone number ──────────────────────────────
+  const byPhone = new Map<string, typeof rawLeads>()
+  for (const l of rawLeads) {
+    // Blank/unparseable phone numbers are never merged with each other —
+    // only group when there's an actual matching number, so records
+    // missing a phone don't get incorrectly collapsed together.
+    const key = l.phoneKey || `__no_phone_${byPhone.size}_${Math.random()}`
+    if (!byPhone.has(key)) byPhone.set(key, [])
+    byPhone.get(key)!.push(l)
+  }
+
+  const customers = [...byPhone.values()].map(group => ({
+    created_at: group.reduce((min, l) => (l.created_at < min ? l.created_at : min), group[0].created_at),
+    bucket: group.reduce(
+      (best, l) => (BUCKET_PRIORITY[l.bucket] > BUCKET_PRIORITY[best] ? l.bucket : best),
+      group[0].bucket
+    ),
+  }))
+
+  const inWindow = (list: typeof customers, from: Date, to: Date) =>
+    list.filter(c => {
+      const t = new Date(c.created_at).getTime()
       return t >= from.getTime() && t < to.getTime()
     })
 
-  const bucketCounts = (list: typeof leads) => ({
+  const bucketCounts = (list: typeof customers) => ({
     total:     list.length,
-    completed: list.filter(l => l.bucket === 'completed').length,
-    active:    list.filter(l => l.bucket === 'active').length,
-    pending:   list.filter(l => l.bucket === 'pending').length,
-    cancelled: list.filter(l => l.bucket === 'cancelled').length,
+    completed: list.filter(c => c.bucket === 'completed').length,
+    active:    list.filter(c => c.bucket === 'active').length,
+    pending:   list.filter(c => c.bucket === 'pending').length,
+    cancelled: list.filter(c => c.bucket === 'cancelled').length,
   })
 
-  const overall = bucketCounts(leads)
+  const overall = bucketCounts(customers)
 
   // Diagnostic breakdown — shown in the Dashboard Analytics UI so the gap
-  // between "leads" and "bookings" is visible instead of a black box.
+  // between raw lead rows and unique customers is visible instead of a
+  // black box.
   const linkedBookingIds = new Set(
     (leadsRes.data ?? []).map(l => l.booking_id).filter((id): id is string => !!id)
   )
-  const leadsWithBooking    = (leadsRes.data ?? []).filter(l => l.booking_id).length
-  const leadsWithoutBooking = leads.length - leadsWithBooking
   const bookingsTotal       = (bookingsRes.data ?? []).length
   const bookingsWithoutLead = (bookingsRes.data ?? []).filter(b => !linkedBookingIds.has(b.id as string)).length
 
   const now = new Date()
   const thisMonth = monthWindow(now, 0)
   const lastMonth = monthWindow(now, -1)
-  const currentMonthLeads = inWindow(leads, thisMonth.from, thisMonth.to)
-  const lastMonthLeads    = inWindow(leads, lastMonth.from, lastMonth.to)
+  const currentMonthCustomers = inWindow(customers, thisMonth.from, thisMonth.to)
+  const lastMonthCustomers    = inWindow(customers, lastMonth.from, lastMonth.to)
 
   let rangeInquiries: number | undefined
   if (dateFromParam || dateToParam) {
     const from = dateFromParam ? new Date(dateFromParam) : new Date(0)
     const to   = dateToParam   ? new Date(dateToParam)   : new Date(8640000000000000)
-    rangeInquiries = inWindow(leads, from, to).length
+    rangeInquiries = inWindow(customers, from, to).length
   }
 
   return NextResponse.json({
@@ -143,20 +182,18 @@ export async function GET(req: NextRequest) {
     total_pending:   overall.pending,
     total_cancelled: overall.cancelled,
 
-    current_month_total_inquiries: currentMonthLeads.length,
-    last_month_total_inquiries:    lastMonthLeads.length,
-    current_month_completed:       currentMonthLeads.filter(l => l.bucket === 'completed').length,
-    last_month_completed:          lastMonthLeads.filter(l => l.bucket === 'completed').length,
+    current_month_total_inquiries: currentMonthCustomers.length,
+    last_month_total_inquiries:    lastMonthCustomers.length,
+    current_month_completed:       currentMonthCustomers.filter(c => c.bucket === 'completed').length,
+    last_month_completed:          lastMonthCustomers.filter(c => c.bucket === 'completed').length,
 
     ...(rangeInquiries !== undefined ? { range_inquiries: rangeInquiries } : {}),
 
-    // Diagnostic breakdown, surfaced in the Dashboard Analytics UI — makes
-    // the leads-vs-bookings gap visible instead of a black box, so any
-    // future mismatch can be pinned down from the numbers directly instead
-    // of guessing.
+    // Diagnostic breakdown, surfaced in the Dashboard Analytics UI.
     debug: {
-      leads_with_booking:    leadsWithBooking,
-      leads_without_booking: leadsWithoutBooking,
+      raw_lead_rows:         rawLeads.length,
+      unique_customers:      customers.length,
+      repeat_customer_extra: rawLeads.length - customers.length,
       bookings_total:        bookingsTotal,
       bookings_without_lead: bookingsWithoutLead,
     },

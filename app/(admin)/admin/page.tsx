@@ -1120,7 +1120,7 @@ export default function AdminDashboard() {
     current_month_completed: number; last_month_completed: number
     range_inquiries?: number
     debug?: {
-      leads_with_booking: number; leads_without_booking: number
+      raw_lead_rows: number; unique_customers: number; repeat_customer_extra: number
       bookings_total: number; bookings_without_lead: number
     }
   } | null>(null)
@@ -1232,7 +1232,7 @@ export default function AdminDashboard() {
       current_month_completed: number; last_month_completed: number
       range_inquiries?: number
       debug?: {
-        leads_with_booking: number; leads_without_booking: number
+        raw_lead_rows: number; unique_customers: number; repeat_customer_extra: number
         bookings_total: number; bookings_without_lead: number
       }
     } | null = null
@@ -1436,8 +1436,8 @@ export default function AdminDashboard() {
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
           {analytics?.debug && (
             <p className="mb-2 text-[10px] text-gray-400">
-              {analytics.debug.leads_with_booking + analytics.debug.leads_without_booking} leads
-              ({analytics.debug.leads_with_booking} linked to a booking, {analytics.debug.leads_without_booking} not yet booked)
+              {analytics.debug.raw_lead_rows} lead records &rarr; {analytics.debug.unique_customers} unique customers
+              ({analytics.debug.repeat_customer_extra} collapsed as repeat/return-trip entries)
               &nbsp;·&nbsp; {analytics.debug.bookings_total} bookings
               ({analytics.debug.bookings_without_lead} with no linked lead)
             </p>
