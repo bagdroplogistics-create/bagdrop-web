@@ -1344,7 +1344,7 @@ export default function AdminDashboard() {
         delivered:    sheets.filter((s: Record<string,string>) => ['delivered','completed'].includes(s.status)).length,
         totalIncome:  sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_income  || 0), 0),
         totalExpense: sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_expense || 0), 0),
-        netProfit:    sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.net_profit    || 0), 0),
+        netProfit:    sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_income || 0), 0) - sheets.reduce((sum: number, s: Record<string,number>) => sum + (s.total_expense || 0), 0),
       })
     }
     setLoading(false)
