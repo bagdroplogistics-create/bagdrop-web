@@ -165,25 +165,36 @@ export async function GET(req: NextRequest) {
   // completed_month_override may not exist yet on this database — see
   // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql. Falls back to a query without
   // it (pickup_date-only bucketing) rather than erroring, same pattern as
-  // deleted_at above.
+  // deleted_at above. The two branches select different columns, so their
+  // results are normalized into one BookingRow[] shape below (assigning a
+  // narrower-select PostgrestResponse over a wider-select one, or vice
+  // versa, is a TS type error, not just a runtime concern).
+  type BookingRow = { id: string; status: string; pickup_date: string | null; completed_month_override: string | null }
   let completedOverrideSupported = true
-  let bookingsRes = await supabaseAdmin
-    .from('bookings')
-    .select('id, status, pickup_date, completed_month_override')
-    .not('tracking_id', 'is', null)
-    .limit(20000)
-  if (bookingsRes.error?.message?.includes('completed_month_override')) {
-    completedOverrideSupported = false
-    bookingsRes = await supabaseAdmin
+  let bookingsData: BookingRow[] = []
+  {
+    const primary = await supabaseAdmin
       .from('bookings')
-      .select('id, status, pickup_date')
+      .select('id, status, pickup_date, completed_month_override')
       .not('tracking_id', 'is', null)
       .limit(20000)
+    if (primary.error?.message?.includes('completed_month_override')) {
+      completedOverrideSupported = false
+      const fallback = await supabaseAdmin
+        .from('bookings')
+        .select('id, status, pickup_date')
+        .not('tracking_id', 'is', null)
+        .limit(20000)
+      if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 })
+      bookingsData = (fallback.data ?? []).map(b => ({ ...b, completed_month_override: null }))
+    } else {
+      if (primary.error) return NextResponse.json({ error: primary.error.message }, { status: 500 })
+      bookingsData = (primary.data ?? []) as BookingRow[]
+    }
   }
-  if (bookingsRes.error) return NextResponse.json({ error: bookingsRes.error.message }, { status: 500 })
 
   const statusByBookingId = new Map<string, string>()
-  for (const b of bookingsRes.data ?? []) statusByBookingId.set(b.id as string, b.status as string)
+  for (const b of bookingsData) statusByBookingId.set(b.id, b.status)
 
   const leads = (leadsRes.data ?? []).map(l => ({
     created_at: l.created_at as string,
@@ -216,8 +227,8 @@ export async function GET(req: NextRequest) {
   const linkedBookingIds = new Set(
     (leadsRes.data ?? []).map(l => l.booking_id).filter((id): id is string => !!id)
   )
-  const bookingsTotal       = (bookingsRes.data ?? []).length
-  const bookingsWithoutLead = (bookingsRes.data ?? []).filter(b => !linkedBookingIds.has(b.id as string)).length
+  const bookingsTotal       = bookingsData.length
+  const bookingsWithoutLead = bookingsData.filter(b => !linkedBookingIds.has(b.id)).length
   const leadsAllCount       = leadsAllRes.count ?? leads.length
   const softDeletedCount    = deletedAtSupported ? Math.max(0, leadsAllCount - leads.length) : 0
 
@@ -232,10 +243,9 @@ export async function GET(req: NextRequest) {
   // with completed_month_override set uses that month instead (manual
   // correction — see module comment).
   const completedInMonth = (key: string) =>
-    (bookingsRes.data ?? []).filter(b => {
-      if ((b.status as string) !== 'completed') return false
-      const override = completedOverrideSupported ? (b.completed_month_override as string | null) : null
-      const dateStr = override || (b.pickup_date as string | null)
+    bookingsData.filter(b => {
+      if (b.status !== 'completed') return false
+      const dateStr = b.completed_month_override || b.pickup_date
       if (!dateStr) return false
       return dateStr.slice(0, 7) === key
     }).length

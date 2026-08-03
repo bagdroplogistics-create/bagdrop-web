@@ -99,31 +99,39 @@ export async function GET(req: NextRequest) {
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    let completedOverrideSupported = true
-    let compRes = await supabaseAdmin
+    // The two branches below select different columns, so their results
+    // are normalized into one shape (completed_month_override always
+    // present, null when unsupported/on the fallback) rather than
+    // reassigning one PostgrestResponse over a differently-shaped one —
+    // that reassignment is a TS type error, not just a runtime concern.
+    type CompletedRow = { total_amount: number | null; pickup_date: string | null; completed_month_override: string | null }
+    let completedData: CompletedRow[] = []
+    const primary = await supabaseAdmin
       .from('bookings')
       .select('total_amount, pickup_date, completed_month_override')
       .eq('status', 'completed')
-    if (compRes.error?.message?.includes('completed_month_override')) {
-      completedOverrideSupported = false
-      compRes = await supabaseAdmin
+    if (primary.error?.message?.includes('completed_month_override')) {
+      const fallback = await supabaseAdmin
         .from('bookings')
         .select('total_amount, pickup_date')
         .eq('status', 'completed')
+      if (!fallback.error) {
+        completedData = (fallback.data ?? []).map(b => ({ ...b, completed_month_override: null }))
+      }
+    } else if (!primary.error) {
+      completedData = (primary.data ?? []) as CompletedRow[]
     }
-    if (!compRes.error) {
-      const fromMs = new Date(periodFrom).getTime()
-      const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
-      const inPeriod = (compRes.data ?? []).filter(b => {
-        const override = completedOverrideSupported ? (b.completed_month_override as string | null) : null
-        const dateStr   = override || (b.pickup_date as string | null)
-        if (!dateStr) return false
-        const t = new Date(dateStr).getTime()
-        return t >= fromMs && t < toMs
-      })
-      periodAmount = inPeriod.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
-      periodCount  = inPeriod.length
-    }
+
+    const fromMs = new Date(periodFrom).getTime()
+    const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
+    const inPeriod = completedData.filter(b => {
+      const dateStr = b.completed_month_override || b.pickup_date
+      if (!dateStr) return false
+      const t = new Date(dateStr).getTime()
+      return t >= fromMs && t < toMs
+    })
+    periodAmount = inPeriod.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+    periodCount  = inPeriod.length
   }
 
   return NextResponse.json({
