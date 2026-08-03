@@ -27,7 +27,7 @@ export async function GET(req: NextRequest) {
   // consumers (admin-app, the always-visible Revenue This Month KPI card)
   // are unaffected. When date_from is present, a second, period-scoped
   // figure is computed and returned as revenue_period_amount /
-  // revenue_period_count.
+  // revenue_period_count — see below for what dataset it uses.
   const periodFrom = req.nextUrl.searchParams.get('date_from')
   const periodTo   = req.nextUrl.searchParams.get('date_to')
 
@@ -82,22 +82,47 @@ export async function GET(req: NextRequest) {
     0
   )
 
-  // Period-scoped revenue — same "paid" definition as revenue_this_month
-  // above, just over a caller-supplied window instead of always the
-  // current month.
+  // Period-scoped Revenue Report figure — deliberately NOT the same "paid +
+  // created_at" definition as revenue_this_month above. Per the user: the
+  // Revenue Report's Paid Bookings count must match Dashboard Analytics'
+  // Completed Bookings exactly, so it uses the identical dataset and
+  // bucketing rule as app/api/admin/dashboard-analytics/route.ts —
+  // status='completed', bucketed by completed_month_override when an
+  // admin has set one, falling back to pickup_date (the booking's actual
+  // completion date, not when the inquiry/lead was created). This also
+  // means a booking whose inquiry came in one month but completed the next
+  // is correctly attributed to its completion month here too — same as
+  // Completed Bookings. Return-trip / duplicate-row concerns don't apply:
+  // each booking is already a single row (see dashboard-analytics's module
+  // comment on return quotes never creating a second row), so counting
+  // bookings here is already unique-by-Inquiry-ID.
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    let periodQuery = supabaseAdmin
+    let completedOverrideSupported = true
+    let compRes = await supabaseAdmin
       .from('bookings')
-      .select('total_amount', { count: 'exact' })
-      .eq('payment_status', 'paid')
-      .gte('created_at', periodFrom)
-    if (periodTo) periodQuery = periodQuery.lt('created_at', periodTo)
-    const periodRes = await periodQuery
-    if (!periodRes.error) {
-      periodAmount = (periodRes.data ?? []).reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
-      periodCount  = periodRes.count ?? (periodRes.data ?? []).length
+      .select('total_amount, pickup_date, completed_month_override')
+      .eq('status', 'completed')
+    if (compRes.error?.message?.includes('completed_month_override')) {
+      completedOverrideSupported = false
+      compRes = await supabaseAdmin
+        .from('bookings')
+        .select('total_amount, pickup_date')
+        .eq('status', 'completed')
+    }
+    if (!compRes.error) {
+      const fromMs = new Date(periodFrom).getTime()
+      const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
+      const inPeriod = (compRes.data ?? []).filter(b => {
+        const override = completedOverrideSupported ? (b.completed_month_override as string | null) : null
+        const dateStr   = override || (b.pickup_date as string | null)
+        if (!dateStr) return false
+        const t = new Date(dateStr).getTime()
+        return t >= fromMs && t < toMs
+      })
+      periodAmount = inPeriod.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+      periodCount  = inPeriod.length
     }
   }
 
