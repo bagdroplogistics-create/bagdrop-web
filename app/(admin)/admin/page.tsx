@@ -1118,23 +1118,15 @@ export default function AdminDashboard() {
     total_pending: number; total_cancelled: number; total_rejected: number
     current_month_total_inquiries: number; last_month_total_inquiries: number
     current_month_completed: number; last_month_completed: number
-    range_inquiries?: number
     debug?: {
       leads_total_including_deleted: number; soft_deleted_count: number; deleted_at_supported: boolean
       bookings_total: number; bookings_without_lead: number
     }
   } | null>(null)
-  // Booking Funnel date-range control — scopes the 12 funnel cards (and the
-  // "New Inquiries" leads count folded into them) to a window. Defaults to
-  // This Month.
-  const [funnelRange, setFunnelRange] = useState<'today' | 'this_month' | 'last_month' | 'custom'>('this_month')
-  const [customFrom, setCustomFrom]   = useState('')
-  const [customTo, setCustomTo]       = useState('')
   const [tripStats, setTripStats]     = useState<{
     total: number; active: number; delivered: number
     totalIncome: number; totalExpense: number; netProfit: number
   } | null>(null)
-  const [statusCounts, setStatusCounts] = useState<Record<string, number>>({})
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
   // Additive: "Generate LR" quick action from the expanded booking row —
@@ -1158,35 +1150,6 @@ export default function AdminDashboard() {
     sessionStorage.setItem('bagdrop_dashboard_sort', val)
   }
 
-  // Resolves the current funnelRange selection to a [from, to) ISO window
-  // for the API's date_from/date_to params. Returns {} only for 'custom'
-  // before both dates are picked (no filter until then).
-  function getFunnelDateRange(): { from?: string; to?: string } {
-    const now = new Date()
-    if (funnelRange === 'today') {
-      const from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      const to   = new Date(from); to.setDate(to.getDate() + 1)
-      return { from: from.toISOString(), to: to.toISOString() }
-    }
-    if (funnelRange === 'this_month') {
-      const from = new Date(now.getFullYear(), now.getMonth(), 1)
-      const to   = new Date(now.getFullYear(), now.getMonth() + 1, 1)
-      return { from: from.toISOString(), to: to.toISOString() }
-    }
-    if (funnelRange === 'last_month') {
-      const from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const to   = new Date(now.getFullYear(), now.getMonth(), 1)
-      return { from: from.toISOString(), to: to.toISOString() }
-    }
-    if (funnelRange === 'custom' && customFrom) {
-      const from = new Date(customFrom + 'T00:00:00')
-      const to   = new Date((customTo || customFrom) + 'T00:00:00')
-      to.setDate(to.getDate() + 1) // end date inclusive
-      return { from: from.toISOString(), to: to.toISOString() }
-    }
-    return {}
-  }
-
   const fetchData = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
@@ -1205,58 +1168,17 @@ export default function AdminDashboard() {
     }
     if (search) qs += '&search=' + encodeURIComponent(search)
 
-    // Booking Funnel date-range window — applied to both the raw bookings
-    // scan (allR, below) and dashboard-analytics' range_inquiries, so "New
-    // Inquiries" reconciles with the rest of the funnel for the same window.
-    const range = getFunnelDateRange()
-    let funnelQs = '?key=' + adminKey + '&limit=2000'
-    let analyticsQs = '?key=' + adminKey
-    if (range.from) { funnelQs += '&date_from=' + encodeURIComponent(range.from); analyticsQs += '&date_from=' + encodeURIComponent(range.from) }
-    if (range.to)   { funnelQs += '&date_to='   + encodeURIComponent(range.to);   analyticsQs += '&date_to='   + encodeURIComponent(range.to) }
-
-    const [sr, br, cr, tr, allR, ar] = await Promise.all([
+    const [sr, br, cr, tr, ar] = await Promise.all([
       fetch('/api/admin/stats?key=' + adminKey),
       fetch('/api/admin/bookings' + qs),
       fetch('/api/admin/crm-stats?key=' + adminKey),
       fetch('/api/admin/trip-sheets?limit=200&key=' + adminKey),
-      fetch('/api/admin/bookings' + funnelQs),
-      fetch('/api/admin/dashboard-analytics' + analyticsQs),
+      fetch('/api/admin/dashboard-analytics?key=' + adminKey),
     ])
     if (sr.ok) setStats(await sr.json())
     if (br.ok) setBookings((await br.json()).bookings ?? [])
     if (cr.ok) setCrmStats(await cr.json())
-    let analyticsData: {
-      total_inquiries: number; total_completed: number; total_active: number
-      total_pending: number; total_cancelled: number; total_rejected: number
-      current_month_total_inquiries: number; last_month_total_inquiries: number
-      current_month_completed: number; last_month_completed: number
-      range_inquiries?: number
-      debug?: {
-        leads_total_including_deleted: number; soft_deleted_count: number; deleted_at_supported: boolean
-        bookings_total: number; bookings_without_lead: number
-      }
-    } | null = null
-    if (ar.ok) { analyticsData = await ar.json(); setAnalytics(analyticsData) }
-    if (allR.ok) {
-      const allData = await allR.json()
-      const counts: Record<string, number> = {}
-      for (const b of (allData.bookings ?? [])) {
-        counts[b.status] = (counts[b.status] ?? 0) + 1
-      }
-      // "New Inquiries" previously only counted bookings already sitting at
-      // status='inquiry' — but a booking row doesn't exist until a quote is
-      // created, so every lead that hasn't reached quote-creation yet was
-      // invisible on this dashboard. Folding in range_inquiries (see
-      // app/api/admin/dashboard-analytics/route.ts — the single source of
-      // truth for unique-inquiry counting, shared with the Dashboard
-      // Analytics KPIs below) makes this card reconcile with them: ALL
-      // leads created in the selected window, regardless of whether
-      // they've since been quoted/rejected/booked.
-      if (analyticsData) {
-        counts['inquiry'] = (counts['inquiry'] ?? 0) + (analyticsData.range_inquiries ?? 0)
-      }
-      setStatusCounts(counts)
-    }
+    if (ar.ok) setAnalytics(await ar.json())
     if (tr.ok) {
       const td = await tr.json()
       const sheets = td.trip_sheets ?? []
@@ -1270,7 +1192,7 @@ export default function AdminDashboard() {
       })
     }
     setLoading(false)
-  }, [adminKey, filter, phaseFilter, search, funnelRange, customFrom, customTo])
+  }, [adminKey, filter, phaseFilter, search])
 
   useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
 
@@ -1335,103 +1257,12 @@ export default function AdminDashboard() {
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 
-        {/* ── Booking Funnel — 12 clickable status cards ── */}
-        <div className="mb-6">
-          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Booking Funnel</p>
-            <span className="text-[10px] text-gray-400">Click any card to filter</span>
-          </div>
-          {/* Date-range control — scopes every card below (and the leads
-              folded into "New Inquiries") to a window instead of all-time. */}
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {([
-              { key: 'today',      label: 'Today' },
-              { key: 'this_month', label: 'This Month' },
-              { key: 'last_month', label: 'Last Month' },
-              { key: 'custom',     label: 'Custom' },
-            ] as const).map(r => (
-              <button key={r.key}
-                onClick={() => setFunnelRange(r.key)}
-                className={`rounded-full border px-3 py-1 text-[11px] font-semibold transition-colors ${
-                  funnelRange === r.key
-                    ? 'border-orange-400 bg-orange-500 text-white'
-                    : 'border-gray-200 bg-white text-gray-500 hover:border-orange-300'
-                }`}>
-                {r.label}
-              </button>
-            ))}
-            {funnelRange === 'custom' && (
-              <span className="flex items-center gap-1.5">
-                <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px]" />
-                <span className="text-[11px] text-gray-400">to</span>
-                <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-2 py-1 text-[11px]" />
-              </span>
-            )}
-          </div>
-          {/* Row 1: Inquiry → Quote */}
-          <div className="mb-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {[
-              { key: 'inquiry',       label: 'New Inquiries',   color: '#92400e', bg: '#fef3c7' },
-              { key: 'quote_created', label: 'Quotes Created',  color: '#4f46e5', bg: '#eef2ff' },
-              { key: 'quote_sent',    label: 'Quotes Sent',     color: '#6d28d9', bg: '#ede9fe' },
-              { key: 'accepted',      label: 'Quotes Accepted', color: '#059669', bg: '#d1fae5' },
-              { key: 'rejected',      label: 'Quotes Rejected', color: '#dc2626', bg: '#fee2e2' },
-              { key: 'payment_pending', label: 'Payment Pending', color: '#d97706', bg: '#fef3c7' },
-            ].map(c => (
-              <button key={c.key}
-                onClick={() => {
-                  // "New Inquiries" now includes leads that don't have a
-                  // booking row yet at all (see fetchData above) — the
-                  // bookings table this page filters can't show those, so
-                  // send that one card to the Leads list instead of trying
-                  // to filter a table that's structurally missing most of
-                  // what the count represents.
-                  if (c.key === 'inquiry') { router.push('/admin/leads'); return }
-                  setFilter(c.key); setPhaseFilter('all')
-                }}
-                className={`rounded-xl border p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow ${
-                  filter === c.key ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-300' : 'border-gray-100 bg-white'
-                }`}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                <p className="mt-1 text-xl font-bold" style={{ color: c.color }}>
-                  {statusCounts[c.key] ?? 0}
-                </p>
-                {c.key === 'inquiry' && <p className="mt-0.5 text-[9px] text-gray-400">Includes not-yet-quoted leads</p>}
-              </button>
-            ))}
-          </div>
-          {/* Row 2: Payment → Closed */}
-          <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
-            {[
-              { key: 'payment_received', label: 'Payment Received',   color: '#059669', bg: '#d1fae5' },
-              { key: 'confirmed',        label: 'Booking Confirmed',  color: '#2563eb', bg: '#dbeafe' },
-              { key: 'in_transit',       label: 'In Transit',         color: '#0891b2', bg: '#cffafe' },
-              { key: 'out_for_delivery', label: 'Out for Delivery',   color: '#ea580c', bg: '#ffedd5' },
-              { key: 'delivered',        label: 'Delivered',          color: '#16a34a', bg: '#dcfce7' },
-              { key: 'completed',        label: 'Completed',          color: '#14532d', bg: '#bbf7d0' },
-            ].map(c => (
-              <button key={c.key} onClick={() => { setFilter(c.key); setPhaseFilter('all') }}
-                className={`rounded-xl border p-3 text-left shadow-sm transition-all hover:border-orange-300 hover:shadow ${
-                  filter === c.key ? 'border-orange-400 bg-orange-50 ring-1 ring-orange-300' : 'border-gray-100 bg-white'
-                }`}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                <p className="mt-1 text-xl font-bold" style={{ color: c.color }}>
-                  {statusCounts[c.key] ?? 0}
-                </p>
-              </button>
-            ))}
-          </div>
-        </div>
-
         {/* Dashboard Analytics — unified inquiry KPIs. Single source of truth:
             app/api/admin/dashboard-analytics/route.ts counts each lead once
             (the Dashboard and Leads tabs describe the same inquiries — a
             lead is created for every inquiry regardless of source, and a
             booking never exists without one), bucketed by its linked
-            booking's status. All-time, independent of the funnel's date
-            range above. */}
+            booking's status. All-time. */}
         <div className="mb-6">
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
           {analytics?.debug && (
