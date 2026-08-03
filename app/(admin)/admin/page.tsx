@@ -1119,6 +1119,10 @@ export default function AdminDashboard() {
     current_month_total_inquiries: number; last_month_total_inquiries: number
     current_month_completed: number; last_month_completed: number
     range_inquiries?: number
+    debug?: {
+      leads_with_booking: number; leads_without_booking: number
+      bookings_total: number; bookings_without_lead: number
+    }
   } | null>(null)
   // Booking Funnel date-range control — scopes the 12 funnel cards (and the
   // "New Inquiries" leads count folded into them) to a window. Defaults to
@@ -1227,6 +1231,10 @@ export default function AdminDashboard() {
       current_month_total_inquiries: number; last_month_total_inquiries: number
       current_month_completed: number; last_month_completed: number
       range_inquiries?: number
+      debug?: {
+        leads_with_booking: number; leads_without_booking: number
+        bookings_total: number; bookings_without_lead: number
+      }
     } | null = null
     if (ar.ok) { analyticsData = await ar.json(); setAnalytics(analyticsData) }
     if (allR.ok) {
@@ -1425,7 +1433,16 @@ export default function AdminDashboard() {
             booking's status. All-time, independent of the funnel's date
             range above. */}
         <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
+          {analytics?.debug && (
+            <p className="mb-2 text-[10px] text-gray-400">
+              {analytics.debug.leads_with_booking + analytics.debug.leads_without_booking} leads
+              ({analytics.debug.leads_with_booking} linked to a booking, {analytics.debug.leads_without_booking} not yet booked)
+              &nbsp;·&nbsp; {analytics.debug.bookings_total} bookings
+              ({analytics.debug.bookings_without_lead} with no linked lead)
+            </p>
+          )}
+          {!analytics?.debug && <div className="mb-2" />}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
               {

@@ -60,11 +60,33 @@ export async function GET(req: NextRequest) {
   const dateFromParam = searchParams.get('date_from')
   const dateToParam   = searchParams.get('date_to')
 
-  const [leadsRes, bookingsRes] = await Promise.all([
-    supabaseAdmin.from('leads').select('id, created_at, booking_id').limit(20000),
-    supabaseAdmin.from('bookings').select('id, status').limit(20000),
-  ])
-  if (leadsRes.error)    return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
+  // Excludes soft-deleted leads (leads.deleted_at IS NOT NULL) — the exact
+  // same default filter the Leads tab itself applies (see
+  // app/api/admin/leads/route.ts). Without this, a lead the admin already
+  // deleted (duplicate/test entry, via the Leads tab's delete action) was
+  // still being counted here, inflating Total Inquiries above what the
+  // Leads tab or Dashboard actually show. Falls back to an unfiltered
+  // query if the column doesn't exist yet (migration not run), same
+  // defensive pattern used in admin/leads/route.ts.
+  let leadsQuery = supabaseAdmin
+    .from('leads')
+    .select('id, created_at, booking_id')
+    .is('deleted_at', null)
+    .limit(20000)
+  let leadsRes = await leadsQuery
+  if (leadsRes.error?.message?.includes('deleted_at')) {
+    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id').limit(20000)
+  }
+  if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
+
+  // Excludes any row without a tracking_id — same guard the Dashboard's own
+  // bookings list uses (app/api/admin/bookings/route.ts) to keep out
+  // accidentally trigger-created rows.
+  const bookingsRes = await supabaseAdmin
+    .from('bookings')
+    .select('id, status')
+    .not('tracking_id', 'is', null)
+    .limit(20000)
   if (bookingsRes.error) return NextResponse.json({ error: bookingsRes.error.message }, { status: 500 })
 
   const statusByBookingId = new Map<string, string>()
@@ -90,6 +112,16 @@ export async function GET(req: NextRequest) {
   })
 
   const overall = bucketCounts(leads)
+
+  // Diagnostic breakdown — shown in the Dashboard Analytics UI so the gap
+  // between "leads" and "bookings" is visible instead of a black box.
+  const linkedBookingIds = new Set(
+    (leadsRes.data ?? []).map(l => l.booking_id).filter((id): id is string => !!id)
+  )
+  const leadsWithBooking    = (leadsRes.data ?? []).filter(l => l.booking_id).length
+  const leadsWithoutBooking = leads.length - leadsWithBooking
+  const bookingsTotal       = (bookingsRes.data ?? []).length
+  const bookingsWithoutLead = (bookingsRes.data ?? []).filter(b => !linkedBookingIds.has(b.id as string)).length
 
   const now = new Date()
   const thisMonth = monthWindow(now, 0)
@@ -117,5 +149,16 @@ export async function GET(req: NextRequest) {
     last_month_completed:          lastMonthLeads.filter(l => l.bucket === 'completed').length,
 
     ...(rangeInquiries !== undefined ? { range_inquiries: rangeInquiries } : {}),
+
+    // Diagnostic breakdown, surfaced in the Dashboard Analytics UI — makes
+    // the leads-vs-bookings gap visible instead of a black box, so any
+    // future mismatch can be pinned down from the numbers directly instead
+    // of guessing.
+    debug: {
+      leads_with_booking:    leadsWithBooking,
+      leads_without_booking: leadsWithoutBooking,
+      bookings_total:        bookingsTotal,
+      bookings_without_lead: bookingsWithoutLead,
+    },
   })
 }
