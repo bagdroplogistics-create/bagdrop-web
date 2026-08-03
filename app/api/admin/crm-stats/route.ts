@@ -2,44 +2,30 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 
+// NOTE: the "which inquiries have we actually got" and "how many are
+// completed/active/pending/cancelled" questions now live in
+// app/api/admin/dashboard-analytics/route.ts — that's the single source of
+// truth for unique-inquiry counting (see its module comment). This route
+// keeps only the fields that endpoint doesn't cover: revenue, pending
+// quotes, today's dispatch, and the raw all-time leads/unbooked-leads
+// counts still consumed by admin-app (the separate mobile admin client).
+
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-
-  const { searchParams } = req.nextUrl
 
   const now        = new Date()
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
 
   const today = new Date().toISOString().split('T')[0]
 
-  // Optional date-range scope for the Booking Funnel's range control (see
-  // app/(admin)/admin/page.tsx). Drives leads_in_range only — total_leads,
-  // pending_quotes, total_completed, total_rejected, revenue_this_month
-  // stay all-time or fixed-to-calendar-month, same as before.
-  const dateFrom = searchParams.get('date_from')
-  const dateTo   = searchParams.get('date_to')
-
-  // Leads created within the selected window, regardless of current
-  // booking_id — i.e. "how many inquiries actually came in during this
-  // period," not "how many are still sitting unquoted today." These are
-  // different questions: a lead captured in July that got quoted (and even
-  // rejected) by August no longer has booking_id = null, so filtering on
-  // unbooked_leads for a past month undercounts real inflow (most of a past
-  // month's leads have, by now, moved past "unbooked"). The funnel's "New
-  // Inquiries" card needs the former for any range other than All Time.
-  let leadsInRangeQuery = supabaseAdmin.from('leads').select('*', { count: 'exact', head: true })
-  if (dateFrom) leadsInRangeQuery = leadsInRangeQuery.gte('created_at', dateFrom)
-  if (dateTo)   leadsInRangeQuery = leadsInRangeQuery.lt('created_at', dateTo)
-
-  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes, completedRes, rejectedRes, leadsInRangeRes] = await Promise.all([
-    // Total leads count (all-time)
+  const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
+    // Total leads count
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
 
-    // Leads with no booking created yet at all (all-time, unscoped) — the
-    // live "still needs action" backlog, unaffected by the funnel's date
-    // range. Used only when the funnel is set to All Time.
+    // Leads with no booking created yet at all — true "not even quoted"
+    // inquiries, still needing action right now.
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('booking_id', null),
 
     // Pending quotes (draft or sent)
@@ -78,22 +64,6 @@ export async function GET(req: NextRequest) {
       .select('*', { count: 'exact', head: true })
       .eq('pickup_date', today)
       .not('status', 'in', '(cancelled,completed)'),
-
-    // Total completed inquiries (all-time) — replaces "Today's Dispatch" on
-    // the CRM quick-links row.
-    supabaseAdmin
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'completed'),
-
-    // Total rejected inquiries (all-time) — replaces "Pending Quotes" on
-    // the CRM quick-links row.
-    supabaseAdmin
-      .from('bookings')
-      .select('*', { count: 'exact', head: true })
-      .eq('status', 'rejected'),
-
-    leadsInRangeQuery,
   ])
 
   const revenue = (revenueRes.data ?? []).reduce(
@@ -106,9 +76,6 @@ export async function GET(req: NextRequest) {
     unbooked_leads:      unbookedLeadsRes.count ?? 0,
     pending_quotes:     quotesRes.count       ?? 0,
     today_dispatch:     dispatchRes.count     ?? 0,
-    total_completed:    completedRes.count    ?? 0,
-    total_rejected:     rejectedRes.count     ?? 0,
-    leads_in_range:     leadsInRangeRes.count  ?? 0,
     revenue_this_month: revenue,
   })
 }
