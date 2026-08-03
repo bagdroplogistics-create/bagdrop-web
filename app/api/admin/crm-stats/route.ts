@@ -20,6 +20,17 @@ export async function GET(req: NextRequest) {
 
   const today = new Date().toISOString().split('T')[0]
 
+  // Optional — powers the Dashboard's Revenue Report period selector
+  // (Current Month / Last Month / Custom Range / Month Selector). Purely
+  // additive: revenue_this_month below is always computed for the actual
+  // current calendar month regardless of these params, so existing
+  // consumers (admin-app, the always-visible Revenue This Month KPI card)
+  // are unaffected. When date_from is present, a second, period-scoped
+  // figure is computed and returned as revenue_period_amount /
+  // revenue_period_count.
+  const periodFrom = req.nextUrl.searchParams.get('date_from')
+  const periodTo   = req.nextUrl.searchParams.get('date_to')
+
   const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
     // Total leads count
     supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
@@ -71,11 +82,31 @@ export async function GET(req: NextRequest) {
     0
   )
 
+  // Period-scoped revenue — same "paid" definition as revenue_this_month
+  // above, just over a caller-supplied window instead of always the
+  // current month.
+  let periodAmount: number | undefined
+  let periodCount: number | undefined
+  if (periodFrom) {
+    let periodQuery = supabaseAdmin
+      .from('bookings')
+      .select('total_amount', { count: 'exact' })
+      .eq('payment_status', 'paid')
+      .gte('created_at', periodFrom)
+    if (periodTo) periodQuery = periodQuery.lt('created_at', periodTo)
+    const periodRes = await periodQuery
+    if (!periodRes.error) {
+      periodAmount = (periodRes.data ?? []).reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
+      periodCount  = periodRes.count ?? (periodRes.data ?? []).length
+    }
+  }
+
   return NextResponse.json({
     total_leads:        leadsRes.count        ?? 0,
     unbooked_leads:      unbookedLeadsRes.count ?? 0,
     pending_quotes:     quotesRes.count       ?? 0,
     today_dispatch:     dispatchRes.count     ?? 0,
     revenue_this_month: revenue,
+    ...(periodAmount !== undefined ? { revenue_period_amount: periodAmount, revenue_period_count: periodCount } : {}),
   })
 }

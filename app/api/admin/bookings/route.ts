@@ -15,6 +15,8 @@ export async function GET(req: NextRequest) {
   const leadId         = searchParams.get('lead_id')         // lookup by lead_id
   const dateFrom       = searchParams.get('date_from')       // inclusive, ISO date/datetime — filters created_at
   const dateTo         = searchParams.get('date_to')         // exclusive, ISO date/datetime — filters created_at
+  const updatedFrom    = searchParams.get('updated_from')    // inclusive, ISO date/datetime — filters updated_at
+  const updatedTo      = searchParams.get('updated_to')      // exclusive, ISO date/datetime — filters updated_at
   const page           = parseInt(searchParams.get('page') ?? '1', 10)
   const limit          = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset         = (page - 1) * limit
@@ -61,6 +63,15 @@ export async function GET(req: NextRequest) {
   // dashboard) — scopes counts/rows to bookings created in [date_from, date_to).
   if (dateFrom) query = query.gte('created_at', dateFrom)
   if (dateTo)   query = query.lt('created_at', dateTo)
+
+  // updated_at range filter — used by the Dashboard Analytics "Current/Last
+  // Month Completed Bookings" KPI cards, which count a booking toward a
+  // month based on when it actually reached 'completed' (see
+  // app/api/admin/dashboard-analytics/route.ts), not when it was created.
+  // 'completed' is a locked terminal status, so updated_at stops changing
+  // the moment a booking reaches it — safe to use as its completion date.
+  if (updatedFrom) query = query.gte('updated_at', updatedFrom)
+  if (updatedTo)   query = query.lt('updated_at', updatedTo)
 
   const { data, error, count } = await query
 

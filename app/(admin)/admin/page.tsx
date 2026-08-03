@@ -127,10 +127,16 @@ function monthWindowISO(offsetMonths: number) {
 // A KPI card's click target — filters the bookings table below without
 // touching any status/workflow logic. `statuses` restricts to a set of
 // booking statuses (matches the bookings API's `statuses=` param); `month`
-// additionally restricts to bookings created in that calendar month.
+// restricts to bookings CREATED in that calendar month (matches how the
+// Total Inquiries KPIs are computed); `completedMonth` restricts to
+// bookings that REACHED 'completed' during that calendar month (matches
+// how the Completed Bookings KPIs are computed — see the updated_at-based
+// logic in app/api/admin/dashboard-analytics/route.ts). month and
+// completedMonth are mutually exclusive.
 interface KpiView {
   statuses?: string[]
   month?: 'current' | 'last'
+  completedMonth?: 'current' | 'last'
   label: string
 }
 
@@ -1145,6 +1151,22 @@ export default function AdminDashboard() {
     total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number
     revenue_this_month: number
   } | null>(null)
+  // ── Revenue Report — period selector (Current Month / Last Month /
+  // Custom Range / Select Month). Independent of the main fetchData/
+  // crmStats poll above (which always reports the true current month via
+  // revenue_this_month) — this hits app/api/admin/crm-stats's optional
+  // date_from/date_to params to compute revenue for whatever period is
+  // selected here. Same "paid" definition as Revenue This Month, just a
+  // different window.
+  const [revenuePeriod, setRevenuePeriod] = useState<'current' | 'last' | 'custom' | 'month'>('current')
+  const [revenueCustomFrom, setRevenueCustomFrom] = useState('')
+  const [revenueCustomTo,   setRevenueCustomTo]   = useState('')
+  const [revenueMonth,      setRevenueMonth]       = useState(() => {
+    const d = new Date()
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+  })
+  const [revenueReport, setRevenueReport] = useState<{ amount: number; count: number } | null>(null)
+  const [revenueLoading, setRevenueLoading] = useState(false)
   // Single source of truth for "how many inquiries do we actually have" —
   // see app/api/admin/dashboard-analytics/route.ts. Counts each lead once
   // (a lead is created for every inquiry regardless of source — website,
@@ -1198,6 +1220,10 @@ export default function AdminDashboard() {
         const { from, to } = monthWindowISO(kpiView.month === 'current' ? 0 : -1)
         qs += '&date_from=' + encodeURIComponent(from) + '&date_to=' + encodeURIComponent(to)
       }
+      if (kpiView.completedMonth) {
+        const { from, to } = monthWindowISO(kpiView.completedMonth === 'current' ? 0 : -1)
+        qs += '&updated_from=' + encodeURIComponent(from) + '&updated_to=' + encodeURIComponent(to)
+      }
     } else if (filter === 'cancelled') {
       // Explicitly requested — show cancelled
       qs += '&status=cancelled'
@@ -1242,6 +1268,41 @@ export default function AdminDashboard() {
 
   // Reset to page 1 whenever filters, search, sort, or the active KPI view changes
   useEffect(() => { setPage(1) }, [filter, phaseFilter, search, sort, pageSize, kpiView])
+
+  // ── Revenue Report — resolves the selected period into a date_from/
+  // date_to window and fetches the paid-bookings total for it.
+  const fetchRevenueReport = useCallback(async () => {
+    if (!adminKey) return
+    let from: string
+    let to: string | null = null
+    if (revenuePeriod === 'current') {
+      const w = monthWindowISO(0); from = w.from; to = w.to
+    } else if (revenuePeriod === 'last') {
+      const w = monthWindowISO(-1); from = w.from; to = w.to
+    } else if (revenuePeriod === 'month') {
+      if (!revenueMonth) return
+      const [y, m] = revenueMonth.split('-').map(Number)
+      from = new Date(y, m - 1, 1).toISOString()
+      to   = new Date(y, m, 1).toISOString()
+    } else {
+      // custom range — "to" is inclusive of the whole selected day, so the
+      // exclusive upper bound is one day past it.
+      if (!revenueCustomFrom) return
+      from = new Date(revenueCustomFrom).toISOString()
+      to   = revenueCustomTo ? new Date(new Date(revenueCustomTo).getTime() + 86400000).toISOString() : null
+    }
+    setRevenueLoading(true)
+    let qs = '?key=' + adminKey + '&date_from=' + encodeURIComponent(from)
+    if (to) qs += '&date_to=' + encodeURIComponent(to)
+    const res = await fetch('/api/admin/crm-stats' + qs)
+    if (res.ok) {
+      const d = await res.json()
+      setRevenueReport({ amount: d.revenue_period_amount ?? 0, count: d.revenue_period_count ?? 0 })
+    }
+    setRevenueLoading(false)
+  }, [adminKey, revenuePeriod, revenueCustomFrom, revenueCustomTo, revenueMonth])
+
+  useEffect(() => { if (authed) fetchRevenueReport() }, [authed, fetchRevenueReport])
 
   function formatDate(d: string | null) {
     if (!d) return '—'
@@ -1392,7 +1453,7 @@ export default function AdminDashboard() {
               {
                 label: 'Current Month Completed Bookings', value: analytics?.current_month_completed ?? '—',
                 color: '#16a34a', bg: '#dcfce7',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'current' as const, statuses: ['completed'], label: 'Current Month Completed Bookings' }) },
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ completedMonth: 'current' as const, statuses: ['completed'], label: 'Current Month Completed Bookings' }) },
               },
               {
                 label: 'Last Month Total Inquiries', value: analytics?.last_month_total_inquiries ?? '—',
@@ -1402,7 +1463,7 @@ export default function AdminDashboard() {
               {
                 label: 'Last Month Completed Bookings', value: analytics?.last_month_completed ?? '—',
                 color: '#14532d', bg: '#bbf7d0',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'last' as const, statuses: ['completed'], label: 'Last Month Completed Bookings' }) },
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ completedMonth: 'last' as const, statuses: ['completed'], label: 'Last Month Completed Bookings' }) },
               },
             ].map(c => (
               <button key={c.label} onClick={c.onClick}
@@ -1411,6 +1472,69 @@ export default function AdminDashboard() {
                 <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
               </button>
             ))}
+          </div>
+        </div>
+
+        {/* Revenue Report — period selector. Same "paid" definition as the
+            Revenue This Month KPI card above, just over a chosen window.
+            See fetchRevenueReport() / app/api/admin/crm-stats's optional
+            date_from/date_to params. */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Revenue Report</p>
+          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="mb-3 flex flex-wrap gap-2">
+              {([
+                { value: 'current', label: 'Current Month' },
+                { value: 'last',    label: 'Last Month' },
+                { value: 'custom',  label: 'Custom Range' },
+                { value: 'month',   label: 'Select Month' },
+              ] as const).map(o => (
+                <button key={o.value} onClick={() => setRevenuePeriod(o.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    revenuePeriod === o.value
+                      ? 'bg-orange-500 text-white'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+
+            {revenuePeriod === 'custom' && (
+              <div className="mb-3 flex flex-wrap items-center gap-2">
+                <input type="date" value={revenueCustomFrom} onChange={e => setRevenueCustomFrom(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                <span className="text-xs text-gray-400">to</span>
+                <input type="date" value={revenueCustomTo} onChange={e => setRevenueCustomTo(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+            )}
+
+            {revenuePeriod === 'month' && (
+              <div className="mb-3">
+                <input type="month" value={revenueMonth} onChange={e => setRevenueMonth(e.target.value)}
+                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              </div>
+            )}
+
+            <div className="flex items-end gap-6">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Revenue</p>
+                <p className="mt-1 text-2xl font-bold text-gray-900">
+                  {revenueLoading
+                    ? '…'
+                    : revenueReport
+                      ? 'Rs.' + revenueReport.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+                      : '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Paid Bookings</p>
+                <p className="mt-1 text-lg font-semibold text-gray-600">
+                  {revenueLoading ? '…' : revenueReport?.count ?? '—'}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 

@@ -17,10 +17,19 @@ export const runtime = 'nodejs'
 // booking is never created without a linked lead in the normal flow.
 //
 // Confirmed with the user: each booking/trip (including each leg of a
-// return trip) is its own real inquiry and should be counted separately —
-// only soft-deleted leads (removed via the Leads tab's own Delete action)
-// are excluded. So `leads` (minus soft-deleted rows) is the canonical
-// inquiry list, one row = one inquiry, no customer-level deduplication.
+// return trip taken as a separate real-world booking, e.g. a repeat
+// customer travelling out and back on different occasions) is its own
+// real inquiry and should be counted separately — only soft-deleted leads
+// (removed via the Leads tab's own Delete action) are excluded. So `leads`
+// (minus soft-deleted rows) is the canonical inquiry list, one row = one
+// inquiry, no customer-level deduplication.
+//
+// Separately: a "return quote" created from the admin Quotes screen (an
+// onward + return leg quoted together for a single inquiry) does NOT
+// create a second lead/booking row — it's stored as extra return_* columns
+// on the SAME leads row (see RETURN_QUOTE_MIGRATION.sql). So this counting
+// model already guarantees a return-quote inquiry is counted exactly once;
+// there is nothing to deduplicate there.
 //
 // Rejected/closed quotes are tracked as their own bucket and their own
 // KPI card, but do NOT count toward Total Inquiries (or the Monthly Total
@@ -32,6 +41,18 @@ export const runtime = 'nodejs'
 //
 // Each lead is bucketed by its linked booking's current status; a lead
 // with no booking yet is 'pending'.
+//
+// current_month_completed / last_month_completed: counts bookings that
+// actually REACHED 'completed' status during that calendar month (using
+// the booking's updated_at as the completion timestamp — 'completed' is a
+// locked terminal status per STATUS_CONFIG, so nothing can edit the row
+// afterward and updated_at stops changing the moment it's marked
+// complete). This is intentionally independent of which month the
+// underlying inquiry/lead was created in — a lead from last month that
+// only finished this week counts as completed THIS month, not last month.
+// Total Inquiries and Completed Bookings therefore describe two different
+// populations (inquiries received vs. jobs finished) and are not expected
+// to be subsets of one another for the same month.
 
 const ACTIVE_STATUSES = new Set([
   // Paid and actively moving, but not yet at the final Completed status —
@@ -104,7 +125,7 @@ export async function GET(req: NextRequest) {
   // accidentally trigger-created rows.
   const bookingsRes = await supabaseAdmin
     .from('bookings')
-    .select('id, status')
+    .select('id, status, updated_at')
     .not('tracking_id', 'is', null)
     .limit(20000)
   if (bookingsRes.error) return NextResponse.json({ error: bookingsRes.error.message }, { status: 500 })
@@ -154,6 +175,17 @@ export async function GET(req: NextRequest) {
   const currentMonthLeads = inWindow(leads, thisMonth.from, thisMonth.to)
   const lastMonthLeads    = inWindow(leads, lastMonth.from, lastMonth.to)
 
+  // Completed-in-month: based on the booking's own updated_at (completion
+  // timestamp), not the lead's created_at — see module comment above.
+  const completedInWindow = (from: Date, to: Date) =>
+    (bookingsRes.data ?? []).filter(b => {
+      if ((b.status as string) !== 'completed') return false
+      const raw = b.updated_at as string | null
+      if (!raw) return false
+      const t = new Date(raw).getTime()
+      return t >= from.getTime() && t < to.getTime()
+    }).length
+
   let rangeInquiries: number | undefined
   if (dateFromParam || dateToParam) {
     const from = dateFromParam ? new Date(dateFromParam) : new Date(0)
@@ -172,8 +204,11 @@ export async function GET(req: NextRequest) {
     // .total here already excludes rejected/closed, same as the overall figure.
     current_month_total_inquiries: bucketCounts(currentMonthLeads).total,
     last_month_total_inquiries:    bucketCounts(lastMonthLeads).total,
-    current_month_completed:       currentMonthLeads.filter(l => l.bucket === 'completed').length,
-    last_month_completed:          lastMonthLeads.filter(l => l.bucket === 'completed').length,
+    // Completed-in-month — see module comment. Not derived from
+    // currentMonthLeads/lastMonthLeads; a different population (bookings
+    // that finished this/last month), independent of when the inquiry came in.
+    current_month_completed:       completedInWindow(thisMonth.from, thisMonth.to),
+    last_month_completed:          completedInWindow(lastMonth.from, lastMonth.to),
 
     ...(rangeInquiries !== undefined ? { range_inquiries: rangeInquiries } : {}),
 
