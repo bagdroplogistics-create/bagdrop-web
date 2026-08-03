@@ -1473,16 +1473,29 @@ export default function AdminDashboard() {
                   <p className="mt-1.5 text-lg font-bold text-gray-900">{c.value}</p>
                 </>
               )
-              return c.onClick ? (
-                <button key={c.label} onClick={c.onClick}
-                  className="rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm hover:border-orange-200 transition-colors">
+              if (c.onClick) {
+                return (
+                  <button key={c.label} onClick={c.onClick}
+                    className="rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm hover:border-orange-200 transition-colors">
+                    {body}
+                  </button>
+                )
+              }
+              if (c.href) {
+                return (
+                  <Link key={c.label} href={c.href}
+                    className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
+                    {body}
+                  </Link>
+                )
+              }
+              // Neither href nor onClick — Total Active Bookings / Total
+              // Pending Inquiries are informational only, no single funnel
+              // status they map to cleanly, so no click target.
+              return (
+                <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
                   {body}
-                </button>
-              ) : (
-                <Link key={c.label} href={c.href!}
-                  className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
-                  {body}
-                </Link>
+                </div>
               )
             })}
           </div>
