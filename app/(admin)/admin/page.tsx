@@ -30,6 +30,11 @@ interface Booking {
   pickup_date: string | null
   pickup_address: string | null
   drop_address: string | null
+  // Manual override for which calendar month this completed booking
+  // reports under in Dashboard Analytics — see
+  // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql. Only meaningful once status
+  // is 'completed'; null means "use pickup_date automatically."
+  completed_month_override?: string | null
   time_slot: string | null
   total_bags: number
   total_amount: number
@@ -150,6 +155,13 @@ interface KpiView {
   month?: 'current' | 'last'
   completedMonth?: 'current' | 'last'
   label: string
+}
+
+// Module-scope (not just inside AdminDashboard) so EditModal can use it too
+// for the reporting-month override control's pickup-date hint.
+function formatDate(d: string | null) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -291,6 +303,41 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
   const [saveError, setSaveError] = useState<string | null>(null)
   const isLocked = STATUS_CONFIG[booking.status]?.locked === true
 
+  // Reporting-month override — the one field editable even on a locked/
+  // completed booking, since it exists specifically to correct Dashboard
+  // Analytics reporting after the fact (see
+  // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql). Sent as its own PATCH with no
+  // `status` field, so it never trips the "completed booking is read-only"
+  // lock in the API (that lock only guards status transitions).
+  const [monthOverride, setMonthOverride] = useState(
+    booking.completed_month_override ? booking.completed_month_override.slice(0, 7) : ''
+  )
+  const [savingMonth, setSavingMonth] = useState(false)
+  const [monthError, setMonthError]   = useState<string | null>(null)
+  const [monthSaved, setMonthSaved]   = useState(false)
+
+  // Accepts an explicit value so "Clear" can save an empty override
+  // immediately without waiting on a state update to land first.
+  async function saveMonthOverride(value: string = monthOverride) {
+    setSavingMonth(true); setMonthError(null); setMonthSaved(false)
+    try {
+      const res = await fetch('/api/admin/bookings/' + booking.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        // "YYYY-MM" -> first of that month; empty clears the override.
+        body: JSON.stringify({ completed_month_override: value ? value + '-01' : null }),
+      })
+      const data = await res.json()
+      if (!res.ok) throw new Error(data.error ?? 'Save failed')
+      setMonthSaved(true)
+      onSaved()
+    } catch (err: unknown) {
+      setMonthError(err instanceof Error ? err.message : 'Could not save')
+    } finally {
+      setSavingMonth(false)
+    }
+  }
+
   function set(key: keyof EditForm, val: string) { setForm(f => ({ ...f, [key]: val })) }
 
   async function handleSave() {
@@ -338,6 +385,33 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
         {isLocked && (
           <div className="mx-6 mt-4 flex items-center gap-2 rounded-lg bg-green-50 border border-green-200 px-4 py-3 text-sm font-medium text-green-800">
             <Lock className="h-4 w-4" /> This booking is completed. Details are read-only.
+          </div>
+        )}
+        {booking.status === 'completed' && (
+          <div className="mx-6 mt-4 space-y-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3">
+            <p className="text-xs font-semibold text-amber-800">
+              Dashboard Analytics reporting month
+            </p>
+            <p className="text-[11px] text-amber-700">
+              Defaults to this booking's pickup date ({booking.pickup_date ? formatDate(booking.pickup_date) : '—'}).
+              Only set this if that's the wrong month for Current/Last Month Completed Bookings.
+            </p>
+            <div className="flex items-center gap-2">
+              <input type="month" value={monthOverride} onChange={e => setMonthOverride(e.target.value)}
+                className="rounded-lg border border-amber-200 bg-white px-3 py-1.5 text-sm text-gray-700 focus:border-amber-400 focus:outline-none focus:ring-1 focus:ring-amber-400" />
+              <button onClick={saveMonthOverride} disabled={savingMonth}
+                className="rounded-lg bg-amber-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-600 disabled:opacity-50 transition-colors">
+                {savingMonth ? 'Saving…' : 'Save'}
+              </button>
+              {monthOverride && (
+                <button onClick={() => { setMonthOverride(''); saveMonthOverride('') }} disabled={savingMonth}
+                  className="text-xs font-semibold text-amber-700 underline hover:text-amber-900 disabled:opacity-50">
+                  Clear (use pickup date)
+                </button>
+              )}
+            </div>
+            {monthSaved && !monthError && <p className="text-xs font-medium text-green-700">Saved ✓</p>}
+            {monthError && <p className="text-xs text-red-600">{monthError}</p>}
           </div>
         )}
         <div className="space-y-4 p-6">
@@ -1315,11 +1389,6 @@ export default function AdminDashboard() {
   }, [adminKey, revenuePeriod, revenueCustomFrom, revenueCustomTo, revenueMonth])
 
   useEffect(() => { if (authed) fetchRevenueReport() }, [authed, fetchRevenueReport])
-
-  function formatDate(d: string | null) {
-    if (!d) return '—'
-    return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-  }
 
   // ── Additive: quick "Generate LR" action from the expanded row ─────
   // Auto-fills consignor/consignee/route/packages straight from this

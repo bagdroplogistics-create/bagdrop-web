@@ -67,6 +67,13 @@ export async function PATCH(
     // branch below. Jumps status straight to its target with zero customer
     // notifications, for bookings fulfilled before this workflow existed.
     mark_historical,
+    // Manual correction for which calendar month a completed booking
+    // reports under in Dashboard Analytics — see
+    // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql and
+    // app/api/admin/dashboard-analytics/route.ts's module comment. Sent
+    // without `status`, so it's never blocked by the completed-booking
+    // lock below (that lock only guards status transitions).
+    completed_month_override,
   } = body
 
   if (approved_without_payment && role !== 'admin') {
@@ -105,6 +112,7 @@ export async function PATCH(
     updates.customer_phone_country_code = customer_phone_country_code || null
     updates.customer_phone_national     = customer_phone_national     || null
   }
+  if (completed_month_override !== undefined) updates.completed_month_override = completed_month_override || null
   if (customer_email       !== undefined) updates.customer_email       = customer_email.trim().toLowerCase()
   if (total_bags           !== undefined) updates.total_bags           = Number(total_bags)
   if (pickup_date          !== undefined) updates.pickup_date          = pickup_date || null

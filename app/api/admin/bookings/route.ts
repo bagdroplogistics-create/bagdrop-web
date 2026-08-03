@@ -47,14 +47,18 @@ export async function GET(req: NextRequest) {
 
   if (completedFrom && completedTo) {
     // Used by the Dashboard Analytics "Current/Last Month Completed
-    // Bookings" KPI cards — matches the same pickup_date-based logic the
-    // KPI number itself is computed from (see
-    // app/api/admin/dashboard-analytics/route.ts's module comment for why
-    // this is pickup_date and not updated_at/created_at/delivery_date).
+    // Bookings" KPI cards — matches the same pickup_date-based logic
+    // (with a completed_month_override escape hatch for the rare booking
+    // where pickup_date alone gets the reporting month wrong — see
+    // app/api/admin/dashboard-analytics/route.ts's module comment, and
+    // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql) the KPI number itself is
+    // computed from.
     query = query
       .eq('status', 'completed')
-      .gte('pickup_date', completedFrom)
-      .lt('pickup_date', completedTo)
+      .or(
+        `and(completed_month_override.gte.${completedFrom},completed_month_override.lt.${completedTo}),` +
+        `and(completed_month_override.is.null,pickup_date.gte.${completedFrom},pickup_date.lt.${completedTo})`
+      )
   } else if (statuses) {
     // Phase filter: match any of the statuses in the list
     query = query.in('status', statuses.split(','))

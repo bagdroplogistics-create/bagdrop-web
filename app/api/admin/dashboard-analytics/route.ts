@@ -72,6 +72,17 @@ export const runtime = 'nodejs'
 //    picked up/actioned, not whichever month delivery happened to land in.
 //    pickup_date is always present on a real booking, so no fallback is
 //    needed.
+//
+// pickup_date is right for 16 of the user's 17 completed bookings, but not
+// all — one (Mouly Mistry, picked up 28 Jun, delivered 1 Jul) is confirmed
+// by the user as a JULY completion despite its June pickup_date, with no
+// date field that gets BOTH that case and the Hetals case above right
+// automatically. So completed_month_override (nullable DATE, see
+// COMPLETED_MONTH_OVERRIDE_MIGRATION.sql) exists purely as a manual escape
+// hatch: null for every booking except ones an admin has explicitly
+// corrected, in which case its month wins over pickup_date. Falls back to
+// pickup_date-only bucketing if the column hasn't been migrated onto this
+// database yet (completedOverrideSupported reported in `debug`).
 
 const ACTIVE_STATUSES = new Set([
   // Paid and actively moving, but not yet at the final Completed status —
@@ -151,11 +162,24 @@ export async function GET(req: NextRequest) {
   // Excludes any row without a tracking_id — same guard the Dashboard's own
   // bookings list uses (app/api/admin/bookings/route.ts) to keep out
   // accidentally trigger-created rows.
-  const bookingsRes = await supabaseAdmin
+  // completed_month_override may not exist yet on this database — see
+  // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql. Falls back to a query without
+  // it (pickup_date-only bucketing) rather than erroring, same pattern as
+  // deleted_at above.
+  let completedOverrideSupported = true
+  let bookingsRes = await supabaseAdmin
     .from('bookings')
-    .select('id, status, pickup_date')
+    .select('id, status, pickup_date, completed_month_override')
     .not('tracking_id', 'is', null)
     .limit(20000)
+  if (bookingsRes.error?.message?.includes('completed_month_override')) {
+    completedOverrideSupported = false
+    bookingsRes = await supabaseAdmin
+      .from('bookings')
+      .select('id, status, pickup_date')
+      .not('tracking_id', 'is', null)
+      .limit(20000)
+  }
   if (bookingsRes.error) return NextResponse.json({ error: bookingsRes.error.message }, { status: 500 })
 
   const statusByBookingId = new Map<string, string>()
@@ -204,11 +228,14 @@ export async function GET(req: NextRequest) {
   const lastMonthLeads    = inWindow(leads, lastMonth.from, lastMonth.to)
 
   // Completed-in-month: based on pickup_date, not updated_at, delivery_date,
-  // or the lead's created_at — see module comment above for why.
+  // or the lead's created_at — see module comment above for why. A booking
+  // with completed_month_override set uses that month instead (manual
+  // correction — see module comment).
   const completedInMonth = (key: string) =>
     (bookingsRes.data ?? []).filter(b => {
       if ((b.status as string) !== 'completed') return false
-      const dateStr = b.pickup_date as string | null
+      const override = completedOverrideSupported ? (b.completed_month_override as string | null) : null
+      const dateStr = override || (b.pickup_date as string | null)
       if (!dateStr) return false
       return dateStr.slice(0, 7) === key
     }).length
@@ -246,6 +273,7 @@ export async function GET(req: NextRequest) {
       deleted_at_supported:          deletedAtSupported,
       bookings_total:                bookingsTotal,
       bookings_without_lead:         bookingsWithoutLead,
+      completed_override_supported:  completedOverrideSupported,
     },
   })
 }
