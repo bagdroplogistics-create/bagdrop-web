@@ -22,6 +22,14 @@ export const runtime = 'nodejs'
 // are excluded. So `leads` (minus soft-deleted rows) is the canonical
 // inquiry list, one row = one inquiry, no customer-level deduplication.
 //
+// Rejected/closed quotes are tracked as their own bucket and their own
+// KPI card, but do NOT count toward Total Inquiries (or the Monthly Total
+// Inquiries cards) — verified directly against a full export of this
+// database: 60 leads, 20 of them 'rejected', and 60-20=40 is exactly the
+// real total the user confirmed. They're still visible everywhere else
+// (Total Rejected card, and the Booking Funnel's own Quotes Rejected card
+// is untouched by this file).
+//
 // Each lead is bucketed by its linked booking's current status; a lead
 // with no booking yet is 'pending'.
 
@@ -31,11 +39,15 @@ const ACTIVE_STATUSES = new Set([
   'payment_received', 'confirmed', 'in_transit', 'out_for_delivery', 'delivered',
 ])
 
-type Bucket = 'completed' | 'cancelled' | 'active' | 'pending'
+type Bucket = 'completed' | 'cancelled' | 'active' | 'pending' | 'rejected'
 
 function bucketFor(status: string | null): Bucket {
   if (status === 'completed') return 'completed'
   if (status === 'cancelled') return 'cancelled'
+  // 'closed' (Inquiry Closed) is the same "didn't convert" outcome as a
+  // rejected quote — grouped together so a lost inquiry doesn't inflate
+  // Total Inquiries either.
+  if (status === 'rejected' || status === 'closed') return 'rejected'
   if (status && ACTIVE_STATUSES.has(status)) return 'active'
   // No booking yet, or still in inquiry/quote/payment/pre-dispatch stages —
   // i.e. still needs action, hasn't reached active fulfillment or an
@@ -111,13 +123,18 @@ export async function GET(req: NextRequest) {
       return t >= from.getTime() && t < to.getTime()
     })
 
-  const bucketCounts = (list: typeof leads) => ({
-    total:     list.length,
-    completed: list.filter(l => l.bucket === 'completed').length,
-    active:    list.filter(l => l.bucket === 'active').length,
-    pending:   list.filter(l => l.bucket === 'pending').length,
-    cancelled: list.filter(l => l.bucket === 'cancelled').length,
-  })
+  const bucketCounts = (list: typeof leads) => {
+    const rejected = list.filter(l => l.bucket === 'rejected').length
+    return {
+      // Total Inquiries excludes rejected/closed — see module comment.
+      total:     list.length - rejected,
+      completed: list.filter(l => l.bucket === 'completed').length,
+      active:    list.filter(l => l.bucket === 'active').length,
+      pending:   list.filter(l => l.bucket === 'pending').length,
+      cancelled: list.filter(l => l.bucket === 'cancelled').length,
+      rejected,
+    }
+  }
 
   const overall = bucketCounts(leads)
 
@@ -150,9 +167,11 @@ export async function GET(req: NextRequest) {
     total_active:    overall.active,
     total_pending:   overall.pending,
     total_cancelled: overall.cancelled,
+    total_rejected:  overall.rejected,
 
-    current_month_total_inquiries: currentMonthLeads.length,
-    last_month_total_inquiries:    lastMonthLeads.length,
+    // .total here already excludes rejected/closed, same as the overall figure.
+    current_month_total_inquiries: bucketCounts(currentMonthLeads).total,
+    last_month_total_inquiries:    bucketCounts(lastMonthLeads).total,
     current_month_completed:       currentMonthLeads.filter(l => l.bucket === 'completed').length,
     last_month_completed:          lastMonthLeads.filter(l => l.bucket === 'completed').length,
 

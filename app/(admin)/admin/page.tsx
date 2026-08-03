@@ -1115,7 +1115,7 @@ export default function AdminDashboard() {
   // one), bucketed by its linked booking's status.
   const [analytics, setAnalytics] = useState<{
     total_inquiries: number; total_completed: number; total_active: number
-    total_pending: number; total_cancelled: number
+    total_pending: number; total_cancelled: number; total_rejected: number
     current_month_total_inquiries: number; last_month_total_inquiries: number
     current_month_completed: number; last_month_completed: number
     range_inquiries?: number
@@ -1227,7 +1227,7 @@ export default function AdminDashboard() {
     if (cr.ok) setCrmStats(await cr.json())
     let analyticsData: {
       total_inquiries: number; total_completed: number; total_active: number
-      total_pending: number; total_cancelled: number
+      total_pending: number; total_cancelled: number; total_rejected: number
       current_month_total_inquiries: number; last_month_total_inquiries: number
       current_month_completed: number; last_month_completed: number
       range_inquiries?: number
@@ -1446,7 +1446,7 @@ export default function AdminDashboard() {
             </p>
           )}
           {!analytics?.debug && <div className="mb-2" />}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {[
               {
                 label: 'Total Inquiries', value: analytics?.total_inquiries ?? '—',
@@ -1470,8 +1470,14 @@ export default function AdminDashboard() {
                 href: undefined as string | undefined, onClick: undefined as (() => void) | undefined,
               },
               {
+                label: 'Total Rejected', value: analytics?.total_rejected ?? '—',
+                icon: <X className="h-4 w-4" />, color: '#dc2626', bg: '#fee2e2',
+                href: undefined as string | undefined,
+                onClick: () => { setFilter('rejected'); setPhaseFilter('all') },
+              },
+              {
                 label: 'Total Cancelled Bookings', value: analytics?.total_cancelled ?? '—',
-                icon: <XCircle className="h-4 w-4" />, color: '#dc2626', bg: '#fee2e2',
+                icon: <XCircle className="h-4 w-4" />, color: '#991b1b', bg: '#fee2e2',
                 href: undefined as string | undefined,
                 onClick: () => { setFilter('cancelled'); setPhaseFilter('all') },
               },
