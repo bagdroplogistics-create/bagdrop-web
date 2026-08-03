@@ -1120,7 +1120,7 @@ export default function AdminDashboard() {
     current_month_completed: number; last_month_completed: number
     range_inquiries?: number
     debug?: {
-      raw_lead_rows: number; unique_customers: number; repeat_customer_extra: number
+      leads_total_including_deleted: number; soft_deleted_count: number; deleted_at_supported: boolean
       bookings_total: number; bookings_without_lead: number
     }
   } | null>(null)
@@ -1232,7 +1232,7 @@ export default function AdminDashboard() {
       current_month_completed: number; last_month_completed: number
       range_inquiries?: number
       debug?: {
-        raw_lead_rows: number; unique_customers: number; repeat_customer_extra: number
+        leads_total_including_deleted: number; soft_deleted_count: number; deleted_at_supported: boolean
         bookings_total: number; bookings_without_lead: number
       }
     } | null = null
@@ -1436,10 +1436,13 @@ export default function AdminDashboard() {
           <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
           {analytics?.debug && (
             <p className="mb-2 text-[10px] text-gray-400">
-              {analytics.debug.raw_lead_rows} lead records &rarr; {analytics.debug.unique_customers} unique customers
-              ({analytics.debug.repeat_customer_extra} collapsed as repeat/return-trip entries)
+              {analytics.debug.leads_total_including_deleted} total leads
+              &nbsp;·&nbsp; {analytics.debug.soft_deleted_count} soft-deleted (excluded)
               &nbsp;·&nbsp; {analytics.debug.bookings_total} bookings
               ({analytics.debug.bookings_without_lead} with no linked lead)
+              {!analytics.debug.deleted_at_supported && (
+                <span className="text-red-500"> &nbsp;·&nbsp; deleted_at column missing — run SOFT_DELETE_MIGRATION.sql, deletes won't reduce this count until then</span>
+              )}
             </p>
           )}
           {!analytics?.debug && <div className="mb-2" />}
