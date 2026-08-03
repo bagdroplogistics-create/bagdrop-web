@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Package, Clock, CheckCircle, XCircle, Truck,
+  Package, Clock, CheckCircle, Truck,
   Search, ChevronDown, RefreshCw, TrendingUp,
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
@@ -101,6 +101,38 @@ const WORKFLOW_PHASES = [
   { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared'] },
   { label: 'Closed',     statuses: ['delivered','trip_created','completed','cancelled'] },
 ]
+
+// ── Status groupings for the Dashboard Analytics KPI cards ──────────────
+// Mirrors the buckets computed server-side in
+// app/api/admin/dashboard-analytics/route.ts (bucketFor / ACTIVE_STATUSES)
+// so that clicking a KPI card filters the bookings table to exactly the
+// records that make up that card's number. Read-only groupings — no
+// business logic (status values, workflow) is changed by this.
+const ACTIVE_BOOKING_STATUSES   = ['payment_received', 'confirmed', 'in_transit', 'out_for_delivery', 'delivered']
+const REJECTED_BOOKING_STATUSES = ['rejected', 'closed']
+const ALL_STATUS_KEYS           = Object.keys(STATUS_CONFIG)
+const PENDING_BOOKING_STATUSES  = ALL_STATUS_KEYS.filter(s =>
+  s !== 'completed' && s !== 'cancelled' &&
+  !ACTIVE_BOOKING_STATUSES.includes(s) && !REJECTED_BOOKING_STATUSES.includes(s)
+)
+const NON_REJECTED_STATUSES = ALL_STATUS_KEYS.filter(s => !REJECTED_BOOKING_STATUSES.includes(s))
+
+function monthWindowISO(offsetMonths: number) {
+  const base = new Date()
+  const from = new Date(base.getFullYear(), base.getMonth() + offsetMonths, 1)
+  const to   = new Date(base.getFullYear(), base.getMonth() + offsetMonths + 1, 1)
+  return { from: from.toISOString(), to: to.toISOString() }
+}
+
+// A KPI card's click target — filters the bookings table below without
+// touching any status/workflow logic. `statuses` restricts to a set of
+// booking statuses (matches the bookings API's `statuses=` param); `month`
+// additionally restricts to bookings created in that calendar month.
+interface KpiView {
+  statuses?: string[]
+  month?: 'current' | 'last'
+  label: string
+}
 
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6', icon: null }
@@ -1101,6 +1133,11 @@ export default function AdminDashboard() {
   const [search, setSearch]           = useState('')
   const [filter, setFilter]           = useState('all')
   const [phaseFilter, setPhaseFilter] = useState('all')
+  // Set when a Dashboard Analytics / Monthly Inquiry Statistics KPI card is
+  // clicked — takes over the bookings-table query in fetchData below,
+  // independent of the filter/phaseFilter dropdown-and-pills. Cleared
+  // whenever those dropdowns/pills are used manually.
+  const [kpiView, setKpiView]         = useState<KpiView | null>(null)
   const [sort, setSort]               = useState('newest')
   const [expanded, setExpanded]       = useState<string | null>(null)
   const [editTarget, setEditTarget]   = useState<Booking | null>(null)
@@ -1154,7 +1191,14 @@ export default function AdminDashboard() {
     if (!adminKey) return
     setLoading(true)
     let qs = '?key=' + adminKey
-    if (filter === 'cancelled') {
+    if (kpiView) {
+      // KPI card click — overrides filter/phaseFilter entirely.
+      if (kpiView.statuses) qs += '&statuses=' + kpiView.statuses.join(',')
+      if (kpiView.month) {
+        const { from, to } = monthWindowISO(kpiView.month === 'current' ? 0 : -1)
+        qs += '&date_from=' + encodeURIComponent(from) + '&date_to=' + encodeURIComponent(to)
+      }
+    } else if (filter === 'cancelled') {
       // Explicitly requested — show cancelled
       qs += '&status=cancelled'
     } else if (filter !== 'all') {
@@ -1192,12 +1236,12 @@ export default function AdminDashboard() {
       })
     }
     setLoading(false)
-  }, [adminKey, filter, phaseFilter, search])
+  }, [adminKey, filter, phaseFilter, search, kpiView])
 
   useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
 
-  // Reset to page 1 whenever filters, search, or sort changes
-  useEffect(() => { setPage(1) }, [filter, phaseFilter, search, sort, pageSize])
+  // Reset to page 1 whenever filters, search, sort, or the active KPI view changes
+  useEffect(() => { setPage(1) }, [filter, phaseFilter, search, sort, pageSize, kpiView])
 
   function formatDate(d: string | null) {
     if (!d) return '—'
@@ -1262,22 +1306,12 @@ export default function AdminDashboard() {
             (the Dashboard and Leads tabs describe the same inquiries — a
             lead is created for every inquiry regardless of source, and a
             booking never exists without one), bucketed by its linked
-            booking's status. All-time. */}
+            booking's status. All-time. Every card below is clickable and
+            filters the bookings table further down to exactly the records
+            behind that number. */}
         <div className="mb-6">
-          <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
-          {analytics?.debug && (
-            <p className="mb-2 text-[10px] text-gray-400">
-              {analytics.debug.leads_total_including_deleted} total leads
-              &nbsp;·&nbsp; {analytics.debug.soft_deleted_count} soft-deleted (excluded)
-              &nbsp;·&nbsp; {analytics.debug.bookings_total} bookings
-              ({analytics.debug.bookings_without_lead} with no linked lead)
-              {!analytics.debug.deleted_at_supported && (
-                <span className="text-red-500"> &nbsp;·&nbsp; deleted_at column missing — run SOFT_DELETE_MIGRATION.sql, deletes won't reduce this count until then</span>
-              )}
-            </p>
-          )}
-          {!analytics?.debug && <div className="mb-2" />}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
               {
                 label: 'Total Inquiries', value: analytics?.total_inquiries ?? '—',
@@ -1288,29 +1322,25 @@ export default function AdminDashboard() {
                 label: 'Total Completed Bookings', value: analytics?.total_completed ?? '—',
                 icon: <CheckCircle className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7',
                 href: undefined as string | undefined,
-                onClick: () => { setFilter('completed'); setPhaseFilter('all') },
+                onClick: () => { setKpiView(null); setPhaseFilter('all'); setFilter('completed') },
               },
               {
                 label: 'Total Active Bookings', value: analytics?.total_active ?? '—',
                 icon: <Truck className="h-4 w-4" />, color: '#0891b2', bg: '#cffafe',
-                href: undefined as string | undefined, onClick: undefined as (() => void) | undefined,
+                href: undefined as string | undefined,
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Active Bookings' }) },
               },
               {
                 label: 'Total Pending Inquiries', value: analytics?.total_pending ?? '—',
                 icon: <Clock className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7',
-                href: undefined as string | undefined, onClick: undefined as (() => void) | undefined,
+                href: undefined as string | undefined,
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: PENDING_BOOKING_STATUSES, label: 'Total Pending Inquiries' }) },
               },
               {
                 label: 'Total Rejected', value: analytics?.total_rejected ?? '—',
                 icon: <X className="h-4 w-4" />, color: '#dc2626', bg: '#fee2e2',
                 href: undefined as string | undefined,
-                onClick: () => { setFilter('rejected'); setPhaseFilter('all') },
-              },
-              {
-                label: 'Total Cancelled Bookings', value: analytics?.total_cancelled ?? '—',
-                icon: <XCircle className="h-4 w-4" />, color: '#991b1b', bg: '#fee2e2',
-                href: undefined as string | undefined,
-                onClick: () => { setFilter('cancelled'); setPhaseFilter('all') },
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: REJECTED_BOOKING_STATUSES, label: 'Quote Rejected' }) },
               },
               {
                 label: 'Revenue This Month',
@@ -1338,39 +1368,48 @@ export default function AdminDashboard() {
                   </button>
                 )
               }
-              if (c.href) {
-                return (
-                  <Link key={c.label} href={c.href}
-                    className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
-                    {body}
-                  </Link>
-                )
-              }
-              // Neither href nor onClick — Total Active Bookings / Total
-              // Pending Inquiries are informational only, no single funnel
-              // status they map to cleanly, so no click target.
               return (
-                <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <Link key={c.label} href={c.href!}
+                  className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
                   {body}
-                </div>
+                </Link>
               )
             })}
           </div>
 
           {/* Monthly Inquiry Statistics — same unified dataset, split by the
-              originating lead's created_at (This Month vs Last Month). */}
+              originating lead's created_at (This Month vs Last Month). Also
+              clickable — filters the bookings table by the same calendar
+              month plus (for the two "Completed" cards) status=completed. */}
           <p className="mb-2 mt-4 text-xs font-bold uppercase tracking-widest text-gray-400">Monthly Inquiry Statistics</p>
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {[
-              { label: 'Current Month Total Inquiries',     value: analytics?.current_month_total_inquiries ?? '—', color: '#2563eb', bg: '#dbeafe' },
-              { label: 'Last Month Total Inquiries',        value: analytics?.last_month_total_inquiries    ?? '—', color: '#0891b2', bg: '#cffafe' },
-              { label: 'Current Month Completed Bookings',  value: analytics?.current_month_completed       ?? '—', color: '#16a34a', bg: '#dcfce7' },
-              { label: 'Last Month Completed Bookings',     value: analytics?.last_month_completed          ?? '—', color: '#14532d', bg: '#bbf7d0' },
+              {
+                label: 'Current Month Total Inquiries', value: analytics?.current_month_total_inquiries ?? '—',
+                color: '#2563eb', bg: '#dbeafe',
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'current' as const, statuses: NON_REJECTED_STATUSES, label: 'Current Month Total Inquiries' }) },
+              },
+              {
+                label: 'Current Month Completed Bookings', value: analytics?.current_month_completed ?? '—',
+                color: '#16a34a', bg: '#dcfce7',
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'current' as const, statuses: ['completed'], label: 'Current Month Completed Bookings' }) },
+              },
+              {
+                label: 'Last Month Total Inquiries', value: analytics?.last_month_total_inquiries ?? '—',
+                color: '#0891b2', bg: '#cffafe',
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'last' as const, statuses: NON_REJECTED_STATUSES, label: 'Last Month Total Inquiries' }) },
+              },
+              {
+                label: 'Last Month Completed Bookings', value: analytics?.last_month_completed ?? '—',
+                color: '#14532d', bg: '#bbf7d0',
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'last' as const, statuses: ['completed'], label: 'Last Month Completed Bookings' }) },
+              },
             ].map(c => (
-              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+              <button key={c.label} onClick={c.onClick}
+                className="rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm hover:border-orange-200 transition-colors">
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
                 <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
-              </div>
+              </button>
             ))}
           </div>
         </div>
@@ -1399,10 +1438,21 @@ export default function AdminDashboard() {
           </div>
         </div>
 
+        {/* Active KPI card filter — shown when a Dashboard Analytics / Monthly
+            Inquiry Statistics card above has been clicked. */}
+        {kpiView && (
+          <div className="mb-3 flex items-center justify-between rounded-lg border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-700">
+            <span>Showing: {kpiView.label}</span>
+            <button onClick={() => setKpiView(null)} className="text-orange-500 underline hover:text-orange-700">
+              Clear filter
+            </button>
+          </div>
+        )}
+
         {/* Workflow phase filter pills */}
         <div className="mb-3 flex flex-wrap gap-2">
           {phases.map(p => (
-            <button key={p} onClick={() => { setPhaseFilter(p); setFilter('all') }}
+            <button key={p} onClick={() => { setPhaseFilter(p); setFilter('all'); setKpiView(null) }}
               className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
                 phaseFilter === p
                   ? 'bg-orange-500 text-white'
@@ -1422,7 +1472,7 @@ export default function AdminDashboard() {
               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-700 shadow-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
           <div className="relative">
-            <select value={filter} onChange={e => { setFilter(e.target.value); setPhaseFilter('all') }}
+            <select value={filter} onChange={e => { setFilter(e.target.value); setPhaseFilter('all'); setKpiView(null) }}
               className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
               <option value="all">All statuses</option>
               {Object.entries(STATUS_CONFIG).map(([val, cfg]) => (
