@@ -70,12 +70,18 @@ export default function InvoicePrintPage() {
         {/* Header */}
         <div className="flex items-start justify-between pb-6 mb-6 border-b-2 border-orange-500">
           <div>
-            <p className="text-2xl font-black tracking-tight text-orange-500">BAGDROP</p>
-            <p className="text-xs text-gray-400 mt-0.5">Baggage Delivered. Journey Simplified.</p>
-            <p className="text-xs text-gray-400">bagdrop.co · info@bagdrop.co</p>
+            {/* Icon + wordmark lockup (icon asset is transparent-orange, works
+                on this white header — logo-full-white.png used by the Quote/LR
+                headers is white-on-transparent and would be invisible here) */}
+            <div className="flex items-center gap-2">
+              <img src="/images/logo-icon.png" alt="Bagdrop" className="h-8 w-auto" />
+              <p className="text-2xl font-black tracking-tight text-orange-500">BAGDROP</p>
+            </div>
+            <p className="text-[13px] font-bold uppercase tracking-wide text-gray-500 mt-1">India&apos;s First Digital Baggage Infrastructure</p>
+            <p className="text-xs text-gray-400 mt-1">bagdrop.co · info@bagdrop.co</p>
           </div>
           <div className="text-right">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Tax Invoice</p>
+            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400">Tax Invoice</p>
             <p className="text-2xl font-black text-gray-900 mt-0.5">{invoice.invoice_number}</p>
             <p className="text-xs text-gray-500 mt-1">Date: {fmtDate(invoice.invoice_date)}</p>
             {invoice.booking_id && <p className="text-xs text-gray-400 mt-0.5">Booking: {invoice.booking_id.slice(0,8).toUpperCase()}</p>}
@@ -85,14 +91,16 @@ export default function InvoicePrintPage() {
         {/* Bill to / Service */}
         <div className="mb-8 grid grid-cols-2 gap-8">
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Bill To</p>
+            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-2">Bill To</p>
             <p className="text-base font-bold text-gray-900">{formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name}</p>
             <p className="text-sm text-gray-600">{invoice.customer_phone}</p>
             {invoice.customer_email && <p className="text-sm text-gray-600">{invoice.customer_email}</p>}
-            {invoice.customer_address && <p className="text-sm text-gray-500 mt-1">{invoice.customer_address}</p>}
+            {/* Address value bumped bigger + bolder + darker, matching
+                QuotePDF.tsx's Pickup/Delivery Address treatment. */}
+            {invoice.customer_address && <p className="text-sm font-semibold text-gray-800 mt-1">{invoice.customer_address}</p>}
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-2">Service Details</p>
+            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-2">Service Details</p>
             <p className="text-sm font-semibold text-gray-800">{invoice.service_type?.replace('airport-to-door','Airport → Doorstep').replace('door-to-airport','Doorstep → Airport').replace('intercity','Intercity') ?? 'Baggage Delivery'}</p>
             <p className="text-sm text-gray-600">{invoice.from_city} → {invoice.to_city}</p>
             <p className="text-sm text-gray-500 mt-1">{invoice.total_bags} bag{invoice.total_bags !== 1 ? 's' : ''}</p>
@@ -143,7 +151,7 @@ export default function InvoicePrintPage() {
 
         {invoice.notes && (
           <div className="rounded-xl bg-gray-50 px-5 py-4 mb-8">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400 mb-1">Notes</p>
+            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-1">Notes</p>
             <p className="text-sm text-gray-700">{invoice.notes}</p>
           </div>
         )}

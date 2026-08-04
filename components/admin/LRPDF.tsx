@@ -37,20 +37,25 @@ const s = StyleSheet.create({
 
   // Header
   header:  { backgroundColor: ORANGE, padding: '16 24', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  logo:    { color: '#fff', fontSize: 20, fontFamily: 'Helvetica-Bold', letterSpacing: -0.5 },
-  logoSub: { color: 'rgba(255,255,255,0.8)', fontSize: 6.5, letterSpacing: 1.2, marginTop: 2, textTransform: 'uppercase' },
+  // Full white BagDrop logo lockup (icon + wordmark, baked into the brand
+  // asset) — replaces the plain "BAGDROP" text mark, matching QuotePDF.tsx's
+  // header treatment. Sized down from Quote's 57x84 to fit LR's shorter
+  // header padding ('16 24' vs Quote's '20 28') while keeping the same
+  // 920:1359 aspect ratio.
+  logoFull:{ width: 36, height: 53, marginBottom: 3 },
+  logoSub: { color: 'rgba(255,255,255,0.92)', fontSize: 7, fontFamily: 'Helvetica-Bold', letterSpacing: 0.8, marginTop: 4, textTransform: 'uppercase' },
   titleC:  { alignItems: 'center' },
   titleTxt:{ color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
-  titleSub:{ color: 'rgba(255,255,255,0.85)', fontSize: 7, marginTop: 2 },
-  gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 6.5, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
+  titleSub:{ color: 'rgba(255,255,255,0.85)', fontSize: 7.5, marginTop: 2 },
+  gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
   gcValue: { color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
-  gcDate:  { color: 'rgba(255,255,255,0.85)', fontSize: 7, textAlign: 'right', marginTop: 2 },
+  gcDate:  { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, textAlign: 'right', marginTop: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   qrBox:   { width: 40, height: 40, backgroundColor: '#fff', borderRadius: 3, padding: 2 },
 
   // Company strip
   coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 24', flexDirection: 'row', justifyContent: 'space-between' },
-  coLine:  { fontSize: 6.5, color: '#4b5563' },
+  coLine:  { fontSize: 7, color: '#4b5563' },
 
   // Grid
   body:    { margin: '0 24' },
@@ -58,47 +63,51 @@ const s = StyleSheet.create({
   row:     { flexDirection: 'row' },
 
   cell:    { borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '4 6' },
-  cellLbl: { fontSize: 6, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
-  cellVal: { fontSize: 8, color: DARK, fontFamily: 'Helvetica-Bold' },
+  cellLbl: { fontSize: 6.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
+  cellVal: { fontSize: 8.5, color: DARK, fontFamily: 'Helvetica-Bold' },
 
   sectionHead: { backgroundColor: DARK, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '3 6' },
-  sectionHeadTxt: { color: '#fff', fontSize: 6.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionHeadTxt: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
 
   partyBox: { padding: '5 6', borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER },
-  partyName:{ fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
-  partyLine:{ fontSize: 7, color: '#4b5563', marginBottom: 1.5 },
+  partyName:{ fontSize: 9, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
+  partyLine:{ fontSize: 7.5, color: '#4b5563', marginBottom: 1.5 },
+  // Consignor/Consignee/Delivery address text — bigger + bolder than the
+  // mobile/GSTIN partyLine rows, mirroring QuotePDF.tsx's addressVal
+  // treatment for Pickup/Delivery Address values.
+  addressVal: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1.5 },
 
   chargeRow:  { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#e5e7eb', padding: '2.5 6' },
-  chargeLbl:  { fontSize: 6.5, color: '#4b5563', flex: 1 },
-  chargeVal:  { fontSize: 6.5, color: DARK, width: 46, textAlign: 'right' },
+  chargeLbl:  { fontSize: 7, color: '#4b5563', flex: 1 },
+  chargeVal:  { fontSize: 7, color: DARK, width: 46, textAlign: 'right' },
   chargeTotalRow: { flexDirection: 'row', padding: '4 6', backgroundColor: LIGHT, borderTopWidth: 1, borderColor: BORDER },
-  chargeTotalLbl: { fontSize: 7, color: DARK, fontFamily: 'Helvetica-Bold', flex: 1 },
-  chargeTotalVal: { fontSize: 7, color: DARK, fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
+  chargeTotalLbl: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', flex: 1 },
+  chargeTotalVal: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
   grandTotalRow:  { flexDirection: 'row', padding: '5 6', backgroundColor: ORANGE },
-  grandTotalLbl:  { fontSize: 8, color: '#fff', fontFamily: 'Helvetica-Bold', flex: 1 },
-  grandTotalVal:  { fontSize: 8, color: '#fff', fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
+  grandTotalLbl:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', flex: 1 },
+  grandTotalVal:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
 
   // Package table
   pkgHead:  { flexDirection: 'row', backgroundColor: DARK, borderRightWidth: 1, borderColor: BORDER },
-  pkgHcell: { color: '#fff', fontSize: 6.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', padding: '4 6', borderRightWidth: 1, borderColor: '#374151' },
+  pkgHcell: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', padding: '4 6', borderRightWidth: 1, borderColor: '#374151' },
   pkgRow:   { flexDirection: 'row', borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER },
-  pkgCell:  { fontSize: 7.5, color: DARK, padding: '5 6', borderRightWidth: 1, borderColor: BORDER },
+  pkgCell:  { fontSize: 8, color: DARK, padding: '5 6', borderRightWidth: 1, borderColor: BORDER },
 
   // Footer grid
   footRow:  { flexDirection: 'row' },
   footCell: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '5 6' },
-  footLbl:  { fontSize: 6, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
-  footVal:  { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold' },
+  footLbl:  { fontSize: 6.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
+  footVal:  { fontSize: 8, color: DARK, fontFamily: 'Helvetica-Bold' },
 
   sigBlock: { margin: '14 24 0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   sigLeft:  { flex: 1 },
-  sigCo:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
-  sigLine2: { fontSize: 6.5, color: GREY, marginBottom: 1 },
+  sigCo:    { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
+  sigLine2: { fontSize: 7, color: GREY, marginBottom: 1 },
   sigRight: { alignItems: 'center', width: 130 },
   stampImg: { width: 72, height: 72, marginBottom: 2 },
   sigBox:   { borderTopWidth: 1, borderColor: DARK, paddingTop: 4, width: 120, textAlign: 'center' },
-  sigTxt:   { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK },
-  sigSub:   { fontSize: 6, color: GREY, marginTop: 2 },
+  sigTxt:   { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: DARK },
+  sigSub:   { fontSize: 6.5, color: GREY, marginTop: 2 },
 
   bottomBar: { margin: '10 24 0', flexDirection: 'row', borderWidth: 1, borderColor: BORDER },
   bbCell:    { flex: 1, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
@@ -179,8 +188,9 @@ export default function LRPDF(p: LRPDFProps) {
         {/* ── Header ── */}
         <View style={s.header}>
           <View>
-            <Text style={s.logo}>BAGDROP</Text>
-            <Text style={s.logoSub}>Aviation Infrastructure &amp; Baggage Logistics</Text>
+            {/* eslint-disable-next-line jsx-a11y/alt-text */}
+            <Image style={s.logoFull} src="/logo-full-white.png" />
+            <Text style={s.logoSub}>India&apos;s First Digital Baggage Infrastructure</Text>
           </View>
           <View style={s.titleC}>
             <Text style={s.titleTxt}>Consignment Note</Text>
@@ -251,13 +261,13 @@ export default function LRPDF(p: LRPDFProps) {
                 <View style={s.row}>
                   <View style={[s.partyBox, { flex: 1 }]}>
                     <Text style={s.partyName}>{p.consignorName ?? '—'}</Text>
-                    {p.consignorAddress ? <Text style={s.partyLine}>{p.consignorAddress}</Text> : null}
+                    {p.consignorAddress ? <Text style={s.addressVal}>{p.consignorAddress}</Text> : null}
                     {p.consignorMobile ? <Text style={s.partyLine}>Mobile: {p.consignorMobile}</Text> : null}
                     <Text style={s.partyLine}>GSTIN: {p.consignorGstin ?? '—'}</Text>
                   </View>
                   <View style={[s.partyBox, { flex: 1, borderRightWidth: 0 }]}>
                     <Text style={s.partyName}>{p.consigneeName ?? '—'}</Text>
-                    {p.consigneeAddress ? <Text style={s.partyLine}>{p.consigneeAddress}</Text> : null}
+                    {p.consigneeAddress ? <Text style={s.addressVal}>{p.consigneeAddress}</Text> : null}
                     {p.consigneeMobile ? <Text style={s.partyLine}>Mobile: {p.consigneeMobile}</Text> : null}
                     <Text style={s.partyLine}>GSTIN: {p.consigneeGstin ?? '—'}</Text>
                   </View>
@@ -303,7 +313,7 @@ export default function LRPDF(p: LRPDFProps) {
                 <Text style={s.partyLine}>GSTIN: {p.billedToGstin ?? '—'}</Text>
               </View>
               <View style={[s.partyBox, { flex: 1, borderRightWidth: 0 }]}>
-                <Text style={s.partyLine}>{p.deliveryAddress ?? '—'}</Text>
+                <Text style={s.addressVal}>{p.deliveryAddress ?? '—'}</Text>
               </View>
             </View>
 
