@@ -427,7 +427,11 @@ export default function QuotePDF(p: QuotePDFProps) {
           <Text style={s.tcTitle}>Terms &amp; Conditions</Text>
           <View style={s.tcGrid}>
             {(p.terms
-              ? p.terms.split('\n').filter(Boolean).map((t, i) => ({ num: i + 1, text: t }))
+              // Saved terms text often already comes pre-numbered ("1.
+              // Booking Confirmation : ...", "2. Total Amount Payable: ...")
+              // — strip any leading "1." / "1)" so it doesn't double up with
+              // the tcNum badge rendered below.
+              ? p.terms.split('\n').filter(Boolean).map((t, i) => ({ num: i + 1, text: t.replace(/^\s*\d+[.)]\s*/, '') }))
               : TC_ITEMS.map((t, i) => ({ num: i + 1, text: t }))
             ).map(tc => (
               <View key={tc.num} style={s.tcItem}>
