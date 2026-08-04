@@ -91,6 +91,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   // Airport Delivery only — set from the Trip Sheet, not selectable for
   // any other service type. See app/api/admin/trip-sheets/[id]/route.ts.
   driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe', icon: <Phone className="h-3 w-3" /> },
+  indemnity_bond_sent: { label: 'Indemnity Bond Sent', color: '#b45309', bg: '#fef3c7', icon: <FileCheck className="h-3 w-3" /> },
   delivered:         { label: 'Delivered',          color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
   trip_created:      { label: 'Trip Sheet Created', color: '#0891b2', bg: '#cffafe', icon: <Truck className="h-3 w-3" /> },
   // Phase 6: Final
@@ -103,7 +104,7 @@ const WORKFLOW_PHASES = [
   { label: 'Quote',      statuses: ['quote_created','quote_sent','accepted','rejected','closed'] },
   { label: 'Payment',    statuses: ['payment_pending','payment_received','payment_approved'] },
   { label: 'Booking',    statuses: ['confirmed','invoice_generated','invoice_sent'] },
-  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared'] },
+  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared','indemnity_bond_sent'] },
   { label: 'Closed',     statuses: ['delivered','trip_created','completed','cancelled'] },
 ]
 
@@ -113,7 +114,7 @@ const WORKFLOW_PHASES = [
 // so that clicking a KPI card filters the bookings table to exactly the
 // records that make up that card's number. Read-only groupings — no
 // business logic (status values, workflow) is changed by this.
-const ACTIVE_BOOKING_STATUSES   = ['payment_received', 'confirmed', 'in_transit', 'out_for_delivery', 'delivered']
+const ACTIVE_BOOKING_STATUSES   = ['payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent', 'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared', 'indemnity_bond_sent', 'delivered', 'trip_created']
 const REJECTED_BOOKING_STATUSES = ['rejected', 'closed']
 const ALL_STATUS_KEYS           = Object.keys(STATUS_CONFIG)
 const PENDING_BOOKING_STATUSES  = ALL_STATUS_KEYS.filter(s =>

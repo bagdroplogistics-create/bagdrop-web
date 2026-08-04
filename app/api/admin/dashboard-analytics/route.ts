@@ -85,9 +85,12 @@ export const runtime = 'nodejs'
 // database yet (completedOverrideSupported reported in `debug`).
 
 const ACTIVE_STATUSES = new Set([
-  // Paid and actively moving, but not yet at the final Completed status —
-  // mirrors the Booking Funnel's Row 2 cards minus 'completed' itself.
-  'payment_received', 'confirmed', 'in_transit', 'out_for_delivery', 'delivered',
+  // Paid and still moving through the fulfillment pipeline, short of the
+      // final Completed status -- mirrors ACTIVE_BOOKING_STATUSES in
+      // app/(admin)/admin/page.tsx, which must stay in sync with this list.
+      'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
+      'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
+      'indemnity_bond_sent', 'delivered', 'trip_created',
 ])
 
 type Bucket = 'completed' | 'cancelled' | 'active' | 'pending' | 'rejected'
