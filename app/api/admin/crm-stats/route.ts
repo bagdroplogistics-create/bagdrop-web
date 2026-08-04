@@ -96,12 +96,19 @@ export async function GET(req: NextRequest) {
   // dashboard-analytics's Completed Bookings. This also naturally includes
   // manual trip sheets (no linked booking, e.g. an ad-hoc job) — those are
   // still real revenue, and Trip Sheets is the only record of them at all.
+  //
+  // Only trip sheets whose payment_status is 'paid' count as revenue — per
+  // the user: "total revenue calculate according to these already paid
+  // status." A trip sheet can exist for a job that hasn't actually been
+  // paid for yet, so this is filtered the same way revenue_this_month
+  // above filters bookings.payment_status = 'paid'.
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
     const { data: sheetsData, error: sheetsErr } = await supabaseAdmin
       .from('trip_sheets')
       .select('total_income, pickup_date')
+      .eq('payment_status', 'paid')
 
     if (!sheetsErr) {
       const fromMs = new Date(periodFrom).getTime()
