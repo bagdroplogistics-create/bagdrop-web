@@ -142,7 +142,13 @@ const s = StyleSheet.create({
 
 function fmtRs(n: number | null | undefined) {
   if (n == null) return '—'
-  return '₹ ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // 'Rs. ' not '₹' — react-pdf's default Helvetica font has no glyph for
+  // the Rupee sign (U+20B9), so it renders as a garbled character (looked
+  // like a stray "1") in the actual downloaded PDF even though it displays
+  // fine in the browser preview/HTML print page (real Unicode font
+  // fallback there). Matches the fix already applied in the server-side
+  // quote generator, app/api/admin/quotes/[id]/upload-pdf/route.ts.
+  return 'Rs. ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtDate(d: string | null | undefined) {

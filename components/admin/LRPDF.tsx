@@ -326,7 +326,7 @@ export default function LRPDF(p: LRPDFProps) {
                 )}
                 <View style={s.grandTotalRow}>
                   <Text style={s.grandTotalLbl}>Total</Text>
-                  <Text style={s.grandTotalVal}>₹{fmtRs(p.totalAmount)}</Text>
+                  <Text style={s.grandTotalVal}>Rs. {fmtRs(p.totalAmount)}</Text>
                 </View>
               </View>
             </View>
@@ -354,7 +354,7 @@ export default function LRPDF(p: LRPDFProps) {
               </View>
               <View style={[s.cell, { flex: 1 }]}>
                 <Text style={s.cellLbl}>Value</Text>
-                <Text style={s.cellVal}>{p.invoiceValue != null ? '₹' + fmtRs(p.invoiceValue) : '—'}</Text>
+                <Text style={s.cellVal}>{p.invoiceValue != null ? 'Rs. ' + fmtRs(p.invoiceValue) : '—'}</Text>
               </View>
               <View style={[s.cell, { flex: 1.4 }]}>
                 <Text style={s.cellLbl}>E-way Bill No.</Text>

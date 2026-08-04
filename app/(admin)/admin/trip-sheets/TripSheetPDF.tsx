@@ -118,7 +118,10 @@ const TRIP_STATUS: Record<string, { label: string; color: string; bg: string }> 
 
 function fmtRs(n: number | null | undefined) {
   if (n == null) return '—'
-  return '₹ ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+  // 'Rs. ' not '₹' — react-pdf's default Helvetica font has no glyph for
+  // the Rupee sign (U+20B9); it renders as a garbled character in the
+  // actual PDF. See QuotePDF.tsx's fmtRs for the same fix.
+  return 'Rs. ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 
 function fmtDate(d: string | null | undefined) {
