@@ -64,14 +64,19 @@ const s = StyleSheet.create({
   qrBox:   { width: 40, height: 40, backgroundColor: '#fff', borderRadius: 3, padding: 2 },
 
   // Company strip
-  coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 24', flexDirection: 'row', justifyContent: 'space-between' },
-  coLine:  { fontSize: 7, color: '#4b5563' },
+  coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '8 24', flexDirection: 'row', justifyContent: 'space-between' },
+  coLine:  { fontSize: 7, color: '#4b5563', lineHeight: 1.4 },
+  // Second line within a stacked pair (address under the company name,
+  // email under the second phone number) — adds breathing room below the
+  // line above it without shifting single-line columns (Tel / web) out of
+  // alignment with the rest of the row.
+  coLineGap: { fontSize: 7, color: '#4b5563', lineHeight: 1.4, marginTop: 3 },
   // Company name — bold for stronger visual emphasis vs. the address line
   // below it, which stays regular weight.
   coName:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK },
   // Contact details as three evenly-spaced columns (Tel / phone+email /
   // web) instead of two stacked lines, for better balance on the strip.
-  coContactRow: { flexDirection: 'row', gap: 18 },
+  coContactRow: { flexDirection: 'row', gap: 20 },
 
   // Grid
   body:    { margin: '0 24' },
@@ -229,7 +234,7 @@ export default function LRPDF(p: LRPDFProps) {
         <View style={s.coStrip}>
           <View>
             <Text style={s.coName}>{LR_COMPANY.name}</Text>
-            <Text style={s.coLine}>{LR_COMPANY.addressLine1}, {LR_COMPANY.addressLine2}</Text>
+            <Text style={s.coLineGap}>{LR_COMPANY.addressLine1}, {LR_COMPANY.addressLine2}</Text>
           </View>
           <View style={s.coContactRow}>
             <View>
@@ -237,7 +242,7 @@ export default function LRPDF(p: LRPDFProps) {
             </View>
             <View>
               <Text style={s.coLine}>{LR_COMPANY.phone2}</Text>
-              <Text style={s.coLine}>{LR_COMPANY.email}</Text>
+              <Text style={s.coLineGap}>{LR_COMPANY.email}</Text>
             </View>
             <View>
               <Text style={s.coLine}>{LR_COMPANY.web}</Text>
