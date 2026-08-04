@@ -28,7 +28,13 @@ const STAMP_URL = '/legal/bagdrop-stamp.png'
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
-const GREY   = '#6b7280'
+// Darkened from the previous #6b7280 (gray-500) — that read too light/washed
+// out for the labels, footer text, and secondary lines throughout the LR.
+// #4b5563 (gray-600) — the same shade already used for the company/contact
+// strip and party address lines — keeps the same "muted secondary" role
+// while being noticeably easier to read, without going as dark as the
+// primary DARK text color.
+const GREY   = '#4b5563'
 const LIGHT  = '#f9fafb'
 const BORDER = '#d1d5db'
 
@@ -48,14 +54,24 @@ const s = StyleSheet.create({
   titleTxt:{ color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
   titleSub:{ color: 'rgba(255,255,255,0.85)', fontSize: 7.5, marginTop: 2 },
   gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
-  gcValue: { color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
-  gcDate:  { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, textAlign: 'right', marginTop: 2 },
+  // GC No. and Date font sizes interchanged per founder feedback — the Date
+  // is now the prominent large line (was 7.5px), GC No. is now the smaller
+  // secondary line (was 13px), matching the same Date-forward hierarchy
+  // already used in QuotePDF.tsx's header (qnValue/qnDate).
+  gcValue: { color: '#fff', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
+  gcDate:  { color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   qrBox:   { width: 40, height: 40, backgroundColor: '#fff', borderRadius: 3, padding: 2 },
 
   // Company strip
   coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 24', flexDirection: 'row', justifyContent: 'space-between' },
   coLine:  { fontSize: 7, color: '#4b5563' },
+  // Company name — bold for stronger visual emphasis vs. the address line
+  // below it, which stays regular weight.
+  coName:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK },
+  // Contact details as three evenly-spaced columns (Tel / phone+email /
+  // web) instead of two stacked lines, for better balance on the strip.
+  coContactRow: { flexDirection: 'row', gap: 18 },
 
   // Grid
   body:    { margin: '0 24' },
@@ -212,12 +228,20 @@ export default function LRPDF(p: LRPDFProps) {
         {/* ── Company strip ── */}
         <View style={s.coStrip}>
           <View>
-            <Text style={s.coLine}>{LR_COMPANY.name}</Text>
+            <Text style={s.coName}>{LR_COMPANY.name}</Text>
             <Text style={s.coLine}>{LR_COMPANY.addressLine1}, {LR_COMPANY.addressLine2}</Text>
           </View>
-          <View>
-            <Text style={s.coLine}>Tel: {LR_COMPANY.phone} / {LR_COMPANY.phone2}  ·  {LR_COMPANY.email}</Text>
-            <Text style={s.coLine}>{LR_COMPANY.web}</Text>
+          <View style={s.coContactRow}>
+            <View>
+              <Text style={s.coLine}>Tel: {LR_COMPANY.phone}</Text>
+            </View>
+            <View>
+              <Text style={s.coLine}>{LR_COMPANY.phone2}</Text>
+              <Text style={s.coLine}>{LR_COMPANY.email}</Text>
+            </View>
+            <View>
+              <Text style={s.coLine}>{LR_COMPANY.web}</Text>
+            </View>
           </View>
         </View>
 
