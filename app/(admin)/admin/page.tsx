@@ -1611,7 +1611,10 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Paid Bookings</p>
+                {/* Now sourced from Trip Sheets (see crm-stats/route.ts) —
+                    relabeled from "Paid Bookings" since this counts trip
+                    sheets in the period, not booking rows. */}
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Trips</p>
                 <p className="mt-1 text-lg font-semibold text-gray-600">
                   {revenueLoading ? '…' : revenueReport?.count ?? '—'}
                 </p>

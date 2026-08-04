@@ -82,56 +82,38 @@ export async function GET(req: NextRequest) {
     0
   )
 
-  // Period-scoped Revenue Report figure — deliberately NOT the same "paid +
-  // created_at" definition as revenue_this_month above. Per the user: the
-  // Revenue Report's Paid Bookings count must match Dashboard Analytics'
-  // Completed Bookings exactly, so it uses the identical dataset and
-  // bucketing rule as app/api/admin/dashboard-analytics/route.ts —
-  // status='completed', bucketed by completed_month_override when an
-  // admin has set one, falling back to pickup_date (the booking's actual
-  // completion date, not when the inquiry/lead was created). This also
-  // means a booking whose inquiry came in one month but completed the next
-  // is correctly attributed to its completion month here too — same as
-  // Completed Bookings. Return-trip / duplicate-row concerns don't apply:
-  // each booking is already a single row (see dashboard-analytics's module
-  // comment on return quotes never creating a second row), so counting
-  // bookings here is already unique-by-Inquiry-ID.
+  // Period-scoped Revenue Report figure. Was: filtering `bookings` by
+  // status='completed'. Switched per the user — Trip Sheets are the
+  // authoritative record of actual, revenue-generating jobs in this
+  // business's real workflow (booking.status routinely lags behind reality;
+  // e.g. a booking can sit at 'payment_approved' indefinitely even after
+  // the job is fully done, since nothing currently forces admins to
+  // advance it). trip_sheets.total_income already nets in additional
+  // charges, discount, and tax (see app/api/admin/trip-sheets/route.ts's
+  // POST handler), so summing it directly is the correct total — no need
+  // to re-derive from bookings/quotes. Bucketed by the trip's pickup_date
+  // (the day the job actually happened), same convention as
+  // dashboard-analytics's Completed Bookings. This also naturally includes
+  // manual trip sheets (no linked booking, e.g. an ad-hoc job) — those are
+  // still real revenue, and Trip Sheets is the only record of them at all.
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    // The two branches below select different columns, so their results
-    // are normalized into one shape (completed_month_override always
-    // present, null when unsupported/on the fallback) rather than
-    // reassigning one PostgrestResponse over a differently-shaped one —
-    // that reassignment is a TS type error, not just a runtime concern.
-    type CompletedRow = { total_amount: number | null; pickup_date: string | null; completed_month_override: string | null }
-    let completedData: CompletedRow[] = []
-    const primary = await supabaseAdmin
-      .from('bookings')
-      .select('total_amount, pickup_date, completed_month_override')
-      .eq('status', 'completed')
-    if (primary.error?.message?.includes('completed_month_override')) {
-      const fallback = await supabaseAdmin
-        .from('bookings')
-        .select('total_amount, pickup_date')
-        .eq('status', 'completed')
-      if (!fallback.error) {
-        completedData = (fallback.data ?? []).map(b => ({ ...b, completed_month_override: null }))
-      }
-    } else if (!primary.error) {
-      completedData = (primary.data ?? []) as CompletedRow[]
-    }
+    const { data: sheetsData, error: sheetsErr } = await supabaseAdmin
+      .from('trip_sheets')
+      .select('total_income, pickup_date')
 
-    const fromMs = new Date(periodFrom).getTime()
-    const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
-    const inPeriod = completedData.filter(b => {
-      const dateStr = b.completed_month_override || b.pickup_date
-      if (!dateStr) return false
-      const t = new Date(dateStr).getTime()
-      return t >= fromMs && t < toMs
-    })
-    periodAmount = inPeriod.reduce((sum, b) => sum + (Number(b.total_amount) || 0), 0)
-    periodCount  = inPeriod.length
+    if (!sheetsErr) {
+      const fromMs = new Date(periodFrom).getTime()
+      const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
+      const inPeriod = (sheetsData ?? []).filter(t => {
+        if (!t.pickup_date) return false
+        const ms = new Date(t.pickup_date).getTime()
+        return ms >= fromMs && ms < toMs
+      })
+      periodAmount = inPeriod.reduce((sum, t) => sum + (Number(t.total_income) || 0), 0)
+      periodCount  = inPeriod.length
+    }
   }
 
   return NextResponse.json({
