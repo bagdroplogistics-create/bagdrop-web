@@ -1611,10 +1611,11 @@ export default function AdminDashboard() {
                 </p>
               </div>
               <div>
-                {/* Now sourced from Trip Sheets (see crm-stats/route.ts) —
-                    relabeled from "Paid Bookings" since this counts trip
-                    sheets in the period, not booking rows. */}
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Trips</p>
+                {/* Sourced from the same "Paid" dataset as the Payments page
+                    (see crm-stats/route.ts) — real payments.paid rows plus
+                    synthetic entries for confirmed bookings paid without a
+                    logged payment row. */}
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Paid Payments</p>
                 <p className="mt-1 text-lg font-semibold text-gray-600">
                   {revenueLoading ? '…' : revenueReport?.count ?? '—'}
                 </p>

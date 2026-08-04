@@ -1,6 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+
+// Same slice used by app/api/admin/payments/route.ts to decide which
+// bookings can have a "payment" at all (confirmed or later in the
+// lifecycle) — kept in sync with that file's CONFIRMED_ONWARD_STATUSES.
+const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
 
 // NOTE: the "which inquiries have we actually got" and "how many are
 // completed/active/pending/cancelled" questions now live in
@@ -82,43 +88,54 @@ export async function GET(req: NextRequest) {
     0
   )
 
-  // Period-scoped Revenue Report figure. Was: filtering `bookings` by
-  // status='completed'. Switched per the user — Trip Sheets are the
-  // authoritative record of actual, revenue-generating jobs in this
-  // business's real workflow (booking.status routinely lags behind reality;
-  // e.g. a booking can sit at 'payment_approved' indefinitely even after
-  // the job is fully done, since nothing currently forces admins to
-  // advance it). trip_sheets.total_income already nets in additional
-  // charges, discount, and tax (see app/api/admin/trip-sheets/route.ts's
-  // POST handler), so summing it directly is the correct total — no need
-  // to re-derive from bookings/quotes. Bucketed by the trip's pickup_date
-  // (the day the job actually happened), same convention as
-  // dashboard-analytics's Completed Bookings. This also naturally includes
-  // manual trip sheets (no linked booking, e.g. an ad-hoc job) — those are
-  // still real revenue, and Trip Sheets is the only record of them at all.
-  //
-  // Only trip sheets whose payment_status is 'paid' count as revenue — per
-  // the user: "total revenue calculate according to these already paid
-  // status." A trip sheet can exist for a job that hasn't actually been
-  // paid for yet, so this is filtered the same way revenue_this_month
-  // above filters bookings.payment_status = 'paid'.
+  // Period-scoped Revenue Report figure. Tried trip_sheets.total_income
+  // first, but the user clarified further: revenue should match the
+  // Payments page's own "Paid" total exactly — every real `payments` row
+  // with payment_status='paid', PLUS a synthetic entry for every
+  // confirmed-or-later booking that reached payment_status='paid' without
+  // ever getting a row logged in `payments` (the exact same reason
+  // app/api/admin/payments/route.ts's fetchUnloggedBookingPayments exists
+  // — bookings can reach a paid state via "Mark Payment Received" or the
+  // Skybird approved-without-payment path without ever creating a real
+  // payments row). Bucketed by created_at (when the payment/booking was
+  // recorded) — same date convention as revenue_this_month above.
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    const { data: sheetsData, error: sheetsErr } = await supabaseAdmin
-      .from('trip_sheets')
-      .select('total_income, pickup_date')
-      .eq('payment_status', 'paid')
+    const [realPaidRes, bookingsPaidRes] = await Promise.all([
+      supabaseAdmin
+        .from('payments')
+        .select('amount, created_at, booking_id')
+        .eq('payment_status', 'paid'),
+      supabaseAdmin
+        .from('bookings')
+        .select('id, total_amount, created_at')
+        .in('status', CONFIRMED_ONWARD_STATUSES)
+        .eq('payment_status', 'paid'),
+    ])
 
-    if (!sheetsErr) {
+    if (!realPaidRes.error && !bookingsPaidRes.error) {
+      const realPayments   = realPaidRes.data ?? []
+      const paidBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
+      // Only bookings without a real payments row — avoids double-counting
+      // a booking that has both a logged payment AND payment_status='paid'.
+      const syntheticEntries = (bookingsPaidRes.data ?? [])
+        .filter(b => !paidBookingIds.has(b.id))
+        .map(b => ({ amount: Number(b.total_amount) || 0, created_at: b.created_at as string | null }))
+
+      const allPaid = [
+        ...realPayments.map(p => ({ amount: Number(p.amount) || 0, created_at: p.created_at as string | null })),
+        ...syntheticEntries,
+      ]
+
       const fromMs = new Date(periodFrom).getTime()
       const toMs   = periodTo ? new Date(periodTo).getTime() : Infinity
-      const inPeriod = (sheetsData ?? []).filter(t => {
-        if (!t.pickup_date) return false
-        const ms = new Date(t.pickup_date).getTime()
+      const inPeriod = allPaid.filter(p => {
+        if (!p.created_at) return false
+        const ms = new Date(p.created_at).getTime()
         return ms >= fromMs && ms < toMs
       })
-      periodAmount = inPeriod.reduce((sum, t) => sum + (Number(t.total_income) || 0), 0)
+      periodAmount = inPeriod.reduce((sum, p) => sum + p.amount, 0)
       periodCount  = inPeriod.length
     }
   }
