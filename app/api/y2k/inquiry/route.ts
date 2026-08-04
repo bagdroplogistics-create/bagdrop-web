@@ -18,7 +18,9 @@ export async function POST(req: NextRequest) {
     try {
       await supabaseAdmin.from('bookings').insert({
         tracking_id:    trackingId,
-        status:         'pending',
+        // See app/api/bookings/route.ts for why this must be 'inquiry', not
+        // 'pending' — 'pending' isn't a valid admin Booking Workflow status.
+        status:         'inquiry',
         customer_name:  name.trim(),
         customer_email: email?.trim().toLowerCase() || null,
         customer_phone: '+91' + digits,
@@ -42,7 +44,7 @@ export async function POST(req: NextRequest) {
           pickupTime   ? `Preferred time: ${pickupTime}` : '',
           requests     ? `Special requests: ${requests}` : '',
         ].filter(Boolean).join(' | '),
-        status_history: [{ status: 'pending', timestamp: new Date().toISOString(), note: '#Y2K wedding inquiry received' }],
+        status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: '#Y2K wedding inquiry received' }],
       })
     } catch (dbErr) {
       console.error('[y2k/inquiry] DB save error:', dbErr)

@@ -5,6 +5,7 @@ import { type } from '@/theme/typography'
 
 const STATUS_LABELS: Record<string, string> = {
   pending: 'Pending',
+  inquiry: 'Pending',
   confirmed: 'Confirmed',
   quote_created: 'Quote Created',
   quote_sent: 'Quote Sent',
@@ -19,6 +20,7 @@ const STATUS_LABELS: Record<string, string> = {
 
 const STATUS_COLORS: Record<string, { fg: string; bg: string }> = {
   pending: { fg: colors.warning, bg: colors.warningBg },
+  inquiry: { fg: colors.warning, bg: colors.warningBg },
   confirmed: { fg: colors.brand, bg: colors.brandLight },
   quote_created: { fg: colors.brand, bg: colors.brandLight },
   quote_sent: { fg: colors.brand, bg: colors.brandLight },
