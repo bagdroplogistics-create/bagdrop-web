@@ -65,9 +65,11 @@ export default function TripSheetsPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
 
-  // Summary totals
-  const totalIncome  = sheets.reduce((s, t) => s + (t.total_income  || 0), 0)
-  const totalExpense = sheets.reduce((s, t) => s + (t.total_expense || 0), 0)
+  // Summary totals. Number(...) coercion guards against Postgres numeric
+  // columns coming back from Supabase as strings — `s + (t.total_income ||
+  // 0)` would silently string-concatenate instead of add in that case.
+  const totalIncome  = sheets.reduce((s, t) => s + (Number(t.total_income)  || 0), 0)
+  const totalExpense = sheets.reduce((s, t) => s + (Number(t.total_expense) || 0), 0)
   const netProfit    = totalIncome - totalExpense
 
   useEffect(() => {

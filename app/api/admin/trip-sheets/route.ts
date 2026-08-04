@@ -115,6 +115,40 @@ export async function POST(req: NextRequest) {
     quoteAmount = Number(body.quote_amount) || 0
   }
 
+  // ── Duplicate-trip-sheet guard ──────────────────────────────
+  // Found two identical trip sheets in production (same customer, same
+  // route, same pickup/delivery date, same income) — almost certainly a
+  // double-click or double-submit on "New Trip Sheet" rather than two real
+  // shipments, and every roll-up that sums trip_sheets (Dashboard, Trip
+  // Sheets totals, the Revenue Report) silently double-counts that income
+  // when it happens. Block on an exact match of customer_phone + from_city
+  // + to_city + pickup_date (the same fields the user asked for a
+  // uniqueness constraint on) unless the caller explicitly passes
+  // force: true — kept as an escape hatch for the rare legitimate case of
+  // a genuine second shipment for the same customer/route on the same day.
+  const dupCustomerPhone = booking ? (booking.customer_phone as string | null) : body.customer_phone?.trim()
+  const dupFromCity      = booking ? (booking.from_city      as string | null) : (body.from_city || null)
+  const dupToCity        = booking ? (booking.to_city        as string | null) : (body.to_city   || null)
+  const dupPickupDate    = booking ? (booking.pickup_date    as string | null) : (body.pickup_date || null)
+
+  if (!body.force && dupCustomerPhone && dupFromCity && dupToCity && dupPickupDate) {
+    const { data: dupes } = await supabaseAdmin
+      .from('trip_sheets')
+      .select('id, trip_number')
+      .eq('customer_phone', dupCustomerPhone)
+      .eq('from_city', dupFromCity)
+      .eq('to_city', dupToCity)
+      .eq('pickup_date', dupPickupDate)
+      .neq('status', 'cancelled')
+      .limit(1)
+
+    if (dupes && dupes.length > 0) {
+      return NextResponse.json({
+        error: `A trip sheet already exists for this customer, route, and pickup date: ${dupes[0].trip_number}. Check the Trip Sheets list before creating another — if this really is a separate shipment, double-check the pickup date is correct.`,
+      }, { status: 409 })
+    }
+  }
+
   const tripNumber = await nextTripNumber()
 
   const { data: sheet, error } = await supabaseAdmin
