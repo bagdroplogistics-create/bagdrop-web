@@ -17,7 +17,13 @@ const s = StyleSheet.create({
   page:      { fontFamily: 'Helvetica', backgroundColor: '#fff', paddingBottom: 40 },
 
   // Header
-  header:    { backgroundColor: ORANGE, padding: '20 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // Padding tightened 20->14 (top/bottom) as part of a document-wide spacing
+  // pass to fit the whole quote on a single A4 page in the actual react-pdf
+  // renderer (the browser preview has no fixed page height so it always
+  // looked like one page there; the downloaded PDF was silently overflowing
+  // to a second page). See matching comments throughout this stylesheet for
+  // the rest of the pass.
+  header:    { backgroundColor: ORANGE, padding: '14 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   // Full white BagDrop logo lockup — icon + "BAGDROP" wordmark + "BAG. BOX.
   // DELIVERED" tagline, all baked into the official brand asset. Restored
   // per founder feedback after an earlier icon-only crop was judged too
@@ -26,7 +32,7 @@ const s = StyleSheet.create({
   // from the old icon-only mark (21x36) so the wordmark stays legible —
   // that's why the header row is now taller and logoSub below has more
   // top margin to clear it.
-  logoFull:  { width: 57, height: 84, marginBottom: 6 },
+  logoFull:  { width: 57, height: 84, marginBottom: 4 },
   // react-pdf's built-in Helvetica family only ships Regular/Bold/Oblique/
   // BoldOblique — there's no true "Medium" weight available without
   // registering a custom web font (a fragile external dependency for a
@@ -36,7 +42,7 @@ const s = StyleSheet.create({
   // regular-weight line, without the risk of a missing custom font
   // silently breaking the header. marginTop bumped 3->8 to sit clear of
   // the now-taller full logo image above it.
-  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 8, textTransform: 'uppercase' },
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 5, textTransform: 'uppercase' },
   // Label above the quote number — was "Service Estimate", now just
   // "Estimate" ("Service" removed, "Estimate" kept per founder feedback).
   qnLabel:   { color: 'rgba(255,255,255,0.8)', fontSize: 7.5, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
@@ -48,20 +54,20 @@ const s = StyleSheet.create({
   qnValidTill: { color: 'rgba(255,255,255,0.85)', fontSize: 8, textAlign: 'right', marginTop: 2 },
 
   // Meta strip
-  strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '6 28', flexDirection: 'row', gap: 20 },
+  strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '5 28', flexDirection: 'row', gap: 20 },
   stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
   stripVal:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
   // Body
-  body:      { padding: '16 28 0' },
-  row2:      { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  body:      { padding: '12 28 0' },
+  row2:      { flexDirection: 'row', gap: 12, marginBottom: 8 },
 
   // Cards
-  card:      { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
-  cardDark:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12', borderLeftWidth: 3, borderLeftColor: DARK },
-  cardLbl:   { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  card:      { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
+  cardDark:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 12', borderLeftWidth: 3, borderLeftColor: DARK },
+  cardLbl:   { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
   custName:  { color: DARK, fontSize: 14, fontFamily: 'Helvetica-Bold' },
-  custSub:   { color: '#4b5563', fontSize: 9.5, marginTop: 2 },
+  custSub:   { color: '#4b5563', fontSize: 9.5, marginTop: 1 },
   // Pickup/Delivery address values — bumped from 8px/regular to 11px/Bold/
   // dark per founder feedback ("these should be much more prominent");
   // the "Pickup Address"/"Delivery Address" label above is unchanged
@@ -69,11 +75,11 @@ const s = StyleSheet.create({
   addressVal:{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: DARK },
 
   // Journey
-  jtRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
+  jtRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
   jtCity:    { color: DARK, fontSize: 12, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
-  jtLbl:     { color: GREY, fontSize: 7.5, textAlign: 'center', marginBottom: 2 },
+  jtLbl:     { color: GREY, fontSize: 7.5, textAlign: 'center', marginBottom: 1 },
   jtLine:    { flex: 1, borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginHorizontal: 6 },
-  jtGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '4 12' },
+  jtGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '3 12' },
   // Pickup/Delivery are set to width:'100%' at their instance below (like
   // Flight already was) so long month names (September/November/December)
   // never wrap onto a second line within the old 48% column — Time/Bags
@@ -83,9 +89,9 @@ const s = StyleSheet.create({
   jtItemVal: { fontFamily: 'Helvetica-Bold' },
 
   // Table
-  tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '7 10' },
+  tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '6 10' },
   tableHcell:{ color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
-  tableRow:  { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', padding: '8 10', alignItems: 'flex-start' },
+  tableRow:  { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#f3f4f6', padding: '6 10', alignItems: 'flex-start' },
   tableCell: { fontSize: 9.5, color: '#374151' },
   tableDesc: { fontSize: 8.5, color: GREY, marginTop: 2 },
   cellIdx:   { width: 20 },
@@ -96,48 +102,48 @@ const s = StyleSheet.create({
   cellAmt:   { width: 70, textAlign: 'right', fontFamily: 'Helvetica-Bold', color: DARK },
 
   // Totals + Payment row
-  tpRow:     { flexDirection: 'row', gap: 12, padding: '10 28 16' },
-  payBox:    { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 12' },
-  payLbl:    { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  payRow:    { flexDirection: 'row', marginBottom: 3 },
+  tpRow:     { flexDirection: 'row', gap: 12, padding: '8 28 12' },
+  payBox:    { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 12' },
+  payLbl:    { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  payRow:    { flexDirection: 'row', marginBottom: 2 },
   payKey:    { color: GREY, fontSize: 8.5, width: 60 },
   payVal:    { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', flex: 1 },
-  upiBox:    { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '4 8', marginTop: 4 },
+  upiBox:    { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '3 8', marginTop: 3 },
   upiText:   { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
 
   totalsBox: { flex: 1 },
-  totRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  totRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 3 },
   totKey:    { color: GREY, fontSize: 9.5 },
   totVal:    { color: DARK, fontSize: 9.5 },
-  totDivider:{ borderTopWidth: 2, borderTopColor: DARK, paddingTop: 6, marginTop: 4 },
+  totDivider:{ borderTopWidth: 2, borderTopColor: DARK, paddingTop: 5, marginTop: 3 },
   grandKey:  { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold' },
   grandVal:  { color: ORANGE, fontSize: 15, fontFamily: 'Helvetica-Bold' },
-  amtWords:  { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '5 8', marginTop: 6 },
+  amtWords:  { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '4 8', marginTop: 4 },
   amtWLabel: { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
   amtWText:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Oblique' },
 
   // Notes
-  notesBox:  { margin: '0 28 10', backgroundColor: LIGHT, borderRadius: 6, padding: '8 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
-  notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  notesBox:  { margin: '0 28 6', backgroundColor: LIGHT, borderRadius: 6, padding: '5 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
+  notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
   notesText: { color: '#374151', fontSize: 9.5 },
 
   // T&C
-  tcSection: { margin: '0 28 10', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 10 },
-  tcTitle:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 6 },
-  tcGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '3 12' },
+  tcSection: { margin: '0 28 6', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6 },
+  tcTitle:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
+  tcGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '2 12' },
   tcItem:    { flexDirection: 'row', gap: 3, width: '48%' },
-  tcNum:     { color: ORANGE, fontSize: 8.5, fontFamily: 'Helvetica-Bold', width: 10 },
-  tcText:    { color: GREY, fontSize: 8, flex: 1, lineHeight: 1.4 },
+  tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 10 },
+  tcText:    { color: GREY, fontSize: 7.5, flex: 1, lineHeight: 1.3 },
 
   // Footer
-  footer:    { margin: '0 28', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 10, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  footer:    { margin: '0 28', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   ftLeft:    { flex: 1 },
-  ftCo:      { color: '#374151', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-  ftLine:    { color: GREY, fontSize: 8.5, marginBottom: 1 },
+  ftCo:      { color: '#374151', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
+  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
   ftRight:   { alignItems: 'center', width: 120 },
-  sigLine:   { borderTopWidth: 1, borderTopColor: DARK, paddingTop: 5, width: 110, textAlign: 'center' },
+  sigLine:   { borderTopWidth: 1, borderTopColor: DARK, paddingTop: 4, width: 110, textAlign: 'center' },
   sigText:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-  sigSub:    { color: GREY, fontSize: 7.5, marginTop: 2 },
+  sigSub:    { color: GREY, fontSize: 7, marginTop: 1 },
 })
 
 function fmtRs(n: number | null | undefined) {
@@ -313,16 +319,16 @@ export default function QuotePDF(p: QuotePDFProps) {
 
           {/* Addresses */}
           {(p.pickupAddress || p.dropAddress) ? (
-            <View style={[s.row2, { marginBottom: 10 }]}>
+            <View style={[s.row2, { marginBottom: 6 }]}>
               {p.pickupAddress ? (
-                <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 10' }}>
-                  <Text style={[s.cardLbl, { marginBottom: 3 }]}>Pickup Address</Text>
+                <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '6 10' }}>
+                  <Text style={[s.cardLbl, { marginBottom: 2 }]}>Pickup Address</Text>
                   <Text style={s.addressVal}>{p.pickupAddress}</Text>
                 </View>
               ) : <View style={{ flex: 1 }} />}
               {p.dropAddress ? (
-                <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '8 10' }}>
-                  <Text style={[s.cardLbl, { marginBottom: 3 }]}>Delivery Address</Text>
+                <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '6 10' }}>
+                  <Text style={[s.cardLbl, { marginBottom: 2 }]}>Delivery Address</Text>
                   <Text style={s.addressVal}>{p.dropAddress}</Text>
                 </View>
               ) : <View style={{ flex: 1 }} />}
@@ -438,7 +444,11 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.ftCo}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</Text>
             <Text style={s.ftLine}>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</Text>
             <Text style={s.ftLine}>GSTIN: 24AAACC9320N2ZL  ·  CIN: U63090GJ2023PTC142601</Text>
-            <Text style={s.ftLine}>📞 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
+            {/* 'Tel:' not the 📞 emoji — react-pdf's default Helvetica font
+                has no emoji glyphs either, so it rendered as a garbled
+                character in the downloaded PDF (same root cause as the
+                ₹ symbol bug fixed elsewhere in this file's fmtRs()). */}
+            <Text style={s.ftLine}>Tel: 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
           </View>
           <View style={s.ftRight}>
             <View style={s.sigLine}>
