@@ -35,6 +35,11 @@ interface Booking {
   // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql. Only meaningful once status
   // is 'completed'; null means "use pickup_date automatically."
   completed_month_override?: string | null
+  // 'onward' | 'return' — which leg of a (possible) round trip this
+  // booking is. Every pre-existing booking is 'onward' (see
+  // RETURN_TRIP_BOOKING_MIGRATION.sql); only 'return' for the
+  // independent booking created for a Return Trip quote's return leg.
+  trip_leg?: 'onward' | 'return' | null
   time_slot: string | null
   total_bags: number
   total_amount: number
@@ -1734,7 +1739,7 @@ export default function AdminDashboard() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Tracking', 'Customer', 'Route', 'Source', 'Service', 'Date', 'Bags', 'Status'].map(h => (
+                    {['Tracking', 'Customer', 'Route', 'Trip Type', 'Source', 'Service', 'Date', 'Bags', 'Status'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -1774,6 +1779,17 @@ export default function AdminDashboard() {
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-700">
                           {b.from_city} &rarr; {b.to_city}
+                        </td>
+                        <td className="px-4 py-3">
+                          {b.trip_leg === 'return' ? (
+                            <span className="inline-flex rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                              Return Leg
+                            </span>
+                          ) : (
+                            <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
+                              One Way
+                            </span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           {(() => {

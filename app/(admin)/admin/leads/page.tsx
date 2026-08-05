@@ -918,7 +918,7 @@ export default function LeadsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Trip Type', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -940,6 +940,17 @@ export default function LeadsPage() {
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {l.return_quote_number ? (
+                          <span className="inline-flex rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                            Return Trip
+                          </span>
+                        ) : (
+                          <span className="inline-flex rounded-full bg-gray-100 px-2.5 py-1 text-xs font-medium text-gray-500">
+                            One Way
+                          </span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         {l.source ? (
