@@ -319,7 +319,7 @@ function QuotePageInner() {
   const [createdLeadId, setCreatedLeadId]   = useState<string | null>(null)
   const [onwardQuote,   setOnwardQuote]     = useState<{ estimate_number: string; estimate_id: string | null; total: number; zoho_url: string; sent_to_customer: boolean } | null>(null)
   const [result, setResult] = useState<{
-    estimate_number: string; estimate_id: string; total: number
+    estimate_number: string; estimate_id: string | null; total: number
     zoho_url: string; sent_to_customer: boolean; is_return_quote?: boolean
     // Populated only when Trip Type = Return Trip generated both legs in one click
     return_estimate_number?: string; return_total?: number
