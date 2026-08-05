@@ -924,104 +924,6 @@ function QuotePageInner() {
             </div>
           )}
 
-          {/* ── Return Journey Details ── */}
-          {!isEdit && !lead?.quote_number && tripType === 'return' && (
-            <div className={sect + ' border-purple-200'}>
-              <p className={sectH + ' text-purple-500'}>Return Journey Details</p>
-              <div className="grid grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className={lbl}>Return From</label>
-                  <input type="text" value={returnFromCity} onChange={e => setReturnFromCity(e.target.value)} placeholder="e.g. Mumbai" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Return To</label>
-                  <input type="text" value={returnToCity} onChange={e => setReturnToCity(e.target.value)} placeholder="e.g. Ahmedabad" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Return Pickup Date</label>
-                  <input type="date" value={returnPickupDate} onChange={e => setReturnPickupDate(e.target.value)} className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Return Pickup Time</label>
-                  <select value={returnPickupTime} onChange={e => setReturnPickupTime(e.target.value)} className={inp}>
-                    <option value="">-- Time --</option>
-                    {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <label className={lbl}>Return Pickup Location</label>
-                  <input type="text" value={returnPickupAddr} onChange={e => setReturnPickupAddr(e.target.value)} placeholder="Pickup address for the return leg" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Return Drop Location</label>
-                  <input type="text" value={returnDropAddr} onChange={e => setReturnDropAddr(e.target.value)} placeholder="Drop address for the return leg" className={inp} />
-                </div>
-                <div>
-                  <label className={lbl}>Number of Bags (if different)</label>
-                  <input type="number" min="1" value={returnBagsCount} onChange={e => setReturnBagsCount(e.target.value)} className={inp} />
-                </div>
-                <div className="col-span-2">
-                  <label className={lbl}>Additional Notes (optional)</label>
-                  <input type="text" value={returnNotes} onChange={e => setReturnNotes(e.target.value)} placeholder="Anything specific to the return journey" className={inp} />
-                </div>
-              </div>
-
-              {/* Return item table — auto-fills from route pricing, editable */}
-              <div className="mb-2 flex items-center justify-between">
-                <p className="text-xs font-semibold text-gray-500">Return Journey Items</p>
-                {returnPriceLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
-              </div>
-              <table className="w-full min-w-0 text-sm mb-2">
-                <thead>
-                  <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase text-gray-500">
-                    <th className="pb-2 pr-2">Item</th>
-                    <th className="pb-2 px-2 w-14 text-center">Qty</th>
-                    <th className="pb-2 px-2 w-24 text-right">Rate (₹)</th>
-                    <th className="pb-2 px-2 w-24 text-right">Amount (₹)</th>
-                    <th className="pb-2 pl-2 w-8"></th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                  {returnLineItems.length === 0 ? (
-                    <tr><td colSpan={5} className="py-4 text-center text-xs text-gray-400">Fill Return From / To to auto-load from route pricing, or add a row manually.</td></tr>
-                  ) : (
-                    returnLineItems.map(row => (
-                      <tr key={row.id} className="align-top">
-                        <td className="py-1.5 pr-2">
-                          <input type="text" value={row.name} onChange={e => updateReturnRow(row.id, 'name', e.target.value)}
-                            placeholder="Item name" className="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:border-purple-300 focus:outline-none" />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input type="number" min="1" value={row.qty} onChange={e => updateReturnRow(row.id, 'qty', Number(e.target.value))}
-                            className="w-full rounded border border-gray-200 px-2 py-1 text-center text-sm focus:border-purple-300 focus:outline-none" />
-                        </td>
-                        <td className="py-1.5 px-2">
-                          <input type="number" min="0" value={row.rate} onChange={e => updateReturnRow(row.id, 'rate', Number(e.target.value))}
-                            className="w-full rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-purple-300 focus:outline-none" />
-                        </td>
-                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{(row.qty * row.rate).toLocaleString('en-IN')}</td>
-                        <td className="py-1.5 pl-2">
-                          <button type="button" onClick={() => removeReturnRow(row.id)} className="text-gray-300 hover:text-red-500">
-                            <Trash2 className="h-3.5 w-3.5" />
-                          </button>
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-              <button type="button" onClick={addReturnRow} className="flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700">
-                <Plus className="h-3.5 w-3.5" /> Add Row
-              </button>
-
-              <div className="mt-3 rounded-lg bg-purple-50 border border-purple-100 p-3 text-sm space-y-1">
-                <div className="flex justify-between"><span className="text-gray-500">Return Sub Total</span><span className="font-semibold">₹ {returnSubtotal.toLocaleString('en-IN')}</span></div>
-                <div className="flex justify-between"><span className="text-gray-500">GST (5%)</span><span className="font-semibold">₹ {returnTaxAmt.toLocaleString('en-IN')}</span></div>
-                <div className="flex justify-between border-t border-purple-200 pt-1 mt-1"><span className="font-bold text-purple-700">Return Total</span><span className="font-bold text-purple-700">₹ {returnTotal.toLocaleString('en-IN')}</span></div>
-              </div>
-            </div>
-          )}
-
           {lead?.quote_number && !isEdit && !lead?.return_quote_number && (
             <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 text-purple-500" />
@@ -1417,6 +1319,106 @@ function QuotePageInner() {
               <p className="text-xs text-gray-400">Estimate PDF will be emailed to {(lead?.email ?? custEmail) || displayPhone || 'customer'} immediately after creation.</p>
             </div>
           </label>
+
+          {/* ── Return Journey Details — positioned last, only visible when
+              Return Trip is selected. Kept purely additive on top of the
+              existing one-way form; nothing above this point changed. ── */}
+          {!isEdit && !lead?.quote_number && tripType === 'return' && (
+            <div className={sect + ' border-purple-200'}>
+              <p className={sectH + ' text-purple-500'}>Return Journey Details</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className={lbl}>Return From</label>
+                  <input type="text" value={returnFromCity} onChange={e => setReturnFromCity(e.target.value)} placeholder="e.g. Mumbai" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return To</label>
+                  <input type="text" value={returnToCity} onChange={e => setReturnToCity(e.target.value)} placeholder="e.g. Ahmedabad" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Date</label>
+                  <input type="date" value={returnPickupDate} onChange={e => setReturnPickupDate(e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Time</label>
+                  <select value={returnPickupTime} onChange={e => setReturnPickupTime(e.target.value)} className={inp}>
+                    <option value="">-- Time --</option>
+                    {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Location</label>
+                  <input type="text" value={returnPickupAddr} onChange={e => setReturnPickupAddr(e.target.value)} placeholder="Pickup address for the return leg" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Drop Location</label>
+                  <input type="text" value={returnDropAddr} onChange={e => setReturnDropAddr(e.target.value)} placeholder="Drop address for the return leg" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Number of Bags (if different)</label>
+                  <input type="number" min="1" value={returnBagsCount} onChange={e => setReturnBagsCount(e.target.value)} className={inp} />
+                </div>
+                <div className="col-span-2">
+                  <label className={lbl}>Additional Notes (optional)</label>
+                  <input type="text" value={returnNotes} onChange={e => setReturnNotes(e.target.value)} placeholder="Anything specific to the return journey" className={inp} />
+                </div>
+              </div>
+
+              {/* Return item table — auto-fills from route pricing, editable */}
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500">Return Journey Items</p>
+                {returnPriceLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
+              </div>
+              <table className="w-full min-w-0 text-sm mb-2">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase text-gray-500">
+                    <th className="pb-2 pr-2">Item</th>
+                    <th className="pb-2 px-2 w-14 text-center">Qty</th>
+                    <th className="pb-2 px-2 w-24 text-right">Rate (₹)</th>
+                    <th className="pb-2 px-2 w-24 text-right">Amount (₹)</th>
+                    <th className="pb-2 pl-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {returnLineItems.length === 0 ? (
+                    <tr><td colSpan={5} className="py-4 text-center text-xs text-gray-400">Fill Return From / To to auto-load from route pricing, or add a row manually.</td></tr>
+                  ) : (
+                    returnLineItems.map(row => (
+                      <tr key={row.id} className="align-top">
+                        <td className="py-1.5 pr-2">
+                          <input type="text" value={row.name} onChange={e => updateReturnRow(row.id, 'name', e.target.value)}
+                            placeholder="Item name" className="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input type="number" min="1" value={row.qty} onChange={e => updateReturnRow(row.id, 'qty', Number(e.target.value))}
+                            className="w-full rounded border border-gray-200 px-2 py-1 text-center text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input type="number" min="0" value={row.rate} onChange={e => updateReturnRow(row.id, 'rate', Number(e.target.value))}
+                            className="w-full rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{(row.qty * row.rate).toLocaleString('en-IN')}</td>
+                        <td className="py-1.5 pl-2">
+                          <button type="button" onClick={() => removeReturnRow(row.id)} className="text-gray-300 hover:text-red-500">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              <button type="button" onClick={addReturnRow} className="flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700">
+                <Plus className="h-3.5 w-3.5" /> Add Row
+              </button>
+
+              <div className="mt-3 rounded-lg bg-purple-50 border border-purple-100 p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">Return Sub Total</span><span className="font-semibold">₹ {returnSubtotal.toLocaleString('en-IN')}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">GST (5%)</span><span className="font-semibold">₹ {returnTaxAmt.toLocaleString('en-IN')}</span></div>
+                <div className="flex justify-between border-t border-purple-200 pt-1 mt-1"><span className="font-bold text-purple-700">Return Total</span><span className="font-bold text-purple-700">₹ {returnTotal.toLocaleString('en-IN')}</span></div>
+              </div>
+            </div>
+          )}
 
           {err && (
             <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3">
