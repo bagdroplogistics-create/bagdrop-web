@@ -249,6 +249,14 @@ function QuotePageInner() {
   const [custNotes,  setCustNotes]  = useState(DEFAULT_NOTES)
   const [terms,      setTerms]      = useState(DEFAULT_TERMS)
   const [sendEmail,  setSendEmail]  = useState(false)
+  // Manual "Return Quote" override — the backend (generate-quote route)
+  // already auto-detects return-quote mode once lead.quote_number exists
+  // (that part can't be turned off here, it's a safety net against
+  // accidentally overwriting a primary quote). This lets the admin also
+  // *force* return-quote mode for a lead that doesn't have a primary quote
+  // yet — e.g. only the return leg came through Bagdrop and the outward
+  // journey was booked elsewhere.
+  const [forceReturnQuote, setForceReturnQuote] = useState(false)
 
   // Line items
   const [lineItems, setLineItems] = useState<LineItemRow[]>([
@@ -574,7 +582,7 @@ function QuotePageInner() {
       salesperson_name:    salesperson || undefined,
       explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
       send_email: sendEmail,
-      is_return_quote: !!(lead?.quote_number),
+      is_return_quote: forceReturnQuote || !!(lead?.quote_number),
     }
     if (agentName.trim())     payload.agent_name       = agentName.trim()
     if (expiryDate)           payload.expiry_date      = expiryDate
@@ -708,7 +716,7 @@ function QuotePageInner() {
           ) : null}
           <button onClick={generate} disabled={generating}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> Generate Quote</>}
+            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {(forceReturnQuote || lead?.quote_number) ? 'Generate Return Quote' : 'Generate Quote'}</>}
           </button>
         </div>
       </div>
@@ -718,6 +726,31 @@ function QuotePageInner() {
 
         {/* ── Left form ── */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-5 space-y-4 min-w-0">
+
+          {/* Manual Return Quote toggle — only shown for a fresh lead with no
+              primary quote yet. Once a primary quote exists, return-quote
+              mode is automatic (see the purple banner below) and can't be
+              turned off here, so the checkbox would be misleading. */}
+          {!isEdit && !lead?.quote_number && (
+            <label className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm cursor-pointer hover:border-purple-200 transition-colors">
+              <input
+                type="checkbox"
+                checked={forceReturnQuote}
+                onChange={e => setForceReturnQuote(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
+              />
+              <span>
+                <span className="font-semibold text-gray-800">This is a Return Quote</span>
+                <span className="text-gray-400"> — check this if only the return journey is being booked (outward leg handled elsewhere)</span>
+              </span>
+            </label>
+          )}
+          {forceReturnQuote && !lead?.quote_number && (
+            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
+              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-500" />
+              <span className="text-purple-800">This will be saved as a <strong>Return Journey Quote</strong> on the lead.</span>
+            </div>
+          )}
 
           {lead?.quote_number && !isEdit && !lead?.return_quote_number && (
             <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
@@ -1162,7 +1195,7 @@ function QuotePageInner() {
 
             <button onClick={generate} disabled={generating}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : 'Generate Quote'}</>}
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {(forceReturnQuote || lead?.quote_number) ? 'Generate Return Quote' : 'Generate Quote'}</>}
             </button>
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">
