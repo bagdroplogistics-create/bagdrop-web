@@ -173,6 +173,7 @@ export async function POST(req: NextRequest) {
     delivery_date:        deliveryDateOverride,
     flight_datetime:      flightDtOverride,
     pickup_address:       pickupAddrOverride,
+    drop_address:         dropAddrOverride,
     from_city:            fromCityOverride,
     to_city:              toCityOverride,
     bags_count:           bagsCountOverride,
@@ -196,6 +197,7 @@ export async function POST(req: NextRequest) {
     delivery_date?:        string
     flight_datetime?:      string
     pickup_address?:       string
+    drop_address?:         string
     from_city?:            string
     to_city?:              string
     bags_count?:           number
@@ -312,7 +314,11 @@ export async function POST(req: NextRequest) {
       ...(discountRate > 0 && discountType !== 'fixed' ? { return_discount_pct: discountRate } : { return_discount_pct: null }),
       ...(customer_notes    ? { return_quote_notes: customer_notes } : {}),
       ...(pickupAddrOverride ? { return_pickup_address: pickupAddrOverride } : {}),
-      ...(pickupDtOverride  ? { return_pickup_date: pickupDtOverride.slice(0, 10) } : {}),
+      ...(dropAddrOverride   ? { return_drop_address:  dropAddrOverride   } : {}),
+      ...(pickupDtOverride  ? {
+        return_pickup_date: pickupDtOverride.slice(0, 10),
+        return_pickup_time: pickupDtOverride.slice(11, 16),
+      } : {}),
     }
   } else {
     // ── PRIMARY QUOTE: write to main quote fields ──────────────────
@@ -357,9 +363,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updateErr.message }, { status: 500 })
   }
 
-  // ── Ensure linked booking exists ──────────────────────────────────
+  // Declared outside the branch below (not `let` inside it) because the
+  // "advance to quote_sent" step further down still needs to read it —
+  // it's a no-op for return quotes since that step already checks
+  // !isReturnQuote itself.
   let bookingId: string | null = lead.booking_id ?? null
 
+  if (!isReturnQuote) {
+  // ── Ensure linked booking exists (PRIMARY / ONWARD quote) ──────────
   if (!bookingId) {
     // No booking yet — create one.
     // Derive tracking ID from lead number (BDL-2026-0001 → BDA-2026-0001)
@@ -427,7 +438,7 @@ export async function POST(req: NextRequest) {
       await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
       console.log(`[generate-quote] Auto-created booking ${trackingId} for lead ${lead.lead_number}`)
     }
-  } else if (!isReturnQuote) {
+  } else {
     // ── Primary quote: update existing booking ────────────────────
     // Fetch current booking status so we don't accidentally downgrade it.
     const { data: existingBooking } = await supabaseAdmin
@@ -475,7 +486,110 @@ export async function POST(req: NextRequest) {
       console.log(`[generate-quote] Preserved booking status '${currentStatus}' — not downgraded to quote_created`)
     }
   }
-  // NOTE: for return quotes (isReturnQuote === true), booking status is intentionally NOT changed.
+  } else {
+    // ── RETURN LEG: independent booking, separate from the primary
+    // (onward) booking linked via lead.booking_id ─────────────────────
+    // This is Phase 1 of Return Trip support: the return leg gets its
+    // own booking row (trip_leg: 'return') with its own status, so it
+    // can later carry its own LR / driver assignment / status workflow
+    // without ever touching the onward booking. Tracking ID mirrors the
+    // quote-number pattern (BDA-2026-0001 onward → BDA-2026-0001-R return).
+    let returnBookingId: string | null = lead.return_booking_id ?? null
+    const returnTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-') + '-R'
+    const returnPickupDate = pickupDtOverride ? pickupDtOverride.slice(0, 10) : null
+    const returnPickupTime = pickupDtOverride ? pickupDtOverride.slice(11, 16) : null
+
+    if (!returnBookingId) {
+      const { data: newReturnBooking, error: createErr } = await supabaseAdmin
+        .from('bookings')
+        .insert({
+          tracking_id:    returnTrackingId,
+          trip_leg:       'return',
+          customer_name:  lead.name,
+          customer_phone: lead.phone,
+          customer_phone_country_code: lead.phone_country_code ?? null,
+          customer_phone_national:     lead.phone_national ?? null,
+          customer_email: lead.email ?? '',
+          service_type:   lead.service_type ?? lead.service_interest ?? '',
+          from_city:      fromCity || '',
+          to_city:        toCity   || '',
+          pickup_date:    returnPickupDate,
+          delivery_date:  deliveryDateOverride ?? null,
+          time_slot:      returnPickupTime,
+          pickup_address: pickupAddrOverride ?? null,
+          drop_address:   dropAddrOverride ?? null,
+          total_bags:     bags,
+          total_amount:   total,
+          status:         'quote_created',
+          status_history: [{
+            from:       null,
+            to:         'quote_created',
+            timestamp:  new Date().toISOString(),
+            changed_by: 'system',
+            note:       `Auto-created for return journey quote ${quoteNumber} (lead ${lead.lead_number})`,
+          }],
+        })
+        .select('id, tracking_id')
+        .single()
+
+      if (createErr) {
+        console.warn('[generate-quote] return-leg booking create failed:', createErr.message)
+        const { data: existing } = await supabaseAdmin
+          .from('bookings')
+          .select('id')
+          .eq('tracking_id', returnTrackingId)
+          .maybeSingle()
+        if (existing?.id) returnBookingId = existing.id
+      } else if (newReturnBooking) {
+        returnBookingId = newReturnBooking.id
+        console.log(`[generate-quote] Auto-created return-leg booking ${returnTrackingId} for lead ${lead.lead_number}`)
+      }
+
+      if (returnBookingId) {
+        await supabaseAdmin.from('leads').update({ return_booking_id: returnBookingId }).eq('id', lead.id)
+      }
+    } else {
+      // Update existing return-leg booking — same "don't downgrade a
+      // progressed status" protection as the primary booking gets.
+      const { data: existingReturnBooking } = await supabaseAdmin
+        .from('bookings')
+        .select('status')
+        .eq('id', returnBookingId)
+        .maybeSingle()
+
+      const currentStatus = existingReturnBooking?.status ?? null
+      const canUpdateStatus = !currentStatus || !PROTECTED_LATE_STAGE_STATUSES.has(currentStatus)
+
+      const returnBookingUpdates: Record<string, unknown> = {
+        total_amount:   total,
+        customer_name:  lead.name,
+        customer_email: lead.email ?? '',
+        ...(canUpdateStatus ? { status: 'quote_created' } : {}),
+      }
+      if (fromCityOverride)     returnBookingUpdates.from_city      = fromCity
+      if (toCityOverride)       returnBookingUpdates.to_city        = toCity
+      if (bagsCountOverride)    returnBookingUpdates.total_bags     = bags
+      if (pickupAddrOverride)   returnBookingUpdates.pickup_address = pickupAddrOverride
+      if (dropAddrOverride)     returnBookingUpdates.drop_address   = dropAddrOverride
+      if (pickupDtOverride) {
+        returnBookingUpdates.pickup_date = returnPickupDate
+        returnBookingUpdates.time_slot   = returnPickupTime
+      }
+      if (deliveryDateOverride) returnBookingUpdates.delivery_date = deliveryDateOverride
+
+      const { error: bookingErr } = await supabaseAdmin
+        .from('bookings')
+        .update(returnBookingUpdates)
+        .eq('id', returnBookingId)
+
+      if (bookingErr) {
+        console.warn('[generate-quote] return-leg booking update non-fatal:', bookingErr.message)
+      }
+      if (!canUpdateStatus) {
+        console.log(`[generate-quote] Preserved return-leg booking status '${currentStatus}' — not downgraded to quote_created`)
+      }
+    }
+  }
 
   console.log(`[generate-quote] ${isReturnQuote ? 'Return quote' : 'Quote'} ${quoteNumber} saved for lead ${lead.lead_number} | Total: ₹${total}`)
 
