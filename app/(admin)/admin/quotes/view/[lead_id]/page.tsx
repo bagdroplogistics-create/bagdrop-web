@@ -75,6 +75,7 @@ interface Lead {
   return_from_city:        string | null
   return_to_city:          string | null
   return_bags_count:       number | null
+  return_pickup_date:      string | null
   return_discount_pct:     number | null
   return_discount_amt:     number | null
   return_quote_notes:      string | null
@@ -441,6 +442,21 @@ export default function QuoteViewPage() {
           total:        grandTotal,
           notes:        lead.quote_notes ?? lead.notes,
           terms:        lead.quote_terms,
+          // Return Trip — only present when this lead has a return quote
+          // (Trip Type = Return Trip on New Quote). QuotePDF renders the
+          // Journey 1 / Journey 2 + combined summary layout only when
+          // returnLineItems is non-empty; a plain one-way quote leaves all
+          // of these undefined and renders exactly as before.
+          ...(lead.return_quote_number ? {
+            returnFromCity:   lead.return_from_city,
+            returnToCity:     lead.return_to_city,
+            returnBagsCount:  lead.return_bags_count,
+            returnPickupDate: lead.return_pickup_date,
+            returnLineItems:  lead.return_quote_line_items ?? [],
+            returnSubtotal:   lead.return_quote_subtotal ?? 0,
+            returnTax:        lead.return_quote_tax ?? 0,
+            returnTotal:      lead.return_quote_total ?? 0,
+          } : {}),
         })
       ).toBlob()
 

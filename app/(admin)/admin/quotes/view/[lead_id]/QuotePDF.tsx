@@ -135,6 +135,12 @@ const s = StyleSheet.create({
   tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 10 },
   tcText:    { color: GREY, fontSize: 7.5, flex: 1, lineHeight: 1.3 },
 
+  // Return Trip — Journey 1 / Journey 2 labels + combined summary. Only
+  // rendered when returnLineItems is passed (Trip Type = Return Trip);
+  // one-way quotes never touch these styles.
+  journeyLabel: { color: '#7c3aed', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tripSummary:  { margin: '10 28 0', backgroundColor: LIGHT, borderRadius: 6, padding: '10 14' },
+
   // Footer
   footer:    { margin: '0 28', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   ftLeft:    { flex: 1 },
@@ -222,9 +228,26 @@ export interface QuotePDFProps {
   // Notes / Terms
   notes: string | null
   terms: string | null
+
+  // ── Return Trip (optional) ──────────────────────────────────────────
+  // Populated only when this lead has a Return Trip quote (Trip Type =
+  // Return Trip on New Quote). When present, Line Items + Totals render
+  // as "Journey 1 (Onward)" / "Journey 2 (Return)" with a combined
+  // Onward/Return/Grand Total summary at the bottom. A plain one-way
+  // quote (the default — these fields left undefined) renders exactly
+  // as before this was added.
+  returnFromCity?:    string | null
+  returnToCity?:      string | null
+  returnBagsCount?:   number | null
+  returnPickupDate?:  string | null
+  returnLineItems?:   { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[]
+  returnSubtotal?:    number
+  returnTax?:         number
+  returnTotal?:       number
 }
 
 export default function QuotePDF(p: QuotePDFProps) {
+  const hasReturn = !!(p.returnLineItems && p.returnLineItems.length > 0)
   const meta = [
     { label: 'GSTIN',      value: '24AAACC9320N2ZL' },
     { label: 'SAC Code',   value: '996511' },
@@ -336,6 +359,15 @@ export default function QuotePDF(p: QuotePDFProps) {
           ) : null}
         </View>
 
+        {/* ── Journey 1 label (only shown alongside a Return Trip) ── */}
+        {hasReturn && (
+          <View style={{ margin: '0 28 4' }}>
+            <Text style={s.journeyLabel}>
+              Journey 1 — Onward  ·  {p.fromCity ?? '—'} → {p.toCity ?? '—'}{p.pickupDate ? `  ·  ${fmtDate(p.pickupDate)}` : ''}
+            </Text>
+          </View>
+        )}
+
         {/* ── Line Items ── */}
         <View style={{ margin: '0 28 0' }}>
           {/* Table header */}
@@ -413,6 +445,62 @@ export default function QuotePDF(p: QuotePDFProps) {
             )}
           </View>
         </View>
+
+        {/* ── Journey 2 (Return) — only rendered for a Return Trip quote ── */}
+        {hasReturn && (
+          <>
+            <View style={{ margin: '4 28 4' }}>
+              <Text style={s.journeyLabel}>
+                Journey 2 — Return  ·  {p.returnFromCity ?? '—'} → {p.returnToCity ?? '—'}{p.returnPickupDate ? `  ·  ${fmtDate(p.returnPickupDate)}` : ''}{p.returnBagsCount ? `  ·  ${p.returnBagsCount} bag${p.returnBagsCount !== 1 ? 's' : ''}` : ''}
+              </Text>
+            </View>
+
+            <View style={{ margin: '0 28 0' }}>
+              <View style={s.tableHead}>
+                <Text style={[s.tableHcell, s.cellIdx]}>#</Text>
+                <Text style={[s.tableHcell, s.cellDesc]}>Description</Text>
+                <Text style={[s.tableHcell, s.cellQty]}>Qty</Text>
+                <Text style={[s.tableHcell, s.cellRate]}>Rate</Text>
+                <Text style={[s.tableHcell, s.cellTax]}>Tax</Text>
+                <Text style={[s.tableHcell, s.cellAmt, { color: '#fff' }]}>Amount</Text>
+              </View>
+              {(p.returnLineItems ?? []).map((li, idx) => (
+                <View key={idx} style={s.tableRow}>
+                  <Text style={[s.tableCell, s.cellIdx, { color: GREY }]}>{idx + 1}</Text>
+                  <View style={s.cellDesc}>
+                    <Text style={[s.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{li.name}</Text>
+                    {li.description ? <Text style={s.tableDesc}>{li.description}</Text> : null}
+                  </View>
+                  <Text style={[s.tableCell, s.cellQty]}>{li.quantity}</Text>
+                  <Text style={[s.tableCell, s.cellRate]}>{fmtRs(li.rate)}</Text>
+                  <Text style={[s.tableCell, s.cellTax, { fontSize: 8.5 }]}>GST {li.tax_pct ?? 5}%</Text>
+                  <Text style={[s.tableCell, s.cellAmt]}>{fmtRs(li.amount)}</Text>
+                </View>
+              ))}
+            </View>
+
+            <View style={{ margin: '8 28 0', flexDirection: 'row', justifyContent: 'flex-end' }}>
+              <View style={{ width: 220 }}>
+                <View style={s.totRow}><Text style={s.totKey}>Return Sub Total</Text><Text style={s.totVal}>{fmtRs(p.returnSubtotal)}</Text></View>
+                <View style={s.totRow}><Text style={s.totKey}>GST @ 5%</Text><Text style={s.totVal}>{fmtRs(p.returnTax)}</Text></View>
+                <View style={[s.totRow, s.totDivider]}>
+                  <Text style={s.grandKey}>Return Total</Text>
+                  <Text style={[s.grandVal, { color: '#7c3aed' }]}>{fmtRs(p.returnTotal)}</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* ── Trip Summary — Onward + Return + Grand Total ── */}
+            <View style={s.tripSummary}>
+              <View style={s.totRow}><Text style={s.totKey}>Onward Total</Text><Text style={s.totVal}>{fmtRs(p.total)}</Text></View>
+              <View style={s.totRow}><Text style={s.totKey}>Return Total</Text><Text style={s.totVal}>{fmtRs(p.returnTotal)}</Text></View>
+              <View style={[s.totRow, s.totDivider]}>
+                <Text style={s.grandKey}>Grand Total</Text>
+                <Text style={s.grandVal}>{fmtRs((p.total ?? 0) + (p.returnTotal ?? 0))}</Text>
+              </View>
+            </View>
+          </>
+        )}
 
         {/* ── Notes ── */}
         {p.notes ? (
