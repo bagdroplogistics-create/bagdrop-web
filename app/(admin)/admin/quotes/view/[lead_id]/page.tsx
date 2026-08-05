@@ -79,6 +79,7 @@ interface Lead {
   return_discount_pct:     number | null
   return_discount_amt:     number | null
   return_quote_notes:      string | null
+  customer_responded_at:   string | null
 }
 
 interface Booking {
@@ -616,6 +617,36 @@ export default function QuoteViewPage() {
 
   async function doMarkQuoteAccepted() {
     await patchBooking('accept_quote', { status: 'accepted' })
+  }
+
+  // Sales Follow-up & Reminder System — purely additive. Stops the
+  // "Customer Follow-up Required" reminder for this lead without touching
+  // the existing accept/reject workflow above (which already stops it
+  // independently once the booking status moves past 'quote_sent').
+  async function doMarkCustomerResponded() {
+    if (!lead || !key) return
+    setActing('mark_responded')
+    setActionSuccess(null)
+    setActionError(null)
+    try {
+      const r = await fetch(`/api/admin/leads/${lead.id}?key=${encodeURIComponent(key)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ customer_responded_at: new Date().toISOString() }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setLead(prev => prev ? { ...prev, customer_responded_at: new Date().toISOString() } : prev)
+        setActionSuccess('mark_responded')
+        setTimeout(() => setActionSuccess(null), 4000)
+      } else {
+        setActionError(d.error ?? 'Failed to record response')
+      }
+    } catch {
+      setActionError('Failed to record response')
+    } finally {
+      setActing(null)
+    }
   }
 
   async function doMarkQuoteRejected() {
@@ -1599,6 +1630,26 @@ export default function QuoteViewPage() {
                     )}
                     {actionSuccess === 'accept_quote' && <p className="text-xs text-green-600 font-semibold">✅ Quote accepted. Status updated.</p>}
                     {actionSuccess === 'reject_quote' && <p className="text-xs text-red-600 font-semibold">✕ Quote rejected and recorded.</p>}
+
+                    {/* Sales Follow-up & Reminder System — stops the
+                        automated "Customer Follow-up Required" WhatsApp/
+                        email reminder for this lead without recording an
+                        accept/reject outcome (e.g. customer called and
+                        said they're still deciding). Purely additive. */}
+                    <div className="border-t border-blue-100 pt-3">
+                      {lead?.customer_responded_at ? (
+                        <p className="text-xs font-semibold text-gray-500">
+                          🟢 Customer responded {new Date(lead.customer_responded_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} — follow-up reminders stopped.
+                        </p>
+                      ) : (
+                        <button onClick={doMarkCustomerResponded} disabled={!!acting}
+                          className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-4 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 transition-colors">
+                          {acting === 'mark_responded' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                          Mark Customer Responded (stop follow-up reminders)
+                        </button>
+                      )}
+                      {actionSuccess === 'mark_responded' && <p className="mt-1 text-xs text-green-600 font-semibold">✅ Recorded — follow-up reminders stopped for this lead.</p>}
+                    </div>
                   </div>
                 )}
 

@@ -16,7 +16,12 @@ export interface EmailAttachment {
 }
 
 // ── Core send function ────────────────────────────────────────────────
-async function sendEmail(
+// Exported (in addition to the templated senders below) so other internal-
+// only notifiers — e.g. lib/sales-followup-reminders.ts's ops email
+// reminders — can send a plain subject/html email without duplicating the
+// Resend fetch call. Behavior is unchanged for every existing caller in
+// this file, all of which still call it the same way.
+export async function sendEmail(
   to:      string | string[],
   subject: string,
   html:    string,

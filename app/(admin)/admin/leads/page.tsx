@@ -1,7 +1,7 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
-import { useRouter } from 'next/navigation'
+import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
+import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
@@ -50,6 +50,11 @@ interface Lead {
   updated_at?:          string | null
   acknowledgment_sent_at?: string | null
   communication_log?:   CommunicationLogEntry[] | null
+  // Sales Follow-up & Reminder System — see
+  // lib/sales-followup-reminders.ts / app/api/admin/sales-followup-summary/route.ts.
+  quote_number?:           string | null
+  quote_date?:             string | null
+  customer_responded_at?:  string | null
 }
 
 interface CommunicationLogEntry {
@@ -690,6 +695,65 @@ const LEAD_SORT_OPTIONS = [
   { value: 'name_desc',label: 'Customer Name (Z–A)' },
 ]
 
+// ── Sales Follow-up & Reminder System — client-side badge/filter helpers ──
+// Mirrors the stop-conditions in lib/sales-followup-reminders.ts, minus
+// the linked-booking-status check (the leads list endpoint doesn't join
+// bookings) — a reasonable approximation for display purposes only. The
+// cron job's own send-time check is always the authoritative one. Uses a
+// fixed 24h threshold to match the system default (Settings currently has
+// no dedicated UI to change this — see sales_followup_*_hours keys).
+const FOLLOWUP_THRESHOLD_MS = 24 * 3600000
+
+function isQuotePending(l: Lead): boolean {
+  return !l.quote_number && l.status !== 'lost'
+}
+function isFollowupPending(l: Lead): boolean {
+  return !!l.quote_number && !l.customer_responded_at && l.status !== 'lost'
+}
+function isOverdueQuote(l: Lead): boolean {
+  return isQuotePending(l) && (Date.now() - new Date(l.created_at).getTime() >= FOLLOWUP_THRESHOLD_MS)
+}
+function isOverdueFollowup(l: Lead): boolean {
+  return isFollowupPending(l) && !!l.quote_date && (Date.now() - new Date(l.quote_date).getTime() >= FOLLOWUP_THRESHOLD_MS)
+}
+function followupDueWithinDays(l: Lead, daysFromNow: number): boolean {
+  if (!isFollowupPending(l) || !l.quote_date) return false
+  const dueAt = new Date(l.quote_date).getTime() + FOLLOWUP_THRESHOLD_MS
+  if (dueAt < Date.now()) return false // already overdue, not "due today/tomorrow"
+  const dayStart = new Date(); dayStart.setHours(0, 0, 0, 0); dayStart.setDate(dayStart.getDate() + daysFromNow)
+  const dayEnd = new Date(dayStart); dayEnd.setDate(dayEnd.getDate() + 1)
+  return dueAt >= dayStart.getTime() && dueAt < dayEnd.getTime()
+}
+
+function matchesFollowupFilter(l: Lead, param: string | null): boolean {
+  switch (param) {
+    case 'quotes_pending':      return isQuotePending(l)
+    case 'followup_pending':    return isFollowupPending(l)
+    case 'overdue_quotes':      return isOverdueQuote(l)
+    case 'overdue_followups':   return isOverdueFollowup(l)
+    case 'today_followups':     return followupDueWithinDays(l, 0)
+    case 'tomorrow_followups':  return followupDueWithinDays(l, 1)
+    default:                    return true
+  }
+}
+
+/** 🟡 Quote Pending / 🟠 Follow-up Due / 🔴 Overdue / 🟢 Customer Responded */
+function FollowupBadge({ lead }: { lead: Lead }) {
+  if (isOverdueQuote(lead) || isOverdueFollowup(lead)) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">🔴 Overdue</span>
+  }
+  if (isQuotePending(lead)) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700">🟡 Quote Pending</span>
+  }
+  if (isFollowupPending(lead)) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700">🟠 Follow-up Due</span>
+  }
+  if (lead.quote_number) {
+    return <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">🟢 Responded</span>
+  }
+  return null
+}
+
 function sortLeads(arr: Lead[], sortBy: string): Lead[] {
   return [...arr].sort((a, b) => {
     switch (sortBy) {
@@ -705,8 +769,13 @@ function sortLeads(arr: Lead[], sortBy: string): Lead[] {
 }
 
 // ── Main Page ─────────────────────────────────────────────────────
-export default function LeadsPage() {
+function LeadsPageInner() {
   const router   = useRouter()
+  const searchParams = useSearchParams()
+  // Sales Follow-up & Reminder System — set from the Dashboard's "Sales
+  // Follow-up" cards (?followup=quotes_pending etc.). Purely a client-side
+  // filter over the already-fetched leads list — no new backend query.
+  const followupParam = searchParams.get('followup')
   const [adminKey, setAdminKey] = useState('')
   const [authed, setAuthed]     = useState(false)
   const [leads, setLeads]       = useState<Lead[]>([])
@@ -898,6 +967,16 @@ export default function LeadsPage() {
           </div>
         )}
 
+        {/* Sales Follow-up filter banner — set via Dashboard "Sales
+            Follow-up" cards (?followup=...). Purely a client-side filter,
+            see matchesFollowupFilter() above. */}
+        {followupParam && (
+          <div className="mb-3 flex items-center justify-between gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm text-purple-700">
+            <span>Showing leads filtered by Sales Follow-up: <strong>{followupParam.replace(/_/g, ' ')}</strong></span>
+            <Link href="/admin/leads" className="font-semibold text-purple-600 hover:text-purple-800">Clear filter ✕</Link>
+          </div>
+        )}
+
         {/* Table */}
         <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
           {loading ? (
@@ -917,13 +996,13 @@ export default function LeadsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Follow-up', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sortLeads(leads, sort).map(l => (
+                  {sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam)).map(l => (
                     <tr key={l.id} className="hover:bg-gray-50 transition-colors">
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs font-bold text-gray-500">{l.lead_number ?? '—'}</span>
@@ -964,6 +1043,9 @@ export default function LeadsPage() {
                             </span>
                           )
                         })()}
+                      </td>
+                      <td className="px-4 py-3">
+                        <FollowupBadge lead={l} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
@@ -1074,5 +1156,18 @@ export default function LeadsPage() {
         </p>
       </main>
     </>
+  )
+}
+
+// ── Suspense wrapper (required by Next.js 15 for useSearchParams) ───────
+export default function LeadsPage() {
+  return (
+    <Suspense fallback={
+      <div className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" />
+      </div>
+    }>
+      <LeadsPageInner />
+    </Suspense>
   )
 }

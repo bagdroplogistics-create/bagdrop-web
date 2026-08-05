@@ -1238,6 +1238,14 @@ export default function AdminDashboard() {
     total_leads: number; unbooked_leads: number; pending_quotes: number; today_dispatch: number
     revenue_this_month: number
   } | null>(null)
+  // Sales Follow-up & Reminder System — see
+  // app/api/admin/sales-followup-summary/route.ts + lib/sales-followup-reminders.ts.
+  // Independent, self-contained endpoint — doesn't touch dashboard-analytics.
+  const [followupSummary, setFollowupSummary] = useState<{
+    quotesPending: number; followupPending: number
+    overdueQuotes: number; overdueFollowups: number
+    todaysFollowups: number; tomorrowsFollowups: number
+  } | null>(null)
   // ── Revenue Report — period selector (Current Month / Last Month /
   // Custom Range / Select Month). Independent of the main fetchData/
   // crmStats poll above (which always reports the true current month via
@@ -1325,17 +1333,19 @@ export default function AdminDashboard() {
     }
     if (search) qs += '&search=' + encodeURIComponent(search)
 
-    const [sr, br, cr, tr, ar] = await Promise.all([
+    const [sr, br, cr, tr, ar, fr] = await Promise.all([
       fetch('/api/admin/stats?key=' + adminKey),
       fetch('/api/admin/bookings' + qs),
       fetch('/api/admin/crm-stats?key=' + adminKey),
       fetch('/api/admin/trip-sheets?limit=200&key=' + adminKey),
       fetch('/api/admin/dashboard-analytics?key=' + adminKey),
+      fetch('/api/admin/sales-followup-summary?key=' + adminKey),
     ])
     if (sr.ok) setStats(await sr.json())
     if (br.ok) setBookings((await br.json()).bookings ?? [])
     if (cr.ok) setCrmStats(await cr.json())
     if (ar.ok) setAnalytics(await ar.json())
+    if (fr.ok) setFollowupSummary(await fr.json())
     if (tr.ok) {
       const td = await tr.json()
       const sheets = td.trip_sheets ?? []
@@ -1568,6 +1578,36 @@ export default function AdminDashboard() {
                 <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
                 <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
               </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Sales Follow-up — Automated reminder system summary. See
+            app/api/admin/sales-followup-summary/route.ts +
+            lib/sales-followup-reminders.ts. Each card links to the Leads
+            tab pre-filtered to exactly those inquiries via the new
+            ?followup= query param (app/(admin)/admin/leads/page.tsx). */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Sales Follow-up</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: 'Quotes Pending',     value: followupSummary?.quotesPending      ?? '—', color: '#d97706', bg: '#fef3c7', param: 'quotes_pending' },
+              { label: 'Follow-up Pending',  value: followupSummary?.followupPending    ?? '—', color: '#ea580c', bg: '#ffedd5', param: 'followup_pending' },
+              { label: 'Overdue Quotes',     value: followupSummary?.overdueQuotes      ?? '—', color: '#dc2626', bg: '#fee2e2', param: 'overdue_quotes' },
+              { label: 'Overdue Follow-ups', value: followupSummary?.overdueFollowups   ?? '—', color: '#dc2626', bg: '#fee2e2', param: 'overdue_followups' },
+              { label: "Today's Follow-ups", value: followupSummary?.todaysFollowups    ?? '—', color: '#2563eb', bg: '#dbeafe', param: 'today_followups' },
+              { label: "Tomorrow's Follow-ups", value: followupSummary?.tomorrowsFollowups ?? '—', color: '#0891b2', bg: '#cffafe', param: 'tomorrow_followups' },
+            ].map(c => (
+              <Link key={c.label} href={`/admin/leads?followup=${c.param}`}
+                className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                  <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5 shrink-0">
+                    <Clock className="h-4 w-4" />
+                  </div>
+                </div>
+                <p className="mt-1.5 text-lg font-bold text-gray-900">{c.value}</p>
+              </Link>
             ))}
           </div>
         </div>

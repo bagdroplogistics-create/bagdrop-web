@@ -32,6 +32,13 @@ export async function PUT(req: NextRequest) {
     // Internal Ops WhatsApp pickup reminders — see lib/ops-reminders.ts.
     'ops_reminder_enabled', 'ops_reminder_whatsapp',
     'ops_reminder_day_before_time', 'ops_reminder_day_of_time', 'ops_reminder_hours_before_flight',
+    // Sales Follow-up & Reminder System — see lib/sales-followup-reminders.ts.
+    // No dedicated Settings tab UI yet (Phase 2) — allow-listed here so
+    // these can already be edited via this API or directly in Supabase.
+    'sales_followup_enabled', 'sales_followup_whatsapp_enabled', 'sales_followup_email_enabled',
+    'sales_followup_whatsapp', 'sales_followup_email',
+    'sales_followup_quote_reminder_hours', 'sales_followup_response_reminder_hours',
+    'sales_followup_escalation_enabled',
   ]
 
   const upserts = Object.entries(body as Record<string, string>)
