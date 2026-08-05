@@ -312,6 +312,12 @@ function QuotePageInner() {
   const itemsFromPricing = useRef(false)
 
   const [generating, setGenerating] = useState(false)
+  // Set once the onward quote has been created for a fresh lead (Return
+  // Trip flow). Lets a retry — e.g. after the return leg failed because
+  // Return Journey Items was empty — reuse the same lead and skip
+  // re-creating the onward quote, instead of duplicating it.
+  const [createdLeadId, setCreatedLeadId]   = useState<string | null>(null)
+  const [onwardQuote,   setOnwardQuote]     = useState<{ estimate_number: string; estimate_id: string | null; total: number; zoho_url: string; sent_to_customer: boolean } | null>(null)
   const [result, setResult] = useState<{
     estimate_number: string; estimate_id: string; total: number
     zoho_url: string; sent_to_customer: boolean; is_return_quote?: boolean
@@ -580,7 +586,7 @@ function QuotePageInner() {
 
     setGenerating(true)
 
-    let resolvedLeadId = lead?.id ?? null
+    let resolvedLeadId = lead?.id ?? createdLeadId ?? null
     if (!resolvedLeadId) {
       const createRes = await fetch('/api/admin/leads', {
         method: 'POST',
@@ -644,6 +650,7 @@ function QuotePageInner() {
         resolvedLeadId = cj.lead?.id ?? null
       }
       if (!resolvedLeadId) { setErr('Failed to get lead ID after creation'); setGenerating(false); return }
+      setCreatedLeadId(resolvedLeadId)
     }
 
     const pickupDT = combineDateTime(pickupDate, pickupTime)
@@ -680,13 +687,25 @@ function QuotePageInner() {
     }
     payload.payment_status = paymentStatus
 
-    const res = await fetch('/api/admin/zoho/generate-quote', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify(payload),
-    })
-    const d = await res.json()
-    if (!res.ok) { setErr(d.message ?? d.error ?? 'Failed to generate quote'); setGenerating(false); return }
+    // If the onward quote was already created in an earlier click (Return
+    // Trip: this is a retry after the return leg failed or had no items),
+    // reuse that result instead of generating the onward quote a second
+    // time — otherwise every retry would create another duplicate onward
+    // quote/estimate number.
+    let d: { estimate_number: string; estimate_id: string | null; total: number; zoho_url: string; sent_to_customer: boolean; is_return_quote?: boolean }
+    if (onwardQuote) {
+      d = onwardQuote
+    } else {
+      const res = await fetch('/api/admin/zoho/generate-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify(payload),
+      })
+      const resJson = await res.json()
+      if (!res.ok) { setErr(resJson.message ?? resJson.error ?? 'Failed to generate quote'); setGenerating(false); return }
+      d = resJson
+      setOnwardQuote({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer })
+    }
 
     // ── Trip Type = Return Trip on a fresh lead: fire the return-leg
     // quote right after the onward one succeeds, in the same click.
@@ -698,9 +717,13 @@ function QuotePageInner() {
     if (tripType === 'return' && !lead?.quote_number) {
       const returnValidItems = returnLineItems.filter(r => r.name.trim() && r.rate > 0)
       if (returnValidItems.length === 0) {
-        setErr(`Onward quote ${d.estimate_number} was created, but the Return Journey needs at least one item with a name and rate — add one and click Generate again to add the return leg.`)
-        setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
-        if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id, quote_number: d.estimate_number } : l)
+        // Important: do NOT call setResult() here — that would immediately
+        // switch to the success screen and hide this error entirely (the
+        // success screen renders instead of the form, and err is only
+        // shown on the form). Stay on the form so the admin actually sees
+        // this and can fix it — this is the bug that made Return Trip
+        // silently produce only a one-way quote with no visible reason.
+        setErr(`Onward quote ${d.estimate_number} was created. The Return Journey still needs at least one item with a name and rate before the return leg can be generated — check "Return Journey Items" below (it's likely empty because no route pricing was found for ${returnFromCity || '—'} → ${returnToCity || '—'}), add a row manually if needed, then click Generate again.`)
         setGenerating(false)
         return
       }
@@ -731,9 +754,10 @@ function QuotePageInner() {
       })
       const rd = await returnRes.json()
       if (!returnRes.ok) {
-        setErr(`Onward quote ${d.estimate_number} was created, but the return quote failed: ${rd.message ?? rd.error ?? 'unknown error'}`)
-        setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
-        if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id, quote_number: d.estimate_number } : l)
+        // Same reasoning as above — no setResult() here, stay on the form
+        // so the error is actually visible instead of being hidden by the
+        // success screen.
+        setErr(`Onward quote ${d.estimate_number} was created. The return quote failed: ${rd.message ?? rd.error ?? 'unknown error'} — fix the issue and click Generate again (the onward quote won't be re-created).`)
         setGenerating(false)
         return
       }
