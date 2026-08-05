@@ -249,14 +249,61 @@ function QuotePageInner() {
   const [custNotes,  setCustNotes]  = useState(DEFAULT_NOTES)
   const [terms,      setTerms]      = useState(DEFAULT_TERMS)
   const [sendEmail,  setSendEmail]  = useState(false)
-  // Manual "Return Quote" override — the backend (generate-quote route)
-  // already auto-detects return-quote mode once lead.quote_number exists
-  // (that part can't be turned off here, it's a safety net against
-  // accidentally overwriting a primary quote). This lets the admin also
-  // *force* return-quote mode for a lead that doesn't have a primary quote
-  // yet — e.g. only the return leg came through Bagdrop and the outward
-  // journey was booked elsewhere.
-  const [forceReturnQuote, setForceReturnQuote] = useState(false)
+
+  // ── Return Trip ──────────────────────────────────────────────────────
+  // Trip Type only applies to a fresh lead with no primary quote yet — once
+  // lead.quote_number exists, the backend already auto-detects return-quote
+  // mode on its own (that's the pre-existing behavior reached via the
+  // "Return Quote" button on the Leads tab, and it can't be turned off here
+  // — it's a safety net against accidentally overwriting a primary quote).
+  // For a brand-new lead, choosing "Return Trip" here shows a full Return
+  // Journey Details section and — on Generate — fires a SECOND
+  // generate-quote call right after the onward one succeeds, so both legs
+  // are created from one click.
+  const [tripType, setTripType] = useState<'one_way' | 'return'>('one_way')
+  const [returnFromCity,    setReturnFromCity]    = useState('')
+  const [returnToCity,      setReturnToCity]      = useState('')
+  const [returnBagsCount,   setReturnBagsCount]   = useState('1')
+  const [returnPickupDate,  setReturnPickupDate]  = useState('')
+  const [returnPickupTime,  setReturnPickupTime]  = useState('')
+  const [returnPickupAddr,  setReturnPickupAddr]  = useState('')
+  const [returnDropAddr,    setReturnDropAddr]    = useState('')
+  const [returnNotes,       setReturnNotes]       = useState('')
+  const [returnRoutePrice,   setReturnRoutePrice]   = useState<RoutePrice | null>(null)
+  const [returnPriceLoading, setReturnPriceLoading] = useState(false)
+  const [returnLineItems,    setReturnLineItems]    = useState<LineItemRow[]>([])
+  const returnItemsFromPricing = useRef(false)
+
+  function enableReturnTrip() {
+    setTripType('return')
+    // Prefill once, first time it's turned on — reversed route + swapped
+    // addresses (the return leg's pickup is usually the onward drop, and
+    // vice versa). All fields stay fully editable afterward.
+    if (!returnFromCity && !returnToCity) { setReturnFromCity(toCity); setReturnToCity(fromCity) }
+    if (!returnPickupAddr && !returnDropAddr) { setReturnPickupAddr(dropAddr); setReturnDropAddr(pickupAddr) }
+    if (returnBagsCount === '1' && bagsCount && bagsCount !== '1') setReturnBagsCount(bagsCount)
+  }
+
+  function populateReturnItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
+    const items: LineItemRow[] = [{
+      id: uid(), name: `Transportation of Goods (Upto 2 Bags) — ${from} → ${to}`,
+      description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
+      qty: 1, rate: p.base_price!, taxId: TAX_GST5,
+    }]
+    if (bags > 2) items.push({
+      id: uid(), name: `Additional Bag(s) — ${from} → ${to}`,
+      description: 'Per extra bag beyond 2 · SAC 996511',
+      qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
+    })
+    setReturnLineItems(items); returnItemsFromPricing.current = true
+  }
+
+  function updateReturnRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
+    setReturnLineItems(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+    returnItemsFromPricing.current = false
+  }
+  function addReturnRow() { setReturnLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
+  function removeReturnRow(id: string) { setReturnLineItems(prev => prev.filter(r => r.id !== id)) }
 
   // Line items
   const [lineItems, setLineItems] = useState<LineItemRow[]>([
@@ -268,6 +315,8 @@ function QuotePageInner() {
   const [result, setResult] = useState<{
     estimate_number: string; estimate_id: string; total: number
     zoho_url: string; sent_to_customer: boolean; is_return_quote?: boolean
+    // Populated only when Trip Type = Return Trip generated both legs in one click
+    return_estimate_number?: string; return_total?: number
   } | null>(null)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
@@ -390,6 +439,28 @@ function QuotePageInner() {
     setLineItems(items); itemsFromPricing.current = true
   }
 
+  // ── Return journey route pricing — mirrors the onward effect above,
+  // only runs once Trip Type is set to Return Trip ──────────────────────
+  useEffect(() => {
+    if (tripType !== 'return' || !returnFromCity || !returnToCity || !adminKey) { setReturnRoutePrice(null); return }
+    const t = setTimeout(async () => {
+      setReturnPriceLoading(true)
+      try {
+        const qs  = new URLSearchParams({ key: adminKey, from: returnFromCity, to: returnToCity, bags: returnBagsCount || '1' })
+        const res = await fetch(`/api/admin/route-pricing/calculate?${qs}`)
+        if (res.ok) {
+          const p: RoutePrice = await res.json()
+          setReturnRoutePrice(p)
+          if (p.found && p.base_price != null && !returnItemsFromPricing.current) {
+            populateReturnItemsFromRoute(p, returnFromCity, returnToCity, Number(returnBagsCount) || 1)
+          }
+        } else setReturnRoutePrice({ found: false })
+      } catch { setReturnRoutePrice({ found: false }) }
+      setReturnPriceLoading(false)
+    }, 500)
+    return () => clearTimeout(t)
+  }, [tripType, returnFromCity, returnToCity, returnBagsCount, adminKey]) // eslint-disable-line
+
   // ── Line item helpers ────────────────────────────────────────────────
   function addRow() { setLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
   function removeRow(id: string) { setLineItems(prev => prev.filter(r => r.id !== id)) }
@@ -425,6 +496,11 @@ function QuotePageInner() {
   const taxableAmt  = subtotal - discountAmt
   const taxAmt      = taxableAmt * 0.05
   const total       = taxableAmt + taxAmt
+
+  // Return journey totals — no discount in this phase, kept simple
+  const returnSubtotal = returnLineItems.reduce((s, r) => s + r.qty * r.rate, 0)
+  const returnTaxAmt   = returnSubtotal * 0.05
+  const returnTotal    = returnSubtotal + returnTaxAmt
 
   // ── Save lead changes (Edit mode) ────────────────────────────────────
   async function saveLeadChanges() {
@@ -582,7 +658,7 @@ function QuotePageInner() {
       salesperson_name:    salesperson || undefined,
       explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
       send_email: sendEmail,
-      is_return_quote: forceReturnQuote || !!(lead?.quote_number),
+      is_return_quote: !!(lead?.quote_number),
     }
     if (agentName.trim())     payload.agent_name       = agentName.trim()
     if (expiryDate)           payload.expiry_date      = expiryDate
@@ -612,7 +688,63 @@ function QuotePageInner() {
     const d = await res.json()
     if (!res.ok) { setErr(d.message ?? d.error ?? 'Failed to generate quote'); setGenerating(false); return }
 
-    setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
+    // ── Trip Type = Return Trip on a fresh lead: fire the return-leg
+    // quote right after the onward one succeeds, in the same click.
+    // (If the lead already had a primary quote — the Leads-tab "Return
+    // Quote" entry point — the call above was already the return quote
+    // via auto-detection, and tripType is locked to 'one_way' below so
+    // this block is skipped.)
+    let returnResult: { estimate_number: string; total: number } | null = null
+    if (tripType === 'return' && !lead?.quote_number) {
+      const returnValidItems = returnLineItems.filter(r => r.name.trim() && r.rate > 0)
+      if (returnValidItems.length === 0) {
+        setErr(`Onward quote ${d.estimate_number} was created, but the Return Journey needs at least one item with a name and rate — add one and click Generate again to add the return leg.`)
+        setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
+        if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id, quote_number: d.estimate_number } : l)
+        setGenerating(false)
+        return
+      }
+
+      const returnPickupDT = combineDateTime(returnPickupDate, returnPickupTime)
+      const returnPayload: Record<string, unknown> = {
+        lead_id:             resolvedLeadId,
+        is_return_quote:     true,
+        from_city:           returnFromCity.trim() || undefined,
+        to_city:             returnToCity.trim()   || undefined,
+        bags_count:          Number(returnBagsCount) || undefined,
+        pickup_address:      returnPickupAddr.trim() || undefined,
+        drop_address:        returnDropAddr.trim()   || undefined,
+        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
+        // Don't re-send the quote email for the return leg — if sendEmail
+        // was on, the customer already got the onward quote email above.
+        send_email: false,
+      }
+      if (returnPickupDT)       returnPayload.pickup_datetime = returnPickupDT
+      if (returnNotes.trim())   returnPayload.customer_notes  = returnNotes.trim()
+      if (salesperson)          returnPayload.salesperson_name = salesperson
+      if (agentName.trim())    returnPayload.agent_name       = agentName.trim()
+
+      const returnRes = await fetch('/api/admin/zoho/generate-quote', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify(returnPayload),
+      })
+      const rd = await returnRes.json()
+      if (!returnRes.ok) {
+        setErr(`Onward quote ${d.estimate_number} was created, but the return quote failed: ${rd.message ?? rd.error ?? 'unknown error'}`)
+        setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote })
+        if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id, quote_number: d.estimate_number } : l)
+        setGenerating(false)
+        return
+      }
+      returnResult = { estimate_number: rd.estimate_number, total: rd.total }
+    }
+
+    setResult({
+      estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total,
+      zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: d.is_return_quote,
+      ...(returnResult ? { return_estimate_number: returnResult.estimate_number, return_total: returnResult.total } : {}),
+    })
     if (lead) setLead(l => l ? { ...l, zoho_estimate_number: d.estimate_number, zoho_estimate_id: d.estimate_id } : l)
     setGenerating(false)
   }
@@ -645,14 +777,28 @@ function QuotePageInner() {
         <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-green-100">
           <CheckCircle className="h-8 w-8 text-green-600" />
         </div>
-        <h2 className="text-xl font-bold text-gray-900">{result.is_return_quote ? 'Return Quote Saved!' : 'Quote Created!'}</h2>
+        <h2 className="text-xl font-bold text-gray-900">
+          {result.return_estimate_number ? 'Both Quotes Saved!' : result.is_return_quote ? 'Return Quote Saved!' : 'Quote Created!'}
+        </h2>
         <p className="mt-1 text-sm text-gray-500">
           {result.is_return_quote ? 'Return quote' : 'Quote'}: <span className="font-mono font-bold text-blue-700">{result.estimate_number}</span>
         </p>
         <div className="mt-6 space-y-2 rounded-xl border border-gray-100 bg-gray-50 p-4 text-left text-sm">
           <div className="flex justify-between"><span className="text-gray-500">Customer</span><span className="font-semibold">{formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName)}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Route</span><span className="font-semibold">{fromCity} → {toCity}</span></div>
-          <div className="flex justify-between"><span className="text-gray-500">Total</span><span className="font-bold text-orange-600">{rupees(result.total)}</span></div>
+          {result.return_estimate_number ? (
+            <>
+              <div className="flex justify-between"><span className="text-gray-500">Journey 1 (Onward)</span><span className="font-semibold">{fromCity} → {toCity}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Onward Total</span><span className="font-semibold text-orange-600">{rupees(result.total)}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Journey 2 (Return)</span><span className="font-semibold">{returnFromCity} → {returnToCity}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Return Total</span><span className="font-semibold text-purple-600">{rupees(result.return_total ?? 0)}</span></div>
+              <div className="flex justify-between border-t border-gray-200 pt-2 mt-1"><span className="font-bold text-gray-700">Grand Total</span><span className="font-bold text-gray-900">{rupees(result.total + (result.return_total ?? 0))}</span></div>
+            </>
+          ) : (
+            <>
+              <div className="flex justify-between"><span className="text-gray-500">Route</span><span className="font-semibold">{fromCity} → {toCity}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Total</span><span className="font-bold text-orange-600">{rupees(result.total)}</span></div>
+            </>
+          )}
           {result.sent_to_customer && (
             <div className="flex items-center gap-2 rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">
               <Send className="h-3 w-3" /> Estimate emailed to customer
@@ -716,7 +862,7 @@ function QuotePageInner() {
           ) : null}
           <button onClick={generate} disabled={generating}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {(forceReturnQuote || lead?.quote_number) ? 'Generate Return Quote' : 'Generate Quote'}</>}
+            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : (tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote')}</>}
           </button>
         </div>
       </div>
@@ -727,28 +873,128 @@ function QuotePageInner() {
         {/* ── Left form ── */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-5 space-y-4 min-w-0">
 
-          {/* Manual Return Quote toggle — only shown for a fresh lead with no
-              primary quote yet. Once a primary quote exists, return-quote
-              mode is automatic (see the purple banner below) and can't be
-              turned off here, so the checkbox would be misleading. */}
+          {/* Trip Type — only relevant for a fresh lead with no primary quote
+              yet. Once a primary quote exists, return-quote mode is already
+              automatic (see the purple banner below) via the Leads-tab
+              "Return Quote" button, so this toggle is hidden there — it
+              would be misleading since it can't be turned off at that
+              point anyway. */}
           {!isEdit && !lead?.quote_number && (
-            <label className="flex items-center gap-2.5 rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm cursor-pointer hover:border-purple-200 transition-colors">
-              <input
-                type="checkbox"
-                checked={forceReturnQuote}
-                onChange={e => setForceReturnQuote(e.target.checked)}
-                className="h-4 w-4 rounded border-gray-300 text-purple-600 focus:ring-purple-500"
-              />
-              <span>
-                <span className="font-semibold text-gray-800">This is a Return Quote</span>
-                <span className="text-gray-400"> — check this if only the return journey is being booked (outward leg handled elsewhere)</span>
-              </span>
-            </label>
+            <div className={sect}>
+              <p className={sectH}>Trip Type</p>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-1">
+                <button type="button" onClick={() => setTripType('one_way')}
+                  className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${tripType === 'one_way' ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  One Way
+                </button>
+                <button type="button" onClick={enableReturnTrip}
+                  className={`rounded-md px-4 py-1.5 text-sm font-semibold transition-colors ${tripType === 'return' ? 'bg-purple-600 text-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}>
+                  Return Trip
+                </button>
+              </div>
+              {tripType === 'return' && (
+                <p className="mt-2 text-xs text-purple-700">
+                  Generating this quote will create <strong>two</strong> quotes on this lead — the onward journey below, and the return journey in the section that follows — with one click of Generate.
+                </p>
+              )}
+            </div>
           )}
-          {forceReturnQuote && !lead?.quote_number && (
-            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-500" />
-              <span className="text-purple-800">This will be saved as a <strong>Return Journey Quote</strong> on the lead.</span>
+
+          {/* ── Return Journey Details ── */}
+          {!isEdit && !lead?.quote_number && tripType === 'return' && (
+            <div className={sect + ' border-purple-200'}>
+              <p className={sectH + ' text-purple-500'}>Return Journey Details</p>
+              <div className="grid grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className={lbl}>Return From</label>
+                  <input type="text" value={returnFromCity} onChange={e => setReturnFromCity(e.target.value)} placeholder="e.g. Mumbai" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return To</label>
+                  <input type="text" value={returnToCity} onChange={e => setReturnToCity(e.target.value)} placeholder="e.g. Ahmedabad" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Date</label>
+                  <input type="date" value={returnPickupDate} onChange={e => setReturnPickupDate(e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Time</label>
+                  <select value={returnPickupTime} onChange={e => setReturnPickupTime(e.target.value)} className={inp}>
+                    <option value="">-- Time --</option>
+                    {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Return Pickup Location</label>
+                  <input type="text" value={returnPickupAddr} onChange={e => setReturnPickupAddr(e.target.value)} placeholder="Pickup address for the return leg" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Drop Location</label>
+                  <input type="text" value={returnDropAddr} onChange={e => setReturnDropAddr(e.target.value)} placeholder="Drop address for the return leg" className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Number of Bags (if different)</label>
+                  <input type="number" min="1" value={returnBagsCount} onChange={e => setReturnBagsCount(e.target.value)} className={inp} />
+                </div>
+                <div className="col-span-2">
+                  <label className={lbl}>Additional Notes (optional)</label>
+                  <input type="text" value={returnNotes} onChange={e => setReturnNotes(e.target.value)} placeholder="Anything specific to the return journey" className={inp} />
+                </div>
+              </div>
+
+              {/* Return item table — auto-fills from route pricing, editable */}
+              <div className="mb-2 flex items-center justify-between">
+                <p className="text-xs font-semibold text-gray-500">Return Journey Items</p>
+                {returnPriceLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
+              </div>
+              <table className="w-full min-w-0 text-sm mb-2">
+                <thead>
+                  <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase text-gray-500">
+                    <th className="pb-2 pr-2">Item</th>
+                    <th className="pb-2 px-2 w-14 text-center">Qty</th>
+                    <th className="pb-2 px-2 w-24 text-right">Rate (₹)</th>
+                    <th className="pb-2 px-2 w-24 text-right">Amount (₹)</th>
+                    <th className="pb-2 pl-2 w-8"></th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-100">
+                  {returnLineItems.length === 0 ? (
+                    <tr><td colSpan={5} className="py-4 text-center text-xs text-gray-400">Fill Return From / To to auto-load from route pricing, or add a row manually.</td></tr>
+                  ) : (
+                    returnLineItems.map(row => (
+                      <tr key={row.id} className="align-top">
+                        <td className="py-1.5 pr-2">
+                          <input type="text" value={row.name} onChange={e => updateReturnRow(row.id, 'name', e.target.value)}
+                            placeholder="Item name" className="w-full rounded border border-gray-200 px-2 py-1 text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input type="number" min="1" value={row.qty} onChange={e => updateReturnRow(row.id, 'qty', Number(e.target.value))}
+                            className="w-full rounded border border-gray-200 px-2 py-1 text-center text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2">
+                          <input type="number" min="0" value={row.rate} onChange={e => updateReturnRow(row.id, 'rate', Number(e.target.value))}
+                            className="w-full rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-purple-300 focus:outline-none" />
+                        </td>
+                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{(row.qty * row.rate).toLocaleString('en-IN')}</td>
+                        <td className="py-1.5 pl-2">
+                          <button type="button" onClick={() => removeReturnRow(row.id)} className="text-gray-300 hover:text-red-500">
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+              <button type="button" onClick={addReturnRow} className="flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700">
+                <Plus className="h-3.5 w-3.5" /> Add Row
+              </button>
+
+              <div className="mt-3 rounded-lg bg-purple-50 border border-purple-100 p-3 text-sm space-y-1">
+                <div className="flex justify-between"><span className="text-gray-500">Return Sub Total</span><span className="font-semibold">₹ {returnSubtotal.toLocaleString('en-IN')}</span></div>
+                <div className="flex justify-between"><span className="text-gray-500">GST (5%)</span><span className="font-semibold">₹ {returnTaxAmt.toLocaleString('en-IN')}</span></div>
+                <div className="flex justify-between border-t border-purple-200 pt-1 mt-1"><span className="font-bold text-purple-700">Return Total</span><span className="font-bold text-purple-700">₹ {returnTotal.toLocaleString('en-IN')}</span></div>
+              </div>
             </div>
           )}
 
@@ -1195,7 +1441,7 @@ function QuotePageInner() {
 
             <button onClick={generate} disabled={generating}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {(forceReturnQuote || lead?.quote_number) ? 'Generate Return Quote' : 'Generate Quote'}</>}
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : (tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote')}</>}
             </button>
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">
