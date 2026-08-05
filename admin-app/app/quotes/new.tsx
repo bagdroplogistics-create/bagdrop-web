@@ -263,8 +263,6 @@ export default function NewQuote() {
   const taxAmt = taxableAmt * 0.05
   const total = taxableAmt + taxAmt
 
-  const isReturnQuote = !!lead?.quote_number
-
   async function handleGenerate() {
     if (!adminKey) return
     setError('')
@@ -277,6 +275,14 @@ export default function NewQuote() {
     if (!pickupAddr.trim()) { setError('Pickup address is required.'); return }
     const validRows = rows.filter(r => r.name.trim() && Number(r.rate) > 0)
     if (validRows.length === 0) { setError('Add at least one item with a name and rate.'); return }
+    // Return Trip quote creation lives only in the web admin panel (Leads →
+    // New Quote) — block here rather than let the shared backend's
+    // auto-detect (a lead with an existing quote_number is treated as a
+    // return quote) silently fire from the mobile app.
+    if (!isEditMode && lead?.quote_number) {
+      setError('This lead already has a quote. Return Trip quotes can only be created from the web admin panel — Leads → New Quote.')
+      return
+    }
 
     setGenerating(true)
     try {
@@ -327,7 +333,6 @@ export default function NewQuote() {
 
       const payload = {
         lead_id: resolvedLeadId,
-        is_return_quote: isReturnQuote,
         agent_name: agentName.trim() || undefined,
         salesperson_name: salesperson ?? undefined,
         expiry_date: expiryDate.trim() || undefined,
@@ -467,9 +472,9 @@ export default function NewQuote() {
         <View style={styles.successIcon}>
           <Ionicons name="checkmark-circle" size={56} color={colors.success} />
         </View>
-        <Text style={styles.successTitle}>{result.is_return_quote ? 'Return Quote Saved!' : 'Quote Created!'}</Text>
+        <Text style={styles.successTitle}>Quote Created!</Text>
         <Text style={styles.successSub}>
-          {result.is_return_quote ? 'Return quote' : 'Quote'}: <Text style={{ fontWeight: '700', color: colors.brand }}>{result.estimate_number}</Text>
+          Quote: <Text style={{ fontWeight: '700', color: colors.brand }}>{result.estimate_number}</Text>
         </Text>
 
         <Card style={{ marginTop: 20, marginBottom: 16 }}>
@@ -501,18 +506,9 @@ export default function NewQuote() {
     <Screen>
       <BackHeader />
       <Text style={styles.title}>
-        {isEditMode ? `Edit — ${lead?.quote_number as string ?? 'Quote'}` : isReturnQuote ? 'Generate Return Quote' : 'New Quote'}
+        {isEditMode ? `Edit — ${lead?.quote_number as string ?? 'Quote'}` : 'New Quote'}
       </Text>
       <Text style={styles.sub}>Same pricing, tax, and line-item logic as the website&rsquo;s quote form.</Text>
-
-      {isReturnQuote && !isEditMode ? (
-        <View style={styles.warnBanner}>
-          <Ionicons name="alert-circle" size={16} color="#9333ea" />
-          <Text style={styles.warnBannerText}>
-            Quote {lead?.quote_number as string} already exists for this lead. This will be saved as the Return Journey Quote — the primary quote is not changed.
-          </Text>
-        </View>
-      ) : null}
 
       <Text style={styles.sectionTitle}>Customer</Text>
       <SelectField
@@ -704,7 +700,7 @@ export default function NewQuote() {
           </>
         ) : null}
         <Button
-          label={isReturnQuote ? 'Generate Return Quote' : 'Generate Quote'}
+          label="Generate Quote"
           onPress={handleGenerate}
           loading={generating}
           variant={isEditMode ? 'outline' : 'primary'}

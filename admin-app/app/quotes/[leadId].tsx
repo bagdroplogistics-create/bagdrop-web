@@ -61,7 +61,6 @@ export default function QuoteDetail() {
   const tax = Number(lead.quote_tax ?? 0)
   const total = Number(lead.quote_total ?? 0)
   const meta = PAYMENT_META[(lead.payment_status as string) ?? 'pending'] ?? PAYMENT_META.pending
-  const hasReturnQuote = !!lead.return_quote_number
 
   function handleDownload() {
     if (!lead) return
@@ -168,26 +167,12 @@ export default function QuoteDetail() {
         ) : null}
       </Card>
 
-      {hasReturnQuote ? (
-        <Card style={{ marginBottom: 12, backgroundColor: '#fffbeb', borderColor: '#fde68a' }}>
-          <View style={styles.headerRow}>
-            <View>
-              <Text style={[styles.sectionTitle, { color: '#92400e' }]}>Return Quote</Text>
-              <Text style={styles.v}>{lead.return_quote_number as string}</Text>
-            </View>
-            <Text style={{ ...type.bodyBold, color: '#92400e' }}>{rupees(Number(lead.return_quote_total ?? 0))}</Text>
-          </View>
-        </Card>
-      ) : null}
-
       {error ? <Text style={styles.errorText}>{error}</Text> : null}
 
       <View style={{ marginTop: 8, marginBottom: 24 }}>
         <Button label="Edit Quote" onPress={() => router.push(`/quotes/new?leadId=${lead.id}&edit=true`)} />
         <View style={{ height: 10 }} />
         <Button label="Download Quote (PDF)" variant="outline" onPress={handleDownload} />
-        <View style={{ height: 10 }} />
-        <Button label="Generate Return Quote" variant="outline" onPress={() => router.push(`/quotes/new?leadId=${lead.id}`)} />
         <View style={{ height: 10 }} />
         <Button label="View Inquiry" variant="ghost" onPress={() => router.push(`/leads/${lead.id}`)} />
       </View>

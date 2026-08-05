@@ -299,7 +299,10 @@ export interface SavedQuoteLineItem {
 
 export interface GenerateQuotePayload {
   lead_id: string
-  is_return_quote?: boolean
+  // Return Trip quote creation lives only in the web admin panel
+  // (Leads → New Quote) — intentionally no is_return_quote here so the
+  // mobile app can't trigger it, even though the shared backend route
+  // still accepts the field.
   agent_name?: string
   salesperson_name?: string
   expiry_date?: string
@@ -325,7 +328,6 @@ export interface GenerateQuoteResult {
   success: boolean
   quote_number: string
   estimate_number: string
-  is_return_quote: boolean
   total: number
   subtotal: number
   discount_pct: number
