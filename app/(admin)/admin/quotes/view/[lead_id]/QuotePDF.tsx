@@ -14,7 +14,10 @@ const LIGHT  = '#f9fafb'
 const AMBER  = '#fff7ed'
 
 const s = StyleSheet.create({
-  page:      { fontFamily: 'Helvetica', backgroundColor: '#fff', paddingBottom: 40 },
+  // paddingBottom removed (was 40) so the new full-bleed dark footer band
+  // sits flush against the true bottom edge of the page, mirroring how the
+  // orange header already sits flush against the top edge.
+  page:      { fontFamily: 'Helvetica', backgroundColor: '#fff' },
 
   // Header
   // Padding tightened 20->14 (top/bottom) as part of a document-wide spacing
@@ -23,7 +26,9 @@ const s = StyleSheet.create({
   // looked like one page there; the downloaded PDF was silently overflowing
   // to a second page). See matching comments throughout this stylesheet for
   // the rest of the pass.
-  header:    { backgroundColor: ORANGE, padding: '14 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // Padding trimmed 14->8 (top/bottom) so the orange band takes up less
+  // vertical space — helps the whole quote fit on a single A4 page.
+  header:    { backgroundColor: ORANGE, padding: '8 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   // Full white BagDrop logo lockup — icon + "BAGDROP" wordmark + "BAG. BOX.
   // DELIVERED" tagline, all baked into the official brand asset. Restored
   // per founder feedback after an earlier icon-only crop was judged too
@@ -144,14 +149,17 @@ const s = StyleSheet.create({
   tripSummary:  { margin: '10 28 0', backgroundColor: LIGHT, borderRadius: 6, padding: '10 14' },
 
   // Footer
-  footer:    { margin: '0 28', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  // Full-bleed dark navy band (was a thin top-border-only white strip) —
+  // now uses its own padding instead of the page's side margin so the
+  // color runs edge-to-edge like the header does.
+  footer:    { backgroundColor: '#0A1628', padding: '12 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   ftLeft:    { flex: 1 },
-  ftCo:      { color: '#374151', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
-  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
+  ftCo:      { color: '#fff', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
+  ftLine:    { color: 'rgba(255,255,255,0.75)', fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
   ftRight:   { alignItems: 'center', width: 120 },
-  sigLine:   { borderTopWidth: 1, borderTopColor: DARK, paddingTop: 4, width: 110, textAlign: 'center' },
-  sigText:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-  sigSub:    { color: GREY, fontSize: 7, marginTop: 1 },
+  sigLine:   { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)', paddingTop: 4, width: 110, textAlign: 'center' },
+  sigText:   { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  sigSub:    { color: 'rgba(255,255,255,0.75)', fontSize: 7, marginTop: 1 },
 })
 
 function fmtRs(n: number | null | undefined) {
