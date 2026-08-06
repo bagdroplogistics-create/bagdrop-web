@@ -77,13 +77,13 @@ export async function getFollowupSettings(): Promise<FollowupSettings> {
       'sales_followup_quote_reminder_hours', 'sales_followup_response_reminder_hours',
       'sales_followup_escalation_enabled',
     ])
-  const map = Object.fromEntries((data ?? []).map(r => [r.key, r.value as string]))
+  const map: Record<string, string> = Object.fromEntries((data ?? []).map(r => [r.key as string, r.value as string]))
   return {
     enabled:                map.sales_followup_enabled !== 'false',           // default on
     whatsappEnabled:        map.sales_followup_whatsapp_enabled !== 'false',  // default on
     emailEnabled:           map.sales_followup_email_enabled === 'true',      // default off
     whatsapp:               map.sales_followup_whatsapp || '+916357115711',
-    email:                  (map.sales_followup_email || '').split(',').map(s => s.trim()).filter(Boolean),
+    email:                  (map.sales_followup_email || '').split(',').map((s: string) => s.trim()).filter(Boolean),
     quoteReminderHours:     Number(map.sales_followup_quote_reminder_hours) || 24,
     responseReminderHours:  Number(map.sales_followup_response_reminder_hours) || 24,
     escalationEnabled:      map.sales_followup_escalation_enabled === 'true', // default off
