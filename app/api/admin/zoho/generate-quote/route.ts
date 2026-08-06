@@ -223,11 +223,18 @@ export async function POST(req: NextRequest) {
   const toCity   = (toCityOverride   ?? lead.to_city    ?? '').trim()
 
   // ── Detect return quote ───────────────────────────────────────────
-  // This is a return quote if the lead already has a primary quote number,
-  // OR if the caller explicitly flags it as return.
-  // Return quotes are stored in return_quote_* fields and do NOT touch
-  // the primary quote data or downgrade the booking status.
-  const isReturnQuote = forceReturnQuote === true || Boolean(lead.quote_number)
+  // ONLY when the caller explicitly requests it. Previously this also
+  // auto-detected "return quote" whenever the lead already had a primary
+  // quote number — that silently converted ANY second call to this
+  // endpoint for an already-quoted lead into a return-quote write (e.g. an
+  // admin accidentally opening the New Quote page for an already-quoted
+  // lead and clicking Generate again), corrupting one-way leads with a
+  // phantom "Return Journey Quote" that was never intended. Return quotes
+  // must now only ever be created together with the onward quote, in the
+  // same click, via the explicit Trip Type = Return Trip toggle on a fresh
+  // lead (see app/(admin)/admin/quotes/new/page.tsx) — this is the single
+  // source of truth for Return Trip creation.
+  const isReturnQuote = forceReturnQuote === true
 
   // ── Resolve line items ────────────────────────────────────────────
   let lineItems: LineItem[]

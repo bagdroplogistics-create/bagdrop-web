@@ -584,6 +584,17 @@ function QuotePageInner() {
     const validItems = lineItems.filter(r => r.name.trim() && r.rate > 0)
     if (validItems.length === 0) { setErr('Add at least one item with a name and rate.'); return }
 
+    // Guard against accidentally re-generating a quote for a lead that
+    // already has one (e.g. reopening this page for an already-quoted
+    // lead outside Edit mode). This used to silently create a "Return
+    // Journey Quote" with a copy of the same data — Return Trip quotes
+    // must now only ever be created together with the onward quote, in
+    // the same click, via the Trip Type toggle on a fresh lead.
+    if (!isEdit && lead?.quote_number) {
+      setErr(`This lead already has quote ${lead.quote_number}. To make changes, use the Edit (pencil) action on the Leads tab instead — Generate here would create an unintended duplicate/return quote.`)
+      return
+    }
+
     setGenerating(true)
 
     let resolvedLeadId = lead?.id ?? createdLeadId ?? null
@@ -665,7 +676,10 @@ function QuotePageInner() {
       salesperson_name:    salesperson || undefined,
       explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
       send_email: sendEmail,
-      is_return_quote: !!(lead?.quote_number),
+      // Never true here — is_return_quote: true is only ever sent from the
+      // dedicated returnPayload block below, for the return leg itself.
+      // The guard above already blocks reaching this point for an
+      // already-quoted lead outside Edit mode.
     }
     if (agentName.trim())     payload.agent_name       = agentName.trim()
     if (expiryDate)           payload.expiry_date      = expiryDate
@@ -884,9 +898,9 @@ function QuotePageInner() {
               {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Changes</>}
             </button>
           ) : null}
-          <button onClick={generate} disabled={generating}
+          <button onClick={generate} disabled={generating || (!isEdit && !!lead?.quote_number)}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : (tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote')}</>}
+            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
           </button>
         </div>
       </div>
@@ -898,11 +912,10 @@ function QuotePageInner() {
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-5 space-y-4 min-w-0">
 
           {/* Trip Type — only relevant for a fresh lead with no primary quote
-              yet. Once a primary quote exists, return-quote mode is already
-              automatic (see the purple banner below) via the Leads-tab
-              "Return Quote" button, so this toggle is hidden there — it
-              would be misleading since it can't be turned off at that
-              point anyway. */}
+              yet. Return Trip quotes can only be created together with the
+              onward quote at this point; once a lead already has a primary
+              quote, Generate is disabled entirely (see the amber banner
+              below) rather than offering any further quote actions here. */}
           {!isEdit && !lead?.quote_number && (
             <div className={sect}>
               <p className={sectH}>Trip Type</p>
@@ -924,20 +937,16 @@ function QuotePageInner() {
             </div>
           )}
 
-          {lead?.quote_number && !isEdit && !lead?.return_quote_number && (
-            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
-              <AlertTriangle className="h-4 w-4 shrink-0 text-purple-500" />
-              <span className="text-purple-800">
-                Quote <strong>{lead.quote_number}</strong> already exists for this lead.
-                {' '}This will be saved as the <strong>Return Journey Quote</strong> — the primary quote will not be changed.
-              </span>
-            </div>
-          )}
-          {lead?.return_quote_number && !isEdit && (
+          {/* A lead already having a quote_number here (outside Edit mode)
+              means this page was reopened for an already-quoted lead —
+              Generate is blocked (see the guard in generate()) rather than
+              silently creating an unintended Return Journey Quote, which is
+              what used to happen here. Direct the admin to Edit instead. */}
+          {lead?.quote_number && !isEdit && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
               <span className="text-amber-800">
-                Return quote <strong>{lead.return_quote_number}</strong> already exists — generating again will overwrite it.
+                Quote <strong>{lead.quote_number}</strong> already exists for this lead. Use the Edit (pencil) action on the Leads tab to make changes — Generate is disabled here to prevent creating a duplicate quote.
               </span>
             </div>
           )}
@@ -1465,9 +1474,9 @@ function QuotePageInner() {
               </button>
             )}
 
-            <button onClick={generate} disabled={generating}
+            <button onClick={generate} disabled={generating || (!isEdit && !!lead?.quote_number)}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {lead?.quote_number ? 'Generate Return Quote' : (tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote')}</>}
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
             </button>
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">
