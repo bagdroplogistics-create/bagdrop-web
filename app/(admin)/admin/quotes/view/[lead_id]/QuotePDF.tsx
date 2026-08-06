@@ -132,7 +132,9 @@ const s = StyleSheet.create({
   tcTitle:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
   tcGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '2 12' },
   tcItem:    { flexDirection: 'row', gap: 3, width: '48%' },
-  tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 10 },
+  // width widened from 10 → 16 so two-digit numbers ("10.") don't wrap/hyphenate
+  // onto a second line the way "1." through "9." fit fine at the old width.
+  tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 16 },
   tcText:    { color: GREY, fontSize: 7.5, flex: 1, lineHeight: 1.3 },
 
   // Return Trip — Journey 1 / Journey 2 labels + combined summary. Only

@@ -66,7 +66,7 @@ interface LineItemRow {
 const ZOHO_ORG_ID  = '60041657788'
 const TAX_GST5     = '2568730000000033236'
 const SAC_CODE     = '996511'
-const SALESPERSONS = ['Saurabh Muley', 'Lata Parmar', 'Vijay Thacker', 'Ankit Patel']
+const SALESPERSONS = ['Saurabh Muley', 'Vijay Thacker']
 
 const SOURCES = [
   { value: 'admin',     label: 'Manual Entry' },
