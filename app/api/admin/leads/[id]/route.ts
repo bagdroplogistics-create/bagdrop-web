@@ -60,7 +60,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_quote_subtotal', 'return_quote_tax', 'return_quote_date',
     'return_from_city', 'return_to_city', 'return_bags_count',
     'return_discount_amt', 'return_discount_pct', 'return_quote_notes',
-    'return_pickup_address', 'return_pickup_date',
+    'return_pickup_address', 'return_pickup_date', 'return_booking_id',
     // Sales Follow-up & Reminder System — set by the "Mark Customer
     // Responded" action to stop the response-track reminder for this
     // lead. See lib/sales-followup-reminders.ts.

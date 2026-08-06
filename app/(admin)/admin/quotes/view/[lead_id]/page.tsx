@@ -79,6 +79,7 @@ interface Lead {
   return_discount_pct:     number | null
   return_discount_amt:     number | null
   return_quote_notes:      string | null
+  return_booking_id:       string | null
   customer_responded_at:   string | null
 }
 
@@ -2319,9 +2320,21 @@ export default function QuoteViewPage() {
               <button
                 onClick={async () => {
                   if (!key || !lead) return
-                  if (!confirm('Remove this return-journey quote? This does not change the primary (outward) quote — use this when a return quote was created by mistake, e.g. a one-way booking that had "Generate Quote" clicked twice.')) return
+                  if (!confirm('Remove this return-journey quote? This does not change the primary (outward) quote — use this when a return quote was created by mistake, e.g. a one-way booking that had "Generate Quote" clicked twice. This also cancels the return-leg booking that was auto-created for it, so it stops showing on the Dashboard.')) return
                   setActing('remove_return_quote')
                   try {
+                    // Cancel the phantom return-leg booking FIRST (if one
+                    // exists) — this is what was showing up on the Dashboard
+                    // as e.g. "BDA-2026-0082-R" for a lead that's really
+                    // one-way. Does not touch the primary/onward booking.
+                    const returnBookingId = lead.return_booking_id
+                    if (returnBookingId) {
+                      await fetch(`/api/admin/bookings/${returnBookingId}?key=${encodeURIComponent(key)}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ status: 'cancelled', reason: 'Return quote removed — created in error for a one-way lead' }),
+                      }).catch(() => {})
+                    }
                     const res = await fetch(`/api/admin/leads/${lead.id}`, {
                       method:  'PATCH',
                       headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
@@ -2333,6 +2346,7 @@ export default function QuoteViewPage() {
                         return_bags_count: null, return_discount_amt: null,
                         return_discount_pct: null, return_quote_notes: null,
                         return_pickup_address: null, return_pickup_date: null,
+                        return_booking_id: null,
                       }),
                     })
                     const j = await res.json().catch(() => ({}))
