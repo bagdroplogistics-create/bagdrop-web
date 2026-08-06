@@ -737,23 +737,6 @@ function matchesFollowupFilter(l: Lead, param: string | null): boolean {
   }
 }
 
-/** 🟡 Quote Pending / 🟠 Follow-up Due / 🔴 Overdue / 🟢 Customer Responded */
-function FollowupBadge({ lead }: { lead: Lead }) {
-  if (isOverdueQuote(lead) || isOverdueFollowup(lead)) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">🔴 Overdue</span>
-  }
-  if (isQuotePending(lead)) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-yellow-100 px-2 py-0.5 text-[10px] font-bold text-yellow-700">🟡 Quote Pending</span>
-  }
-  if (isFollowupPending(lead)) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-orange-100 px-2 py-0.5 text-[10px] font-bold text-orange-700">🟠 Follow-up Due</span>
-  }
-  if (lead.quote_number) {
-    return <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">🟢 Responded</span>
-  }
-  return null
-}
-
 function sortLeads(arr: Lead[], sortBy: string): Lead[] {
   return [...arr].sort((a, b) => {
     switch (sortBy) {
@@ -996,7 +979,7 @@ function LeadsPageInner() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Follow-up', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -1043,9 +1026,6 @@ function LeadsPageInner() {
                             </span>
                           )
                         })()}
-                      </td>
-                      <td className="px-4 py-3">
-                        <FollowupBadge lead={l} />
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
