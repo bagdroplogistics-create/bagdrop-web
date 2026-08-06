@@ -39,9 +39,25 @@ export async function POST(
   // refreshes the token instead of creating a duplicate bond record.
   const { data: existingBond } = await supabaseAdmin
     .from('indemnity_bonds')
-    .select('id')
+    .select('id, sent_at')
     .eq('booking_id', id)
     .maybeSingle()
+
+  // Idempotency guard — blocks an accidental re-send (double-click, or the
+  // admin clicking again before the UI shows success) from re-sending the
+  // email/WhatsApp and re-advancing the status a second time. A genuine
+  // re-send (e.g. link expired days later) is well outside this window and
+  // still goes through normally.
+  const COOLDOWN_MS = 2 * 60 * 1000 // 2 minutes
+  if (existingBond?.sent_at) {
+    const elapsedMs = Date.now() - new Date(existingBond.sent_at).getTime()
+    if (elapsedMs < COOLDOWN_MS) {
+      return NextResponse.json(
+        { error: `Indemnity bond link was already sent ${Math.round(elapsedMs / 1000)}s ago. Please wait a moment before sending again.` },
+        { status: 429 },
+      )
+    }
+  }
 
   const sentVia: string[] = []
   if (booking.customer_email) sentVia.push('email')
@@ -94,12 +110,15 @@ export async function POST(
     })
   }
 
-  // WhatsApp — additive, no-ops until the template is approved (see lib/indemnity-notifications.ts)
+  // WhatsApp — approved template "indemnity_bond_sent" has exactly 2 body
+  // variables: {{1}} name, {{2}} secure link. Do not add a 3rd value here —
+  // that previously shifted the link out of {{2}} and showed the tracking
+  // ID in its place instead (confirmed against the live Meta template).
   await sendIndemnityWhatsApp('bond_sent', {
     customerPhone: booking.customer_phone,
     customerName:  booking.customer_name,
     trackingId:    booking.tracking_id,
-  }, [booking.customer_name ?? 'Customer', booking.tracking_id, secureLink])
+  }, [booking.customer_name ?? 'Customer', secureLink])
 
   // Advance booking status + history
   const history = (booking.status_history ?? []) as object[]
