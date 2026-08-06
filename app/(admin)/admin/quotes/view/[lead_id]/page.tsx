@@ -1394,7 +1394,19 @@ export default function QuoteViewPage() {
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>
             <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#374151', marginBottom: '8px' }}>Terms &amp; Conditions</div>
             {lead.quote_terms ? (
-              <div style={{ fontSize: '10.5px', color: '#4b5563', lineHeight: '1.6' }}>{lead.quote_terms}</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10.5px', color: '#4b5563', lineHeight: '1.5' }}>
+                {lead.quote_terms.split('\n').filter(Boolean).map((line, i) => {
+                  // Saved terms text is already numbered ("1. Booking Confirmation : ...") —
+                  // strip the leading "1." / "1)" so it doesn't double up with the badge below.
+                  const text = line.replace(/^\s*\d+[.)]\s*/, '')
+                  return (
+                    <div key={i} style={{ display: 'flex', gap: '5px' }}>
+                      <span style={{ color: '#f97316', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
+                      <span>{text}</span>
+                    </div>
+                  )
+                })}
+              </div>
             ) : (
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 20px', fontSize: '10.5px', color: '#4b5563', lineHeight: '1.5' }}>
                 {[
