@@ -26,28 +26,19 @@ const s = StyleSheet.create({
   // looked like one page there; the downloaded PDF was silently overflowing
   // to a second page). See matching comments throughout this stylesheet for
   // the rest of the pass.
-  // Padding trimmed 14->8 (top/bottom) so the orange band takes up less
-  // vertical space — helps the whole quote fit on a single A4 page.
-  header:    { backgroundColor: ORANGE, padding: '8 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  // Full white BagDrop logo lockup — icon + "BAGDROP" wordmark + "BAG. BOX.
-  // DELIVERED" tagline, all baked into the official brand asset. Restored
-  // per founder feedback after an earlier icon-only crop was judged too
-  // minimal ("do not use only the icon... use the full logo exactly as our
-  // official branding"). Native crop ratio 920:1359 (~0.677 w:h); sized up
-  // from the old icon-only mark (21x36) so the wordmark stays legible —
-  // that's why the header row is now taller and logoSub below has more
-  // top margin to clear it.
-  logoFull:  { width: 57, height: 84, marginBottom: 4 },
-  // react-pdf's built-in Helvetica family only ships Regular/Bold/Oblique/
-  // BoldOblique — there's no true "Medium" weight available without
-  // registering a custom web font (a fragile external dependency for a
-  // document that also needs to render reliably offline/server-side).
-  // Approximated "Medium" here with Bold at higher opacity + a larger
-  // size — bolder and more visible than the previous thin 75%-opacity
-  // regular-weight line, without the risk of a missing custom font
-  // silently breaking the header. marginTop bumped 3->8 to sit clear of
-  // the now-taller full logo image above it.
-  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 5, textTransform: 'uppercase' },
+  // Padding trimmed 14->8->6 (top/bottom) — the orange band was still
+  // pushing the quote to a second page, so this went through two rounds
+  // of tightening. Combined with the smaller logo below, this is now
+  // meaningfully shorter than the original header.
+  header:    { backgroundColor: ORANGE, padding: '6 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  // Logo shrunk 57x84 -> 40x59 (same ~0.677 native aspect ratio) — the
+  // full-size lockup was the single biggest driver of header height and
+  // was still causing the PDF to overflow onto a second page. Still the
+  // full logo (icon + wordmark + tagline), just smaller, not cropped back
+  // to icon-only.
+  logoFull:  { width: 40, height: 59, marginBottom: 3 },
+  // marginTop trimmed 5->3 to match the smaller logo above it.
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
   // Label above the quote number — was "Service Estimate", now just
   // "Estimate" ("Service" removed, "Estimate" kept per founder feedback).
   qnLabel:   { color: 'rgba(255,255,255,0.8)', fontSize: 7.5, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },

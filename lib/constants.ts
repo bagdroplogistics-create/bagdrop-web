@@ -312,7 +312,7 @@ export const ADDON_SERVICES = [
 // (there is no single normalized `customers` table in this schema).
 // Mirrored verbatim in admin-app/src/shared/constants.ts and
 // mobile-app/src/shared/constants.ts — keep all three in sync.
-export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.'] as const
+export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.', 'M/S'] as const
 
 export type TitleId = (typeof TITLE_OPTIONS)[number]
 

@@ -34,7 +34,7 @@ export function timeAgo(iso: string): string {
 // ─── Customer Title ──────────────────────────────────────────
 // Kept identical to the website's lib/constants.ts TITLE_OPTIONS /
 // formatCustomerName and to mobile-app/src/shared/format.ts.
-export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.'] as const
+export const TITLE_OPTIONS = ['Mr.', 'Mrs.', 'Ms.', 'M/S'] as const
 
 export type TitleId = (typeof TITLE_OPTIONS)[number]
 

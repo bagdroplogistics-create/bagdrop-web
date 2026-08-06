@@ -1149,21 +1149,21 @@ export default function QuoteViewPage() {
         ════════════════════════════════════════════════════════════ */}
         <div className="print-page mx-auto max-w-3xl overflow-hidden rounded-lg bg-white shadow-lg">
 
-          {/* Orange header */}
-          <div style={{ background: '#f97316', padding: '28px 36px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          {/* Orange header — padding trimmed 28px->16px and logo shrunk
+              57x84 -> 40x59 (same aspect ratio) to match the shorter header
+              now used in the downloaded PDF (QuotePDF.tsx), which needed
+              the extra room to stop the quote overflowing onto a second
+              page. Kept the full logo lockup, just smaller — not cropped
+              back to icon-only. */}
+          <div style={{ background: '#f97316', padding: '16px 36px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <div>
-              {/* Full logo lockup (icon + "BAGDROP" wordmark + tagline,
-                  all baked into the official brand asset) — restored per
-                  founder feedback after an icon-only crop was judged too
-                  minimal. Sized up from the old 26x45 icon-only mark, so
-                  the coded tagline below has extra marginTop to clear it. */}
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src="/logo-full-white.png"
                 alt="Bagdrop"
-                style={{ width: '57px', height: '84px', display: 'block' }}
+                style={{ width: '40px', height: '59px', display: 'block' }}
               />
-              <div style={{ fontSize: '11px', fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginTop: '10px', letterSpacing: '1px', textTransform: 'uppercase' }}>
+              <div style={{ fontSize: '10px', fontWeight: 600, color: 'rgba(255,255,255,0.92)', marginTop: '6px', letterSpacing: '1px', textTransform: 'uppercase' }}>
                 India&apos;s First Digital Baggage Infrastructure
               </div>
             </div>
