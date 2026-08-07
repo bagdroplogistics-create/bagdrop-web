@@ -51,27 +51,30 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const q = (searchParams.get('q') ?? '').trim()
 
-  if (q.length < 2) {
-    return NextResponse.json({ customers: [] })
-  }
+  // Empty q = "browse all customers" (matches the Zoho-style picker the
+  // dropdown is modeled on — clicking the field shows the full list
+  // immediately, no typing required). Capped at 300 per table so this
+  // stays fast even once the customer base grows; a business this size
+  // isn't going to have more unique customers than that any time soon,
+  // and typing narrows it down with an actual filter anyway.
+  const like = q ? `%${q}%` : null
 
-  const like = `%${q}%`
+  let leadsQuery = supabaseAdmin
+    .from('leads')
+    .select('title, name, phone, email, pickup_address, drop_address, created_at')
+    .order('created_at', { ascending: false })
+    .limit(300)
+  if (like) leadsQuery = leadsQuery.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`)
 
-  const [leadsRes, bookingsRes] = await Promise.all([
-    supabaseAdmin
-      .from('leads')
-      .select('title, name, phone, email, pickup_address, drop_address, created_at')
-      .or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`)
-      .order('created_at', { ascending: false })
-      .limit(100),
-    supabaseAdmin
-      .from('bookings')
-      .select('title, customer_name, customer_phone, customer_email, pickup_address, drop_address, created_at')
-      .neq('status', 'cancelled')
-      .or(`customer_name.ilike.${like},customer_phone.ilike.${like},customer_email.ilike.${like}`)
-      .order('created_at', { ascending: false })
-      .limit(100),
-  ])
+  let bookingsQuery = supabaseAdmin
+    .from('bookings')
+    .select('title, customer_name, customer_phone, customer_email, pickup_address, drop_address, created_at')
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: false })
+    .limit(300)
+  if (like) bookingsQuery = bookingsQuery.or(`customer_name.ilike.${like},customer_phone.ilike.${like},customer_email.ilike.${like}`)
+
+  const [leadsRes, bookingsRes] = await Promise.all([leadsQuery, bookingsQuery])
 
   if (leadsRes.error) {
     return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
@@ -124,9 +127,12 @@ export async function GET(req: NextRequest) {
     if (row.source === 'booking') profile.total_bookings++
   }
 
+  // Alphabetical by name (matches the Zoho-style picker this is modeled
+  // on), not most-recent — this is a "find Aditya Shah in the full list"
+  // picker, not an activity feed.
   const customers = Array.from(profiles.values())
-    .sort((a, b) => new Date(b.last_activity).getTime() - new Date(a.last_activity).getTime())
-    .slice(0, 15)
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .slice(0, 200)
 
   return NextResponse.json({ customers, total: customers.length })
 }

@@ -480,6 +480,17 @@ export default function QuoteViewPage() {
 
   // ── Workflow actions ──────────────────────────────────────────────
 
+  // Return Trip round-trips are billed as ONE combined payment (founder
+  // decision), so the return-leg booking's status/payment fields must
+  // stay in lockstep with the primary booking's — never mirror anything
+  // that triggers a customer-facing side effect (quote/payment emails,
+  // driver details, etc.), only the underlying status/payment fields
+  // themselves, so this never causes a duplicate email/WhatsApp/invoice.
+  const MIRROR_TO_RETURN_FIELDS = [
+    'status', 'payment_status', 'payment_reference',
+    'rejection_reason', 'rejection_comment', 'approved_without_payment',
+  ] as const
+
   async function patchBooking(actionKey: string, payload: Record<string, unknown>): Promise<boolean> {
     if (!booking || !key) return false
     setActing(actionKey)
@@ -496,6 +507,48 @@ export default function QuoteViewPage() {
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? payload) } : prev)
         setActionSuccess(actionKey)
         setTimeout(() => setActionSuccess(null), 4000)
+
+        // Keep the linked return-leg booking's status/payment fields in
+        // sync. Without this, that booking sits frozen at whatever status
+        // it was created with forever — nothing else in the UI ever
+        // touches it — which makes it permanently invisible on the
+        // Payments tab (that page only shows bookings at 'confirmed' or
+        // later) even while its share of the round-trip payment is
+        // genuinely still outstanding. Best-effort/non-blocking: never
+        // let this fail the primary action the admin actually clicked.
+        if (lead?.return_booking_id) {
+          const mirrorPayload: Record<string, unknown> = {}
+          for (const f of MIRROR_TO_RETURN_FIELDS) {
+            if (f in payload) mirrorPayload[f] = payload[f]
+          }
+          if (Object.keys(mirrorPayload).length > 0) {
+            fetch(`/api/admin/bookings/${lead.return_booking_id}?key=${encodeURIComponent(key)}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(mirrorPayload),
+            }).catch(() => {})
+          }
+        }
+
+        // Keep leads.payment_status (the separate manually-toggled
+        // Pending/Received badge on the Leads tab) in sync with the
+        // booking's real payment_status here. Without this, marking a
+        // booking's payment received in the normal workflow never updates
+        // that badge — it only ever changes via someone clicking it
+        // directly on the Leads tab — so a fully paid booking can sit
+        // showing "Pending" there indefinitely, which is confusing and
+        // was mistaken for a Payments-tab bug (the Payments tab itself
+        // was already correct; this badge just never caught up to it).
+        if (lead?.id && 'payment_status' in payload) {
+          const mappedLeadStatus = payload.payment_status === 'paid' ? 'received' : 'pending'
+          fetch(`/api/admin/leads/${lead.id}?key=${encodeURIComponent(key)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ payment_status: mappedLeadStatus }),
+          }).catch(() => {})
+          setLead(prev => prev ? { ...prev, payment_status: mappedLeadStatus } : prev)
+        }
+
         return true
       } else {
         setActionError(d.error ?? 'Action failed')

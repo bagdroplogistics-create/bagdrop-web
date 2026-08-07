@@ -436,11 +436,13 @@ function QuotePageInner() {
   useEffect(() => { if (authed) fetchLead() }, [authed, fetchLead])
 
   // ── "Select Existing Customer" search (debounced, new-quote only) ──
+  // Fetches as soon as the field is focused (custSearchOpen), even with
+  // an empty query — matches the Zoho-style picker in the reference
+  // screenshot, which shows the full customer list immediately on click
+  // rather than waiting for the admin to type something first. Typing
+  // narrows the same list via the server-side filter.
   useEffect(() => {
-    if (lead || custSearchQ.trim().length < 2 || !adminKey) {
-      setCustSearchResults([])
-      return
-    }
+    if (lead || !custSearchOpen || !adminKey) return
     setCustSearchLoading(true)
     const t = setTimeout(async () => {
       try {
@@ -453,9 +455,9 @@ function QuotePageInner() {
       } finally {
         setCustSearchLoading(false)
       }
-    }, 300)
+    }, 250)
     return () => clearTimeout(t)
-  }, [custSearchQ, adminKey, lead])
+  }, [custSearchQ, adminKey, lead, custSearchOpen])
 
   // Fills in the same fields the Customer Information section below
   // already exposes for manual entry — nothing new is written anywhere
@@ -1027,7 +1029,7 @@ function QuotePageInner() {
                 it always has. */}
             {!lead && (
               <div className="relative mb-3">
-                <label className={lbl}>Select Existing Customer <span className="text-gray-400">(optional — search by name, mobile, or email)</span></label>
+                <label className={lbl}>Select Existing Customer <span className="text-gray-400">(optional — click to browse all, or type to filter by name, mobile, or email)</span></label>
                 <div className="relative">
                   <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                   <input
@@ -1043,10 +1045,15 @@ function QuotePageInner() {
                     <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-gray-400" />
                   )}
                 </div>
-                {custSearchOpen && custSearchQ.trim().length >= 2 && (
+                {custSearchOpen && (
                   <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {custSearchLoading && custSearchResults.length === 0 && (
+                      <div className="px-3 py-2.5 text-xs text-gray-400">Loading customers…</div>
+                    )}
                     {custSearchResults.length === 0 && !custSearchLoading && (
-                      <div className="px-3 py-2.5 text-xs text-gray-400">No matching customers — continue below to add a new one.</div>
+                      <div className="px-3 py-2.5 text-xs text-gray-400">
+                        {custSearchQ.trim() ? 'No matching customers — continue below to add a new one.' : 'No existing customers yet — continue below to add one.'}
+                      </div>
                     )}
                     {custSearchResults.map((c, i) => (
                       <button
