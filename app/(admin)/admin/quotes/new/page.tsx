@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, FileText, ExternalLink, CheckCircle, AlertTriangle,
   Loader2, Send, Plus, Trash2, RotateCcw, User, Phone, Mail, Save, Search,
-  Building2, ChevronDown, ChevronRight,
+  Building2,
 } from 'lucide-react'
 import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
@@ -15,8 +15,7 @@ import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import {
   TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName,
   CUSTOMER_TYPES, DEFAULT_CUSTOMER_TYPE, type CustomerType,
-  GST_TREATMENT_OPTIONS, INDIAN_STATES_UTS, CURRENCY_OPTIONS, DEFAULT_CURRENCY,
-  ACCOUNTS_RECEIVABLE_OPTIONS, PAYMENT_TERMS_OPTIONS, DEFAULT_PAYMENT_TERMS,
+  PAYMENT_TERMS_OPTIONS, DEFAULT_PAYMENT_TERMS,
 } from '@/lib/constants'
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -59,24 +58,9 @@ interface Lead {
   // Business Customer support — all optional/nullable, additive
   customer_type?:       string | null
   business_name?:       string | null
+  business_address?:    string | null
   gst_number?:          string | null
-  gst_treatment?:       string | null
-  place_of_supply?:     string | null
-  currency?:            string | null
-  accounts_receivable?: string | null
   payment_terms?:       string | null
-  website_url?:         string | null
-  department?:          string | null
-  designation?:         string | null
-  contact_person?:      string | null
-  alternate_contact_number?: string | null
-  twitter_profile?:     string | null
-  facebook_profile?:    string | null
-  linkedin_profile?:    string | null
-  instagram_profile?:   string | null
-  skype_id?:            string | null
-  business_registration_number?: string | null
-  pan_number?:          string | null
 }
 
 interface RoutePrice {
@@ -96,24 +80,9 @@ interface ExistingCustomer {
   // existing Business customer's details fill in automatically on select.
   customer_type?:       string | null
   business_name?:       string | null
+  business_address?:    string | null
   gst_number?:          string | null
-  gst_treatment?:       string | null
-  place_of_supply?:     string | null
-  currency?:            string | null
-  accounts_receivable?: string | null
   payment_terms?:       string | null
-  website_url?:         string | null
-  department?:          string | null
-  designation?:         string | null
-  contact_person?:      string | null
-  alternate_contact_number?: string | null
-  twitter_profile?:     string | null
-  facebook_profile?:    string | null
-  linkedin_profile?:    string | null
-  instagram_profile?:   string | null
-  skype_id?:            string | null
-  business_registration_number?: string | null
-  pan_number?:          string | null
 }
 
 interface LineItemRow {
@@ -282,32 +251,19 @@ function QuotePageInner() {
   const [pnr,         setPnr]         = useState('')
   const [flightNumber, setFlightNumber] = useState('')
 
-  // ── Business Customer support (additive alongside Individual) ─────
-  // Modeled functionally on Zoho Books' New Customer dialog per founder
-  // request. Individual stays the default and behaves exactly as before;
-  // these fields only get sent/saved when Business is selected. See
-  // supabase/migrations/20260807_business_customer_fields.sql.
-  const [customerType, setCustomerType] = useState<CustomerType>(DEFAULT_CUSTOMER_TYPE)
-  const [businessName,   setBusinessName]   = useState('')
-  const [gstNumber,      setGstNumber]      = useState('')
-  const [gstTreatment,   setGstTreatment]   = useState('')
-  const [placeOfSupply,  setPlaceOfSupply]  = useState('')
-  const [currency,       setCurrency]       = useState(DEFAULT_CURRENCY)
-  const [accountsReceivable, setAccountsReceivable] = useState('')
-  const [paymentTerms,   setPaymentTerms]   = useState(DEFAULT_PAYMENT_TERMS)
-  const [showMoreBusinessDetails, setShowMoreBusinessDetails] = useState(false)
-  const [websiteUrl,     setWebsiteUrl]     = useState('')
-  const [department,     setDepartment]     = useState('')
-  const [designation,    setDesignation]    = useState('')
-  const [contactPerson,  setContactPerson]  = useState('')
-  const [altContactNumber, setAltContactNumber] = useState('')
-  const [twitterProfile,  setTwitterProfile]  = useState('')
-  const [facebookProfile, setFacebookProfile] = useState('')
-  const [linkedinProfile, setLinkedinProfile] = useState('')
-  const [instagramProfile, setInstagramProfile] = useState('')
-  const [skypeId,        setSkypeId]        = useState('')
-  const [bizRegNumber,   setBizRegNumber]   = useState('')
-  const [panNumber,      setPanNumber]      = useState('')
+  // ── Business Customer support ──────────────────────────────────────
+  // "Payment By" selector: Individual (default, unchanged behavior) vs
+  // Business / Company. The Business Information card below is only
+  // shown when Business / Company is selected — purely a UI/UX choice
+  // so admins quoting an ordinary individual customer never see business
+  // fields. None of the fields inside are marked required in the UI and
+  // leaving them blank never blocks quote/booking creation.
+  // See supabase/migrations/20260807_business_customer_fields.sql.
+  const [paymentBy, setPaymentBy] = useState<CustomerType>(DEFAULT_CUSTOMER_TYPE)
+  const [businessName,    setBusinessName]    = useState('')
+  const [businessAddress, setBusinessAddress] = useState('')
+  const [gstNumber,       setGstNumber]       = useState('')
+  const [paymentTerms,    setPaymentTerms]    = useState(DEFAULT_PAYMENT_TERMS)
 
   // ── "Select Existing Customer" autocomplete (new-quote only) ──────
   // Purely a convenience layer above the existing Customer Information
@@ -473,26 +429,11 @@ function QuotePageInner() {
 
       // Business Customer fields — reload in full when editing, same
       // reasoning as every other field above.
-      setCustomerType(d.customer_type === 'business' ? 'business' : DEFAULT_CUSTOMER_TYPE)
+      setPaymentBy(d.customer_type === 'business' ? 'business' : DEFAULT_CUSTOMER_TYPE)
       setBusinessName(d.business_name ?? '')
+      setBusinessAddress(d.business_address ?? '')
       setGstNumber(d.gst_number ?? '')
-      setGstTreatment(d.gst_treatment ?? '')
-      setPlaceOfSupply(d.place_of_supply ?? '')
-      setCurrency(d.currency ?? DEFAULT_CURRENCY)
-      setAccountsReceivable(d.accounts_receivable ?? '')
       setPaymentTerms(d.payment_terms ?? DEFAULT_PAYMENT_TERMS)
-      setWebsiteUrl(d.website_url ?? '')
-      setDepartment(d.department ?? '')
-      setDesignation(d.designation ?? '')
-      setContactPerson(d.contact_person ?? '')
-      setAltContactNumber(d.alternate_contact_number ?? '')
-      setTwitterProfile(d.twitter_profile ?? '')
-      setFacebookProfile(d.facebook_profile ?? '')
-      setLinkedinProfile(d.linkedin_profile ?? '')
-      setInstagramProfile(d.instagram_profile ?? '')
-      setSkypeId(d.skype_id ?? '')
-      setBizRegNumber(d.business_registration_number ?? '')
-      setPanNumber(d.pan_number ?? '')
 
       // Editing an existing quote: reload EVERY previously saved value —
       // pricing, discount, payment status, notes, etc. — regardless of
@@ -573,29 +514,16 @@ function QuotePageInner() {
     if (c.drop_address) setDropAddr(c.drop_address)
 
     // Business Customer fields — requirement #9: selecting an existing
-    // Business customer auto-fills everything below alongside the
-    // Individual fields above, same as the rest of this function.
+    // Business customer auto-fills everything below (and switches
+    // Payment By to Business/Company so the fields become visible),
+    // alongside the Individual fields above, same as the rest of this
+    // function.
     if (c.customer_type === 'business') {
-      setCustomerType('business')
-      if (c.business_name)   setBusinessName(c.business_name)
-      if (c.gst_number)      setGstNumber(c.gst_number)
-      if (c.gst_treatment)   setGstTreatment(c.gst_treatment)
-      if (c.place_of_supply) setPlaceOfSupply(c.place_of_supply)
-      if (c.currency)        setCurrency(c.currency)
-      if (c.accounts_receivable) setAccountsReceivable(c.accounts_receivable)
-      if (c.payment_terms)   setPaymentTerms(c.payment_terms)
-      if (c.website_url)     setWebsiteUrl(c.website_url)
-      if (c.department)      setDepartment(c.department)
-      if (c.designation)     setDesignation(c.designation)
-      if (c.contact_person)  setContactPerson(c.contact_person)
-      if (c.alternate_contact_number) setAltContactNumber(c.alternate_contact_number)
-      if (c.twitter_profile)  setTwitterProfile(c.twitter_profile)
-      if (c.facebook_profile) setFacebookProfile(c.facebook_profile)
-      if (c.linkedin_profile) setLinkedinProfile(c.linkedin_profile)
-      if (c.instagram_profile) setInstagramProfile(c.instagram_profile)
-      if (c.skype_id)        setSkypeId(c.skype_id)
-      if (c.business_registration_number) setBizRegNumber(c.business_registration_number)
-      if (c.pan_number)      setPanNumber(c.pan_number)
+      setPaymentBy('business')
+      if (c.business_name)    setBusinessName(c.business_name)
+      if (c.business_address) setBusinessAddress(c.business_address)
+      if (c.gst_number)       setGstNumber(c.gst_number)
+      if (c.payment_terms)    setPaymentTerms(c.payment_terms)
     }
 
     setCustSearchQ('')
@@ -605,33 +533,26 @@ function QuotePageInner() {
 
   // Shared by every lead create/update call below (new lead, Edit save,
   // duplicate-phone sync) so all three stay consistent. Business fields
-  // are explicitly nulled out when Individual is selected, so switching
-  // back from Business doesn't leave stale data behind on save.
+  // are explicitly nulled out when Payment By = Individual, so switching
+  // back from Business/Company doesn't leave stale data behind on save.
+  // None of these fields are required — an admin can select Business/
+  // Company and still leave Name/Address/GST/Terms blank with no
+  // validation error; this just controls what gets written.
   function businessFieldsPayload(): Record<string, unknown> {
-    if (customerType !== 'business') {
-      return { customer_type: 'individual' }
+    if (paymentBy !== 'business') {
+      return {
+        customer_type:    'individual',
+        business_name:    null,
+        business_address: null,
+        gst_number:       null,
+      }
     }
     return {
-      customer_type:        'business',
-      business_name:        businessName.trim()   || null,
-      gst_number:           gstNumber.trim()       || null,
-      gst_treatment:        gstTreatment           || null,
-      place_of_supply:      placeOfSupply          || null,
-      currency:             currency               || DEFAULT_CURRENCY,
-      accounts_receivable:  accountsReceivable     || null,
-      payment_terms:        paymentTerms           || DEFAULT_PAYMENT_TERMS,
-      website_url:          websiteUrl.trim()      || null,
-      department:           department.trim()      || null,
-      designation:          designation.trim()     || null,
-      contact_person:       contactPerson.trim()   || null,
-      alternate_contact_number: altContactNumber.trim() || null,
-      twitter_profile:      twitterProfile.trim()  || null,
-      facebook_profile:     facebookProfile.trim() || null,
-      linkedin_profile:     linkedinProfile.trim() || null,
-      instagram_profile:    instagramProfile.trim()|| null,
-      skype_id:             skypeId.trim()         || null,
-      business_registration_number: bizRegNumber.trim() || null,
-      pan_number:           panNumber.trim()       || null,
+      customer_type:     'business',
+      business_name:     businessName.trim()    || null,
+      business_address:  businessAddress.trim() || null,
+      gst_number:        gstNumber.trim()       || null,
+      payment_terms:     paymentTerms           || DEFAULT_PAYMENT_TERMS,
     }
   }
 
@@ -1183,30 +1104,6 @@ function QuotePageInner() {
           <div className={sect}>
             <p className={sectH}><User className="inline h-3.5 w-3.5 mr-1 mb-0.5" />Customer Information</p>
 
-            {/* Customer Type — Individual (default, unchanged behavior) vs
-                Business. Business only ever ADDS the section further below;
-                Individual keeps this whole form exactly as it was before
-                this feature existed. */}
-            <div className="mb-3">
-              <label className={lbl}>Customer Type</label>
-              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
-                {CUSTOMER_TYPES.map(t => (
-                  <button
-                    key={t}
-                    type="button"
-                    disabled={!!lead && !isEdit}
-                    onClick={() => setCustomerType(t)}
-                    className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-semibold capitalize transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                      customerType === t ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
-                    }`}
-                  >
-                    {t === 'business' && <Building2 className="h-3.5 w-3.5" />}
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Select Existing Customer — new-quote only (hidden once a
                 lead is loaded/being edited, since its fields are already
                 populated at that point). Purely a fast-fill convenience
@@ -1342,57 +1239,60 @@ function QuotePageInner() {
               )}
             </div>
 
-            {/* Business Information — only when Customer Type = Business.
-                Modeled on Zoho Books' New Customer dialog per founder
-                request. Individual customers never see any of this. */}
-            {customerType === 'business' && (
+            {/* Payment By — Individual (default, unchanged behavior) vs
+                Business / Company. Gates the Business Information card
+                below so admins quoting an ordinary individual customer
+                never see business fields. Purely a UI/UX choice — no
+                field inside is required, and leaving them blank never
+                blocks quote/booking creation either way. */}
+            <div className="mb-3">
+              <label className={lbl}>Payment By</label>
+              <div className="inline-flex rounded-lg border border-gray-200 bg-gray-50 p-0.5">
+                {CUSTOMER_TYPES.map(t => (
+                  <button
+                    key={t}
+                    type="button"
+                    disabled={!!lead && !isEdit}
+                    onClick={() => setPaymentBy(t)}
+                    className={`flex items-center gap-1.5 rounded-md px-3.5 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                      paymentBy === t ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                    }`}
+                  >
+                    {t === 'business' && <Building2 className="h-3.5 w-3.5" />}
+                    {t === 'business' ? 'Business / Company' : 'Individual'}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Business Information — shown only when Payment By =
+                Business / Company. Just the 4 fields BagDrop operations
+                actually need (name, address, GST, payment terms); none
+                are marked required — leaving them blank saves the quote
+                as a normal individual customer with no validation errors. */}
+            {paymentBy === 'business' && (
               <div className="mb-3 rounded-lg border border-gray-100 bg-gray-50/60 p-3">
                 <p className="mb-2.5 flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-gray-400">
                   <Building2 className="h-3.5 w-3.5" /> Business Information
                 </p>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="col-span-2">
-                    <label className={lbl}>Business / Company Name <span className="text-red-400">*</span></label>
+                    <label className={lbl}>Business / Company Name</label>
                     <input type="text" value={businessName} onChange={e => setBusinessName(e.target.value)}
                       disabled={!!lead && !isEdit} placeholder="e.g. Riya Travels Pvt. Ltd."
                       className={!!lead && !isEdit ? inpRO : inp} />
+                  </div>
+                  <div className="col-span-2">
+                    <label className={lbl}>Business / Company Address</label>
+                    <textarea value={businessAddress} onChange={e => setBusinessAddress(e.target.value)}
+                      disabled={!!lead && !isEdit} rows={2} placeholder="Registered / billing address"
+                      className={(!!lead && !isEdit ? inpRO : inp) + ' resize-none'} />
                   </div>
                   <div>
                     <label className={lbl}>GST Number</label>
                     <input type="text" value={gstNumber} onChange={e => setGstNumber(e.target.value)}
                       disabled={!!lead && !isEdit} placeholder="22AAAAA0000A1Z5"
                       className={!!lead && !isEdit ? inpRO : inp} />
-                  </div>
-                  <div>
-                    <label className={lbl}>GST Treatment <span className="text-red-400">*</span></label>
-                    <select value={gstTreatment} onChange={e => setGstTreatment(e.target.value)}
-                      disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
-                      <option value="">— Select GST treatment —</option>
-                      {GST_TREATMENT_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lbl}>Place of Supply <span className="text-red-400">*</span></label>
-                    <select value={placeOfSupply} onChange={e => setPlaceOfSupply(e.target.value)}
-                      disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
-                      <option value="">— Select state / UT —</option>
-                      {INDIAN_STATES_UTS.map(s => <option key={s} value={s}>{s}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lbl}>Currency <span className="text-red-400">*</span></label>
-                    <select value={currency} onChange={e => setCurrency(e.target.value)}
-                      disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
-                      {CURRENCY_OPTIONS.map(c => <option key={c.code} value={c.code}>{c.label}</option>)}
-                    </select>
-                  </div>
-                  <div>
-                    <label className={lbl}>Accounts Receivable</label>
-                    <select value={accountsReceivable} onChange={e => setAccountsReceivable(e.target.value)}
-                      disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
-                      <option value="">— Select account —</option>
-                      {ACCOUNTS_RECEIVABLE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
-                    </select>
                   </div>
                   <div>
                     <label className={lbl}>Payment Terms</label>
@@ -1402,109 +1302,6 @@ function QuotePageInner() {
                     </select>
                   </div>
                 </div>
-
-                {/* Add More Details — collapsed by default, matches Zoho's
-                    "Add more details" expandable section. */}
-                <button
-                  type="button"
-                  onClick={() => setShowMoreBusinessDetails(v => !v)}
-                  className="mt-3 flex items-center gap-1 text-xs font-semibold text-orange-600 hover:text-orange-700"
-                >
-                  {showMoreBusinessDetails ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-                  Add More Details
-                </button>
-
-                {showMoreBusinessDetails && (
-                  <div className="mt-2.5 space-y-3 border-t border-gray-200 pt-3">
-                    <div>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">Business Details</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className={lbl}>Website URL</label>
-                          <input type="text" value={websiteUrl} onChange={e => setWebsiteUrl(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="www.example.com"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>Department</label>
-                          <input type="text" value={department} onChange={e => setDepartment(e.target.value)}
-                            disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>Designation</label>
-                          <input type="text" value={designation} onChange={e => setDesignation(e.target.value)}
-                            disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>Contact Person</label>
-                          <input type="text" value={contactPerson} onChange={e => setContactPerson(e.target.value)}
-                            disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div className="col-span-2">
-                          <label className={lbl}>Alternate Contact Number</label>
-                          <input type="text" value={altContactNumber} onChange={e => setAltContactNumber(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="98765 43210"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">Social Media / Communication</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className={lbl}>X (Twitter) Profile</label>
-                          <input type="text" value={twitterProfile} onChange={e => setTwitterProfile(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="https://x.com/…"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>Facebook Profile</label>
-                          <input type="text" value={facebookProfile} onChange={e => setFacebookProfile(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="https://facebook.com/…"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>LinkedIn Profile <span className="text-gray-400">(optional)</span></label>
-                          <input type="text" value={linkedinProfile} onChange={e => setLinkedinProfile(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="https://linkedin.com/…"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>Instagram Profile <span className="text-gray-400">(optional)</span></label>
-                          <input type="text" value={instagramProfile} onChange={e => setInstagramProfile(e.target.value)}
-                            disabled={!!lead && !isEdit} placeholder="https://instagram.com/…"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div className="col-span-2">
-                          <label className={lbl}>Skype Name / Number</label>
-                          <input type="text" value={skypeId} onChange={e => setSkypeId(e.target.value)}
-                            disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                      </div>
-                    </div>
-
-                    <div>
-                      <p className="mb-2 text-[11px] font-bold uppercase tracking-wider text-gray-400">Additional Information</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <label className={lbl}>Business Registration Number <span className="text-gray-400">(optional)</span></label>
-                          <input type="text" value={bizRegNumber} onChange={e => setBizRegNumber(e.target.value)}
-                            disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                        <div>
-                          <label className={lbl}>PAN Number</label>
-                          <input type="text" value={panNumber} onChange={e => setPanNumber(e.target.value.toUpperCase())}
-                            disabled={!!lead && !isEdit} placeholder="ABCDE1234F"
-                            className={!!lead && !isEdit ? inpRO : inp} />
-                        </div>
-                      </div>
-                      <p className="mt-2 text-[11px] text-gray-400">
-                        Notes — use the existing Notes field further down this form; not duplicated here.
-                      </p>
-                    </div>
-                  </div>
-                )}
               </div>
             )}
 

@@ -8,6 +8,10 @@ interface Invoice {
   id: string; invoice_number: string; booking_id: string | null
   title?: string | null
   customer_name: string; customer_phone: string; customer_email: string | null; customer_address: string | null
+  // Business Customer support — see supabase/migrations/20260807_
+  // business_customer_fields.sql.
+  customer_type?: string | null
+  business_name?: string | null
   service_type: string | null; from_city: string; to_city: string; total_bags: number
   base_amount: number; cgst: number; sgst: number; total_amount: number
   payment_status: string; payment_method: string | null; payment_reference: string | null
@@ -92,7 +96,12 @@ export default function InvoicePrintPage() {
         <div className="mb-8 grid grid-cols-2 gap-8">
           <div>
             <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-2">Bill To</p>
-            <p className="text-base font-bold text-gray-900">{formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name}</p>
+            <p className="text-base font-bold text-gray-900">
+              {invoice.customer_type === 'business' && invoice.business_name ? invoice.business_name : (formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name)}
+            </p>
+            {invoice.customer_type === 'business' && invoice.business_name && (
+              <p className="text-sm text-gray-600">{formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name}</p>
+            )}
             <p className="text-sm text-gray-600">{invoice.customer_phone}</p>
             {invoice.customer_email && <p className="text-sm text-gray-600">{invoice.customer_email}</p>}
             {/* Address value bumped bigger + bolder + darker, matching

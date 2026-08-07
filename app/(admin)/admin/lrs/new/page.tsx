@@ -20,6 +20,12 @@ interface BookingEntry {
   pickup_address: string | null; drop_address: string | null
   total_bags: number | null; total_amount: number | null
   status: string
+  // Business Customer support — see supabase/migrations/20260807_
+  // business_customer_fields.sql. When set, Consignor/Consignee prefill
+  // with the company name (and GSTIN) instead of the individual contact.
+  customer_type?: string | null
+  business_name?: string | null
+  gst_number?:    string | null
 }
 
 const inp = 'w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm text-gray-800 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200'
@@ -152,6 +158,9 @@ export default function NewLRPage() {
           pickup_address: b.pickup_address ?? null, drop_address: b.drop_address ?? null,
           total_bags: b.total_bags ?? null, total_amount: b.total_amount ?? null,
           status: b.status,
+          customer_type: b.customer_type ?? null,
+          business_name: b.business_name ?? null,
+          gst_number:    b.gst_number ?? null,
         }))
       )
       const seen = new Set<string>()
@@ -174,15 +183,24 @@ export default function NewLRPage() {
   // can still correct any of it before generating, same as manual mode.
   function selectBooking(e: BookingEntry) {
     setSelected(e)
-    const name = formatCustomerName(e.title, e.customer_name) || e.customer_name
+    const individualName = formatCustomerName(e.title, e.customer_name) || e.customer_name
+    // Business Customer support: when Payment By = Business/Company was
+    // set on this booking, the company name/GSTIN take the Consignor/
+    // Consignee/Billed To slots (admin can still edit before generating),
+    // matching the same treatment as Quotation/Invoice Bill To.
+    const isBusiness = e.customer_type === 'business' && !!e.business_name
+    const name  = isBusiness ? (e.business_name as string) : individualName
+    const gstin = isBusiness ? (e.gst_number ?? '') : ''
     setConsignorName(name)
     setConsignorMobile(e.customer_phone ?? '')
     setConsignorAddress(e.pickup_address ?? '')
-    setConsignorGstin('')
+    setConsignorGstin(gstin)
     setConsigneeName(name)
     setConsigneeMobile(e.customer_phone ?? '')
     setConsigneeAddress(e.drop_address ?? '')
-    setConsigneeGstin('')
+    setConsigneeGstin(gstin)
+    setBilledToName(isBusiness ? (e.business_name as string) : '')
+    setBilledToGstin(gstin)
   }
 
   function setCharge(key: string, value: string) {

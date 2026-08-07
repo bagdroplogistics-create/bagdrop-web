@@ -258,6 +258,15 @@ export async function POST(req: NextRequest) {
         notes:          body.notes?.trim() || null,
         status:         'inquiry',
         status_history: history,
+        // Business Customer support — carried through to the booking so
+        // Invoice/LR (generated from bookings, not leads) can also show
+        // the company name. See supabase/migrations/20260807_business_
+        // customer_fields.sql.
+        customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
+        business_name:    body.business_name?.trim()    || null,
+        business_address: body.business_address?.trim() || null,
+        gst_number:       body.gst_number?.trim()        || null,
+        payment_terms:    body.payment_terms             || 'Due on Receipt',
       })
       .eq('id', existingWebBooking.id)
       .select('id, tracking_id')
@@ -301,6 +310,12 @@ export async function POST(req: NextRequest) {
         changed_by: 'system',
         note:       `Auto-created from lead ${leadNumber}`,
       }],
+      // Business Customer support — see comment on the update branch above.
+      customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
+      business_name:    body.business_name?.trim()    || null,
+      business_address: body.business_address?.trim() || null,
+      gst_number:       body.gst_number?.trim()        || null,
+      payment_terms:    body.payment_terms             || 'Due on Receipt',
     }
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
@@ -386,26 +401,11 @@ export async function POST(req: NextRequest) {
       // Business Customer support (New Quote form) — additive, alongside
       // every Individual field above. See
       // supabase/migrations/20260807_business_customer_fields.sql.
-      customer_type: body.customer_type === 'business' ? 'business' : 'individual',
-      business_name:       body.business_name?.trim()   || null,
-      gst_number:          body.gst_number?.trim()       || null,
-      gst_treatment:       body.gst_treatment            || null,
-      place_of_supply:     body.place_of_supply          || null,
-      currency:            body.currency                 || 'INR',
-      accounts_receivable: body.accounts_receivable      || null,
-      payment_terms:       body.payment_terms            || 'Due on Receipt',
-      website_url:         body.website_url?.trim()      || null,
-      department:          body.department?.trim()       || null,
-      designation:         body.designation?.trim()      || null,
-      contact_person:      body.contact_person?.trim()   || null,
-      alternate_contact_number: body.alternate_contact_number?.trim() || null,
-      twitter_profile:     body.twitter_profile?.trim()  || null,
-      facebook_profile:    body.facebook_profile?.trim() || null,
-      linkedin_profile:    body.linkedin_profile?.trim() || null,
-      instagram_profile:   body.instagram_profile?.trim()|| null,
-      skype_id:            body.skype_id?.trim()         || null,
-      business_registration_number: body.business_registration_number?.trim() || null,
-      pan_number:          body.pan_number?.trim()       || null,
+      customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
+      business_name:    body.business_name?.trim()    || null,
+      business_address: body.business_address?.trim() || null,
+      gst_number:       body.gst_number?.trim()        || null,
+      payment_terms:    body.payment_terms             || 'Due on Receipt',
     })
     .select()
     .single()

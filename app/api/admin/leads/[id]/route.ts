@@ -68,11 +68,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Business Customer support (New Quote form) — additive, alongside the
     // existing Individual fields above. See
     // supabase/migrations/20260807_business_customer_fields.sql.
-    'customer_type', 'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
-    'currency', 'accounts_receivable', 'payment_terms',
-    'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
-    'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
-    'business_registration_number', 'pan_number',
+    'customer_type', 'business_name', 'business_address', 'gst_number', 'payment_terms',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -100,11 +96,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_bags_count', 'return_discount_amt', 'return_discount_pct',
     'return_quote_notes', 'return_pickup_address', 'return_pickup_date',
     'customer_responded_at',
-    'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
-    'currency', 'accounts_receivable', 'payment_terms',
-    'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
-    'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
-    'business_registration_number', 'pan_number',
+    'business_name', 'business_address', 'gst_number', 'payment_terms',
   ]
   for (const f of nullableFields) {
     if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null
@@ -184,6 +176,15 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ('flight_number' in updates)  bookingUpdates.flight_number  = lead.flight_number
     // Keep the linked booking's total in sync when a quote is edited (incl. custom/manual routes)
     if ('quote_total' in updates)    bookingUpdates.total_amount   = lead.quote_total
+
+    // Business Customer support — keep the booking's copy of these fields
+    // in sync so Invoice/LR (generated from bookings) reflect edits made
+    // after the initial quote, e.g. switching Individual -> Business later.
+    if ('customer_type' in updates)    bookingUpdates.customer_type    = lead.customer_type
+    if ('business_name' in updates)    bookingUpdates.business_name    = lead.business_name
+    if ('business_address' in updates) bookingUpdates.business_address = lead.business_address
+    if ('gst_number' in updates)       bookingUpdates.gst_number       = lead.gst_number
+    if ('payment_terms' in updates)    bookingUpdates.payment_terms    = lead.payment_terms
 
     if ('service_type' in updates || 'service_interest' in updates) {
       const sType = lead.service_type ?? lead.service_interest ?? ''

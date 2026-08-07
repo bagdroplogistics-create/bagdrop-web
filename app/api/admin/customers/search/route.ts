@@ -24,27 +24,13 @@ export const runtime = 'nodejs'
 // Business Customer fields (see supabase/migrations/20260807_business_
 // customer_fields.sql) live ONLY on `leads` — bookings has no such
 // columns — so these are always undefined on a 'booking'-source row.
+// Simplified to just the 4 fields BagDrop operations actually need.
 interface BusinessFields {
-  customer_type?:       string | null
-  business_name?:       string | null
-  gst_number?:          string | null
-  gst_treatment?:       string | null
-  place_of_supply?:     string | null
-  currency?:            string | null
-  accounts_receivable?: string | null
-  payment_terms?:       string | null
-  website_url?:         string | null
-  department?:          string | null
-  designation?:         string | null
-  contact_person?:      string | null
-  alternate_contact_number?: string | null
-  twitter_profile?:     string | null
-  facebook_profile?:    string | null
-  linkedin_profile?:    string | null
-  instagram_profile?:   string | null
-  skype_id?:            string | null
-  business_registration_number?: string | null
-  pan_number?:          string | null
+  customer_type?:    string | null
+  business_name?:    string | null
+  business_address?: string | null
+  gst_number?:       string | null
+  payment_terms?:    string | null
 }
 
 interface RawRow extends BusinessFields {
@@ -70,11 +56,7 @@ interface CustomerProfile extends BusinessFields {
 }
 
 const BUSINESS_FIELD_KEYS: (keyof BusinessFields)[] = [
-  'customer_type', 'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
-  'currency', 'accounts_receivable', 'payment_terms',
-  'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
-  'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
-  'business_registration_number', 'pan_number',
+  'customer_type', 'business_name', 'business_address', 'gst_number', 'payment_terms',
 ]
 
 export async function GET(req: NextRequest) {
@@ -97,11 +79,7 @@ export async function GET(req: NextRequest) {
     .from('leads')
     .select(`
       title, name, phone, email, pickup_address, drop_address, created_at,
-      customer_type, business_name, gst_number, gst_treatment, place_of_supply,
-      currency, accounts_receivable, payment_terms,
-      website_url, department, designation, contact_person, alternate_contact_number,
-      twitter_profile, facebook_profile, linkedin_profile, instagram_profile, skype_id,
-      business_registration_number, pan_number
+      customer_type, business_name, business_address, gst_number, payment_terms
     `)
     .order('created_at', { ascending: false })
     .limit(300)

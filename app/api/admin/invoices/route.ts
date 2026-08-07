@@ -64,6 +64,13 @@ export async function POST(req: NextRequest) {
     customer_name:     booking.customer_name,
     customer_phone:    booking.customer_phone,
     customer_email:    booking.customer_email ?? null,
+    // Business Customer support — carried from the booking so the Invoice
+    // shows the company name on Bill To. See supabase/migrations/
+    // 20260807_business_customer_fields.sql.
+    customer_type:     booking.customer_type ?? 'individual',
+    business_name:     booking.business_name ?? null,
+    business_address:  booking.business_address ?? null,
+    gst_number:        booking.gst_number ?? null,
     service_type:      booking.service_type ?? null,
     from_city:         booking.from_city,
     to_city:           booking.to_city,

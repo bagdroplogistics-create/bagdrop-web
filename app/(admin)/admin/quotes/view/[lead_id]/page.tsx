@@ -81,6 +81,12 @@ interface Lead {
   return_quote_notes:      string | null
   return_booking_id:       string | null
   customer_responded_at:   string | null
+  // Business Customer support (New Quote form) — see
+  // supabase/migrations/20260807_business_customer_fields.sql. Only
+  // business_name is needed for document display; address/GST/terms
+  // stay data-only for now.
+  customer_type?:  string | null
+  business_name?:  string | null
 }
 
 interface Booking {
@@ -426,6 +432,7 @@ export default function QuoteViewPage() {
           customerName:  formatCustomerName(lead.title, lead.name) || lead.name,
           customerPhone: lead.phone,
           customerEmail: lead.email,
+          businessName:  lead.customer_type === 'business' ? lead.business_name : null,
           fromCity:      lead.from_city,
           toCity:        lead.to_city,
           bagsCount:     lead.bags_count,
@@ -1259,7 +1266,12 @@ export default function QuoteViewPage() {
 
             <div style={{ background: '#f9fafb', borderRadius: '10px', padding: '14px 16px', borderLeft: '3px solid #f97316' }}>
               <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '8px' }}>Bill To</div>
-              <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>{formatCustomerName(lead.title, lead.name) || lead.name}</div>
+              <div style={{ fontSize: '16px', fontWeight: 800, color: '#111' }}>
+                {lead.customer_type === 'business' && lead.business_name ? lead.business_name : (formatCustomerName(lead.title, lead.name) || lead.name)}
+              </div>
+              {lead.customer_type === 'business' && lead.business_name && (
+                <div style={{ fontSize: '12.5px', color: '#4b5563', marginTop: '2px' }}>{formatCustomerName(lead.title, lead.name) || lead.name}</div>
+              )}
               <div style={{ fontSize: '12.5px', color: '#4b5563', marginTop: '3px' }}>{lead.phone}</div>
               {lead.email && <div style={{ fontSize: '11.5px', color: '#4b5563', marginTop: '2px' }}>{lead.email}</div>}
             </div>

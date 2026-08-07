@@ -208,6 +208,10 @@ export interface QuotePDFProps {
   customerName:  string
   customerPhone: string
   customerEmail: string | null
+  // Business Customer — when Payment By: Business/Company is set, the
+  // company name takes the prominent slot in Bill To and the individual
+  // contact name moves to a sub-line, matching Invoice/LR treatment.
+  businessName?: string | null
   // Journey
   fromCity:      string | null
   toCity:        string | null
@@ -289,10 +293,13 @@ export default function QuotePDF(p: QuotePDFProps) {
         {/* ── Bill To + Journey ── */}
         <View style={[s.body, { marginBottom: 0 }]}>
           <View style={s.row2}>
-            {/* Bill To */}
+            {/* Bill To — Business/Company name (when set) takes the
+                prominent slot, with the individual contact underneath;
+                otherwise unchanged from before. */}
             <View style={s.card}>
               <Text style={s.cardLbl}>Bill To</Text>
-              <Text style={s.custName}>{p.customerName}</Text>
+              <Text style={s.custName}>{p.businessName || p.customerName}</Text>
+              {p.businessName ? <Text style={s.custSub}>{p.customerName}</Text> : null}
               <Text style={s.custSub}>{p.customerPhone}</Text>
               {p.customerEmail ? <Text style={[s.custSub, { fontSize: 8.5 }]}>{p.customerEmail}</Text> : null}
             </View>

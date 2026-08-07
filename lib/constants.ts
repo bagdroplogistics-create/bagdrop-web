@@ -334,72 +334,20 @@ export function formatCustomerName(title: string | null | undefined, name: strin
   return `${safeTitle} ${safeName}`
 }
 
-// ─── Business Customer (New Quote form) ─────────────────────
-// Additive support for Business customers alongside the existing
-// Individual flow — see supabase/migrations/20260807_business_customer_fields.sql
-// for the `leads` columns these map to. None of this affects quotation
+// ─── Payment By: Individual / Business or Company ────────────
+// Simplified per founder feedback — an earlier, much larger Zoho-Books-
+// style Business Customer form (GST Treatment, Place of Supply, Currency,
+// Accounts Receivable, Department, social profiles, etc.) was cut down to
+// only what BagDrop's operations actually need: who the payment is coming
+// from, their address, GST number, and payment terms. See
+// supabase/migrations/20260807_business_customer_fields.sql for the
+// `leads`/`bookings` columns these map to. None of this affects quotation
 // generation, pricing, or the existing Individual customer fields.
 export const CUSTOMER_TYPES = ['individual', 'business'] as const
 export type CustomerType = (typeof CUSTOMER_TYPES)[number]
 export const DEFAULT_CUSTOMER_TYPE: CustomerType = 'individual'
 
-// Matches Zoho Books' GST Treatment options (used as functional reference
-// per founder request) — values kept as human-readable labels since
-// there's no GST-filing integration downstream that needs a coded enum.
-export const GST_TREATMENT_OPTIONS = [
-  'Registered Business – Regular',
-  'Registered Business – Composition',
-  'Unregistered Business',
-  'Consumer',
-  'Overseas',
-  'SEZ Developer',
-  'SEZ Unit',
-  'Deemed Export',
-] as const
-
-// All 28 states + 8 union territories, alphabetical.
-export const INDIAN_STATES_UTS = [
-  'Andaman and Nicobar Islands', 'Andhra Pradesh', 'Arunachal Pradesh', 'Assam',
-  'Bihar', 'Chandigarh', 'Chhattisgarh',
-  'Dadra and Nagar Haveli and Daman and Diu', 'Delhi',
-  'Goa', 'Gujarat', 'Haryana', 'Himachal Pradesh',
-  'Jammu and Kashmir', 'Jharkhand',
-  'Karnataka', 'Kerala', 'Ladakh', 'Lakshadweep',
-  'Madhya Pradesh', 'Maharashtra', 'Manipur', 'Meghalaya', 'Mizoram',
-  'Nagaland',
-  'Odisha',
-  'Puducherry', 'Punjab',
-  'Rajasthan',
-  'Sikkim',
-  'Tamil Nadu', 'Telangana', 'Tripura',
-  'Uttar Pradesh', 'Uttarakhand',
-  'West Bengal',
-] as const
-
-// Common currencies for an India-based logistics business's occasional
-// international/NRI customers — INR default, rest alphabetical by code.
-export const CURRENCY_OPTIONS = [
-  { code: 'INR', label: 'INR – Indian Rupee' },
-  { code: 'AED', label: 'AED – UAE Dirham' },
-  { code: 'AUD', label: 'AUD – Australian Dollar' },
-  { code: 'CAD', label: 'CAD – Canadian Dollar' },
-  { code: 'EUR', label: 'EUR – Euro' },
-  { code: 'GBP', label: 'GBP – British Pound' },
-  { code: 'SGD', label: 'SGD – Singapore Dollar' },
-  { code: 'USD', label: 'USD – US Dollar' },
-] as const
-export const DEFAULT_CURRENCY = 'INR'
-
-// Placeholder list until a real chart-of-accounts / accounting
-// integration exists — matches the shape of Zoho's "Accounts Receivable"
-// field so it's a drop-in replacement later without a form redesign.
-export const ACCOUNTS_RECEIVABLE_OPTIONS = [
-  'Accounts Receivable',
-  'Domestic Receivables',
-  'International Receivables',
-] as const
-
 export const PAYMENT_TERMS_OPTIONS = [
-  'Due on Receipt', 'Net 7', 'Net 15', 'Net 30', 'Net 45', 'Net 60', 'Custom',
+  'Due on Receipt', 'Net 7 Days', 'Net 15 Days', 'Net 30 Days', 'Net 45 Days', 'Net 60 Days', 'Custom',
 ] as const
 export const DEFAULT_PAYMENT_TERMS = 'Due on Receipt'
