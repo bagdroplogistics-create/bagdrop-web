@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, FileText, ExternalLink, CheckCircle, AlertTriangle,
-  Loader2, Send, Plus, Trash2, RotateCcw, User, Phone, Mail, Save,
+  Loader2, Send, Plus, Trash2, RotateCcw, User, Phone, Mail, Save, Search,
 } from 'lucide-react'
 import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
@@ -55,6 +55,15 @@ interface Lead {
 interface RoutePrice {
   found: boolean; subtotal?: number; cgst?: number; sgst?: number
   total?: number; base_price?: number; per_bag_rate?: number
+}
+
+// Matches app/api/admin/customers/search/route.ts's response shape.
+// No "gender" field — there is no such column anywhere in the schema
+// (see that route's comment); deliberately not fabricated here.
+interface ExistingCustomer {
+  title: string | null; name: string; phone: string; email: string | null
+  pickup_address: string | null; drop_address: string | null
+  total_bookings: number; last_activity: string
 }
 
 interface LineItemRow {
@@ -222,6 +231,17 @@ function QuotePageInner() {
   const [custNotes2,  setCustNotes2]  = useState('')   // lead-level notes (different from estimate notes)
   const [pnr,         setPnr]         = useState('')
   const [flightNumber, setFlightNumber] = useState('')
+
+  // ── "Select Existing Customer" autocomplete (new-quote only) ──────
+  // Purely a convenience layer above the existing Customer Information
+  // fields above — it only ever calls the same setCustX setters those
+  // fields already use, so nothing about the existing New Quote workflow
+  // changes. Ignoring this field entirely (for a brand-new customer)
+  // behaves exactly as before.
+  const [custSearchQ,       setCustSearchQ]       = useState('')
+  const [custSearchResults, setCustSearchResults] = useState<ExistingCustomer[]>([])
+  const [custSearchLoading, setCustSearchLoading] = useState(false)
+  const [custSearchOpen,    setCustSearchOpen]    = useState(false)
 
   // Route pricing
   const [routePrice,   setRoutePrice]   = useState<RoutePrice | null>(null)
@@ -414,6 +434,45 @@ function QuotePageInner() {
   }, [adminKey, leadId, isEdit])
 
   useEffect(() => { if (authed) fetchLead() }, [authed, fetchLead])
+
+  // ── "Select Existing Customer" search (debounced, new-quote only) ──
+  useEffect(() => {
+    if (lead || custSearchQ.trim().length < 2 || !adminKey) {
+      setCustSearchResults([])
+      return
+    }
+    setCustSearchLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const qs  = new URLSearchParams({ key: adminKey, q: custSearchQ.trim() })
+        const res = await fetch(`/api/admin/customers/search?${qs}`)
+        const j   = await res.json()
+        setCustSearchResults(res.ok ? (j.customers ?? []) : [])
+      } catch {
+        setCustSearchResults([])
+      } finally {
+        setCustSearchLoading(false)
+      }
+    }, 300)
+    return () => clearTimeout(t)
+  }, [custSearchQ, adminKey, lead])
+
+  // Fills in the same fields the Customer Information section below
+  // already exposes for manual entry — nothing new is written anywhere
+  // that the admin couldn't already type in by hand.
+  function selectExistingCustomer(c: ExistingCustomer) {
+    if (c.title && TITLE_OPTIONS.includes(c.title as never)) setCustTitle(c.title)
+    setCustName(c.name)
+    const parsed = parseStoredPhone(c.phone)
+    setCustPhone(parsed.nationalNumber)
+    setCustCountryIso2(parsed.iso2)
+    if (c.email) setCustEmail(c.email)
+    if (c.pickup_address) setPickupAddr(c.pickup_address)
+    if (c.drop_address) setDropAddr(c.drop_address)
+    setCustSearchQ('')
+    setCustSearchResults([])
+    setCustSearchOpen(false)
+  }
 
   // ── Route pricing ────────────────────────────────────────────────────
   useEffect(() => {
@@ -959,6 +1018,59 @@ function QuotePageInner() {
           {/* ── Customer Information ── */}
           <div className={sect}>
             <p className={sectH}><User className="inline h-3.5 w-3.5 mr-1 mb-0.5" />Customer Information</p>
+
+            {/* Select Existing Customer — new-quote only (hidden once a
+                lead is loaded/being edited, since its fields are already
+                populated at that point). Purely a fast-fill convenience
+                above the Customer Name field below — ignore it entirely
+                for a brand-new customer and this form behaves exactly as
+                it always has. */}
+            {!lead && (
+              <div className="relative mb-3">
+                <label className={lbl}>Select Existing Customer <span className="text-gray-400">(optional — search by name, mobile, or email)</span></label>
+                <div className="relative">
+                  <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+                  <input
+                    type="text"
+                    value={custSearchQ}
+                    onChange={e => { setCustSearchQ(e.target.value); setCustSearchOpen(true) }}
+                    onFocus={() => setCustSearchOpen(true)}
+                    onBlur={() => setTimeout(() => setCustSearchOpen(false), 150)}
+                    placeholder="Search existing customers…"
+                    className={inp + ' pl-7'}
+                  />
+                  {custSearchLoading && (
+                    <Loader2 className="absolute right-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 animate-spin text-gray-400" />
+                  )}
+                </div>
+                {custSearchOpen && custSearchQ.trim().length >= 2 && (
+                  <div className="absolute z-20 mt-1 max-h-72 w-full overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-lg">
+                    {custSearchResults.length === 0 && !custSearchLoading && (
+                      <div className="px-3 py-2.5 text-xs text-gray-400">No matching customers — continue below to add a new one.</div>
+                    )}
+                    {custSearchResults.map((c, i) => (
+                      <button
+                        key={c.phone + i}
+                        type="button"
+                        onMouseDown={e => e.preventDefault()}
+                        onClick={() => selectExistingCustomer(c)}
+                        className="block w-full border-b border-gray-100 px-3 py-2 text-left last:border-b-0 hover:bg-orange-50"
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-semibold text-gray-800">{formatCustomerName(c.title, c.name) || c.name}</span>
+                          {c.total_bookings > 0 && (
+                            <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-medium text-gray-500">{c.total_bookings} booking{c.total_bookings === 1 ? '' : 's'}</span>
+                          )}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-500">
+                          {c.phone}{c.email ? ` · ${c.email}` : ''}
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Always editable when: no lead (new quote) OR isEdit mode */}
             <div className="grid grid-cols-2 gap-3 mb-3">
