@@ -382,6 +382,30 @@ export async function POST(req: NextRequest) {
 
       // Link to the auto-created booking
       booking_id: booking?.id ?? null,
+
+      // Business Customer support (New Quote form) — additive, alongside
+      // every Individual field above. See
+      // supabase/migrations/20260807_business_customer_fields.sql.
+      customer_type: body.customer_type === 'business' ? 'business' : 'individual',
+      business_name:       body.business_name?.trim()   || null,
+      gst_number:          body.gst_number?.trim()       || null,
+      gst_treatment:       body.gst_treatment            || null,
+      place_of_supply:     body.place_of_supply          || null,
+      currency:            body.currency                 || 'INR',
+      accounts_receivable: body.accounts_receivable      || null,
+      payment_terms:       body.payment_terms            || 'Due on Receipt',
+      website_url:         body.website_url?.trim()      || null,
+      department:          body.department?.trim()       || null,
+      designation:         body.designation?.trim()      || null,
+      contact_person:      body.contact_person?.trim()   || null,
+      alternate_contact_number: body.alternate_contact_number?.trim() || null,
+      twitter_profile:     body.twitter_profile?.trim()  || null,
+      facebook_profile:    body.facebook_profile?.trim() || null,
+      linkedin_profile:    body.linkedin_profile?.trim() || null,
+      instagram_profile:   body.instagram_profile?.trim()|| null,
+      skype_id:            body.skype_id?.trim()         || null,
+      business_registration_number: body.business_registration_number?.trim() || null,
+      pan_number:          body.pan_number?.trim()       || null,
     })
     .select()
     .single()

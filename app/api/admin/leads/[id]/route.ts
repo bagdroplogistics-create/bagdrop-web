@@ -65,6 +65,14 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // Responded" action to stop the response-track reminder for this
     // lead. See lib/sales-followup-reminders.ts.
     'customer_responded_at',
+    // Business Customer support (New Quote form) — additive, alongside the
+    // existing Individual fields above. See
+    // supabase/migrations/20260807_business_customer_fields.sql.
+    'customer_type', 'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
+    'currency', 'accounts_receivable', 'payment_terms',
+    'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
+    'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
+    'business_registration_number', 'pan_number',
   ]
 
   const updates: Record<string, unknown> = {}
@@ -92,6 +100,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_bags_count', 'return_discount_amt', 'return_discount_pct',
     'return_quote_notes', 'return_pickup_address', 'return_pickup_date',
     'customer_responded_at',
+    'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
+    'currency', 'accounts_receivable', 'payment_terms',
+    'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
+    'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
+    'business_registration_number', 'pan_number',
   ]
   for (const f of nullableFields) {
     if (f in updates && (updates[f] === '' || updates[f] === null)) updates[f] = null

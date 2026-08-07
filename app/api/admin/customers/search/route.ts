@@ -21,7 +21,33 @@ export const runtime = 'nodejs'
 // Mr./Ms. `title` field, not a real gender field) — deliberately left
 // out rather than fabricated. If a real gender field gets added to the
 // schema later, add it here too.
-interface RawRow {
+// Business Customer fields (see supabase/migrations/20260807_business_
+// customer_fields.sql) live ONLY on `leads` — bookings has no such
+// columns — so these are always undefined on a 'booking'-source row.
+interface BusinessFields {
+  customer_type?:       string | null
+  business_name?:       string | null
+  gst_number?:          string | null
+  gst_treatment?:       string | null
+  place_of_supply?:     string | null
+  currency?:            string | null
+  accounts_receivable?: string | null
+  payment_terms?:       string | null
+  website_url?:         string | null
+  department?:          string | null
+  designation?:         string | null
+  contact_person?:      string | null
+  alternate_contact_number?: string | null
+  twitter_profile?:     string | null
+  facebook_profile?:    string | null
+  linkedin_profile?:    string | null
+  instagram_profile?:   string | null
+  skype_id?:            string | null
+  business_registration_number?: string | null
+  pan_number?:          string | null
+}
+
+interface RawRow extends BusinessFields {
   source:        'lead' | 'booking'
   title:         string | null
   name:          string | null
@@ -32,7 +58,7 @@ interface RawRow {
   created_at:    string
 }
 
-interface CustomerProfile {
+interface CustomerProfile extends BusinessFields {
   title:          string | null
   name:           string
   phone:          string
@@ -42,6 +68,14 @@ interface CustomerProfile {
   total_bookings: number
   last_activity:  string
 }
+
+const BUSINESS_FIELD_KEYS: (keyof BusinessFields)[] = [
+  'customer_type', 'business_name', 'gst_number', 'gst_treatment', 'place_of_supply',
+  'currency', 'accounts_receivable', 'payment_terms',
+  'website_url', 'department', 'designation', 'contact_person', 'alternate_contact_number',
+  'twitter_profile', 'facebook_profile', 'linkedin_profile', 'instagram_profile', 'skype_id',
+  'business_registration_number', 'pan_number',
+]
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -61,7 +95,14 @@ export async function GET(req: NextRequest) {
 
   let leadsQuery = supabaseAdmin
     .from('leads')
-    .select('title, name, phone, email, pickup_address, drop_address, created_at')
+    .select(`
+      title, name, phone, email, pickup_address, drop_address, created_at,
+      customer_type, business_name, gst_number, gst_treatment, place_of_supply,
+      currency, accounts_receivable, payment_terms,
+      website_url, department, designation, contact_person, alternate_contact_number,
+      twitter_profile, facebook_profile, linkedin_profile, instagram_profile, skype_id,
+      business_registration_number, pan_number
+    `)
     .order('created_at', { ascending: false })
     .limit(300)
   if (like) leadsQuery = leadsQuery.or(`name.ilike.${like},phone.ilike.${like},email.ilike.${like}`)
@@ -84,11 +125,14 @@ export async function GET(req: NextRequest) {
   }
 
   const rows: RawRow[] = [
-    ...(leadsRes.data ?? []).map(r => ({
+    ...(leadsRes.data ?? []).map((r: Record<string, unknown>) => ({
       source: 'lead' as const,
-      title: r.title, name: r.name, phone: r.phone, email: r.email,
-      pickup_address: r.pickup_address, drop_address: r.drop_address,
-      created_at: r.created_at,
+      title: r.title as string | null, name: r.name as string | null,
+      phone: r.phone as string | null, email: r.email as string | null,
+      pickup_address: r.pickup_address as string | null, drop_address: r.drop_address as string | null,
+      created_at: r.created_at as string,
+      // Business Customer fields — only ever present on a lead-sourced row.
+      ...Object.fromEntries(BUSINESS_FIELD_KEYS.map(k => [k, r[k] as string | null])),
     })),
     ...(bookingsRes.data ?? []).map(r => ({
       source: 'booking' as const,
@@ -124,6 +168,9 @@ export async function GET(req: NextRequest) {
     if (!profile.email && row.email) profile.email = row.email
     if (!profile.pickup_address && row.pickup_address) profile.pickup_address = row.pickup_address
     if (!profile.drop_address && row.drop_address) profile.drop_address = row.drop_address
+    for (const k of BUSINESS_FIELD_KEYS) {
+      if (!profile[k] && row[k]) profile[k] = row[k]
+    }
     if (row.source === 'booking') profile.total_bookings++
   }
 
