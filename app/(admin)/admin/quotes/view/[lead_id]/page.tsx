@@ -13,6 +13,14 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
 
+// Customer-facing fallback for the quote's Notes section when no
+// quote_notes has been entered — was previously falling back to
+// lead.notes (the internal admin/inquiry notes field), which could leak
+// internal-only text onto a document the customer actually sees. Matches
+// DEFAULT_NOTES in quotes/new/page.tsx so a brand-new quote and an old
+// one missing quote_notes both show the same closing line.
+const DEFAULT_CLOSING_NOTE = 'Looking forward for your business.'
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 interface LineItem {
@@ -450,7 +458,7 @@ export default function QuoteViewPage() {
           discountPct:  lead.quote_discount_pct ?? undefined,
           tax:          taxTotal,
           total:        grandTotal,
-          notes:        lead.quote_notes ?? lead.notes,
+          notes:        lead.quote_notes ?? DEFAULT_CLOSING_NOTE,
           terms:        lead.quote_terms,
           // Return Trip — only present when this lead has a return quote
           // (Trip Type = Return Trip on New Quote). QuotePDF renders the
@@ -1461,13 +1469,14 @@ export default function QuoteViewPage() {
             </div>
           </div>
 
-          {/* Notes */}
-          {(lead.quote_notes ?? lead.notes) && (
-            <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
-              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
-              <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes ?? lead.notes}</div>
-            </div>
-          )}
+          {/* Notes — falls back to a generic closing line (not the internal
+              lead.notes field) so an old quote missing quote_notes never
+              leaks internal/admin-only inquiry notes onto a document the
+              customer actually sees. */}
+          <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
+            <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
+            <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes ?? DEFAULT_CLOSING_NOTE}</div>
+          </div>
 
           {/* Terms */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>
