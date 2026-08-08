@@ -54,6 +54,13 @@ const s = StyleSheet.create({
   stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
   stripVal:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
+  // Subject + Pick Up line — sits just below the header, above the meta
+  // strip, per founder-supplied reference layout.
+  subjectBar:   { padding: '6 28 2', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  subjectLabel: { color: '#1d4ed8', fontSize: 9, fontFamily: 'Helvetica-Bold' },
+  subjectVal:   { color: '#1d4ed8', fontSize: 9 },
+  pickupLine:   { color: '#1d4ed8', fontSize: 9, fontFamily: 'Helvetica-Bold' },
+
   // Body
   body:      { padding: '12 28 0' },
   row2:      { flexDirection: 'row', gap: 12, marginBottom: 8 },
@@ -204,6 +211,8 @@ export interface QuotePDFProps {
   leadNumber:    string
   salesperson:   string | null
   agentName:     string | null
+  // Subject line — from the New Quote form's Subject field (quote_subject).
+  subject?:      string | null
   // Customer
   customerName:  string
   customerPhone: string
@@ -278,6 +287,16 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.qnDate}>{fmtDate(p.quoteDate)}</Text>
             {p.expiryDate ? <Text style={s.qnValidTill}>Valid till {fmtDate(p.expiryDate)}</Text> : null}
           </View>
+        </View>
+
+        {/* ── Subject + Pick Up line ── */}
+        <View style={s.subjectBar}>
+          <Text style={s.subjectLabel}>Subject : <Text style={s.subjectVal}>{p.subject ?? ''}</Text></Text>
+          {p.pickupDate ? (
+            <Text style={s.pickupLine}>
+              PICK UP DATE: {fmtDate(p.pickupDate)}{p.pickupTime ? `   TIME: ${p.pickupTime}` : ''}
+            </Text>
+          ) : null}
         </View>
 
         {/* ── Meta strip ── */}

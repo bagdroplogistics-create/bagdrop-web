@@ -429,6 +429,7 @@ export default function QuoteViewPage() {
           leadNumber:    lead.lead_number,
           salesperson:   lead.salesperson_name,
           agentName:     lead.agent_name,
+          subject:       lead.quote_subject,
           customerName:  formatCustomerName(lead.title, lead.name) || lead.name,
           customerPhone: lead.phone,
           customerEmail: lead.email,
@@ -1243,6 +1244,19 @@ export default function QuoteViewPage() {
                 </div>
               )}
             </div>
+          </div>
+
+          {/* Subject + Pick Up line — sits just below the header, above the
+              meta strip, per founder-supplied reference layout. */}
+          <div style={{ padding: '10px 36px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
+            <div style={{ fontSize: '11px', fontWeight: 700, color: '#1d4ed8' }}>
+              Subject : <span style={{ fontWeight: 400 }}>{lead.quote_subject ?? ''}</span>
+            </div>
+            {lead.pickup_date && (
+              <div style={{ fontSize: '11px', fontWeight: 700, color: '#1d4ed8' }}>
+                PICK UP DATE: {fmtDate(lead.pickup_date)}{lead.pickup_time ? `   TIME: ${lead.pickup_time}` : ''}
+              </div>
+            )}
           </div>
 
           {/* Meta strip */}
