@@ -12,14 +12,7 @@ import {
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
-
-// Customer-facing fallback for the quote's Notes section when no
-// quote_notes has been entered — was previously falling back to
-// lead.notes (the internal admin/inquiry notes field), which could leak
-// internal-only text onto a document the customer actually sees. Matches
-// DEFAULT_NOTES in quotes/new/page.tsx so a brand-new quote and an old
-// one missing quote_notes both show the same closing line.
-const DEFAULT_CLOSING_NOTE = 'Looking forward for your business.'
+import { fmtTimeLabel } from '@/lib/time-options'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -458,7 +451,7 @@ export default function QuoteViewPage() {
           discountPct:  lead.quote_discount_pct ?? undefined,
           tax:          taxTotal,
           total:        grandTotal,
-          notes:        lead.quote_notes ?? DEFAULT_CLOSING_NOTE,
+          notes:        lead.quote_notes,
           terms:        lead.quote_terms,
           // Return Trip — only present when this lead has a return quote
           // (Trip Type = Return Trip on New Quote). QuotePDF renders the
@@ -1254,19 +1247,6 @@ export default function QuoteViewPage() {
             </div>
           </div>
 
-          {/* Subject + Pick Up line — sits just below the header, above the
-              meta strip, per founder-supplied reference layout. */}
-          <div style={{ padding: '10px 36px 4px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '4px' }}>
-            <div style={{ fontSize: '11px', fontWeight: 700, color: '#1d4ed8' }}>
-              Subject : <span style={{ fontWeight: 400 }}>{lead.quote_subject ?? ''}</span>
-            </div>
-            {lead.pickup_date && (
-              <div style={{ fontSize: '11px', fontWeight: 700, color: '#1d4ed8' }}>
-                PICK UP DATE: {fmtDate(lead.pickup_date)}{lead.pickup_time ? `   TIME: ${lead.pickup_time}` : ''}
-              </div>
-            )}
-          </div>
-
           {/* Meta strip */}
           <div style={{ background: '#fff7ed', borderBottom: '1px solid #fed7aa', padding: '10px 36px', display: 'flex', gap: '28px', flexWrap: 'wrap', fontSize: '11px' }}>
             {[
@@ -1362,6 +1342,21 @@ export default function QuoteViewPage() {
                   <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', color: '#4b5563', marginBottom: '5px' }}>Delivery Address</div>
                   <div style={{ fontSize: '15px', fontWeight: 700, color: '#111827' }}>{lead.drop_address}</div>
                 </div>
+              )}
+            </div>
+          )}
+
+          {/* Pick Up Date/Time — directly below Pickup/Delivery Address.
+              Dynamic from the actual booking (lead.pickup_date/
+              lead.pickup_time), never hardcoded. Time run through
+              fmtTimeLabel since it's stored as a 24-hour "HH:MM" value and
+              needs converting to a readable 12-hour label. Uses the same
+              default doc palette as every other card — no blue. */}
+          {lead.pickup_date && (
+            <div style={{ margin: '12px 36px 0', background: '#f9fafb', borderRadius: '8px', padding: '10px 14px', borderLeft: '3px solid #f97316', display: 'flex', gap: '20px', flexWrap: 'wrap', fontSize: '11.5px' }}>
+              <div style={{ color: '#4b5563' }}>PICK UP DATE: <strong style={{ color: '#111827' }}>{fmtDate(lead.pickup_date)}</strong></div>
+              {lead.pickup_time && (
+                <div style={{ color: '#4b5563' }}>TIME: <strong style={{ color: '#111827' }}>{fmtTimeLabel(lead.pickup_time)}</strong></div>
               )}
             </div>
           )}
@@ -1469,14 +1464,15 @@ export default function QuoteViewPage() {
             </div>
           </div>
 
-          {/* Notes — falls back to a generic closing line (not the internal
-              lead.notes field) so an old quote missing quote_notes never
-              leaks internal/admin-only inquiry notes onto a document the
-              customer actually sees. */}
-          <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
-            <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Notes</div>
-            <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes ?? DEFAULT_CLOSING_NOTE}</div>
-          </div>
+          {/* Subject Text — shows the quote's actual Subject field
+              (quote_subject from the New Quote form), unchanged
+              functionality; only the label was renamed from "Notes". */}
+          {lead.quote_subject && (
+            <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Subject Text</div>
+              <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_subject}</div>
+            </div>
+          )}
 
           {/* Terms */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>

@@ -1,6 +1,7 @@
 import {
   Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line,
 } from '@react-pdf/renderer'
+import { fmtTimeLabel } from '@/lib/time-options'
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
@@ -53,13 +54,6 @@ const s = StyleSheet.create({
   strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '5 28', flexDirection: 'row', gap: 20 },
   stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
   stripVal:  { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold', marginTop: 1 },
-
-  // Subject + Pick Up line — sits just below the header, above the meta
-  // strip, per founder-supplied reference layout.
-  subjectBar:   { padding: '6 28 2', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  subjectLabel: { color: '#1d4ed8', fontSize: 9, fontFamily: 'Helvetica-Bold' },
-  subjectVal:   { color: '#1d4ed8', fontSize: 9 },
-  pickupLine:   { color: '#1d4ed8', fontSize: 9, fontFamily: 'Helvetica-Bold' },
 
   // Body
   body:      { padding: '12 28 0' },
@@ -129,6 +123,13 @@ const s = StyleSheet.create({
   notesBox:  { margin: '0 28 6', backgroundColor: LIGHT, borderRadius: 6, padding: '5 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
   notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
   notesText: { color: '#374151', fontSize: 9.5 },
+
+  // Pick Up Date/Time — sits directly below Pickup/Delivery Address,
+  // styled like every other info card in the doc (LIGHT bg, orange left
+  // border, DARK/GREY text) — no blue, matches the existing palette.
+  pickupBox:    { margin: '0 28 6', backgroundColor: LIGHT, borderRadius: 6, padding: '6 12', borderLeftWidth: 3, borderLeftColor: ORANGE, flexDirection: 'row', flexWrap: 'wrap', gap: '2 16' },
+  pickupItem:   { fontSize: 9, color: GREY },
+  pickupItemVal:{ fontFamily: 'Helvetica-Bold', color: DARK },
 
   // T&C
   tcSection: { margin: '0 28 6', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6 },
@@ -289,16 +290,6 @@ export default function QuotePDF(p: QuotePDFProps) {
           </View>
         </View>
 
-        {/* ── Subject + Pick Up line ── */}
-        <View style={s.subjectBar}>
-          <Text style={s.subjectLabel}>Subject : <Text style={s.subjectVal}>{p.subject ?? ''}</Text></Text>
-          {p.pickupDate ? (
-            <Text style={s.pickupLine}>
-              PICK UP DATE: {fmtDate(p.pickupDate)}{p.pickupTime ? `   TIME: ${p.pickupTime}` : ''}
-            </Text>
-          ) : null}
-        </View>
-
         {/* ── Meta strip ── */}
         <View style={s.strip}>
           {meta.map(m => (
@@ -385,6 +376,20 @@ export default function QuotePDF(p: QuotePDFProps) {
             </View>
           ) : null}
         </View>
+
+        {/* ── Pick Up Date/Time — directly below Pickup/Delivery Address.
+              Dynamic from the actual booking (p.pickupDate/p.pickupTime),
+              never hardcoded. Time run through fmtTimeLabel since it's
+              stored as a 24-hour "HH:MM" value and needs converting to a
+              readable 12-hour label. Default doc palette — no blue. ── */}
+        {p.pickupDate ? (
+          <View style={s.pickupBox}>
+            <Text style={s.pickupItem}>PICK UP DATE: <Text style={s.pickupItemVal}>{fmtDate(p.pickupDate)}</Text></Text>
+            {p.pickupTime ? (
+              <Text style={s.pickupItem}>TIME: <Text style={s.pickupItemVal}>{fmtTimeLabel(p.pickupTime)}</Text></Text>
+            ) : null}
+          </View>
+        ) : null}
 
         {/* ── Journey 1 label (only shown alongside a Return Trip) ── */}
         {hasReturn && (
@@ -529,11 +534,13 @@ export default function QuotePDF(p: QuotePDFProps) {
           </>
         )}
 
-        {/* ── Notes ── */}
-        {p.notes ? (
+        {/* ── Subject Text — shows the quote's actual Subject field
+              (quote_subject from the New Quote form), unchanged
+              functionality; only the label was renamed from "Notes". ── */}
+        {p.subject ? (
           <View style={s.notesBox}>
-            <Text style={s.notesLbl}>Notes</Text>
-            <Text style={s.notesText}>{p.notes}</Text>
+            <Text style={s.notesLbl}>Subject Text</Text>
+            <Text style={s.notesText}>{p.subject}</Text>
           </View>
         ) : null}
 

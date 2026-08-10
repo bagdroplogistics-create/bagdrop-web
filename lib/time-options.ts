@@ -23,3 +23,26 @@ export const TIME_OPTIONS: TimeOption[] = [...morning, ...earlyMorn].map(([h, m]
   value: `${String(h).padStart(2, '0')}:${m === 0 ? '00' : '30'}`,
   label: to12h(h, m),
 }))
+
+// Formats a stored pickup/delivery time value for display anywhere in the
+// app (Quote PDF, Quote View preview, etc.). Handles every shape this
+// column has actually held: the normal 24-hour "HH:MM" (and "HH:MM:SS")
+// this form saves via TIME_OPTIONS' value, and an already-12-hour
+// "HH:MM AM/PM" string (e.g. an older row) passed straight through
+// unchanged. Returns '' for null/empty/unparseable input rather than
+// throwing, so callers can safely do `{fmtTimeLabel(x) || null}`-style
+// conditionals. Converts the exact minute value (not just :00/:30, unlike
+// to12h above) so it's safe for any stored time, not just TIME_OPTIONS slots.
+export function fmtTimeLabel(t: string | null | undefined): string {
+  if (!t) return ''
+  const trimmed = t.trim()
+  if (/am|pm/i.test(trimmed)) return trimmed.toUpperCase()
+  const m = trimmed.match(/^(\d{1,2}):(\d{2})/)
+  if (!m) return trimmed
+  const h24 = parseInt(m[1], 10)
+  const min = parseInt(m[2], 10)
+  if (Number.isNaN(h24) || Number.isNaN(min) || h24 > 23 || min > 59) return trimmed
+  const period = h24 < 12 ? 'AM' : 'PM'
+  const h12    = h24 === 0 ? 12 : h24 > 12 ? h24 - 12 : h24
+  return `${String(h12).padStart(2, '0')}:${String(min).padStart(2, '0')} ${period}`
+}
