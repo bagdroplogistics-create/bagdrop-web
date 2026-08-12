@@ -398,10 +398,10 @@ export default function Y2KPage() {
         .promo-slide__h1 em.em-gold { color:#d4a843; }
         .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
         .hero-couple-card { display:inline-flex; flex-direction:column; gap:8px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:14px; padding:20px 40px; margin-bottom:26px; align-items:center; min-width:340px; }
-        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:19px; color:#fff; font-weight:700; }
+        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:23px; color:#fff; font-weight:700; }
         .hero-couple-name .nc-hashtag { color:#d4a843; }
-        .hero-couple-meta { font-size:13px; color:rgba(255,255,255,0.62); }
-        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:2px 8px; color:#d4a843; font-weight:700; font-size:12px; letter-spacing:0.3px; }
+        .hero-couple-meta { font-size:16px; color:rgba(255,255,255,0.62); }
+        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:3px 10px; color:#d4a843; font-weight:700; font-size:14px; letter-spacing:0.3px; }
         .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
 
         .logos-bar { border-top:1px solid rgba(17,17,17,0.08); border-bottom:1px solid rgba(17,17,17,0.08); padding:18px 0; }
@@ -471,8 +471,8 @@ export default function Y2KPage() {
           /* ── Header: swap the full desktop nav/phone/CTA row for a
              hamburger + slide-down panel. Nothing here touches desktop —
              every rule is inside this media query. ── */
-          .header-inner { height:64px; gap:12px; }
-          .header-logo img { height:38px; }
+          .header-inner { height:76px; gap:12px; }
+          .header-logo img { height:56px; }
           .header-nav { display:none; }
           /* .header-phone has an inline display:'flex' (JSX style prop) —
              inline styles beat plain class rules regardless of specificity,
@@ -499,8 +499,9 @@ export default function Y2KPage() {
           .promo-slide__badge { font-size:10px; padding:4px 12px; }
           .promo-slide__loc { font-size:12px; }
           .hero-couple-card { min-width:0; width:100%; max-width:320px; padding:16px 20px; }
-          .hero-couple-name { font-size:15px; }
-          .hero-couple-meta { font-size:11px; }
+          .hero-couple-name { font-size:18px; }
+          .hero-couple-meta { font-size:14px; }
+          .hero-date-highlight { font-size:13px; }
 
           .logos-inner { gap:12px 20px; }
           .logo-badge { font-size:13px; }
@@ -509,6 +510,14 @@ export default function Y2KPage() {
              browsers (especially iOS Safari) — falls back to normal
              scrolling background there. */
           .gift-banner__bg { background-attachment:scroll; }
+
+          /* ── "Find Your Ease" venue/about block — both the grid and the
+             image height are set via inline style props in the JSX, so
+             !important is required here too (same reason as .header-phone
+             above) to actually override them. Text and image stack into
+             one column, text first, image below. ── */
+          .venue-grid { grid-template-columns:1fr !important; gap:36px !important; }
+          .venue-img { height:260px !important; }
         }
         @media (max-width:640px) {
           .book-section { padding:32px 10px; }
@@ -519,7 +528,9 @@ export default function Y2KPage() {
           .header-top span { font-size:10px !important; line-height:1.5; }
           .promo-slide__h1 { font-size:clamp(30px,10vw,40px); }
           .hero-couple-card { padding:14px 16px; max-width:280px; }
-          .hero-couple-meta { display:flex; flex-direction:column; gap:4px; }
+          .hero-couple-name { font-size:16px; }
+          .hero-couple-meta { display:flex; flex-direction:column; gap:4px; font-size:13px; }
+          .hero-date-highlight { font-size:12px; }
         }
       `}}/>
 
@@ -938,7 +949,7 @@ export default function Y2KPage() {
       <section style={{ padding:'80px 0' }} id="venue">
         <div className="container">
           <Reveal>
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:72, alignItems:'center' }}>
+            <div className="venue-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:72, alignItems:'center' }}>
               <div>
                 <Suptitle>find your ease</Suptitle>
                 <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,46px)', lineHeight:'110%', color:J.black, fontWeight:400, marginBottom:32 }}>
@@ -971,6 +982,7 @@ export default function Y2KPage() {
               <div style={{ overflow:'hidden' }}>
                 <img src="/images/y2k-palace.jpg"
                   alt="Taj Aravali, Udaipur"
+                  className="venue-img"
                   style={{ width:'100%', height:380, objectFit:'cover', display:'block', transition:'transform 0.6s ease' }}
                   onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.03)')}
                   onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')}/>
