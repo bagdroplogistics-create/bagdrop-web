@@ -408,12 +408,17 @@ export default function Y2KPage() {
 
         .header-top { background:#111111; padding:9px 15px; display:flex; align-items:center; justify-content:center; }
         .header-main { border-bottom:1px solid rgba(17,17,17,0.1); padding:0 15px; }
-        .header-inner { max-width:1170px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:120px; gap:24px; }
+        .header-inner { max-width:1170px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:104px; gap:24px; }
         .header-nav { display:flex; gap:36px; list-style:none; }
         .header-nav a { font-size:15px; font-weight:600; color:#111; text-decoration:none; text-transform:uppercase; letter-spacing:0.6px; transition:color 0.2s; }
         .header-nav a:hover { color:${J.pink}; }
-        .header-logo { display:flex; align-items:center; text-decoration:none; }
-        .header-logo img { height:116px; width:auto; display:inline-block; }
+        /* align-self:flex-start (not the row's centered default) so the
+           enlarged logo — taller than the shorter nav row below — grows
+           downward into the white space under the row instead of upward
+           into the black .header-top bar, where a black logo would
+           otherwise disappear against a black background. */
+        .header-logo { display:flex; align-items:center; align-self:flex-start; text-decoration:none; }
+        .header-logo img { height:138px; width:auto; display:inline-block; }
 
         /* Hamburger — hidden on desktop by default; @media below reveals it
            and hides .header-nav / .header-phone / .header-book-btn instead,
