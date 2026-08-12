@@ -55,6 +55,7 @@ interface Lead {
   quote_number?:           string | null
   quote_date?:             string | null
   customer_responded_at?:  string | null
+  deleted_at?:             string | null
 }
 
 interface CommunicationLogEntry {
@@ -759,6 +760,13 @@ function LeadsPageInner() {
   // Follow-up" cards (?followup=quotes_pending etc.). Purely a client-side
   // filter over the already-fetched leads list — no new backend query.
   const followupParam = searchParams.get('followup')
+  // Dashboard "Manage in Leads" direct-open — ?open_booking_id=... and/or
+  // ?open_lead_id=... (app/(admin)/admin/page.tsx). Read once on mount;
+  // handleOpenParam below fetches the exact target lead (bypassing every
+  // filter) and forces the view to make it visible, then strips these
+  // params from the URL so they don't stick around on refresh/back-nav.
+  const openBookingId = searchParams.get('open_booking_id')
+  const openLeadId    = searchParams.get('open_lead_id')
   const [adminKey, setAdminKey] = useState('')
   const [authed, setAuthed]     = useState(false)
   const [leads, setLeads]       = useState<Lead[]>([])
@@ -771,6 +779,9 @@ function LeadsPageInner() {
   const [deleting, setDeleting]       = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
   const [showDeleted, setShowDeleted] = useState(false)
+  const [highlightId, setHighlightId] = useState<string | null>(null)
+  const handledOpenParam = useRef(false)
+  const scrolledToId     = useRef<string | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -807,6 +818,64 @@ function LeadsPageInner() {
   }, [adminKey, filter, search, showDeleted, sourceFilter])
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
+
+  // ── Dashboard "Manage in Leads" direct-open ─────────────────────────
+  // Fetches the exact target lead by booking_id/lead_id — a dedicated,
+  // filter-free lookup (see the booking_id branch in
+  // app/api/admin/leads/route.ts, and the existing per-id GET route) —
+  // then forces every filter that could hide it back to "all" and sets
+  // the search box to its unique lead_number. Since the leads list has no
+  // pagination UI (always just the newest 50 matching the current
+  // filter/search), searching by this lead's own lead_number is what
+  // actually guarantees it appears in the fetched set regardless of how
+  // old it is — resetting filter/source/showDeleted alone isn't enough
+  // once a list is older than the newest 50.
+  useEffect(() => {
+    if (!authed || !adminKey) return
+    if (handledOpenParam.current) return
+    if (!openBookingId && !openLeadId) return
+    handledOpenParam.current = true
+
+    ;(async () => {
+      try {
+        const url = openLeadId
+          ? `/api/admin/leads/${openLeadId}?key=${adminKey}`
+          : `/api/admin/leads?booking_id=${openBookingId}&key=${adminKey}`
+        const res = await fetch(url)
+        if (!res.ok) return
+        const j = await res.json()
+        const lead: Lead | null = j.lead ?? (Array.isArray(j.leads) ? j.leads[0] : null)
+        if (!lead) return
+
+        setShowDeleted(!!lead.deleted_at)
+        setFilter('all')
+        setSourceFilter('all')
+        setSearch(lead.lead_number ?? lead.phone ?? '')
+        setHighlightId(lead.id)
+      } finally {
+        // Strip the open_* params so a refresh/back-nav doesn't redo this,
+        // and so the admin can freely change filters afterward without
+        // them snapping back. Doesn't touch any other query params.
+        router.replace('/admin/leads')
+      }
+    })()
+  }, [authed, adminKey, openBookingId, openLeadId, router])
+
+  // Once the target lead's row is actually in the DOM (leads state
+  // updated to include it), scroll it into view and let the highlight
+  // fade after a few seconds. Guarded so it only scrolls once per
+  // highlightId, even though `leads` can update multiple times.
+  useEffect(() => {
+    if (!highlightId) return
+    if (scrolledToId.current === highlightId) return
+    if (!leads.some(l => l.id === highlightId)) return
+    scrolledToId.current = highlightId
+    const t = setTimeout(() => {
+      document.getElementById(`lead-row-${highlightId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 50)
+    const fade = setTimeout(() => setHighlightId(null), 4000)
+    return () => { clearTimeout(t); clearTimeout(fade) }
+  }, [leads, highlightId])
 
   async function confirmDelete(lead: Lead) {
     setDeleteConfirm(null)
@@ -986,7 +1055,9 @@ function LeadsPageInner() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam)).map(l => (
-                    <tr key={l.id} className="hover:bg-gray-50 transition-colors">
+                    <tr key={l.id} id={`lead-row-${l.id}`} className={`transition-colors duration-700 ${
+                      highlightId === l.id ? 'bg-orange-50 ring-2 ring-inset ring-orange-400' : 'hover:bg-gray-50'
+                    }`}>
                       <td className="px-4 py-3">
                         <span className="font-mono text-xs font-bold text-gray-500">{l.lead_number ?? '—'}</span>
                       </td>

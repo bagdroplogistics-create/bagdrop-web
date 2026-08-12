@@ -1844,7 +1844,14 @@ export default function AdminDashboard() {
                                     {STATUS_CONFIG[b.status]?.locked ? 'View Details' : 'Edit Booking'}
                                   </button>
                                   <Link
-                                    href="/admin/leads"
+                                    // Passes this exact inquiry through to the Leads tab so it opens
+                                    // already scrolled-to and highlighted — see the open_booking_id/
+                                    // open_lead_id handling in app/(admin)/admin/leads/page.tsx.
+                                    // booking_id is always present and reliably linked (leads.booking_id
+                                    // is the maintained direction — see app/api/admin/leads/route.ts's
+                                    // comment); lead_id is included too when the booking happens to have
+                                    // it, as a second, redundant way to resolve the same lead.
+                                    href={`/admin/leads?open_booking_id=${encodeURIComponent(b.id)}${b.lead_id ? `&open_lead_id=${encodeURIComponent(b.lead_id)}` : ''}`}
                                     onClick={e => e.stopPropagation()}
                                     className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
                                     <FileText className="h-3.5 w-3.5" />

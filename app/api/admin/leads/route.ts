@@ -18,9 +18,29 @@ export async function GET(req: NextRequest) {
   const search        = searchParams.get('search')
   const source         = searchParams.get('source')
   const deleted        = searchParams.get('deleted') === 'true'
+  const bookingId      = searchParams.get('booking_id')       // Dashboard "Manage in Leads" direct-open lookup
   const page          = parseInt(searchParams.get('page') ?? '1', 10)
   const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset        = (page - 1) * limit
+
+  // ── booking_id lookup: return the exact lead linked to this booking,
+  // bypassing every other filter/pagination — used by the Dashboard's
+  // "Manage in Leads" button (app/(admin)/admin/page.tsx) to open the
+  // exact same inquiry on the Leads tab regardless of its current status,
+  // the Leads tab's filter/search state, or whether it'd fall outside the
+  // default page-1 window. Mirrors the existing lead_id lookup pattern in
+  // app/api/admin/bookings/route.ts. ──────────────────────────────────
+  if (bookingId) {
+    const { data, error } = await supabaseAdmin
+      .from('leads')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ lead: data ?? null, leads: data ? [data] : [], total: data ? 1 : 0 })
+  }
 
   // ── Build excluded booking IDs for status filter ─────────────────────────
   let excludedBookingIds: string[] = []
@@ -63,8 +83,12 @@ export async function GET(req: NextRequest) {
   }
 
   if (search) {
+    // lead_number included so the Dashboard's "Manage in Leads" flow can
+    // force this exact inquiry to the top of the list by searching its
+    // unique Inquiry ID (see app/(admin)/admin/leads/page.tsx) — purely
+    // additive, existing name/phone/email search behavior is unchanged.
     query = query.or(
-      `name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
+      `name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%,lead_number.ilike.%${search}%`
     )
   }
 

@@ -30,7 +30,7 @@ const HERO_SLIDES = [
   {
     bg:   '/images/wedding-slide1.jpg',
     label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    loc:  'Taj Aravali · Udaipur · December 2026',
     h1a:  'Arrive Stress-Free.',
     h1b:  'Celebrate Fully.',
     sub:  "Exclusive luggage delivery service for Yashna & Yash's destination wedding. We collect from your city — your bags arrive at the palace before you do.",
@@ -38,7 +38,7 @@ const HERO_SLIDES = [
   {
     bg:   '/images/wedding-slide2.jpg',
     label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    loc:  'Taj Aravali · Udaipur · December 2026',
     h1a:  'Premium Concierge for',
     h1b:  'Weddings & Events.',
     sub:  'We pick up from your doorstep across India and deliver directly to the venue — before you arrive.',
@@ -46,10 +46,10 @@ const HERO_SLIDES = [
   {
     bg:   '/images/wedding-slide.jpg',
     label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Lake Palace · Udaipur · December 2026',
+    loc:  'Taj Aravali · Udaipur · December 2026',
     h1a:  'We Handle the Bags.',
     h1b:  'You Make Memories.',
-    sub:  'White-glove baggage handling for every guest joining Yashna & Yash at Taj Lake Palace, Udaipur.',
+    sub:  'White-glove baggage handling for every guest joining Yashna & Yash at Taj Aravali, Udaipur.',
   },
 ]
 
@@ -257,8 +257,9 @@ function CountUp({ to, suffix='', duration=1800 }: { to: number; suffix?: string
 export default function Y2KPage() {
   const cd = useCountdown(WEDDING_DATE)
   const [slide, setSlide] = useState(0)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [step, setStep]   = useState(1)
-  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Lake Palace, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', roomNumber:'', deliveryTime:'' })
+  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', roomNumber:'', deliveryTime:'' })
   const [busy, setBusy]   = useState(false)
   const [done, setDone]   = useState(false)
   const [trackId, setTrackId] = useState('')
@@ -298,7 +299,7 @@ export default function Y2KPage() {
           bags:form.bags, guests:'1',
           pickupAddress:`${form.pickupAddress}, ${form.pickupCity}`,
           pickupTime:form.pickupTime||form.deliveryTime,
-          deliveryAddress:form.weddingVenue||'Taj Lake Palace, Udaipur',
+          deliveryAddress:form.weddingVenue||'Taj Aravali, Udaipur',
           requests:[
             form.bagSize?`Bag size: ${form.bagSize}`:'',
             form.hotelName?`Hotel: ${form.hotelName}${form.roomNumber?', Room '+form.roomNumber:''}`:'',
@@ -338,7 +339,7 @@ export default function Y2KPage() {
         <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:48, color:J.pink, margin:'8px 0 4px' }}>#Y2K</p>
         <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.2em' }}>Tag your wedding journey</p>
         <div style={{ marginTop:40, display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
-          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Lake Palace, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',roomNumber:'',deliveryTime:''});setTrackId('') }}
+          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',roomNumber:'',deliveryTime:''});setTrackId('') }}
             style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:J.pink, color:'#fff', border:'none', padding:'14px 32px', cursor:'pointer' }}>
             Book Another Guest
           </button>
@@ -370,6 +371,17 @@ export default function Y2KPage() {
         .header-logo { display:flex; align-items:center; text-decoration:none; }
         .header-logo img { height:116px; width:auto; display:inline-block; }
 
+        /* Hamburger — hidden on desktop by default; @media below reveals it
+           and hides .header-nav / .header-phone / .header-book-btn instead,
+           so desktop is completely unaffected. */
+        .header-burger { display:none; flex-direction:column; justify-content:center; gap:5px; width:34px; height:34px; padding:0; background:none; border:none; cursor:pointer; }
+        .burger-line { display:block; width:100%; height:2px; background:${J.black}; transition:transform 0.25s ease, opacity 0.25s ease; }
+        .burger-line.open:nth-child(1) { transform:translateY(7px) rotate(45deg); }
+        .burger-line.open:nth-child(2) { opacity:0; }
+        .burger-line.open:nth-child(3) { transform:translateY(-7px) rotate(-45deg); }
+
+        .header-mobile-nav { display:none; }
+
         .container { max-width:1170px; margin:0 auto; padding:0 15px; }
 
         .promo-slider { position:relative; height:78vh; min-height:560px; overflow:hidden; }
@@ -381,14 +393,14 @@ export default function Y2KPage() {
         .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
         .promo-slide__badge { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d4a843; border-radius:30px; padding:5px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#d4a843; margin-bottom:14px; }
         .promo-slide__loc { font-family:'Montserrat',sans-serif; font-size:14px; color:rgba(255,255,255,0.6); letter-spacing:0.5px; margin-bottom:18px; }
-        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(62px,8.5vw,108px); line-height:105%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
+        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(46px,7vw,92px); line-height:107%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
         .promo-slide__h1 em { font-style:italic; font-weight:400; display:block; }
         .promo-slide__h1 em.em-gold { color:#d4a843; }
         .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
-        .hero-couple-card { display:inline-flex; flex-direction:column; gap:5px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:14px; padding:12px 24px; margin-bottom:26px; align-items:center; }
-        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:16px; color:#fff; font-weight:700; }
+        .hero-couple-card { display:inline-flex; flex-direction:column; gap:8px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:14px; padding:20px 40px; margin-bottom:26px; align-items:center; min-width:340px; }
+        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:19px; color:#fff; font-weight:700; }
         .hero-couple-name .nc-hashtag { color:#d4a843; }
-        .hero-couple-meta { font-size:12px; color:rgba(255,255,255,0.62); }
+        .hero-couple-meta { font-size:13px; color:rgba(255,255,255,0.62); }
         .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:2px 8px; color:#d4a843; font-weight:700; font-size:12px; letter-spacing:0.3px; }
         .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
 
@@ -455,12 +467,59 @@ export default function Y2KPage() {
           .book-left { padding:48px 28px !important; order:2; }
           .book-right { padding:40px 20px !important; order:1; }
           .footer__inner { grid-template-columns:1fr !important; gap:40px; }
+
+          /* ── Header: swap the full desktop nav/phone/CTA row for a
+             hamburger + slide-down panel. Nothing here touches desktop —
+             every rule is inside this media query. ── */
+          .header-inner { height:64px; gap:12px; }
+          .header-logo img { height:38px; }
+          .header-nav { display:none; }
+          /* .header-phone has an inline display:'flex' (JSX style prop) —
+             inline styles beat plain class rules regardless of specificity,
+             so this needs !important to actually hide it on mobile. */
+          .header-phone { display:none !important; }
+          .header-book-btn { display:none; }
+          .header-burger { display:flex; }
+          .header-mobile-nav.open { display:block; }
+          .header-mobile-nav { border-top:1px solid rgba(17,17,17,0.08); background:#fff; padding:8px 20px 20px; }
+          .header-mobile-nav ul { list-style:none; display:flex; flex-direction:column; }
+          .header-mobile-nav ul a { display:block; padding:14px 4px; font-size:15px; font-weight:600; color:#111; text-decoration:none; text-transform:uppercase; letter-spacing:0.6px; border-bottom:1px solid rgba(17,17,17,0.06); }
+          .header-mobile-phone { display:flex; align-items:center; gap:8px; padding:16px 4px; font-family:'Montserrat',sans-serif; font-size:15px; font-weight:600; color:#111; text-decoration:none; }
+          .header-mobile-book-btn { display:block; text-align:center; margin-top:8px; font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.8px; background:${J.pink}; color:#fff; padding:14px; text-decoration:none; border-radius:4px; }
+
+          /* ── Hero slider ── */
+          /* .promo-slide is position:absolute; inset:0 inside .promo-slider,
+             so padding on .promo-slider itself would be ignored by it —
+             top spacing below the (now shorter) header is handled via
+             .promo-slide__content's own padding-top instead. */
+          .promo-slider { height:auto; min-height:100vh; }
+          .promo-slide__content { padding:0 20px; justify-content:flex-start; padding-top:48px; padding-bottom:40px; }
+          .promo-slide__h1 { font-size:clamp(34px,9vw,46px); margin-bottom:14px; }
+          .promo-slide__sub { font-size:15px; margin-bottom:18px; }
+          .promo-slide__badge { font-size:10px; padding:4px 12px; }
+          .promo-slide__loc { font-size:12px; }
+          .hero-couple-card { min-width:0; width:100%; max-width:320px; padding:16px 20px; }
+          .hero-couple-name { font-size:15px; }
+          .hero-couple-meta { font-size:11px; }
+
+          .logos-inner { gap:12px 20px; }
+          .logo-badge { font-size:13px; }
+
+          /* background-attachment:fixed is unreliable/glitchy on mobile
+             browsers (especially iOS Safari) — falls back to normal
+             scrolling background there. */
+          .gift-banner__bg { background-attachment:scroll; }
         }
         @media (max-width:640px) {
           .book-section { padding:32px 10px; }
           .book-form-card { padding:24px 18px !important; }
           .form-grid-2 { grid-template-columns:1fr !important; }
           .book-left { padding:36px 20px !important; }
+
+          .header-top span { font-size:10px !important; line-height:1.5; }
+          .promo-slide__h1 { font-size:clamp(30px,10vw,40px); }
+          .hero-couple-card { padding:14px 16px; max-width:280px; }
+          .hero-couple-meta { display:flex; flex-direction:column; gap:4px; }
         }
       `}}/>
 
@@ -470,7 +529,7 @@ export default function Y2KPage() {
       <header style={{ position:'sticky', top:0, zIndex:200, background:'#fff' }}>
         <div className="header-top">
           <span style={{ fontFamily:'Montserrat,sans-serif', fontSize:12, color:'rgba(255,255,255,0.7)' }}>
-            <strong style={{ color:J.pink }}>Official</strong> Wedding Luggage Concierge for <strong style={{ color:'#fff' }}>#Y2K</strong> · <strong style={{ color:J.pink, background:'rgba(236,157,171,0.12)', padding:'1px 6px', borderRadius:2 }}>Taj Lake Palace, Udaipur</strong>
+            <strong style={{ color:J.pink }}>Official</strong> Wedding Luggage Concierge for <strong style={{ color:'#fff' }}>#Y2K</strong> · <strong style={{ color:J.pink, background:'rgba(236,157,171,0.12)', padding:'1px 6px', borderRadius:2 }}>Taj Aravali, Udaipur</strong>
           </span>
         </div>
         <div className="header-main">
@@ -484,20 +543,51 @@ export default function Y2KPage() {
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/images/bagdrop-logo.png" alt="Bagdrop" />
             </a>
-            <div style={{ display:'flex', alignItems:'center', gap:22 }}>
-              <a href="tel:+916357115711" style={{ fontFamily:'Montserrat,sans-serif', fontSize:14, fontWeight:600, color:J.black, textDecoration:'none', letterSpacing:'0.3px', display:'flex', alignItems:'center', gap:7 }}>
+            <div className="header-actions" style={{ display:'flex', alignItems:'center', gap:22 }}>
+              <a href="tel:+916357115711" className="header-phone" style={{ fontFamily:'Montserrat,sans-serif', fontSize:14, fontWeight:600, color:J.black, textDecoration:'none', letterSpacing:'0.3px', display:'flex', alignItems:'center', gap:7 }}>
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.42 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.07 6.07l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
                 </svg>
                 +91 63571 15711
               </a>
-              <a href="#book" style={{ fontFamily:'Montserrat,sans-serif', fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.8px', background:J.pink, color:'#fff', padding:'13px 30px', textDecoration:'none', transition:'background 0.2s' }}
+              <a href="#book" className="header-book-btn" style={{ fontFamily:'Montserrat,sans-serif', fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.8px', background:J.pink, color:'#fff', padding:'13px 30px', textDecoration:'none', transition:'background 0.2s' }}
                 onMouseEnter={e=>(e.currentTarget.style.background=J.pinkDark)}
                 onMouseLeave={e=>(e.currentTarget.style.background=J.pink)}>
                 Book Now
               </a>
+              {/* Hamburger — mobile only (hidden on desktop via CSS). Toggles
+                  the slide-down panel below, which duplicates the same nav
+                  links + phone + Book Now CTA so nothing is unreachable on
+                  small screens. */}
+              <button
+                type="button"
+                className="header-burger"
+                aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
+                aria-expanded={mobileNavOpen}
+                onClick={() => setMobileNavOpen(v => !v)}>
+                <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
+                <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
+                <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
+              </button>
             </div>
           </div>
+        </div>
+
+        {/* Mobile slide-down nav panel — CSS-hidden above 900px, so it
+            never affects desktop regardless of mobileNavOpen state. */}
+        <div className={`header-mobile-nav ${mobileNavOpen ? 'open' : ''}`}>
+          <ul>
+            <li><a href="#book" onClick={()=>setMobileNavOpen(false)}>Book Now</a></li>
+            <li><a href="#venue" onClick={()=>setMobileNavOpen(false)}>About</a></li>
+            <li><a href="#book" onClick={()=>setMobileNavOpen(false)}>Contact</a></li>
+          </ul>
+          <a href="tel:+916357115711" className="header-mobile-phone" onClick={()=>setMobileNavOpen(false)}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.42 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.07 6.07l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+            </svg>
+            +91 63571 15711
+          </a>
+          <a href="#book" className="header-mobile-book-btn" onClick={()=>setMobileNavOpen(false)}>Book Now</a>
         </div>
       </header>
 
@@ -521,11 +611,8 @@ export default function Y2KPage() {
                     <span className="hero-couple-name">Yashna ❤ Yash &nbsp;<span className="nc-hashtag">#Y2K</span></span>
                     <span className="hero-couple-meta">
                       <span className="hero-date-highlight">📅 17 December 2026</span>
-                      &nbsp;&nbsp;🏛 Taj Lake Palace, Udaipur
+                      &nbsp;&nbsp;🏛 Taj Aravali, Udaipur
                     </span>
-                  </div>
-                  <div className="hero-cta-row">
-                    <BtnDefault href="#book" light>📦 Book Luggage Delivery</BtnDefault>
                   </div>
                 </div>
               )}
@@ -589,14 +676,14 @@ export default function Y2KPage() {
 
             <p style={{ fontSize:15, color:'rgba(255,255,255,0.55)', lineHeight:'170%', marginBottom:36 }}>
               Exclusive baggage handling for guests attending<br/>
-              <strong style={{ color:'rgba(255,255,255,0.9)' }}>Yashna & Yash&apos;s</strong> wedding at Taj Lake Palace · 17 Dec 2026.
+              <strong style={{ color:'rgba(255,255,255,0.9)' }}>Yashna & Yash&apos;s</strong> wedding at Taj Aravali · 17 Dec 2026.
             </p>
 
             {/* Destination confirmed card */}
             <div style={{ border:`1px solid rgba(236,157,171,0.25)`, padding:'18px 22px', marginBottom:40, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', background:'rgba(236,157,171,0.06)' }}>
               <div>
                 <p style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', color:J.pink, margin:'0 0 4px' }}>All deliveries to</p>
-                <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:20, color:'#fff', margin:0 }}>Taj Lake Palace, Udaipur</p>
+                <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:20, color:'#fff', margin:0 }}>Taj Aravali, Udaipur</p>
                 <p style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:2 }}>17 December 2026 · #Y2K</p>
               </div>
               <div style={{ background:J.pink, color:'#fff', padding:'7px 14px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', whiteSpace:'nowrap' }}>
@@ -744,10 +831,10 @@ export default function Y2KPage() {
                 {step===4&&(
                   <>
                     <h3 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:26, color:J.black, marginBottom:6 }}>Delivery Details</h3>
-                    <p style={{ fontSize:13, color:J.muted, marginBottom:20 }}>Your luggage will be delivered to <strong style={{ color:J.black }}>Taj Lake Palace, Udaipur</strong> or your accommodation.</p>
+                    <p style={{ fontSize:13, color:J.muted, marginBottom:20 }}>Your luggage will be delivered to <strong style={{ color:J.black }}>Taj Aravali, Udaipur</strong> or your accommodation.</p>
                     <div className="fld">
                       <label>Wedding Venue (Pre-Confirmed)</label>
-                      <input type="text" readOnly value="Taj Lake Palace, Udaipur" style={{ ...fi, background:'#f8f8fa', color:J.muted, cursor:'default' }}/>
+                      <input type="text" readOnly value="Taj Aravali, Udaipur" style={{ ...fi, background:'#f8f8fa', color:J.muted, cursor:'default' }}/>
                     </div>
                     <div className="form-grid-2">
                       <div className="fld">
@@ -883,7 +970,7 @@ export default function Y2KPage() {
               </div>
               <div style={{ overflow:'hidden' }}>
                 <img src="/images/y2k-palace.jpg"
-                  alt="Taj Lake Palace, Udaipur"
+                  alt="Taj Aravali, Udaipur"
                   style={{ width:'100%', height:380, objectFit:'cover', display:'block', transition:'transform 0.6s ease' }}
                   onMouseEnter={e=>(e.currentTarget.style.transform='scale(1.03)')}
                   onMouseLeave={e=>(e.currentTarget.style.transform='scale(1)')}/>
@@ -961,7 +1048,7 @@ export default function Y2KPage() {
           <div>
             <p className="footer__label">#Y2K Wedding</p>
             <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:36, color:J.pinkDark, margin:'0 0 8px', lineHeight:1 }}>Yashna &amp; Yash</p>
-            <p className="footer__text" style={{ marginBottom:16 }}>17 December 2026<br/>Taj Lake Palace, Udaipur</p>
+            <p className="footer__text" style={{ marginBottom:16 }}>17 December 2026<br/>Taj Aravali, Udaipur</p>
             <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pinkDark, margin:'0 0 4px' }}>#Y2K</p>
             <p style={{ fontSize:11, fontWeight:600, color:'rgba(14,6,8,0.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Official Wedding Hashtag</p>
           </div>

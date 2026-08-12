@@ -26,10 +26,10 @@ const lato = Lato({
 export const metadata: Metadata = {
   title: 'Yashna ❤️ Yash — #Y2K | Wedding Luggage Concierge by Bagdrop',
   description:
-    'Exclusive luggage concierge service for guests attending Yashna & Yash\'s destination wedding at Taj Lake Palace, Udaipur on 17 December 2026.',
+    'Exclusive luggage concierge service for guests attending Yashna & Yash\'s destination wedding at Taj Aravali, Udaipur on 17 December 2026.',
   openGraph: {
     title: 'Yashna ❤️ Yash — #Y2K Wedding Luggage Concierge',
-    description: 'BagDrop is the official luggage concierge partner for #Y2K at Taj Lake Palace, Udaipur.',
+    description: 'BagDrop is the official luggage concierge partner for #Y2K at Taj Aravali, Udaipur.',
     type: 'website',
   },
 }
