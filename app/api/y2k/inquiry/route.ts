@@ -12,11 +12,15 @@ const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
 const Y2K_PICKUP_TIME_MIN = '10:00'
 const Y2K_PICKUP_TIME_MAX = '18:00'
 const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2']
+// Delivery-time slot ids, must match app/y2k/page.tsx's DELIVERY_TIMES.
+// 'night' was removed entirely (not just hidden) — the full delivery
+// window stays within 10 AM – 6 PM for this event.
+const Y2K_DELIVERY_TIMES = ['morning', 'afternoon', 'evening']
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, requests } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, deliveryTime, requests } = body
 
     // Basic validation
     const digits = phone?.replace(/\D/g, '') ?? ''
@@ -38,6 +42,9 @@ export async function POST(req: NextRequest) {
     }
     if (!pickupCity || !Y2K_PICKUP_LOCATIONS.includes(pickupCity)) {
       return NextResponse.json({ error: 'Pickup location must be Mumbai or Mumbai Airport T2.' }, { status: 400 })
+    }
+    if (!deliveryTime || !Y2K_DELIVERY_TIMES.includes(deliveryTime)) {
+      return NextResponse.json({ error: 'Delivery time must be Morning, Afternoon, or Evening.' }, { status: 400 })
     }
 
     const trackingId = 'Y2K-' + Math.random().toString(36).toUpperCase().slice(2, 8)
@@ -66,7 +73,7 @@ export async function POST(req: NextRequest) {
         total_amount:   0,
         currency:       'INR',
         notes: [
-          '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17 Dec 2026]',
+          '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17th–18th Dec 2026]',
           guests       ? `Group size: ${guests} guests` : '',
           bags         ? `Luggage pieces: ${bags}` : '',
           pickupAddress   ? `Pickup: ${pickupAddress}` : '',
@@ -126,7 +133,7 @@ export async function POST(req: NextRequest) {
         ['Pickup Address',    pickupAddress   || '—'],
         ['Preferred Time',    pickupTime      || '—'],
         ['Delivery Address',  deliveryAddress || '—'],
-        ['Event Date',        '17 December 2026'],
+        ['Event Date',        '17th–18th December 2026'],
         ['Wedding Venue',     'Taj Aravali, Udaipur'],
       ].map(([l,v]) => `<tr><td style="padding:10px 16px;font-size:13px;color:#9B7650;border-top:1px solid #F5ECD6;width:40%">${l}</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#2C1810;border-top:1px solid #F5ECD6">${v}</td></tr>`).join('')}
     </table>
@@ -174,7 +181,7 @@ export async function POST(req: NextRequest) {
 <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(44,24,16,0.08);max-width:560px">
   <tr><td style="background:linear-gradient(135deg,#1A0A12 0%,#2E1020 100%);padding:36px 40px;text-align:center">
     <p style="margin:0 0 8px;font-family:Georgia,serif;font-size:32px;color:#E8D49A;font-weight:300">✨ #Y2K ✨</p>
-    <p style="margin:0;font-size:14px;color:rgba(240,192,203,0.85)">Yashna ❤️ Yash · Taj Aravali, Udaipur · 17 Dec 2026</p>
+    <p style="margin:0;font-size:14px;color:rgba(240,192,203,0.85)">Yashna ❤️ Yash · Taj Aravali, Udaipur · 17th–18th Dec 2026</p>
   </td></tr>
   <tr><td style="padding:36px 40px;text-align:center">
     <p style="margin:0 0 8px;font-size:18px;color:#2C1810">Dear <strong>${name.trim()}</strong>,</p>

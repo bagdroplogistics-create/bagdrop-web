@@ -274,7 +274,7 @@ export default function Y2KPage() {
   const [slide, setSlide] = useState(0)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [step, setStep]   = useState(1)
-  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', roomNumber:'', deliveryTime:'' })
+  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', deliveryTime:'' })
   const [busy, setBusy]   = useState(false)
   const [done, setDone]   = useState(false)
   const [trackId, setTrackId] = useState('')
@@ -326,11 +326,15 @@ export default function Y2KPage() {
           deliveryAddress:form.weddingVenue||'Taj Aravali, Udaipur',
           requests:[
             form.bagSize?`Bag size: ${form.bagSize}`:'',
-            form.hotelName?`Hotel: ${form.hotelName}${form.roomNumber?', Room '+form.roomNumber:''}`:'',
+            form.hotelName?`Hotel: ${form.hotelName}`:'',
             form.deliveryTime?`Delivery slot: ${form.deliveryTime}`:'',
             form.specialInstructions,
           ].filter(Boolean).join(' · '),
           arrivalDate:form.pickupDate,
+          // Sent as a discrete field (not just folded into the requests
+          // note above) so the API route can validate it against the
+          // allowed morning/afternoon/evening slots independently.
+          deliveryTime:form.deliveryTime,
         }),
       })
       const d=await res.json()
@@ -342,11 +346,13 @@ export default function Y2KPage() {
     } finally { setBusy(false) }
   }
 
+  // Delivery window is restricted to 10 AM – 6 PM for this event (matches
+  // the pickup-time restriction below); Night was removed entirely rather
+  // than just hidden, per the Y2K booking form spec.
   const DELIVERY_TIMES = [
-    {id:'morning',  label:'Morning',   range:'6 AM – 12 PM', icon:'🌅'},
-    {id:'afternoon',label:'Afternoon', range:'12 PM – 5 PM', icon:'☀️'},
-    {id:'evening',  label:'Evening',   range:'5 PM – 9 PM',  icon:'🌆'},
-    {id:'night',    label:'Night',     range:'9 PM – 6 AM',  icon:'🌙'},
+    {id:'morning',  label:'Morning',   range:'10:00 AM – 12:00 PM', icon:'🌅'},
+    {id:'afternoon',label:'Afternoon', range:'12:00 PM – 3:00 PM',  icon:'☀️'},
+    {id:'evening',  label:'Evening',   range:'3:00 PM – 6:00 PM',   icon:'🌆'},
   ]
 
   const fi: React.CSSProperties = { fontFamily:'Montserrat,sans-serif', fontSize:14, color:J.black, background:'#fff', border:`1px solid ${J.border}`, padding:'12px 16px', width:'100%', outline:'none', borderBottom:`1px solid rgba(85,85,85,0.3)`, borderTop:'none', borderLeft:'none', borderRight:'none', borderRadius:0, transition:'border-color 0.2s' }
@@ -363,7 +369,7 @@ export default function Y2KPage() {
         <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:48, color:J.pink, margin:'8px 0 4px' }}>#Y2K</p>
         <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.2em' }}>Tag your wedding journey</p>
         <div style={{ marginTop:40, display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
-          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',roomNumber:'',deliveryTime:''});setTrackId('') }}
+          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',deliveryTime:''});setTrackId('') }}
             style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:J.pink, color:'#fff', border:'none', padding:'14px 32px', cursor:'pointer' }}>
             Book Another Guest
           </button>
@@ -417,15 +423,15 @@ export default function Y2KPage() {
         .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
         .promo-slide__badge { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d4a843; border-radius:30px; padding:5px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#d4a843; margin-bottom:14px; }
         .promo-slide__loc { font-family:'Montserrat',sans-serif; font-size:14px; color:rgba(255,255,255,0.6); letter-spacing:0.5px; margin-bottom:18px; }
-        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(46px,7vw,92px); line-height:107%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
+        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(40px,6.5vw,80px); line-height:107%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
         .promo-slide__h1 em { font-style:italic; font-weight:400; display:block; }
         .promo-slide__h1 em.em-gold { color:#d4a843; }
         .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
-        .hero-couple-card { display:inline-flex; flex-direction:column; gap:8px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:14px; padding:20px 40px; margin-bottom:26px; align-items:center; min-width:340px; }
-        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:23px; color:#fff; font-weight:700; }
+        .hero-couple-card { display:inline-flex; flex-direction:column; gap:11px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:16px; padding:30px 56px; margin-bottom:26px; align-items:center; min-width:420px; }
+        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:36px; line-height:1.15; color:#fff; font-weight:700; letter-spacing:0.3px; }
         .hero-couple-name .nc-hashtag { color:#d4a843; }
-        .hero-couple-meta { font-size:16px; color:rgba(255,255,255,0.62); }
-        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:3px 10px; color:#d4a843; font-weight:700; font-size:14px; letter-spacing:0.3px; }
+        .hero-couple-venue { font-size:16px; color:rgba(255,255,255,0.62); letter-spacing:0.2px; }
+        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:5px 14px; color:#d4a843; font-weight:700; font-size:16px; letter-spacing:0.3px; }
         .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
 
         .logos-bar { border-top:1px solid rgba(17,17,17,0.08); border-bottom:1px solid rgba(17,17,17,0.08); padding:18px 0; }
@@ -518,14 +524,14 @@ export default function Y2KPage() {
              .promo-slide__content's own padding-top instead. */
           .promo-slider { height:auto; min-height:100vh; }
           .promo-slide__content { padding:0 20px; justify-content:flex-start; padding-top:48px; padding-bottom:40px; }
-          .promo-slide__h1 { font-size:clamp(34px,9vw,46px); margin-bottom:14px; }
+          .promo-slide__h1 { font-size:clamp(30px,8vw,40px); margin-bottom:14px; }
           .promo-slide__sub { font-size:15px; margin-bottom:18px; }
           .promo-slide__badge { font-size:10px; padding:4px 12px; }
           .promo-slide__loc { font-size:12px; }
-          .hero-couple-card { min-width:0; width:100%; max-width:320px; padding:16px 20px; }
-          .hero-couple-name { font-size:18px; }
-          .hero-couple-meta { font-size:14px; }
-          .hero-date-highlight { font-size:13px; }
+          .hero-couple-card { min-width:0; width:100%; max-width:400px; padding:22px 28px; gap:9px; }
+          .hero-couple-name { font-size:26px; }
+          .hero-couple-venue { font-size:14px; }
+          .hero-date-highlight { font-size:14px; padding:4px 12px; }
 
           .logos-inner { gap:12px 20px; }
           .logo-badge { font-size:13px; }
@@ -553,14 +559,15 @@ export default function Y2KPage() {
           .book-section { padding:32px 10px; }
           .book-form-card { padding:24px 18px !important; }
           .form-grid-2 { grid-template-columns:1fr !important; }
+          .dt-slot-grid { grid-template-columns:1fr !important; }
           .book-left { padding:36px 20px !important; }
 
           .header-top span { font-size:10px !important; line-height:1.5; }
-          .promo-slide__h1 { font-size:clamp(30px,10vw,40px); }
-          .hero-couple-card { padding:14px 16px; max-width:280px; }
-          .hero-couple-name { font-size:16px; }
-          .hero-couple-meta { display:flex; flex-direction:column; gap:4px; font-size:13px; }
-          .hero-date-highlight { font-size:12px; }
+          .promo-slide__h1 { font-size:clamp(26px,9vw,34px); }
+          .hero-couple-card { padding:18px 20px; max-width:300px; gap:8px; }
+          .hero-couple-name { font-size:21px; line-height:1.2; }
+          .hero-couple-venue { font-size:13px; }
+          .hero-date-highlight { font-size:12px; padding:4px 10px; }
         }
       `}}/>
 
@@ -650,10 +657,8 @@ export default function Y2KPage() {
                   <p className="promo-slide__sub">{s.sub}</p>
                   <div className="hero-couple-card">
                     <span className="hero-couple-name">Yashna ❤ Yash &nbsp;<span className="nc-hashtag">#Y2K</span></span>
-                    <span className="hero-couple-meta">
-                      <span className="hero-date-highlight">📅 17 December 2026</span>
-                      &nbsp;&nbsp;🏛 Taj Aravali, Udaipur
-                    </span>
+                    <span className="hero-date-highlight">📅 17th &amp; 18th December 2026</span>
+                    <span className="hero-couple-venue">🏛 Taj Aravali, Udaipur</span>
                   </div>
                 </div>
               )}
@@ -717,7 +722,7 @@ export default function Y2KPage() {
 
             <p style={{ fontSize:15, color:'rgba(255,255,255,0.55)', lineHeight:'170%', marginBottom:36 }}>
               Exclusive baggage handling for guests attending<br/>
-              <strong style={{ color:'rgba(255,255,255,0.9)' }}>Yashna & Yash&apos;s</strong> wedding at Taj Aravali · 17 Dec 2026.
+              <strong style={{ color:'rgba(255,255,255,0.9)' }}>Yashna & Yash&apos;s</strong> wedding at Taj Aravali · 17th–18th Dec 2026.
             </p>
 
             {/* Destination confirmed card */}
@@ -725,7 +730,7 @@ export default function Y2KPage() {
               <div>
                 <p style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', color:J.pink, margin:'0 0 4px' }}>All deliveries to</p>
                 <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:20, color:'#fff', margin:0 }}>Taj Aravali, Udaipur</p>
-                <p style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:2 }}>17 December 2026 · #Y2K</p>
+                <p style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:2 }}>17th–18th December 2026 · #Y2K</p>
               </div>
               <div style={{ background:J.pink, color:'#fff', padding:'7px 14px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', whiteSpace:'nowrap' }}>
                 Pre-Confirmed ✓
@@ -898,19 +903,13 @@ export default function Y2KPage() {
                       <label>Wedding Venue (Pre-Confirmed)</label>
                       <input type="text" readOnly value="Taj Aravali, Udaipur" style={{ ...fi, background:'#f8f8fa', color:J.muted, cursor:'default' }}/>
                     </div>
-                    <div className="form-grid-2">
-                      <div className="fld">
-                        <label>Hotel (if different)</label>
-                        <input type="text" placeholder="e.g. Trident Udaipur" value={form.hotelName} onChange={e=>patch('hotelName',e.target.value)} style={fi}/>
-                      </div>
-                      <div className="fld">
-                        <label>Room Number</label>
-                        <input type="text" placeholder="e.g. 204" value={form.roomNumber} onChange={e=>patch('roomNumber',e.target.value)} style={fi}/>
-                      </div>
+                    <div className="fld">
+                      <label>Hotel (if different)</label>
+                      <input type="text" placeholder="e.g. Trident Udaipur" value={form.hotelName} onChange={e=>patch('hotelName',e.target.value)} style={fi}/>
                     </div>
                     <div className="fld" style={{ marginBottom:0 }}>
                       <label>Preferred Delivery Time *</label>
-                      <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8, marginTop:8 }}>
+                      <div className="dt-slot-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:8 }}>
                         {DELIVERY_TIMES.map(slot=>(
                           <button key={slot.id} type="button" onClick={()=>patch('deliveryTime',slot.id)}
                             className={`dt-slot${form.deliveryTime===slot.id?' active':''}`}
@@ -1052,7 +1051,7 @@ export default function Y2KPage() {
         <div className="container" style={{ position:'relative', zIndex:2 }}>
           <div className="gift-banner__content">
             <Reveal>
-              <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,42px)', fontStyle:'italic', color:J.pink, textAlign:'center', margin:'0 0 18px', letterSpacing:'0.5px' }}>17 December 2026</p>
+              <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,42px)', fontStyle:'italic', color:J.pink, textAlign:'center', margin:'0 0 18px', letterSpacing:'0.5px' }}>17th–18th December 2026</p>
               <h2 className="gift-banner__h2">
                 Hurry Up To<br/><em>Book Your Concierge</em>
               </h2>
@@ -1111,7 +1110,7 @@ export default function Y2KPage() {
           <div>
             <p className="footer__label">#Y2K Wedding</p>
             <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:36, color:J.pinkDark, margin:'0 0 8px', lineHeight:1 }}>Yashna &amp; Yash</p>
-            <p className="footer__text" style={{ marginBottom:16 }}>17 December 2026<br/>Taj Aravali, Udaipur</p>
+            <p className="footer__text" style={{ marginBottom:16 }}>17th–18th December 2026<br/>Taj Aravali, Udaipur</p>
             <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pinkDark, margin:'0 0 4px' }}>#Y2K</p>
             <p style={{ fontSize:11, fontWeight:600, color:'rgba(14,6,8,0.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Official Wedding Hashtag</p>
           </div>
