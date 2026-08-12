@@ -121,7 +121,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         // separately touched the booking's own page.
         const { data: bk } = await supabaseAdmin
           .from('bookings')
-          .select('id, status, status_history, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
+          .select('id, status, status_history, notified_statuses, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
           .eq('id', current.booking_id)
           .single()
 
@@ -135,18 +135,33 @@ export async function PATCH(req: NextRequest, { params }: Params) {
             changed_by: 'system',
             note:       `Synced from trip sheet status: ${updates.status}`,
           })
+
+          // Same notified_statuses record used by
+          // app/api/admin/bookings/[id]/route.ts — see supabase/migrations/
+          // 20260812_notified_statuses.sql. Without this, editing a quote
+          // on an already-delivered/completed booking and any subsequent
+          // trip-sheet status touch-up could re-fire a lifecycle WhatsApp
+          // the customer already received.
+          const prevNotified = Array.isArray(bk.notified_statuses) ? bk.notified_statuses as string[] : []
+          const alreadyNotified = prevNotified.includes(newBkStatus)
+          const shouldNotifyCustomer = isForwardMove(bk.status, newBkStatus) && !alreadyNotified
+
+          const bookingUpdate: Record<string, unknown> = { status: newBkStatus, status_history: bkHistory }
+          if (shouldNotifyCustomer) bookingUpdate.notified_statuses = [...prevNotified, newBkStatus]
+
           const { data: updatedBooking } = await supabaseAdmin
             .from('bookings')
-            .update({ status: newBkStatus, status_history: bkHistory })
+            .update(bookingUpdate)
             .eq('id', current.booking_id)
             .select()
             .single()
 
           // Fires the matching Fast2SMS WhatsApp template — awaited so it
           // completes before this response returns, and only on genuine
-          // forward progress (never re-fires if a trip sheet status is
-          // reverted). Never throws.
-          if (isForwardMove(bk.status, newBkStatus) && updatedBooking) {
+          // forward progress to a status not already notified (never
+          // re-fires if a trip sheet status is reverted-and-readvanced).
+          // Never throws.
+          if (shouldNotifyCustomer && updatedBooking) {
             await sendLifecycleWhatsApp(newBkStatus, updatedBooking)
           }
         }

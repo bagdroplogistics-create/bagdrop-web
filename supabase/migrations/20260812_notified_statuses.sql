@@ -1,0 +1,33 @@
+-- BAGDROP — Prevent duplicate/resent workflow notifications on quote edits
+--
+-- Founder request: after a booking is already paid/confirmed, an admin
+-- sometimes needs to edit the existing quote (e.g. customer adds a bag)
+-- and regenerate the quotation. That flow (app/api/admin/zoho/generate-
+-- quote/route.ts) already guards bookings.status via
+-- PROTECTED_LATE_STAGE_STATUSES — it never rewinds status backward — so
+-- editing a quote on a paid booking was already safe on that front.
+--
+-- The real gap: nothing tracked which lifecycle notifications (Fast2SMS
+-- WhatsApp template + the separate Resend-email/Meta-WhatsApp channel)
+-- had actually already reached the customer for a given status. The only
+-- existing guard, isForwardMove() in lib/lifecycle-notifications.ts, only
+-- compares the CURRENT status column value — so if a booking's status is
+-- ever reverted and re-advanced through the same step again (Previous
+-- Step, a correction, replaying the workflow), both channels would
+-- re-fire for a status the customer was already notified about. The
+-- Resend-email/Meta-WhatsApp channel (notifyBookingStatus) additionally
+-- had NO forward-move check at all — it fired unconditionally on every
+-- status PATCH.
+--
+-- notified_statuses is a persistent, per-booking record of exactly which
+-- statuses have already triggered a customer notification — the literal
+-- "record of which workflow notifications have already been sent for
+-- this Inquiry ID / Booking ID" requested. Checked + appended atomically
+-- alongside status_history in the same update, at both places a booking's
+-- status actually changes (app/api/admin/bookings/[id]/route.ts and
+-- app/api/admin/trip-sheets/[id]/route.ts). Works identically for return
+-- bookings — they're just another row in this same `bookings` table via
+-- return_booking_id, with their own independent notified_statuses.
+
+ALTER TABLE bookings
+  ADD COLUMN IF NOT EXISTS notified_statuses jsonb NOT NULL DEFAULT '[]'::jsonb;

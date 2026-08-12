@@ -267,7 +267,7 @@ export async function PATCH(
 
     const { data: existing } = await supabaseAdmin
       .from('bookings')
-      .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+      .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
       .eq('id', id)
       .single()
 
@@ -315,10 +315,30 @@ export async function PATCH(
       // sendLifecycleWhatsApp (shouldSendLifecycleWhatsApp stays false),
       // autoCreateDraftQuote — nothing here may ever reach the customer.
     } else {
-      // Lifecycle WhatsApp templates (Fast2SMS) only fire on genuine forward
-      // progress — never when an admin uses "Previous Step" to revert a
-      // booking, so reverting-and-readvancing can't spam the customer.
-      shouldSendLifecycleWhatsApp = isForwardMove(existing?.status, status)
+      // Customer notifications (both the Fast2SMS lifecycle WhatsApp
+      // template AND the separate Resend-email/Meta-WhatsApp channel) only
+      // fire on genuine forward progress to a status this booking hasn't
+      // already notified the customer about — never when an admin uses
+      // "Previous Step" to revert a booking, and never again if the
+      // booking is later reverted-and-readvanced back through a status it
+      // already sent for (e.g. after editing a quote on an already-paid
+      // booking to add a bag — see supabase/migrations/
+      // 20260812_notified_statuses.sql for the full story). notified_statuses
+      // is the persistent per-booking record of exactly which statuses
+      // have already triggered a customer notification; isForwardMove
+      // alone only compared the current status column and missed the
+      // revert-then-readvance case.
+      const alreadyNotified = Array.isArray(existing?.notified_statuses)
+        && (existing!.notified_statuses as string[]).includes(status)
+      const shouldNotifyCustomer = isForwardMove(existing?.status, status) && !alreadyNotified
+      shouldSendLifecycleWhatsApp = shouldNotifyCustomer
+
+      if (shouldNotifyCustomer) {
+        const prevNotified = Array.isArray(existing?.notified_statuses)
+          ? existing!.notified_statuses as string[]
+          : []
+        updates.notified_statuses = [...prevNotified, status]
+      }
 
       const history = existing?.status_history ?? []
       history.push({
@@ -341,7 +361,7 @@ export async function PATCH(
         )
       }
 
-      if (existing) {
+      if (existing && shouldNotifyCustomer) {
         notifyBookingStatus({
           customerTitle: existing.title,
           customerName:  existing.customer_name,
