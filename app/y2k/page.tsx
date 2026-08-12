@@ -8,6 +8,21 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 const WEDDING_DATE = new Date('2026-12-17T00:00:00+05:30')
 
 // ─────────────────────────────────────────────────────────────
+// Y2K BOOKING FORM RESTRICTIONS — Y2K event only, not the regular
+// BagDrop booking form. Wedding is 17 Dec 2026; pickup is only offered
+// in the 3 days before it. Mirrored server-side in
+// app/api/y2k/inquiry/route.ts so these can't be bypassed by editing
+// form values directly (devtools, a raw fetch call, etc.) — both sides
+// must be kept in sync if these ever change.
+// ─────────────────────────────────────────────────────────────
+const Y2K_PICKUP_DATE_MIN = '2026-12-10'
+const Y2K_PICKUP_DATE_MAX = '2026-12-12'
+const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
+const Y2K_PICKUP_TIME_MIN = '10:00'
+const Y2K_PICKUP_TIME_MAX = '18:00'
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2']
+
+// ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS
 // ─────────────────────────────────────────────────────────────
 const J = {
@@ -278,9 +293,13 @@ export default function Y2KPage() {
       if (!form.name.trim()) { setErr('Please enter your full name.'); return }
       if (!/^[6-9]\d{9}$/.test(d)) { setErr('Enter a valid 10-digit Indian mobile number.'); return }
     }
-    if (step===2&&!form.pickupCity.trim()) { setErr('Please enter your pickup city.'); return }
+    if (step===2&&!form.pickupCity.trim()) { setErr('Please select a pickup location.'); return }
+    if (step===2&&!Y2K_PICKUP_LOCATIONS.includes(form.pickupCity)) { setErr('Pickup is only available from Mumbai or Mumbai Airport T2 for this event.'); return }
     if (step===2&&!form.pickupAddress.trim()) { setErr('Please enter your pickup address.'); return }
     if (step===2&&!form.pickupDate) { setErr('Please select a pickup date.'); return }
+    if (step===2&&!Y2K_PICKUP_DATES.includes(form.pickupDate)) { setErr('Pickup is only available on 10, 11 or 12 December 2026.'); return }
+    if (step===2&&!form.pickupTime) { setErr('Please select a pickup time.'); return }
+    if (step===2&&(form.pickupTime<Y2K_PICKUP_TIME_MIN||form.pickupTime>Y2K_PICKUP_TIME_MAX)) { setErr('Pickup time must be between 10:00 AM and 6:00 PM.'); return }
     if (step===3&&(!form.bags||Number(form.bags)<1)) { setErr('Please enter number of bags.'); return }
     setErr(''); setStep(s=>Math.min(s+1,4))
     document.getElementById('book')?.scrollIntoView({behavior:'smooth',block:'start'})
@@ -298,6 +317,11 @@ export default function Y2KPage() {
           name:form.name, phone:digits, email:form.email,
           bags:form.bags, guests:'1',
           pickupAddress:`${form.pickupAddress}, ${form.pickupCity}`,
+          // Sent separately (not just folded into pickupAddress above) so
+          // the API route can validate it against Y2K_PICKUP_LOCATIONS on
+          // its own, independent of whatever string pickupAddress ends up
+          // containing.
+          pickupCity:form.pickupCity,
           pickupTime:form.pickupTime||form.deliveryTime,
           deliveryAddress:form.weddingVenue||'Taj Aravali, Udaipur',
           requests:[
@@ -471,8 +495,8 @@ export default function Y2KPage() {
           /* ── Header: swap the full desktop nav/phone/CTA row for a
              hamburger + slide-down panel. Nothing here touches desktop —
              every rule is inside this media query. ── */
-          .header-inner { height:76px; gap:12px; }
-          .header-logo img { height:56px; }
+          .header-inner { height:96px; gap:12px; }
+          .header-logo img { height:76px; }
           .header-nav { display:none; }
           /* .header-phone has an inline display:'flex' (JSX style prop) —
              inline styles beat plain class rules regardless of specificity,
@@ -518,6 +542,12 @@ export default function Y2KPage() {
              one column, text first, image below. ── */
           .venue-grid { grid-template-columns:1fr !important; gap:36px !important; }
           .venue-img { height:260px !important; }
+
+          /* ── Stats banner — repeat(4,1fr) (also an inline style prop)
+             was cramming 4 columns into a mobile-width row with no wrap,
+             clipping the last stat's label off the edge. 2x2 fits every
+             stat's label without cutting anything off. ── */
+          .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:36px 16px !important; }
         }
         @media (max-width:640px) {
           .book-section { padding:32px 10px; }
@@ -787,11 +817,27 @@ export default function Y2KPage() {
                     <div className="form-grid-2">
                       <div className="fld">
                         <label>Pickup Date *</label>
-                        <input required type="date" value={form.pickupDate} onChange={e=>patch('pickupDate',e.target.value)} style={fi}/>
+                        {/* Pickup is only offered 10–12 Dec 2026 (3 days
+                            before the 17 Dec wedding) — min/max restrict the
+                            native date picker to exactly that window, so no
+                            other date is selectable or typeable. Re-checked
+                            in nextStep() and again server-side (see
+                            Y2K_PICKUP_DATES) so this can't be bypassed by
+                            editing the form's DOM/value directly. */}
+                        <input required type="date" value={form.pickupDate}
+                          min={Y2K_PICKUP_DATE_MIN} max={Y2K_PICKUP_DATE_MAX}
+                          onChange={e=>patch('pickupDate',e.target.value)} style={fi}/>
                       </div>
                       <div className="fld">
-                        <label>Pickup City *</label>
-                        <input required type="text" placeholder="e.g. Mumbai, Delhi" value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} style={fi}/>
+                        <label>Pickup Location *</label>
+                        {/* Free-text replaced with a fixed dropdown — only
+                            these 2 locations are serviced for #Y2K pickups.
+                            Still keyed to form.pickupCity so the rest of the
+                            form/submit payload is unchanged. */}
+                        <select required value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} style={fi}>
+                          <option value="">Select pickup location…</option>
+                          {Y2K_PICKUP_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
+                        </select>
                       </div>
                     </div>
                     <div className="fld">
@@ -801,7 +847,12 @@ export default function Y2KPage() {
                     <div className="form-grid-2">
                       <div className="fld">
                         <label>Preferred Pickup Time *</label>
-                        <input required type="time" value={form.pickupTime} onChange={e=>patch('pickupTime',e.target.value)} style={fi}/>
+                        {/* 10:00–18:00 window only — min/max restrict the
+                            native time picker; re-checked in nextStep() and
+                            server-side. */}
+                        <input required type="time" value={form.pickupTime}
+                          min={Y2K_PICKUP_TIME_MIN} max={Y2K_PICKUP_TIME_MAX}
+                          onChange={e=>patch('pickupTime',e.target.value)} style={fi}/>
                       </div>
                       <div className="fld">
                         <label>Wedding Venue</label>
@@ -924,7 +975,7 @@ export default function Y2KPage() {
               weddings, delivered
             </p>
             {/* Stats row */}
-            <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'32px 20px', maxWidth:900, margin:'0 auto' }}>
+            <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'32px 20px', maxWidth:900, margin:'0 auto' }}>
               {([
                 { to:150,  suffix:'+',   label:'Guests Managed This Wedding' },
                 { to:200,  suffix:'+',   label:'Bags Managed This Wedding' },

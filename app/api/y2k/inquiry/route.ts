@@ -1,15 +1,43 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 
+// Y2K booking form restrictions — mirrors the constants of the same name in
+// app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
+// booking form posts to app/api/bookings/route.ts, untouched by this file),
+// so these checks can never affect a normal booking. Re-validated here even
+// though the frontend already restricts the date/time pickers and the
+// location dropdown, so a request built by hand (devtools, curl, editing
+// the form's values directly) can't submit an out-of-window pickup.
+const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
+const Y2K_PICKUP_TIME_MIN = '10:00'
+const Y2K_PICKUP_TIME_MAX = '18:00'
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2']
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, deliveryAddress, pickupTime, requests } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, requests } = body
 
     // Basic validation
     const digits = phone?.replace(/\D/g, '') ?? ''
     if (!name?.trim() || !/^[6-9]\d{9}$/.test(digits)) {
       return NextResponse.json({ error: 'Name and a valid 10-digit Indian mobile number are required.' }, { status: 400 })
+    }
+
+    // ── Y2K pickup restrictions ─────────────────────────────────
+    // arrivalDate (the pickup date) previously wasn't read here at all —
+    // pickup_date below was hardcoded to the wedding date regardless of
+    // what the guest actually selected. Fixed as part of wiring up this
+    // validation, since restricting the date picker on the frontend would
+    // otherwise have had no effect on what actually gets saved/serviced.
+    if (!arrivalDate || !Y2K_PICKUP_DATES.includes(arrivalDate)) {
+      return NextResponse.json({ error: 'Pickup date must be 10, 11, or 12 December 2026.' }, { status: 400 })
+    }
+    if (!pickupTime || pickupTime < Y2K_PICKUP_TIME_MIN || pickupTime > Y2K_PICKUP_TIME_MAX) {
+      return NextResponse.json({ error: 'Pickup time must be between 10:00 AM and 6:00 PM.' }, { status: 400 })
+    }
+    if (!pickupCity || !Y2K_PICKUP_LOCATIONS.includes(pickupCity)) {
+      return NextResponse.json({ error: 'Pickup location must be Mumbai or Mumbai Airport T2.' }, { status: 400 })
     }
 
     const trackingId = 'Y2K-' + Math.random().toString(36).toUpperCase().slice(2, 8)
@@ -30,13 +58,15 @@ export async function POST(req: NextRequest) {
         to_city:        'Udaipur',
         pickup_address: pickupAddress || null,
         drop_address:   deliveryAddress || null,
-        pickup_date:    '2026-12-17',
+        // Was hardcoded to the wedding date ('2026-12-17') — now uses the
+        // guest's validated pickup date (10/11/12 Dec) instead.
+        pickup_date:    arrivalDate,
         time_slot:      pickupTime || null,
         total_bags:     parseInt(bags) || 1,
         total_amount:   0,
         currency:       'INR',
         notes: [
-          '[#Y2K — Yashna ❤️ Yash @ Taj Lake Palace, Udaipur · 17 Dec 2026]',
+          '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17 Dec 2026]',
           guests       ? `Group size: ${guests} guests` : '',
           bags         ? `Luggage pieces: ${bags}` : '',
           pickupAddress   ? `Pickup: ${pickupAddress}` : '',
@@ -65,7 +95,7 @@ export async function POST(req: NextRequest) {
   <tr><td style="background:linear-gradient(135deg,#1A0A12 0%,#2E1020 100%);padding:32px 40px;text-align:center">
     <p style="margin:0 0 4px;font-size:13px;letter-spacing:3px;text-transform:uppercase;color:rgba(232,212,154,0.7)">OFFICIAL CONCIERGE PARTNER</p>
     <p style="margin:0;font-family:Georgia,serif;font-size:28px;color:#E8D49A;font-weight:300">✨ #Y2K Wedding ✨</p>
-    <p style="margin:6px 0 0;font-size:14px;color:rgba(240,192,203,0.8)">Yashna ❤️ Yash · Taj Lake Palace, Udaipur</p>
+    <p style="margin:6px 0 0;font-size:14px;color:rgba(240,192,203,0.8)">Yashna ❤️ Yash · Taj Aravali, Udaipur</p>
   </td></tr>
 
   <!-- Alert banner -->
@@ -97,7 +127,7 @@ export async function POST(req: NextRequest) {
         ['Preferred Time',    pickupTime      || '—'],
         ['Delivery Address',  deliveryAddress || '—'],
         ['Event Date',        '17 December 2026'],
-        ['Wedding Venue',     'Taj Lake Palace, Udaipur'],
+        ['Wedding Venue',     'Taj Aravali, Udaipur'],
       ].map(([l,v]) => `<tr><td style="padding:10px 16px;font-size:13px;color:#9B7650;border-top:1px solid #F5ECD6;width:40%">${l}</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#2C1810;border-top:1px solid #F5ECD6">${v}</td></tr>`).join('')}
     </table>
 
@@ -144,11 +174,11 @@ export async function POST(req: NextRequest) {
 <table width="560" cellpadding="0" cellspacing="0" style="background:#fff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(44,24,16,0.08);max-width:560px">
   <tr><td style="background:linear-gradient(135deg,#1A0A12 0%,#2E1020 100%);padding:36px 40px;text-align:center">
     <p style="margin:0 0 8px;font-family:Georgia,serif;font-size:32px;color:#E8D49A;font-weight:300">✨ #Y2K ✨</p>
-    <p style="margin:0;font-size:14px;color:rgba(240,192,203,0.85)">Yashna ❤️ Yash · Taj Lake Palace, Udaipur · 17 Dec 2026</p>
+    <p style="margin:0;font-size:14px;color:rgba(240,192,203,0.85)">Yashna ❤️ Yash · Taj Aravali, Udaipur · 17 Dec 2026</p>
   </td></tr>
   <tr><td style="padding:36px 40px;text-align:center">
     <p style="margin:0 0 8px;font-size:18px;color:#2C1810">Dear <strong>${name.trim()}</strong>,</p>
-    <p style="margin:0 0 24px;font-size:15px;color:#6B4C3B;line-height:1.75">Your luggage concierge request for <strong>Yashna ❤️ Yash's</strong> wedding has been received. Our team will be in touch shortly to confirm your arrangement for <strong>#Y2K</strong> at Taj Lake Palace, Udaipur.</p>
+    <p style="margin:0 0 24px;font-size:15px;color:#6B4C3B;line-height:1.75">Your luggage concierge request for <strong>Yashna ❤️ Yash's</strong> wedding has been received. Our team will be in touch shortly to confirm your arrangement for <strong>#Y2K</strong> at Taj Aravali, Udaipur.</p>
     <div style="background:#FAF4EE;border:1px solid #E8D49A;border-radius:12px;padding:20px;display:inline-block;margin-bottom:24px;text-align:left">
       <p style="margin:0 0 4px;font-size:11px;letter-spacing:2px;text-transform:uppercase;color:#A07830">Your Reference</p>
       <p style="margin:0;font-size:24px;font-weight:300;color:#C9A84C;font-family:Georgia,serif">${trackingId}</p>
