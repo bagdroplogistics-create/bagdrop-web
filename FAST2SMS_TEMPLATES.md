@@ -254,10 +254,14 @@ Team Bagdrop
 
 ## 11. Ops Pickup Reminder — `ops_pickup_reminder`
 
+**APPROVED — Message ID 27293.** Set as `FAST2SMS_OPS_REMINDER_MESSAGE_ID`.
+
 **Internal only — this one is never sent to a customer.** Sent automatically
 to the fixed Operations WhatsApp number in Settings → Notifications
-(default +91 63571 15711), 1 day before and again a few hours before every
-Confirmed booking's pickup. See lib/ops-reminders.ts.
+(default +91 63571 15711), in THREE tiers per confirmed booking — 2 days
+before, 1 day before, and again a few hours before pickup (or before the
+flight, for airport-delivery bookings). See lib/ops-reminders.ts and
+supabase/migrations/20260813_pickup_reminder_2_days_before.sql.
 
 **Variables (12, in this exact order):** {{1}} customer name · {{2}} booking
 ID · {{3}} service type · {{4}} pickup date & time · {{5}} pickup address ·
@@ -282,20 +286,14 @@ Driver: {{11}}
 Special Instructions: {{12}}
 ```
 
-Note: 12 variables is more than any other template here. If Fast2SMS/Meta
-pushes back on variable count during review, the safest trim is dropping
-Route (line 7) — it's already implied by the two addresses — which brings it
-to 11, or combining Pickup Address + Delivery Address onto one line
-separated by " → " to free up a slot. Let me know if it gets rejected and
-I'll adjust `buildReminderVariables()` in lib/ops-reminders.ts to match
-whatever variable set actually gets approved.
+Confirmed approved as-is with all 12 variables — no trim needed.
 
-Once approved, send me the Message ID and I'll set it as
-`FAST2SMS_OPS_REMINDER_MESSAGE_ID` in Vercel — the cron job
-(`app/api/cron/send-ops-reminders/route.ts`) is already built and will start
-sending real messages the moment that env var exists; until then it safely
-no-ops each due reminder (logged as `failed` with "Fast2SMS not configured"
-on the reminder row, no crash, no customer-facing impact).
+Set `FAST2SMS_OPS_REMINDER_MESSAGE_ID=27293` in Vercel to activate — the
+cron job (`app/api/cron/send-ops-reminders/route.ts`) is already built and
+will start sending real messages the moment that env var exists; until
+then it safely no-ops each due reminder (logged as `failed` with
+"Fast2SMS not configured" on the reminder row, no crash, no customer-
+facing impact).
 
 ---
 

@@ -1464,10 +1464,10 @@ export default function AdminDashboard() {
                 onClick: () => { setKpiView(null); setPhaseFilter('all'); setFilter('completed') },
               },
               {
-                label: 'Total Active Bookings', value: analytics?.total_active ?? '—',
+                label: 'Total Confirmed Bookings', value: analytics?.total_active ?? '—',
                 icon: <Truck className="h-4 w-4" />, color: '#0891b2', bg: '#cffafe',
                 href: undefined as string | undefined,
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Active Bookings' }) },
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Confirmed Bookings' }) },
               },
               {
                 label: 'Total Pending Inquiries', value: analytics?.total_pending ?? '—',

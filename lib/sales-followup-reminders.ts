@@ -38,6 +38,17 @@ import { supabaseAdmin } from './supabase'
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
 import { sendEmail } from './email'
 
+// NOTE: "24" here is a fixed internal tier KEY (matches the
+// quote_pending_24h/response_24h reminder_type values already locked into
+// lead_followups' CHECK constraint) — it is NOT literally "24 hours".
+// Tier 1's actual delay is whatever settings.quoteReminderHours /
+// settings.responseReminderHours resolves to (see getFollowupSettings
+// below); only tiers 48/72 (escalation, off by default) use their literal
+// hour value. Per founder request (2026-08), quote_pending's tier-1 delay
+// is now 2 hours — see supabase/migrations/20260812_quote_pending_2h.sql —
+// so a lead that still has no quote_number 2h after creation triggers the
+// quote_pending_24h-keyed row (2h in practice) via the already-approved
+// `quote_pending_reminder` Fast2SMS template (FAST2SMS_QUOTE_PENDING_MESSAGE_ID).
 type TierHour = 24 | 48 | 72
 const TIERS: TierHour[] = [24, 48, 72]
 
@@ -230,12 +241,18 @@ async function sendDuePending(): Promise<{ processed: number }> {
   let processed = 0
 
   try {
+    // Capped at 25/tick (was 200) — each row does several sequential
+    // awaited Supabase calls plus one external Fast2SMS HTTP call, and
+    // cron-job.org's poll interval is every 10-15 min, so a smaller batch
+    // per tick keeps total run time well inside any reasonable function/
+    // job timeout instead of risking the whole request stalling on a
+    // large backlog. A big backlog just drains across a few extra ticks.
     const { data: due, error } = await supabaseAdmin
       .from('lead_followups')
       .select('id, lead_id, reminder_type, channel')
       .eq('status', 'pending')
       .lte('scheduled_for', nowIso)
-      .limit(200)
+      .limit(25)
 
     if (error) {
       console.error('[sales-followup] due-query failed:', error.message)
@@ -289,9 +306,21 @@ async function sendDuePending(): Promise<{ processed: number }> {
         const templateId = isQuoteTrack
           ? (process.env.FAST2SMS_QUOTE_PENDING_MESSAGE_ID ?? '')
           : (process.env.FAST2SMS_SALES_FOLLOWUP_MESSAGE_ID ?? '')
+        // Both approved templates (confirmed from the Fast2SMS dashboard)
+        // have exactly 5 placeholders each — neither carries a "Reminder
+        // Stage" variable, despite the original 6-variable spec this code
+        // was first written against. Sending 6 values into a 5-placeholder
+        // template was the same class of bug hit earlier on the Indemnity
+        // Bond template — values shift/get rejected. stageLabel is still
+        // computed above (used in the `detail`/communication-log text
+        // below) — it's just no longer sent to WhatsApp.
+        //   quote_pending_reminder : {{1}} Customer, {{2}} Inquiry ID,
+        //     {{3}} Route, {{4}} Inquiry Date, {{5}} Mobile
+        //   sales_followup_reminder: {{1}} Customer, {{2}} Inquiry ID,
+        //     {{3}} Quote Date, {{4}} Route, {{5}} Mobile
         const variables = isQuoteTrack
-          ? [lead.name || 'Customer', lead.lead_number, route, fmtDateTime(lead.created_at), lead.phone || '—', stageLabel]
-          : [lead.name || 'Customer', lead.lead_number, fmtDateTime(lead.quote_date), route, lead.phone || '—', stageLabel]
+          ? [lead.name || 'Customer', lead.lead_number, route, fmtDateTime(lead.created_at), lead.phone || '—']
+          : [lead.name || 'Customer', lead.lead_number, fmtDateTime(lead.quote_date), route, lead.phone || '—']
 
         const result = await sendWhatsAppTemplateFast2SMS(settings.whatsapp, templateId, variables)
         await supabaseAdmin.from('lead_followups').update({

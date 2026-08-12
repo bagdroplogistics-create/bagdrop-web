@@ -95,17 +95,29 @@ const ACTIVE_STATUSES = new Set([
 
 type Bucket = 'completed' | 'cancelled' | 'active' | 'pending' | 'rejected'
 
-function bucketFor(status: string | null): Bucket {
+// hasQuote guards the 'active' bucket (surfaced on the Dashboard as "Total
+// Confirmed Bookings"): a booking's status field can, in practice, get
+// advanced independently of whether its lead ever actually had a quote
+// generated (nothing in app/api/admin/bookings/[id]/route.ts's PATCH
+// handler requires quote_number to be set before allowing a status
+// transition) — found via a real case where a lead with no quote_number
+// was still counting as an active/confirmed booking because its linked
+// booking's status had been moved into ACTIVE_STATUSES. A quote-less lead
+// falls back to 'pending' instead, regardless of its booking's status,
+// since "confirmed" without ever having sent a quote is a data
+// inconsistency, not a real confirmed booking.
+function bucketFor(status: string | null, hasQuote: boolean): Bucket {
   if (status === 'completed') return 'completed'
   if (status === 'cancelled') return 'cancelled'
   // 'closed' (Inquiry Closed) is the same "didn't convert" outcome as a
   // rejected quote — grouped together so a lost inquiry doesn't inflate
   // Total Inquiries either.
   if (status === 'rejected' || status === 'closed') return 'rejected'
-  if (status && ACTIVE_STATUSES.has(status)) return 'active'
-  // No booking yet, or still in inquiry/quote/payment/pre-dispatch stages —
-  // i.e. still needs action, hasn't reached active fulfillment or an
-  // end state.
+  if (status && ACTIVE_STATUSES.has(status) && hasQuote) return 'active'
+  // No booking yet, still in inquiry/quote/payment/pre-dispatch stages, or
+  // (see hasQuote above) a booking whose status was advanced without a
+  // quote ever being generated — i.e. still needs action, hasn't reached
+  // active fulfillment or an end state.
   return 'pending'
 }
 
@@ -147,12 +159,12 @@ export async function GET(req: NextRequest) {
   let deletedAtSupported = true
   let leadsRes = await supabaseAdmin
     .from('leads')
-    .select('id, created_at, booking_id')
+    .select('id, created_at, booking_id, quote_number')
     .is('deleted_at', null)
     .limit(20000)
   if (leadsRes.error?.message?.includes('deleted_at')) {
     deletedAtSupported = false
-    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id').limit(20000)
+    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number').limit(20000)
   }
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
 
@@ -201,7 +213,10 @@ export async function GET(req: NextRequest) {
 
   const leads = (leadsRes.data ?? []).map(l => ({
     created_at: l.created_at as string,
-    bucket: bucketFor(l.booking_id ? (statusByBookingId.get(l.booking_id as string) ?? null) : null),
+    bucket: bucketFor(
+      l.booking_id ? (statusByBookingId.get(l.booking_id as string) ?? null) : null,
+      !!l.quote_number
+    ),
   }))
 
   const inWindow = (list: typeof leads, from: Date, to: Date) =>

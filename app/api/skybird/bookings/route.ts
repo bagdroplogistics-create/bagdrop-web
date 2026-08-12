@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendCustomerConfirmation, sendInquiryNotification, type BookingEmailData } from '@/lib/email'
+import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
@@ -224,33 +225,38 @@ export async function POST(req: NextRequest) {
       orderId:     savedBooking.id,
     }
 
+    const inquiryData = {
+      inquiryNumber:   trackingId,
+      source:          'Skybird USA (Partner)',
+      customerTitle,
+      customerName,
+      customerPhone,
+      customerEmail,
+      serviceType:     booking.serviceId ?? '',
+      fromCity:        fromCityLabel,
+      toCity:          toCityLabel,
+      pickupAddress:   booking.pickupAddress ?? null,
+      deliveryAddress: booking.dropAddress   ?? null,
+      bagsCount:       pricing?.totalBags ?? booking.bags ?? 1,
+      travelDate:      booking.date           ?? null,
+      pickupDate:      booking.date           ?? null,
+      deliveryDate:    booking.deliveryDate   || null,
+      flightNumber:    booking.flightNumber   ?? null,
+      notes: (() => {
+        const parts: string[] = []
+        if (booking.notes?.trim()) parts.push(booking.notes.trim())
+        if (booking.weddingEventType) parts.push('[Wedding] ' + booking.weddingEventType)
+        return parts.join(' | ') || null
+      })(),
+      submittedAt: new Date().toISOString(),
+    }
+
     const emailResults = await Promise.allSettled([
       ...(customerEmail ? [sendCustomerConfirmation(emailData)] : []),
-      sendInquiryNotification({
-        inquiryNumber:   trackingId,
-        source:          'Skybird USA (Partner)',
-        customerTitle,
-        customerName,
-        customerPhone,
-        customerEmail,
-        serviceType:     booking.serviceId ?? '',
-        fromCity:        fromCityLabel,
-        toCity:          toCityLabel,
-        pickupAddress:   booking.pickupAddress ?? null,
-        deliveryAddress: booking.dropAddress   ?? null,
-        bagsCount:       pricing?.totalBags ?? booking.bags ?? 1,
-        travelDate:      booking.date           ?? null,
-        pickupDate:      booking.date           ?? null,
-        deliveryDate:    booking.deliveryDate   || null,
-        flightNumber:    booking.flightNumber   ?? null,
-        notes: (() => {
-          const parts: string[] = []
-          if (booking.notes?.trim()) parts.push(booking.notes.trim())
-          if (booking.weddingEventType) parts.push('[Wedding] ' + booking.weddingEventType)
-          return parts.join(' | ') || null
-        })(),
-        submittedAt: new Date().toISOString(),
-      }),
+      sendInquiryNotification(inquiryData),
+      // Internal ops WhatsApp ping — mirrors the admin email above. See
+      // lib/new-inquiry-notification.ts.
+      sendNewInquiryWhatsApp(inquiryData),
       ackPromise,
     ])
     emailResults.forEach((r, i) => {

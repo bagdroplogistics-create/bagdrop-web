@@ -16,6 +16,10 @@ import { sendDueReminders } from '@/lib/ops-reminders'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+// See matching comment in app/api/cron/send-lead-followups/route.ts —
+// same fix, same reasoning (Vercel's default 10s Hobby timeout was likely
+// killing this route before cron-job.org's own timeout fired).
+export const maxDuration = 60
 
 export async function GET(req: NextRequest) {
   const secret = process.env.CRON_SECRET

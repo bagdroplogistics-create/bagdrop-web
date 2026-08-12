@@ -236,9 +236,22 @@ export async function sendWhatsAppTemplateFast2SMS(
     ...(mediaUrl ? { media_url: mediaUrl } : {}),
   })
 
+  // Cron-triggered sends (quote-pending, sales-followup, ops-pickup
+  // reminders) call this in a sequential loop over potentially many due
+  // rows in one request. Fast2SMS's endpoint has no documented SLA, and a
+  // plain fetch() has no timeout of its own — a single slow/hanging
+  // response would previously stall the entire cron run until the
+  // platform's own function timeout killed it, which surfaced as
+  // cron-job.org reporting "Failed (timeout)" with no useful error detail.
+  // Capping each individual send at 10s means one bad Fast2SMS response
+  // costs at most 10s, not the whole batch.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
   try {
     const res = await fetch(`https://www.fast2sms.com/dev/whatsapp?${params.toString()}`, {
       headers: { Authorization: apiKey },
+      signal: controller.signal,
     })
     const data = await res.json().catch(() => ({})) as Record<string, unknown>
 
@@ -251,9 +264,12 @@ export async function sendWhatsAppTemplateFast2SMS(
     console.log('[Fast2SMS WhatsApp] SENT', '| to:', tenDigit, '| request_id:', requestId)
     return { success: true, requestId }
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err)
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    const msg = isAbort ? 'Timed out waiting for Fast2SMS (10s)' : (err instanceof Error ? err.message : String(err))
     console.error('[Fast2SMS WhatsApp] EXCEPTION', msg)
     return { success: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
   }
 }
 

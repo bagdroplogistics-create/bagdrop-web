@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
 import { sendInquiryNotification } from '@/lib/email'
+import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
@@ -334,19 +335,24 @@ export async function POST(req: NextRequest) {
 
   // Same notification pipeline as the admin-created flow — awaited so
   // Vercel doesn't tear the function down mid-send.
+  const inquiryData = {
+    inquiryNumber: leadNumber,
+    source: 'Skybird USA (Partner)',
+    customerTitle: lead.title,
+    customerName: lead.name, customerPhone: lead.phone, customerEmail: lead.email,
+    serviceType: lead.service_interest, fromCity: lead.from_city, toCity: lead.to_city,
+    pickupAddress: lead.pickup_address, deliveryAddress: lead.drop_address,
+    bagsCount: lead.bags_count, travelDate: lead.travel_date,
+    pickupDate: lead.pickup_date, deliveryDate: lead.delivery_date,
+    flightNumber: lead.flight_number, pnr: lead.pnr, notes: lead.notes,
+    submittedAt: lead.created_at ?? new Date().toISOString(),
+  }
+
   await Promise.allSettled([
-    sendInquiryNotification({
-      inquiryNumber: leadNumber,
-      source: 'Skybird USA (Partner)',
-      customerTitle: lead.title,
-      customerName: lead.name, customerPhone: lead.phone, customerEmail: lead.email,
-      serviceType: lead.service_interest, fromCity: lead.from_city, toCity: lead.to_city,
-      pickupAddress: lead.pickup_address, deliveryAddress: lead.drop_address,
-      bagsCount: lead.bags_count, travelDate: lead.travel_date,
-      pickupDate: lead.pickup_date, deliveryDate: lead.delivery_date,
-      flightNumber: lead.flight_number, pnr: lead.pnr, notes: lead.notes,
-      submittedAt: lead.created_at ?? new Date().toISOString(),
-    }),
+    sendInquiryNotification(inquiryData),
+    // Internal ops WhatsApp ping — mirrors the admin email above. See
+    // lib/new-inquiry-notification.ts.
+    sendNewInquiryWhatsApp(inquiryData),
     sendLeadAcknowledgment({ id: lead.id, title: lead.title, name: lead.name, phone: lead.phone, email: lead.email }),
   ]).catch(err => console.error('[skybird/leads POST] notification error:', err))
 

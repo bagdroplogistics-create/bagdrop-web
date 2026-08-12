@@ -3,6 +3,15 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS } from '@/lib/constants'
+import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+
+// Statuses at/after 'accepted' in STATUS_ORDER — i.e. the customer has
+// acted on the quote (accepted, paid, or further along). 'cancelled' and
+// 'rejected' are terminal branches not in STATUS_ORDER at all, so they're
+// naturally excluded here — deleting a quote on a dead booking is fine.
+const QUOTE_DELETE_BLOCKED_STATUSES = new Set(
+  STATUS_ORDER.slice(STATUS_ORDER.indexOf('accepted'))
+)
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAdminAuth(req)) {
@@ -131,6 +140,40 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 })
+  }
+
+  // ── Guard: block "Delete Quote" once the linked booking has moved past
+  // quote_sent (accepted, paid, confirmed, etc.) ──────────────────────
+  // Clearing quote_* here never touched bookings.status (that's owned
+  // exclusively by the Booking Workflow's own explicit actions — see the
+  // sync block below) — so a booking already at payment_approved or later
+  // could have its quote wiped out from under it, leaving a "confirmed"/
+  // paid booking with no record of what was ever quoted or charged. Found
+  // via a real case where exactly this happened (quote deleted after
+  // payment was approved) and the booking kept counting as an active/
+  // confirmed booking on the Dashboard with leads.quote_number = null.
+  // Only guards the specific "clear the whole quote" request
+  // (quote_number explicitly set to null, matching the Delete Quote
+  // button's payload) — editing quote fields to new values is unaffected.
+  const isDeletingQuote = 'quote_number' in updates && updates.quote_number === null
+  if (isDeletingQuote) {
+    const { data: existingLead } = await supabaseAdmin
+      .from('leads')
+      .select('booking_id')
+      .eq('id', id)
+      .maybeSingle()
+    if (existingLead?.booking_id) {
+      const { data: booking } = await supabaseAdmin
+        .from('bookings')
+        .select('status')
+        .eq('id', existingLead.booking_id)
+        .maybeSingle()
+      if (booking && QUOTE_DELETE_BLOCKED_STATUSES.has(booking.status)) {
+        return NextResponse.json({
+          error: `Cannot delete this quote — the booking has already progressed to "${booking.status}" (the customer has accepted/paid, or the booking has moved further along). Revert or cancel the booking in the Booking Workflow first if you really need to remove the quote.`,
+        }, { status: 409 })
+      }
+    }
   }
 
   // ── Update lead record ────────────────────────────────────────────

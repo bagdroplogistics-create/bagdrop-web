@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
+import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 
@@ -298,22 +299,27 @@ export async function POST(req: NextRequest) {
         if (leadInsertErr) {
           console.error('[quotes POST] lead insert failed (non-fatal — quote still created):', leadInsertErr.message)
         } else {
+          const inquiryData = {
+            inquiryNumber:  leadNumber,
+            source:         'admin',
+            customerTitle:  quoteTitle,
+            customerName:   quoteFields.customer_name,
+            customerPhone:  quoteFields.customer_phone,
+            customerEmail:  quoteFields.customer_email,
+            serviceType:    quoteFields.service_type,
+            fromCity:       quoteFields.from_city,
+            toCity:         quoteFields.to_city,
+            bagsCount:      quoteFields.total_bags,
+            pickupDate:     quoteFields.pickup_date,
+            notes:          quoteFields.notes,
+            submittedAt:    new Date().toISOString(),
+          }
+
           await Promise.allSettled([
-            sendInquiryNotification({
-              inquiryNumber:  leadNumber,
-              source:         'admin',
-              customerTitle:  quoteTitle,
-              customerName:   quoteFields.customer_name,
-              customerPhone:  quoteFields.customer_phone,
-              customerEmail:  quoteFields.customer_email,
-              serviceType:    quoteFields.service_type,
-              fromCity:       quoteFields.from_city,
-              toCity:         quoteFields.to_city,
-              bagsCount:      quoteFields.total_bags,
-              pickupDate:     quoteFields.pickup_date,
-              notes:          quoteFields.notes,
-              submittedAt:    new Date().toISOString(),
-            }),
+            sendInquiryNotification(inquiryData),
+            // Internal ops WhatsApp ping — mirrors the admin email above.
+            // See lib/new-inquiry-notification.ts.
+            sendNewInquiryWhatsApp(inquiryData),
             newLead
               ? sendLeadAcknowledgment({
                   id:    newLead.id,

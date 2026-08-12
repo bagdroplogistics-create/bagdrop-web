@@ -9,9 +9,9 @@
 // Two responsibilities, split across two entry points:
 //   1. syncBookingReminders(booking) — called from every successful booking
 //      PATCH (app/api/admin/bookings/[id]/route.ts). Schedules/reschedules
-//      the two reminder rows (day_before, day_of) for confirmed-onward
-//      bookings, and cancels them the moment a booking is cancelled/
-//      rejected/reverted before 'confirmed'. Never throws.
+//      the three reminder rows (two_days_before, day_before, day_of) for
+//      confirmed-onward bookings, and cancels them the moment a booking is
+//      cancelled/rejected/reverted before 'confirmed'. Never throws.
 //   2. sendDueReminders() — called from the cron route
 //      (app/api/cron/send-ops-reminders/route.ts). Finds rows whose
 //      scheduled_for has arrived, atomically claims each one, sends via
@@ -21,7 +21,9 @@
 // reminder_type) — scheduling always upserts onto that constraint (one row
 // per type per booking, ever), and the cron claim is an atomic
 // UPDATE ... WHERE status = 'pending' so concurrent cron ticks can't
-// double-send. See supabase/migrations/20260730_ops_pickup_reminders.sql.
+// double-send. See supabase/migrations/20260730_ops_pickup_reminders.sql
+// and supabase/migrations/20260813_pickup_reminder_2_days_before.sql (adds
+// the two_days_before tier + its CHECK-constraint value).
 //
 // Timing: pickup_date is the only reliably structured date on every
 // booking; time_slot is free text (see lib/google-calendar.ts's comment —
@@ -29,20 +31,33 @@
 // either. flight_datetime IS a real timestamptz, but only populated for
 // airport-delivery bookings — when present, the day-of reminder is
 // computed as "N hours before the flight" instead of the generic default
-// clock time. Both the default day-of/day-before clock times and the
-// flight buffer are configurable via the settings table, not hardcoded.
+// clock time. two_days_before/day_before/day_of clock times and the
+// flight buffer are all configurable via the settings table, not hardcoded.
+//
+// All three tiers use the SAME already-approved `ops_pickup_reminder`
+// Fast2SMS template (FAST2SMS_OPS_REMINDER_MESSAGE_ID, 12 variables) — the
+// template's own content ("Dear Bagdrop Team", Status/Driver/Special
+// Instructions fields) is internal-only by design, so every tier sends to
+// settings.ops_reminder_whatsapp only, never to the customer.
 
 import { supabaseAdmin } from './supabase'
 import { STATUS_ORDER } from './lifecycle-notifications'
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
 
 const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
-const REMINDER_TYPES = ['day_before', 'day_of'] as const
+const REMINDER_TYPES = ['two_days_before', 'day_before', 'day_of'] as const
 type ReminderType = typeof REMINDER_TYPES[number]
+
+const REMINDER_TYPE_LABEL: Record<ReminderType, string> = {
+  two_days_before: '2-days-before',
+  day_before:       'Day-before',
+  day_of:           'Day-of',
+}
 
 interface ReminderSettings {
   enabled: boolean
   whatsapp: string
+  twoDaysBeforeTime: string    // 'HH:MM', IST
   dayBeforeTime: string        // 'HH:MM', IST
   dayOfTime: string            // 'HH:MM', IST
   hoursBeforeFlight: number
@@ -61,12 +76,14 @@ async function getReminderSettings(): Promise<ReminderSettings> {
     .select('key, value')
     .in('key', [
       'ops_reminder_enabled', 'ops_reminder_whatsapp',
-      'ops_reminder_day_before_time', 'ops_reminder_day_of_time', 'ops_reminder_hours_before_flight',
+      'ops_reminder_two_days_before_time', 'ops_reminder_day_before_time',
+      'ops_reminder_day_of_time', 'ops_reminder_hours_before_flight',
     ])
   const map = Object.fromEntries((data ?? []).map(r => [r.key, r.value as string]))
   return {
     enabled:           map.ops_reminder_enabled !== 'false',      // default on
     whatsapp:          map.ops_reminder_whatsapp || '+916357115711',
+    twoDaysBeforeTime: map.ops_reminder_two_days_before_time || '18:00',
     dayBeforeTime:     map.ops_reminder_day_before_time || '18:00',
     dayOfTime:         map.ops_reminder_day_of_time || '08:00',
     hoursBeforeFlight: Number(map.ops_reminder_hours_before_flight) || 4,
@@ -93,11 +110,17 @@ function addDaysToDateStr(dateStr: string, days: number): string {
  * one exception: if its default time has already passed but the pickup
  * itself is still today or later, it's clamped to "a couple of minutes
  * from now" so a same-day confirmation still gets a single catch-up
- * reminder instead of silently getting none.
+ * reminder instead of silently getting none. two_days_before and
+ * day_before both just get dropped (null) once their moment has passed —
+ * no catch-up clamp, since being told 2 days before that pickup is "1 day
+ * away" would be actively wrong, not just late.
  */
 function computeTargets(booking: BookingForReminders, settings: ReminderSettings): Record<ReminderType, Date | null> {
   const now = new Date()
-  if (!booking.pickup_date) return { day_before: null, day_of: null }
+  if (!booking.pickup_date) return { two_days_before: null, day_before: null, day_of: null }
+
+  let twoDaysBefore: Date | null = istDateTimeToUtc(addDaysToDateStr(booking.pickup_date, -2), settings.twoDaysBeforeTime)
+  if (twoDaysBefore <= now) twoDaysBefore = null
 
   let dayBefore: Date | null = istDateTimeToUtc(addDaysToDateStr(booking.pickup_date, -1), settings.dayBeforeTime)
   if (dayBefore <= now) dayBefore = null
@@ -114,7 +137,7 @@ function computeTargets(booking: BookingForReminders, settings: ReminderSettings
     dayOf = now < endOfPickupDay ? new Date(now.getTime() + 2 * 60000) : null
   }
 
-  return { day_before: dayBefore, day_of: dayOf }
+  return { two_days_before: twoDaysBefore, day_before: dayBefore, day_of: dayOf }
 }
 
 /**
@@ -245,12 +268,16 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
   let processed = 0
 
   try {
+    // Capped at 25/tick (was 200) — see matching comment in
+    // lib/sales-followup-reminders.ts's sendDuePending(). Same fix, same
+    // reasoning: bound each cron tick's total work so it can't stall out
+    // and get killed as a timeout.
     const { data: due, error } = await supabaseAdmin
       .from('booking_reminders')
       .select('id, booking_id, reminder_type')
       .eq('status', 'pending')
       .lte('scheduled_for', nowIso)
-      .limit(200)
+      .limit(25)
 
     if (error) {
       console.error('[ops-reminders] due-query failed:', error.message)
@@ -305,7 +332,7 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
           delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),
           channel:         'whatsapp',
           recipient:       settings.whatsapp,
-          detail:          `${row.reminder_type === 'day_before' ? 'Day-before' : 'Day-of'} pickup reminder for ${booking.tracking_id}`,
+          detail:          `${REMINDER_TYPE_LABEL[row.reminder_type]} pickup reminder for ${booking.tracking_id}`,
         })
         .eq('id', row.id)
 
@@ -316,7 +343,7 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
       const history = Array.isArray(histRow?.status_history) ? histRow!.status_history : []
       history.push({
         from: booking.status, to: booking.status, timestamp: nowIso, changed_by: 'system',
-        note: `Ops ${row.reminder_type === 'day_before' ? 'day-before' : 'day-of'} pickup reminder ${result.success ? 'sent' : 'failed'} to ${settings.whatsapp}` +
+        note: `Ops ${REMINDER_TYPE_LABEL[row.reminder_type].toLowerCase()} pickup reminder ${result.success ? 'sent' : 'failed'} to ${settings.whatsapp}` +
               (result.success ? '' : ` — ${result.error ?? 'unknown error'}`),
       })
       await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
