@@ -18,9 +18,15 @@ const WEDDING_DATE = new Date('2026-12-17T00:00:00+05:30')
 const Y2K_PICKUP_DATE_MIN = '2026-12-10'
 const Y2K_PICKUP_DATE_MAX = '2026-12-12'
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
-const Y2K_PICKUP_TIME_MIN = '10:00'
-const Y2K_PICKUP_TIME_MAX = '18:00'
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2']
+// Preset pickup-location options. 'Others' is a UI-only sentinel — when
+// picked, the guest gets a free-text input instead (see pickupCityOther in
+// form state) and that text becomes the actual location sent to the API,
+// so guests outside Mumbai/Mumbai Airport T2 can still submit a pickup.
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2', 'Others']
+// Pickup and delivery both use the same 3 time slots (kept in one place —
+// TIME_SLOTS below — and reused for both fields) instead of a raw
+// time picker, per the Y2K form's simplified time-slot UX.
+const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 
 // ─────────────────────────────────────────────────────────────
 // DESIGN TOKENS
@@ -274,7 +280,7 @@ export default function Y2KPage() {
   const [slide, setSlide] = useState(0)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [step, setStep]   = useState(1)
-  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', deliveryTime:'' })
+  const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', deliveryTime:'' })
   const [busy, setBusy]   = useState(false)
   const [done, setDone]   = useState(false)
   const [trackId, setTrackId] = useState('')
@@ -294,12 +300,17 @@ export default function Y2KPage() {
       if (!/^[6-9]\d{9}$/.test(d)) { setErr('Enter a valid 10-digit Indian mobile number.'); return }
     }
     if (step===2&&!form.pickupCity.trim()) { setErr('Please select a pickup location.'); return }
-    if (step===2&&!Y2K_PICKUP_LOCATIONS.includes(form.pickupCity)) { setErr('Pickup is only available from Mumbai or Mumbai Airport T2 for this event.'); return }
+    if (step===2&&!Y2K_PICKUP_LOCATIONS.includes(form.pickupCity)) { setErr('Please select a valid pickup location.'); return }
+    // 'Others' needs the free-text location the guest typed in instead.
+    if (step===2&&form.pickupCity==='Others'&&!form.pickupCityOther.trim()) { setErr('Please enter your pickup location.'); return }
     if (step===2&&!form.pickupAddress.trim()) { setErr('Please enter your pickup address.'); return }
     if (step===2&&!form.pickupDate) { setErr('Please select a pickup date.'); return }
     if (step===2&&!Y2K_PICKUP_DATES.includes(form.pickupDate)) { setErr('Pickup is only available on 10, 11 or 12 December 2026.'); return }
+    // Pickup time now uses the same morning/afternoon/evening slots as
+    // Preferred Delivery Time (see TIME_SLOTS below), not a raw clock
+    // time — matches Y2K_TIME_SLOTS, checked again server-side.
     if (step===2&&!form.pickupTime) { setErr('Please select a pickup time.'); return }
-    if (step===2&&(form.pickupTime<Y2K_PICKUP_TIME_MIN||form.pickupTime>Y2K_PICKUP_TIME_MAX)) { setErr('Pickup time must be between 10:00 AM and 6:00 PM.'); return }
+    if (step===2&&!Y2K_TIME_SLOTS.includes(form.pickupTime)) { setErr('Please select a valid pickup time slot.'); return }
     if (step===3&&(!form.bags||Number(form.bags)<1)) { setErr('Please enter number of bags.'); return }
     setErr(''); setStep(s=>Math.min(s+1,4))
     document.getElementById('book')?.scrollIntoView({behavior:'smooth',block:'start'})
@@ -311,17 +322,20 @@ export default function Y2KPage() {
     setBusy(true); setErr('')
     try {
       const digits=form.phone.replace(/\D/g,'')
+      // If the guest picked 'Others', the location they actually typed
+      // lives in pickupCityOther — that's what gets sent as pickupCity,
+      // not the literal word "Others".
+      const resolvedPickupCity = form.pickupCity==='Others' ? form.pickupCityOther.trim() : form.pickupCity
       const res=await fetch('/api/y2k/inquiry',{
         method:'POST',headers:{'Content-Type':'application/json'},
         body:JSON.stringify({
           name:form.name, phone:digits, email:form.email,
           bags:form.bags, guests:'1',
-          pickupAddress:`${form.pickupAddress}, ${form.pickupCity}`,
+          pickupAddress:`${form.pickupAddress}, ${resolvedPickupCity}`,
           // Sent separately (not just folded into pickupAddress above) so
-          // the API route can validate it against Y2K_PICKUP_LOCATIONS on
-          // its own, independent of whatever string pickupAddress ends up
-          // containing.
-          pickupCity:form.pickupCity,
+          // the API route can validate/store it independent of whatever
+          // string pickupAddress ends up containing.
+          pickupCity:resolvedPickupCity,
           pickupTime:form.pickupTime||form.deliveryTime,
           deliveryAddress:form.weddingVenue||'Taj Aravali, Udaipur',
           requests:[
@@ -346,10 +360,10 @@ export default function Y2KPage() {
     } finally { setBusy(false) }
   }
 
-  // Delivery window is restricted to 10 AM – 6 PM for this event (matches
-  // the pickup-time restriction below); Night was removed entirely rather
+  // Both Preferred Pickup Time and Preferred Delivery Time use this same
+  // set of slots (10 AM – 6 PM window); Night was removed entirely rather
   // than just hidden, per the Y2K booking form spec.
-  const DELIVERY_TIMES = [
+  const TIME_SLOTS = [
     {id:'morning',  label:'Morning',   range:'10:00 AM – 12:00 PM', icon:'🌅'},
     {id:'afternoon',label:'Afternoon', range:'12:00 PM – 3:00 PM',  icon:'☀️'},
     {id:'evening',  label:'Evening',   range:'3:00 PM – 6:00 PM',   icon:'🌆'},
@@ -369,7 +383,7 @@ export default function Y2KPage() {
         <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:48, color:J.pink, margin:'8px 0 4px' }}>#Y2K</p>
         <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.2em' }}>Tag your wedding journey</p>
         <div style={{ marginTop:40, display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
-          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',deliveryTime:''});setTrackId('') }}
+          <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupCityOther:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',deliveryTime:''});setTrackId('') }}
             style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:J.pink, color:'#fff', border:'none', padding:'14px 32px', cursor:'pointer' }}>
             Book Another Guest
           </button>
@@ -427,9 +441,10 @@ export default function Y2KPage() {
         .promo-slide__h1 em { font-style:italic; font-weight:400; display:block; }
         .promo-slide__h1 em.em-gold { color:#d4a843; }
         .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
-        .hero-couple-card { display:inline-flex; flex-direction:column; gap:11px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:16px; padding:30px 56px; margin-bottom:26px; align-items:center; min-width:420px; }
-        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:36px; line-height:1.15; color:#fff; font-weight:700; letter-spacing:0.3px; }
+        .hero-couple-card { display:inline-flex; flex-direction:column; gap:18px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:16px; padding:30px 56px; margin-bottom:26px; align-items:center; min-width:420px; }
+        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:46px; line-height:1.15; color:#fff; font-weight:700; letter-spacing:0.4px; }
         .hero-couple-name .nc-hashtag { color:#d4a843; }
+        .hero-couple-info { display:flex; flex-direction:column; align-items:center; gap:7px; }
         .hero-couple-venue { font-size:16px; color:rgba(255,255,255,0.62); letter-spacing:0.2px; }
         .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:5px 14px; color:#d4a843; font-weight:700; font-size:16px; letter-spacing:0.3px; }
         .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
@@ -528,8 +543,9 @@ export default function Y2KPage() {
           .promo-slide__sub { font-size:15px; margin-bottom:18px; }
           .promo-slide__badge { font-size:10px; padding:4px 12px; }
           .promo-slide__loc { font-size:12px; }
-          .hero-couple-card { min-width:0; width:100%; max-width:400px; padding:22px 28px; gap:9px; }
-          .hero-couple-name { font-size:26px; }
+          .hero-couple-card { min-width:0; width:100%; max-width:400px; padding:22px 28px; gap:13px; }
+          .hero-couple-name { font-size:32px; }
+          .hero-couple-info { gap:6px; }
           .hero-couple-venue { font-size:14px; }
           .hero-date-highlight { font-size:14px; padding:4px 12px; }
 
@@ -564,8 +580,9 @@ export default function Y2KPage() {
 
           .header-top span { font-size:10px !important; line-height:1.5; }
           .promo-slide__h1 { font-size:clamp(26px,9vw,34px); }
-          .hero-couple-card { padding:18px 20px; max-width:300px; gap:8px; }
-          .hero-couple-name { font-size:21px; line-height:1.2; }
+          .hero-couple-card { padding:18px 20px; max-width:300px; gap:10px; }
+          .hero-couple-name { font-size:26px; line-height:1.2; }
+          .hero-couple-info { gap:5px; }
           .hero-couple-venue { font-size:13px; }
           .hero-date-highlight { font-size:12px; padding:4px 10px; }
         }
@@ -657,8 +674,10 @@ export default function Y2KPage() {
                   <p className="promo-slide__sub">{s.sub}</p>
                   <div className="hero-couple-card">
                     <span className="hero-couple-name">Yashna ❤ Yash &nbsp;<span className="nc-hashtag">#Y2K</span></span>
-                    <span className="hero-date-highlight">📅 17th &amp; 18th December 2026</span>
-                    <span className="hero-couple-venue">🏛 Taj Aravali, Udaipur</span>
+                    <div className="hero-couple-info">
+                      <span className="hero-date-highlight">📅 17th &amp; 18th December 2026</span>
+                      <span className="hero-couple-venue">🏛 Taj Aravali, Udaipur</span>
+                    </div>
                   </div>
                 </div>
               )}
@@ -835,33 +854,49 @@ export default function Y2KPage() {
                       </div>
                       <div className="fld">
                         <label>Pickup Location *</label>
-                        {/* Free-text replaced with a fixed dropdown — only
-                            these 2 locations are serviced for #Y2K pickups.
-                            Still keyed to form.pickupCity so the rest of the
-                            form/submit payload is unchanged. */}
+                        {/* Dropdown of preset serviced locations, plus an
+                            'Others' escape hatch — picking it reveals a
+                            free-text input below so guests outside
+                            Mumbai/Mumbai Airport T2 can still submit a
+                            pickup location manually. */}
                         <select required value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} style={fi}>
                           <option value="">Select pickup location…</option>
                           {Y2K_PICKUP_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                         </select>
                       </div>
                     </div>
+                    {form.pickupCity==='Others'&&(
+                      <div className="fld">
+                        <label>Enter Pickup Location *</label>
+                        <input required type="text" placeholder="e.g. Pune, Nashik…" value={form.pickupCityOther} onChange={e=>patch('pickupCityOther',e.target.value)} style={fi}/>
+                      </div>
+                    )}
                     <div className="fld">
                       <label>Pickup Address *</label>
                       <input required type="text" placeholder="House / Flat no., Street, Area" value={form.pickupAddress} onChange={e=>patch('pickupAddress',e.target.value)} style={fi}/>
                     </div>
-                    <div className="form-grid-2">
-                      <div className="fld">
-                        <label>Preferred Pickup Time *</label>
-                        {/* 10:00–18:00 window only — min/max restrict the
-                            native time picker; re-checked in nextStep() and
-                            server-side. */}
-                        <input required type="time" value={form.pickupTime}
-                          min={Y2K_PICKUP_TIME_MIN} max={Y2K_PICKUP_TIME_MAX}
-                          onChange={e=>patch('pickupTime',e.target.value)} style={fi}/>
-                      </div>
-                      <div className="fld">
-                        <label>Wedding Venue</label>
-                        <input type="text" value={form.weddingVenue} readOnly style={{ ...fi, background:'rgba(17,17,17,0.04)', color:J.body, cursor:'default' }}/>
+                    <div className="fld">
+                      <label>Wedding Venue</label>
+                      <input type="text" value={form.weddingVenue} readOnly style={{ ...fi, background:'rgba(17,17,17,0.04)', color:J.body, cursor:'default' }}/>
+                    </div>
+                    <div className="fld" style={{ marginBottom:0 }}>
+                      <label>Preferred Pickup Time *</label>
+                      {/* Same Morning/Afternoon/Evening slot picker as
+                          Preferred Delivery Time (see TIME_SLOTS) instead
+                          of a raw clock time — re-checked in nextStep()
+                          and again server-side. */}
+                      <div className="dt-slot-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:8 }}>
+                        {TIME_SLOTS.map(slot=>(
+                          <button key={slot.id} type="button" onClick={()=>patch('pickupTime',slot.id)}
+                            className={`dt-slot${form.pickupTime===slot.id?' active':''}`}
+                            style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', border:`1px solid ${form.pickupTime===slot.id?J.pink:J.border}`, cursor:'pointer', transition:'border-color 0.2s', background:'#fff', textAlign:'left' }}>
+                            <span style={{ fontSize:16 }}>{slot.icon}</span>
+                            <div>
+                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, color:form.pickupTime===slot.id?J.pink:J.black, margin:0 }}>{slot.label}</p>
+                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:10, color:J.muted, margin:0 }}>{slot.range}</p>
+                            </div>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </>
@@ -910,7 +945,7 @@ export default function Y2KPage() {
                     <div className="fld" style={{ marginBottom:0 }}>
                       <label>Preferred Delivery Time *</label>
                       <div className="dt-slot-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:8 }}>
-                        {DELIVERY_TIMES.map(slot=>(
+                        {TIME_SLOTS.map(slot=>(
                           <button key={slot.id} type="button" onClick={()=>patch('deliveryTime',slot.id)}
                             className={`dt-slot${form.deliveryTime===slot.id?' active':''}`}
                             style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', border:`1px solid ${form.deliveryTime===slot.id?J.pink:J.border}`, cursor:'pointer', transition:'border-color 0.2s', background:'#fff', textAlign:'left' }}>

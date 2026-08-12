@@ -9,13 +9,18 @@ import { supabaseAdmin } from '@/lib/supabase'
 // location dropdown, so a request built by hand (devtools, curl, editing
 // the form's values directly) can't submit an out-of-window pickup.
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
-const Y2K_PICKUP_TIME_MIN = '10:00'
-const Y2K_PICKUP_TIME_MAX = '18:00'
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2']
-// Delivery-time slot ids, must match app/y2k/page.tsx's DELIVERY_TIMES.
-// 'night' was removed entirely (not just hidden) — the full delivery
-// window stays within 10 AM – 6 PM for this event.
-const Y2K_DELIVERY_TIMES = ['morning', 'afternoon', 'evening']
+// Preset dropdown options on the frontend. 'Others' isn't a real location —
+// picking it reveals a free-text field, and *that* text is what's actually
+// sent as pickupCity, so this route never sees the literal word "Others".
+// Any non-empty pickupCity is accepted below (capped at a sane length) so
+// guests outside Mumbai/Mumbai Airport T2 can still submit a pickup.
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2', 'Others']
+const Y2K_PICKUP_CITY_MAX_LEN = 200
+// Slot ids shared by Preferred Pickup Time and Preferred Delivery Time,
+// must match app/y2k/page.tsx's TIME_SLOTS. 'night' was removed entirely
+// (not just hidden) — the full pickup/delivery window stays within
+// 10 AM – 6 PM for this event.
+const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 
 export async function POST(req: NextRequest) {
   try {
@@ -37,13 +42,18 @@ export async function POST(req: NextRequest) {
     if (!arrivalDate || !Y2K_PICKUP_DATES.includes(arrivalDate)) {
       return NextResponse.json({ error: 'Pickup date must be 10, 11, or 12 December 2026.' }, { status: 400 })
     }
-    if (!pickupTime || pickupTime < Y2K_PICKUP_TIME_MIN || pickupTime > Y2K_PICKUP_TIME_MAX) {
-      return NextResponse.json({ error: 'Pickup time must be between 10:00 AM and 6:00 PM.' }, { status: 400 })
+    // Pickup time is now a morning/afternoon/evening slot id (matches
+    // Preferred Delivery Time's UI), not a raw HH:MM clock time.
+    if (!pickupTime || !Y2K_TIME_SLOTS.includes(pickupTime)) {
+      return NextResponse.json({ error: 'Pickup time must be Morning, Afternoon, or Evening.' }, { status: 400 })
     }
-    if (!pickupCity || !Y2K_PICKUP_LOCATIONS.includes(pickupCity)) {
-      return NextResponse.json({ error: 'Pickup location must be Mumbai or Mumbai Airport T2.' }, { status: 400 })
+    // Location is either one of the presets, or free text the guest typed
+    // after picking 'Others' on the frontend — either way, just needs to
+    // be a non-empty, reasonably-sized string here.
+    if (!pickupCity?.trim() || pickupCity.trim().length > Y2K_PICKUP_CITY_MAX_LEN) {
+      return NextResponse.json({ error: 'Please provide a valid pickup location.' }, { status: 400 })
     }
-    if (!deliveryTime || !Y2K_DELIVERY_TIMES.includes(deliveryTime)) {
+    if (!deliveryTime || !Y2K_TIME_SLOTS.includes(deliveryTime)) {
       return NextResponse.json({ error: 'Delivery time must be Morning, Afternoon, or Evening.' }, { status: 400 })
     }
 
