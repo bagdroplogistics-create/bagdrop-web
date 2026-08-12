@@ -119,11 +119,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
         // route (app/api/admin/bookings/[id]/route.ts) which DOES send it —
         // so the customer only got the message later, if/when an admin
         // separately touched the booking's own page.
-        const { data: bk } = await supabaseAdmin
+        // Same notified_statuses-may-not-exist-yet fallback as
+        // app/api/admin/bookings/[id]/route.ts — without this, a missing
+        // column here would make `bk` come back null and silently skip
+        // syncing the booking's status at all (picked_up/in_transit/
+        // out_for_delivery/delivered would stop advancing on the booking
+        // until the migration runs).
+        let notifiedStatusesSupported = true
+        let bkRes = await supabaseAdmin
           .from('bookings')
           .select('id, status, status_history, notified_statuses, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
           .eq('id', current.booking_id)
           .single()
+        if (bkRes.error?.message?.includes('notified_statuses')) {
+          notifiedStatusesSupported = false
+          bkRes = await supabaseAdmin
+            .from('bookings')
+            .select('id, status, status_history, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
+            .eq('id', current.booking_id)
+            .single()
+        }
+        const bk = bkRes.data
 
         if (bk) {
           const bkHistory = (bk.status_history ?? []) as object[]
@@ -147,7 +163,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           const shouldNotifyCustomer = isForwardMove(bk.status, newBkStatus) && !alreadyNotified
 
           const bookingUpdate: Record<string, unknown> = { status: newBkStatus, status_history: bkHistory }
-          if (shouldNotifyCustomer) bookingUpdate.notified_statuses = [...prevNotified, newBkStatus]
+          if (shouldNotifyCustomer && notifiedStatusesSupported) bookingUpdate.notified_statuses = [...prevNotified, newBkStatus]
 
           const { data: updatedBooking } = await supabaseAdmin
             .from('bookings')

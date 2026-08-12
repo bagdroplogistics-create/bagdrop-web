@@ -156,6 +156,14 @@ interface KpiView {
   month?: 'current' | 'last'
   completedMonth?: 'current' | 'last'
   label: string
+  // Total Confirmed Bookings only — excludes any booking whose linked
+  // lead never actually had a quote generated (quote_number is null),
+  // mirroring the same guard the KPI number itself already applies in
+  // app/api/admin/dashboard-analytics/route.ts. Without this the
+  // drill-down list and the card's own count could disagree — exactly
+  // what happened with a booking whose status had been advanced without
+  // a quote ever being sent.
+  requireQuote?: boolean
 }
 
 // Module-scope (not just inside AdminDashboard) so EditModal can use it too
@@ -1306,6 +1314,7 @@ export default function AdminDashboard() {
     if (kpiView) {
       // KPI card click — overrides filter/phaseFilter entirely.
       if (kpiView.statuses) qs += '&statuses=' + kpiView.statuses.join(',')
+      if (kpiView.requireQuote) qs += '&require_quote=true'
       if (kpiView.month) {
         const { from, to } = monthWindowISO(kpiView.month === 'current' ? 0 : -1)
         qs += '&date_from=' + encodeURIComponent(from) + '&date_to=' + encodeURIComponent(to)
@@ -1467,7 +1476,7 @@ export default function AdminDashboard() {
                 label: 'Total Confirmed Bookings', value: analytics?.total_active ?? '—',
                 icon: <Truck className="h-4 w-4" />, color: '#0891b2', bg: '#cffafe',
                 href: undefined as string | undefined,
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Confirmed Bookings' }) },
+                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Confirmed Bookings', requireQuote: true }) },
               },
               {
                 label: 'Total Pending Inquiries', value: analytics?.total_pending ?? '—',

@@ -265,11 +265,28 @@ export async function PATCH(
 
     updates.status = status
 
-    const { data: existing } = await supabaseAdmin
+    // notified_statuses may not exist yet if supabase/migrations/
+    // 20260812_notified_statuses.sql hasn't been run against this database
+    // — falls back to a select without it rather than letting the whole
+    // query fail, which would otherwise silently zero out `existing` below
+    // and WIPE status_history (history = existing?.status_history ?? [])
+    // instead of appending to it. Same fallback pattern as
+    // deletedAtSupported in app/api/admin/dashboard-analytics/route.ts.
+    let notifiedStatusesSupported = true
+    let existingRes = await supabaseAdmin
       .from('bookings')
       .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
       .eq('id', id)
       .single()
+    if (existingRes.error?.message?.includes('notified_statuses')) {
+      notifiedStatusesSupported = false
+      existingRes = await supabaseAdmin
+        .from('bookings')
+        .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+        .eq('id', id)
+        .single()
+    }
+    const existing = existingRes.data
 
     if (mark_historical === true) {
       // ── Historical / data-migration completion ──────────────────────
@@ -333,7 +350,7 @@ export async function PATCH(
       const shouldNotifyCustomer = isForwardMove(existing?.status, status) && !alreadyNotified
       shouldSendLifecycleWhatsApp = shouldNotifyCustomer
 
-      if (shouldNotifyCustomer) {
+      if (shouldNotifyCustomer && notifiedStatusesSupported) {
         const prevNotified = Array.isArray(existing?.notified_statuses)
           ? existing!.notified_statuses as string[]
           : []

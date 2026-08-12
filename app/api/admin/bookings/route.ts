@@ -10,6 +10,7 @@ export async function GET(req: NextRequest) {
   const { searchParams } = req.nextUrl
   const status         = searchParams.get('status')
   const statuses       = searchParams.get('statuses')        // comma-separated list for phase filter
+  const requireQuote   = searchParams.get('require_quote') === 'true'  // Total Confirmed Bookings drill-down only — see KpiView.requireQuote in app/(admin)/admin/page.tsx
   const excludeStatus  = searchParams.get('exclude_status')  // single status to exclude (e.g. 'cancelled')
   const search         = searchParams.get('search')
   const leadId         = searchParams.get('lead_id')         // lookup by lead_id
@@ -67,6 +68,31 @@ export async function GET(req: NextRequest) {
   } else if (excludeStatus) {
     // Default view: exclude a specific status (used to hide cancelled from normal view)
     query = query.neq('status', excludeStatus)
+  }
+
+  if (requireQuote) {
+    // Total Confirmed Bookings drill-down only. A booking's status can be
+    // advanced independently of whether its lead ever actually had a
+    // quote generated — found via a real case (a booking sitting at
+    // payment_approved whose quote had since been deleted, leaving
+    // leads.quote_number null) where it kept showing in this list despite
+    // the KPI card's own count already excluding it. Mirrors the same
+    // hasQuote guard in app/api/admin/dashboard-analytics/route.ts's
+    // 'active' bucket so this list always matches that number. Scoped to
+    // this one param rather than applied globally — the Workflow Phase
+    // tabs (Payment/Booking/Operations/etc.) deliberately still show
+    // quote-less bookings so an admin can find and fix them.
+    const { data: quotedLeads } = await supabaseAdmin
+      .from('leads')
+      .select('booking_id')
+      .not('booking_id', 'is', null)
+      .not('quote_number', 'is', null)
+    const quotedBookingIds = (quotedLeads ?? [])
+      .map(l => l.booking_id)
+      .filter((bid): bid is string => !!bid)
+    // Pass an impossible id when the list is empty rather than relying on
+    // .in()-with-empty-array behavior — guarantees zero rows either way.
+    query = query.in('id', quotedBookingIds.length ? quotedBookingIds : ['00000000-0000-0000-0000-000000000000'])
   }
 
   if (search) {
