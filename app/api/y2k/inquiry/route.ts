@@ -60,8 +60,9 @@ export async function POST(req: NextRequest) {
     const trackingId = 'Y2K-' + Math.random().toString(36).toUpperCase().slice(2, 8)
 
     // ── Save to database ──────────────────────────────────────
+    let savedBookingId: string | null = null
     try {
-      await supabaseAdmin.from('bookings').insert({
+      const { data: savedBooking, error: dbError } = await supabaseAdmin.from('bookings').insert({
         tracking_id:    trackingId,
         // See app/api/bookings/route.ts for why this must be 'inquiry', not
         // 'pending' — 'pending' isn't a valid admin Booking Workflow status.
@@ -92,9 +93,86 @@ export async function POST(req: NextRequest) {
           requests     ? `Special requests: ${requests}` : '',
         ].filter(Boolean).join(' | '),
         status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: '#Y2K wedding inquiry received' }],
-      })
+      }).select('id').single()
+
+      if (dbError) {
+        console.error('[y2k/inquiry] DB save error:', dbError)
+      } else {
+        savedBookingId = savedBooking?.id ?? null
+      }
     } catch (dbErr) {
       console.error('[y2k/inquiry] DB save error:', dbErr)
+    }
+
+    // ── Auto-create Lead ────────────────────────────────────────
+    // Mirrors app/api/bookings/route.ts's auto-lead-creation. This route
+    // previously only wrote to `bookings`, so #Y2K inquiries showed up on
+    // the Dashboard (which reads bookings) but were invisible in the Leads
+    // tab (which reads leads) — no lead row was ever created for them.
+    // Every inquiry, regardless of which form it came through, should be
+    // visible in both places, so this now creates a matching lead exactly
+    // like the regular booking form does.
+    if (savedBookingId) {
+      try {
+        const { data: existingLeadForBooking } = await supabaseAdmin
+          .from('leads')
+          .select('id')
+          .eq('booking_id', savedBookingId)
+          .maybeSingle()
+
+        if (!existingLeadForBooking) {
+          // Same BDL-YYYY-NNNN numbering as app/api/bookings/route.ts —
+          // one shared sequence across both booking sources.
+          const year = new Date().getFullYear()
+          const { data: lastLead } = await supabaseAdmin
+            .from('leads')
+            .select('lead_number')
+            .like('lead_number', `BDL-${year}-%`)
+            .order('lead_number', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+          let nextSeq = 1
+          if (lastLead?.lead_number) {
+            const parts = lastLead.lead_number.split('-')
+            const last = parseInt(parts[parts.length - 1], 10)
+            if (!isNaN(last)) nextSeq = last + 1
+          }
+          const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+
+          const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
+            lead_number:      leadNumber,
+            name:             name.trim(),
+            phone:            '+91' + digits,
+            email:            email?.trim().toLowerCase() || null,
+            // 'website' (not a new 'y2k' source) so it shows up under the
+            // existing Leads source filter without needing that filter's
+            // option list extended — the notes line below still marks it
+            // as a #Y2K lead for anyone scanning the list.
+            source:           'website',
+            status:           'new',
+            service_type:     'destination-weddings',
+            service_interest: 'destination-weddings',
+            from_city:        'Udaipur',
+            to_city:          'Udaipur',
+            travel_date:      arrivalDate,
+            pickup_date:      arrivalDate,
+            pickup_address:   pickupAddress || null,
+            drop_address:     deliveryAddress || null,
+            bags_count:       parseInt(bags) || 1,
+            notes:            `Auto-created from #Y2K wedding page inquiry ${trackingId}`,
+            booking_id:       savedBookingId,
+          })
+
+          if (leadInsertErr) {
+            console.error('[y2k/inquiry] Lead insert error:', leadInsertErr.message)
+          } else {
+            console.log(`[y2k/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
+          }
+        }
+      } catch (leadErr) {
+        // Non-fatal — the booking itself already saved above either way.
+        console.error('[y2k/inquiry] Lead auto-create failed (non-fatal):', leadErr)
+      }
     }
 
     // ── Send notification email to info@bagdrop.co ────────────
