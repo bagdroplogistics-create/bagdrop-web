@@ -67,6 +67,15 @@ export async function PATCH(
     // branch below. Jumps status straight to its target with zero customer
     // notifications, for bookings fulfilled before this workflow existed.
     mark_historical,
+    // Admin Approve — moves the booking to `status` (any workflow step)
+    // WITHOUT sending the customer any WhatsApp/email for it, e.g. because
+    // they were already told over a call, or the admin is correcting a
+    // step. Unlike mark_historical, this only skips notification for THIS
+    // one status change — status_history still records it normally (not
+    // "historical/backfilled"), and it works for any single forward move,
+    // not just a jump-to-terminal-status data-migration case. See the
+    // shouldNotifyCustomer computation below.
+    admin_approve,
     // Manual correction for which calendar month a completed booking
     // reports under in Dashboard Analytics — see
     // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql and
@@ -347,14 +356,25 @@ export async function PATCH(
       // revert-then-readvance case.
       const alreadyNotified = Array.isArray(existing?.notified_statuses)
         && (existing!.notified_statuses as string[]).includes(status)
-      const shouldNotifyCustomer = isForwardMove(existing?.status, status) && !alreadyNotified
+      // admin_approve forces this to false regardless of forward-move/
+      // already-notified — an explicit "workflow update only, don't
+      // contact the customer" request from the admin for this one change.
+      const shouldNotifyCustomer = admin_approve === true
+        ? false
+        : isForwardMove(existing?.status, status) && !alreadyNotified
       shouldSendLifecycleWhatsApp = shouldNotifyCustomer
 
-      if (shouldNotifyCustomer && notifiedStatusesSupported) {
+      // Admin Approve also marks the status as "already notified" even
+      // though nothing was sent — same as if it had gone out normally —
+      // so a later natural status change can't accidentally re-fire a
+      // notification for a step the admin explicitly chose to skip.
+      if ((shouldNotifyCustomer || admin_approve === true) && notifiedStatusesSupported) {
         const prevNotified = Array.isArray(existing?.notified_statuses)
           ? existing!.notified_statuses as string[]
           : []
-        updates.notified_statuses = [...prevNotified, status]
+        if (!prevNotified.includes(status)) {
+          updates.notified_statuses = [...prevNotified, status]
+        }
       }
 
       const history = existing?.status_history ?? []
@@ -363,7 +383,9 @@ export async function PATCH(
         to:         status,
         timestamp:  new Date().toISOString(),
         changed_by: role,
-        note:       reason ?? notes ?? null,   // reason takes priority; falls back to notes
+        note:       admin_approve === true
+          ? `Admin Approve — moved to ${status} without customer notification${reason ? ': ' + reason : ''}`
+          : (reason ?? notes ?? null),   // reason takes priority; falls back to notes
       })
       updates.status_history = history
 

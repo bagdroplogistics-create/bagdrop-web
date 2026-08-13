@@ -102,6 +102,12 @@ interface Booking {
   customer_phone: string | null
   rejection_reason: string | null
   rejection_comment: string | null
+  // Payment proof upload + Account Department verification — see
+  // supabase/migrations/20260813_payment_verification.sql. Deliberately
+  // separate from payment_status/the 'payment_approved' workflow status,
+  // which already means something else (admin bypass / Pay Later).
+  payment_verification_status?:     string | null
+  payment_verification_payment_id?: string | null
   // Driver Details Shared (Airport Delivery only)
   driver_name:          string | null
   driver_phone:         string | null
@@ -351,6 +357,46 @@ export default function QuoteViewPage() {
   const [historicalOpen, setHistoricalOpen]     = useState(false)
   const [historicalReason, setHistoricalReason] = useState('')
 
+  // Admin Approve — one shared toggle covering every workflow step's
+  // action button below (Confirm Booking, Schedule Pickup, Bags Picked Up,
+  // In Transit, Out for Delivery, Delivered, Completed, etc.), rather than
+  // a separate checkbox per button. When on, patchBooking() adds
+  // admin_approve:true to any status-changing call, which the API
+  // (app/api/admin/bookings/[id]/route.ts) uses to update the workflow
+  // status/history without sending the customer a WhatsApp/email for it.
+  // Does not affect non-status actions (e.g. Send Indemnity Bond, which
+  // uses its own dedicated endpoint, not patchBooking).
+  const [adminApproveMode, setAdminApproveMode] = useState(false)
+
+  // Payment proof upload (Booking Workflow spec items 1–3)
+  const [proofFile, setProofFile]           = useState<File | null>(null)
+  const [uploadingProof, setUploadingProof] = useState(false)
+  const [proofMsg, setProofMsg]             = useState<string | null>(null)
+  const [proofErr, setProofErr]             = useState<string | null>(null)
+  const [verifyingProof, setVerifyingProof] = useState<'approve' | 'reject' | null>(null)
+
+  // Outstanding Amount (spec item 14) — booking total minus the sum of
+  // this booking's actually-approved ('paid') payments rows. Recomputed
+  // fresh from the payments ledger every time, never manually decremented,
+  // so a payment can't be double-counted and a pending/rejected payment
+  // never reduces it. Rejected/pending_verification payments are excluded
+  // automatically since only payment_status === 'paid' is summed.
+  const [paidTotal, setPaidTotal] = useState(0)
+  useEffect(() => {
+    if (!booking?.id || !key) { setPaidTotal(0); return }
+    fetch(`/api/admin/payments?booking_id=${booking.id}&key=${encodeURIComponent(key)}`)
+      .then(r => r.json())
+      .then(d => {
+        const sum = (d.payments ?? [])
+          .filter((p: { payment_status: string }) => p.payment_status === 'paid')
+          .reduce((acc: number, p: { amount: number }) => acc + (Number(p.amount) || 0), 0)
+        setPaidTotal(sum)
+      })
+      .catch(() => setPaidTotal(0))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [booking?.id, booking?.payment_verification_status, key])
+  const outstandingAmount = Math.max(0, (Number(booking?.total_amount) || 0) - paidTotal)
+
   // ── Load data ─────────────────────────────────────────────────────
 
   const loadAll = useCallback(async (adminKey: string) => {
@@ -505,11 +551,17 @@ export default function QuoteViewPage() {
     setActing(actionKey)
     setActionSuccess(null)
     setActionError(null)
+    // Admin Approve toggle — only meaningful for calls that actually change
+    // `status`; harmless to include otherwise since the API only reads it
+    // inside the status-change branch.
+    const finalPayload = (adminApproveMode && 'status' in payload)
+      ? { ...payload, admin_approve: true }
+      : payload
     try {
       const r = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(finalPayload),
       })
       const d = await r.json().catch(() => ({}))
       if (r.ok) {
@@ -772,6 +824,76 @@ export default function QuoteViewPage() {
     })
   }
 
+  // ── Payment Proof Upload + Verification (spec items 1–3) ──────────
+  // Uploading never itself marks the payment approved — it creates a
+  // 'pending_verification' payments row (see app/api/admin/bookings/[id]/
+  // payment-proof/route.ts) and notifies Accounts. The booking stays
+  // exactly where it is in the workflow either way.
+  async function doUploadPaymentProof() {
+    if (!booking?.id || !key || !proofFile) return
+    setUploadingProof(true); setProofErr(null); setProofMsg(null)
+    try {
+      const form = new FormData()
+      form.append('file', proofFile)
+      form.append('amount', String(booking.total_amount ?? 0))
+      const r = await fetch(`/api/admin/bookings/${booking.id}/payment-proof?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'x-admin-key': key },
+        body: form,
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setProofErr(d.error ?? 'Upload failed'); return }
+      setBooking(prev => prev ? {
+        ...prev,
+        payment_verification_status: 'pending_verification',
+        payment_verification_payment_id: d.payment?.id ?? prev.payment_verification_payment_id,
+      } : prev)
+      setProofFile(null)
+      setProofMsg('✅ Payment proof uploaded. Account Department notified — payment stays Pending Verification until they approve it.')
+    } catch {
+      setProofErr('Network error — please try again')
+    } finally {
+      setUploadingProof(false)
+    }
+  }
+
+  // Accounts approve/reject — PATCHes the tracked payments row directly
+  // (not a booking status change), which app/api/admin/payments/[id]/route.ts
+  // syncs back onto bookings.payment_verification_status automatically.
+  async function doVerifyPayment(action: 'approve' | 'reject') {
+    if (!booking?.payment_verification_payment_id || !key) return
+    setVerifyingProof(action); setProofErr(null); setProofMsg(null)
+    try {
+      const r = await fetch(`/api/admin/payments/${booking.payment_verification_payment_id}?key=${encodeURIComponent(key)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ payment_status: action === 'approve' ? 'paid' : 'rejected' }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setProofErr(d.error ?? 'Failed to update payment'); return }
+      setBooking(prev => {
+        if (!prev) return prev
+        const next: typeof prev = { ...prev, payment_verification_status: action === 'approve' ? 'verified' : 'rejected' }
+        // Server auto-advances the booking to 'confirmed' the moment
+        // Accounts approves — reflect that locally too so the workflow
+        // cards below (Confirm Booking, Indemnity Bond, etc.) update
+        // immediately instead of showing stale payment_received/
+        // payment_approved state until a manual refresh.
+        if (action === 'approve' && ['payment_received', 'payment_approved'].includes(prev.status)) {
+          next.status = 'confirmed'
+        }
+        return next
+      })
+      setProofMsg(action === 'approve'
+        ? '✅ Payment approved — booking auto-confirmed.'
+        : 'Payment rejected — ask the customer to re-submit proof.')
+    } catch {
+      setProofErr('Network error — please try again')
+    } finally {
+      setVerifyingProof(null)
+    }
+  }
+
   async function doConfirmBooking() {
     // Same reasoning as doMarkPaymentReceived above — confirming the booking
     // no longer generates an invoice as a side effect. Invoice creation is
@@ -866,10 +988,26 @@ export default function QuoteViewPage() {
     }
   }
 
+  // Invoice generation moved to only after the booking is Completed (see
+  // Step 8/9's new gating below — previously this ran right after the
+  // indemnity bond was signed, well before pickup/delivery). 'completed'
+  // is a locked/terminal status (the completed-booking guard in
+  // app/api/admin/bookings/[id]/route.ts rejects any further status
+  // change), so once there, invoice generation only ever creates the
+  // invoice record — it can no longer also advance status to
+  // 'invoice_generated'. For any booking still mid-flow on the *old*
+  // sequence (confirmed → indemnity_bond_signed → invoice_generated →
+  // invoice_sent → pickup_scheduled) from before this change, the old
+  // status-advancing behavior is preserved so it isn't stranded.
   async function doGenerateInvoice() {
     if (!booking?.id) return
     await generateAndSendInvoice(booking.id, false)
-    await patchBooking('gen_invoice', { status: 'invoice_generated' })
+    if (booking.status === 'completed') {
+      setActionSuccess('gen_invoice')
+      setTimeout(() => setActionSuccess(null), 4000)
+    } else {
+      await patchBooking('gen_invoice', { status: 'invoice_generated' })
+    }
   }
 
   async function doSendInvoice() {
@@ -891,7 +1029,12 @@ export default function QuoteViewPage() {
         }
       }
     } finally { setResendingEmail(false) }
-    await patchBooking('send_invoice', { status: 'invoice_sent' })
+    if (booking?.status === 'completed') {
+      setActionSuccess('send_invoice')
+      setTimeout(() => setActionSuccess(null), 4000)
+    } else {
+      await patchBooking('send_invoice', { status: 'invoice_sent' })
+    }
   }
 
   async function doSchedulePickup()    { await patchBooking('schedule_pickup',    { status: 'pickup_scheduled' }) }
@@ -1546,6 +1689,20 @@ export default function QuoteViewPage() {
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
+                    {/* Admin Approve — applies to every status-changing button
+                        below (Confirm Booking, Schedule Pickup, Picked Up, In
+                        Transit, Out for Delivery, Delivered, Completed, etc.)
+                        while checked: moves the booking forward without
+                        emailing/WhatsApp-ing the customer, e.g. because they
+                        were already told separately. Toggle it on right
+                        before clicking whichever step button you need —
+                        it stays on until you turn it off again. */}
+                    <label title="While checked, the next workflow action you click updates status/history only — no customer WhatsApp/email is sent for it."
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500 cursor-pointer select-none hover:border-gray-300">
+                      <input type="checkbox" checked={adminApproveMode} onChange={e => setAdminApproveMode(e.target.checked)}
+                        className="h-3.5 w-3.5 rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
+                      Admin Approve (no customer notification)
+                    </label>
                     {!NO_BACK_STATUSES.has(booking.status) && (
                       <button
                         onClick={() => setHistoricalOpen(true)}
@@ -1819,6 +1976,61 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
+                {/* ── Payment Proof Upload + Verification (spec items 1–3) ──
+                     Shown once payment is received/admin-approved. Upload
+                     never marks the payment approved by itself — it just
+                     notifies Accounts and puts it in Pending Verification. ── */}
+                {atStatus('payment_received', 'payment_approved') && (
+                  <div className="rounded-xl border border-teal-100 bg-teal-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-teal-600">🧾 Payment Proof &amp; Verification</p>
+
+                    {booking.payment_verification_status === 'pending_verification' && (
+                      <div className="rounded-lg border border-amber-300 bg-amber-100 px-3 py-2.5 space-y-2">
+                        <p className="text-sm font-semibold text-amber-800">⏳ Payment Verification Pending</p>
+                        <p className="text-xs text-amber-700">Accounts (anil@bagdrop.co / WhatsApp) has been notified. Waiting for them to check and approve.</p>
+                        <div className="flex gap-2">
+                          <button onClick={() => doVerifyPayment('approve')} disabled={!!verifyingProof}
+                            className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-40">
+                            {verifyingProof === 'approve' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="h-3.5 w-3.5" />}
+                            Approve Payment
+                          </button>
+                          <button onClick={() => doVerifyPayment('reject')} disabled={!!verifyingProof}
+                            className="flex items-center gap-1.5 rounded-lg border border-red-300 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-40">
+                            {verifyingProof === 'reject' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : '✕'}
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {booking.payment_verification_status === 'verified' && (
+                      <p className="text-sm font-semibold text-green-700">✅ Payment verified and approved by Accounts.</p>
+                    )}
+
+                    {(!booking.payment_verification_status || booking.payment_verification_status === 'rejected') && (
+                      <div className="space-y-2">
+                        {booking.payment_verification_status === 'rejected' && (
+                          <p className="text-xs font-semibold text-red-600">Previous proof was rejected — upload a new one below.</p>
+                        )}
+                        <p className="text-xs text-teal-700">Upload the customer&apos;s payment screenshot or PDF receipt. This notifies Accounts to check and approve it — it does not mark the payment approved on its own.</p>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                            onChange={e => setProofFile(e.target.files?.[0] ?? null)}
+                            className="text-xs text-gray-600 file:mr-2 file:rounded-lg file:border-0 file:bg-teal-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-700" />
+                          <button onClick={doUploadPaymentProof} disabled={!proofFile || uploadingProof}
+                            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-40">
+                            {uploadingProof ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                            {uploadingProof ? 'Uploading...' : 'Upload Proof'}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {proofMsg && <p className="text-xs font-semibold text-green-700">{proofMsg}</p>}
+                    {proofErr && <p className="text-xs font-semibold text-red-600">{proofErr}</p>}
+                  </div>
+                )}
+
                 {/* ── Step 7: Confirm Booking ── (after payment_received or payment_approved) */}
                 {(atStatus('payment_received', 'payment_approved') && !atOrPast('confirmed')) && (
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
@@ -2020,44 +2232,16 @@ export default function QuoteViewPage() {
                   )
                 })()}
 
-                {/* ── Step 8: Generate Invoice (only if invoice not yet created) ── */}
-                {atStatus('indemnity_bond_signed') && !invoice && (
-                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-violet-600">🧾 Step 8 — Generate Invoice</p>
-                    <button onClick={doGenerateInvoice} disabled={!!acting || genInvoice}
-                      className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
-                      {(acting === 'gen_invoice' || genInvoice) ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-                      {(acting === 'gen_invoice' || genInvoice) ? 'Generating...' : 'Generate Invoice →'}
-                    </button>
-                  </div>
-                )}
-
-                {/* ── Step 9: Send Invoice
-                     Shows when:
-                     (a) status = invoice_generated (normal flow), OR
-                     (b) status = confirmed AND invoice already exists
-                         (invoice was auto-generated during payment confirm — status never advanced to invoice_generated)
-                ── */}
-                {(atStatus('invoice_generated') || (atStatus('indemnity_bond_signed') && !!invoice)) && (
-                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
-                    <p className="text-xs font-bold uppercase tracking-widest text-violet-600">📧 Step 9 — Send Invoice to Customer</p>
-                    <p className="text-sm text-violet-700">
-                      Invoice {invoice?.invoice_number ?? ''} is ready. Send it to the customer to proceed to operations.
-                    </p>
-                    <button onClick={doSendInvoice} disabled={!!acting || resendingEmail}
-                      className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
-                      {(acting === 'send_invoice' || resendingEmail) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-                      {(acting === 'send_invoice' || resendingEmail) ? 'Sending...' : 'Send Invoice to Customer →'}
-                    </button>
-                    {actionSuccess === 'send_invoice' && <p className="text-xs text-green-600 font-semibold">✅ Invoice sent. Status updated to Invoice Sent.</p>}
-                  </div>
-                )}
-
-                {/* ── Step 10: Schedule Pickup ── */}
-                {atStatus('invoice_sent') && (
+                {/* ── Step 10: Schedule Pickup ──
+                     Previously gated on 'invoice_sent' (after Steps 8/9,
+                     which used to run right here). Invoicing now happens
+                     only after Completed (see the new Step 17 near the
+                     bottom), so this moves straight from the signed
+                     indemnity bond to scheduling pickup. */}
+                {atStatus('indemnity_bond_signed') && (
                   <div className="rounded-xl border border-orange-100 bg-orange-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-orange-600">📅 Step 10 — Schedule Pickup</p>
-                    <p className="text-sm text-orange-700">Invoice sent. Coordinate with customer to schedule bag pickup.</p>
+                    <p className="text-sm text-orange-700">Indemnity bond signed. Coordinate with customer to schedule bag pickup. Invoicing happens later, once this booking is Completed.</p>
                     <button onClick={doSchedulePickup} disabled={!!acting}
                       className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-40 transition-colors">
                       {acting === 'schedule_pickup' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
@@ -2230,6 +2414,37 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
+                {/* ── Step 17: Generate Invoice (moved here — only after Completed) ──
+                     'completed' is locked, so doGenerateInvoice/doSendInvoice
+                     no longer try to advance status from here — see their
+                     definitions above. Everything else about how an invoice
+                     is built, numbered, and emailed is unchanged. */}
+                {atStatus('completed') && !invoice && (
+                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-violet-600">🧾 Step 17 — Generate Invoice</p>
+                    <button onClick={doGenerateInvoice} disabled={!!acting || genInvoice}
+                      className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
+                      {(acting === 'gen_invoice' || genInvoice) ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                      {(acting === 'gen_invoice' || genInvoice) ? 'Generating...' : 'Generate Invoice →'}
+                    </button>
+                    {actionSuccess === 'gen_invoice' && <p className="text-xs text-green-600 font-semibold">✅ Invoice generated.</p>}
+                  </div>
+                )}
+                {atStatus('completed') && !!invoice && (
+                  <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
+                    <p className="text-xs font-bold uppercase tracking-widest text-violet-600">📧 Send Invoice to Customer</p>
+                    <p className="text-sm text-violet-700">
+                      Invoice {invoice.invoice_number} is ready. Send/resend it to the customer.
+                    </p>
+                    <button onClick={doSendInvoice} disabled={!!acting || resendingEmail}
+                      className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
+                      {(acting === 'send_invoice' || resendingEmail) ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                      {(acting === 'send_invoice' || resendingEmail) ? 'Sending...' : 'Send Invoice to Customer →'}
+                    </button>
+                    {actionSuccess === 'send_invoice' && <p className="text-xs text-green-600 font-semibold">✅ Invoice emailed to customer.</p>}
+                  </div>
+                )}
+
                 {/* ── Rejected / Closed ── */}
                 {atStatus('rejected', 'closed') && (
                   <div className="rounded-xl border border-red-100 bg-red-50 p-4">
@@ -2251,6 +2466,12 @@ export default function QuoteViewPage() {
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500">
                   <span><Clock className="mr-1 inline h-3 w-3" />Created {fmtDateTime(lead.created_at)}</span>
                   {booking.total_amount && <span>Total: <strong className="text-orange-600">{fmtRs(booking.total_amount)}</strong></span>}
+                  {/* Outstanding Amount — booking total minus approved
+                      ('paid') payments only, recomputed live from the
+                      payments ledger (see the paidTotal effect above). */}
+                  {!!booking.total_amount && (
+                    <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
+                  )}
                   {booking.payment_status && <span>Payment: <strong className="text-gray-700">{booking.payment_status}</strong></span>}
                   {booking.payment_reference && <span>Ref: <strong className="font-mono text-gray-700">{booking.payment_reference}</strong></span>}
                   <span>Booking: <strong className="font-mono text-gray-700">{booking.tracking_id}</strong></span>
@@ -2259,14 +2480,16 @@ export default function QuoteViewPage() {
             </div>
 
             {/* ── Invoice Card ──
-                 Only relevant while the booking is actually at the Invoice
-                 Generated / Invoice Sent step — matches every other card's
-                 exclusive, current-step-only gating. The genInvoice loading
-                 spinner is an exception: it needs to show the moment
-                 generation starts (from Step 8, while status is still
-                 'confirmed', before the server has advanced it), so that one
-                 case bypasses the status gate. ── */}
-            {((genInvoice) || (invoice && atStatus('invoice_generated', 'invoice_sent'))) && (
+                 Shown once an invoice exists — now generated at the new
+                 Step 17 (after Completed) rather than Invoice Generated /
+                 Invoice Sent, which invoice generation no longer visits in
+                 the primary flow. invoice_generated/invoice_sent are kept
+                 here too for any booking still on the old sequence from
+                 before this change. The genInvoice loading spinner is an
+                 exception: it needs to show the moment generation starts,
+                 before the server has responded, so that one case bypasses
+                 the status gate entirely. ── */}
+            {((genInvoice) || (invoice && atStatus('invoice_generated', 'invoice_sent', 'completed'))) && (
               <div className="no-print mx-auto mt-4 max-w-3xl overflow-hidden rounded-xl border border-green-200 bg-white shadow-sm">
                 <div className="flex items-center gap-3 border-b border-green-100 bg-green-50 px-6 py-3">
                   <FileText className="h-4 w-4 text-green-600" />

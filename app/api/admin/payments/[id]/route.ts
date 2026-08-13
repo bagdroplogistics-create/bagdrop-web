@@ -1,6 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole } from '@/lib/admin-auth'
+import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
+
+// Booking statuses from which an approved payment verification should
+// auto-advance the workflow to 'confirmed'. Matches the gate the Payment
+// Proof & Verification card itself uses in the Booking Workflow page
+// (atStatus('payment_received', 'payment_approved')) — those are the only
+// two statuses where a payment can be pending verification in the first
+// place, so they're the only two this ever fires from.
+const AUTO_CONFIRM_FROM_STATUSES = ['payment_received', 'payment_approved']
 
 export async function GET(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!getAdminRole(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -39,6 +48,107 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // Sync payment_status back to booking
   if (data.booking_id && body.payment_status) {
     await supabaseAdmin.from('bookings').update({ payment_status: body.payment_status }).eq('id', data.booking_id)
+  }
+
+  // ── Payment Verification sync ─────────────────────────────────────
+  // Only touches bookings.payment_verification_status when this payment
+  // is the one the booking is actually tracking as its pending-verification
+  // proof (payment_verification_payment_id === this payment's id) — so an
+  // unrelated older/rejected payment row for the same booking can't
+  // clobber a newer upload's verification state. 'paid' here means
+  // Accounts approved the uploaded proof; it deliberately does NOT touch
+  // bookings.status (the Booking Workflow step machine) or reuse the
+  // existing 'payment_approved' status, which already means something
+  // different (admin bypass / Pay Later) — see
+  // supabase/migrations/20260813_payment_verification.sql.
+  if (data.booking_id && body.payment_status) {
+    const { data: bk } = await supabaseAdmin
+      .from('bookings')
+      .select('payment_verification_payment_id')
+      .eq('id', data.booking_id)
+      .maybeSingle()
+
+    if (bk?.payment_verification_payment_id === data.id) {
+      const verificationStatus =
+        body.payment_status === 'paid'     ? 'verified' :
+        body.payment_status === 'rejected' ? 'rejected' :
+        body.payment_status === 'pending_verification' ? 'pending_verification' :
+        null
+      if (verificationStatus) {
+        await supabaseAdmin
+          .from('bookings')
+          .update({ payment_verification_status: verificationStatus })
+          .eq('id', data.booking_id)
+      }
+
+      // ── Auto-advance Booking Workflow on payment approval ─────────
+      // Once Accounts approves the tracked payment ('verified'), move the
+      // booking straight to 'confirmed' — no separate manual "Confirm
+      // Booking" click needed. Only fires if the booking is still sitting
+      // at payment_received/payment_approved (never moves it backward, and
+      // re-approving an already-confirmed booking's old payment is a safe
+      // no-op). Mirrors the same status_history + notified_statuses +
+      // sendLifecycleWhatsApp pattern app/api/admin/trip-sheets/[id]/
+      // route.ts already uses to sync a status change into bookings from
+      // outside the main bookings PATCH route — deliberately does NOT
+      // duplicate that route's Google Calendar / ops-reminders sync, same
+      // as the Trip Sheet sync path never has either.
+      if (verificationStatus === 'verified') {
+        let notifiedStatusesSupported = true
+        let bookingRes = await supabaseAdmin
+          .from('bookings')
+          .select('id, status, status_history, notified_statuses, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
+          .eq('id', data.booking_id)
+          .maybeSingle()
+        if (bookingRes.error?.message?.includes('notified_statuses')) {
+          notifiedStatusesSupported = false
+          bookingRes = await supabaseAdmin
+            .from('bookings')
+            .select('id, status, status_history, tracking_id, customer_name, customer_phone, from_city, to_city, total_bags, total_amount, pickup_date, drop_address, service_label, service_type')
+            .eq('id', data.booking_id)
+            .maybeSingle()
+        }
+        const bookingNow = bookingRes.data
+
+        if (bookingNow && AUTO_CONFIRM_FROM_STATUSES.includes(bookingNow.status)) {
+          const history = Array.isArray(bookingNow.status_history) ? bookingNow.status_history as object[] : []
+          history.push({
+            from:       bookingNow.status,
+            to:         'confirmed',
+            timestamp:  new Date().toISOString(),
+            changed_by: 'system',
+            note:       `Auto-confirmed — Accounts approved payment verification (Payment ID: ${data.payment_id})`,
+          })
+
+          const prevNotified      = Array.isArray((bookingNow as { notified_statuses?: unknown }).notified_statuses)
+            ? (bookingNow as { notified_statuses?: string[] }).notified_statuses as string[]
+            : []
+          const alreadyNotified   = prevNotified.includes('confirmed')
+          const shouldNotifyCustomer = isForwardMove(bookingNow.status, 'confirmed') && !alreadyNotified
+
+          const bookingUpdate: Record<string, unknown> = { status: 'confirmed', status_history: history }
+          if (shouldNotifyCustomer && notifiedStatusesSupported) {
+            bookingUpdate.notified_statuses = [...prevNotified, 'confirmed']
+          }
+
+          const { data: updatedBooking } = await supabaseAdmin
+            .from('bookings')
+            .update(bookingUpdate)
+            .eq('id', data.booking_id)
+            .select()
+            .single()
+
+          // Fires the normal "Booking Confirmed" customer WhatsApp — this is
+          // a genuine forward workflow step (Accounts Approves → Booking
+          // Confirmed per the spec's workflow diagram), not a silent Admin
+          // Approve move, so the customer is meant to hear about it. Never
+          // throws.
+          if (shouldNotifyCustomer && updatedBooking) {
+            await sendLifecycleWhatsApp('confirmed', updatedBooking)
+          }
+        }
+      }
+    }
   }
 
   return NextResponse.json({ payment: data })

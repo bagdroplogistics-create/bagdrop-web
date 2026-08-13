@@ -192,6 +192,14 @@ function StatusSelect({ id, current, adminKey, onUpdate }: {
 }) {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  // Admin Approve: move the booking to any workflow step from this same
+  // dropdown WITHOUT sending the customer a WhatsApp/email for it — e.g.
+  // they were already told over a call, or the admin is correcting a step
+  // rather than genuinely advancing it. Purely a "skip notification for
+  // this one change" flag — see admin_approve in
+  // app/api/admin/bookings/[id]/route.ts. Resets after each change so it
+  // never silently stays on for a later, genuinely-new status move.
+  const [silent, setSilent] = useState(false)
   const isLocked = STATUS_CONFIG[current]?.locked === true
 
   // Lock dropdown for pre-quote statuses — quote must be created first via Leads tab
@@ -239,13 +247,14 @@ function StatusSelect({ id, current, adminKey, onUpdate }: {
     const res = await fetch('/api/admin/bookings/' + id, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify({ status: next }),
+      body: JSON.stringify({ status: next, ...(silent ? { admin_approve: true } : {}) }),
     })
     if (!res.ok) {
       const d = await res.json()
       setError(d.error ?? 'Failed')
     }
     setLoading(false)
+    setSilent(false)
     onUpdate()
   }
 
@@ -264,6 +273,13 @@ function StatusSelect({ id, current, adminKey, onUpdate }: {
         </select>
         <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
       </div>
+      {/* Admin Approve toggle — check before picking a status above to move
+          the booking forward without emailing/WhatsApp-ing the customer. */}
+      <label className="mt-1 flex items-center gap-1.5 text-[10px] font-medium text-gray-500 cursor-pointer select-none">
+        <input type="checkbox" checked={silent} onChange={e => setSilent(e.target.checked)} disabled={loading}
+          className="h-3 w-3 rounded border-gray-300 text-orange-500 focus:ring-orange-400"/>
+        Admin Approve (don&apos;t notify customer)
+      </label>
       {error && <p className="mt-1 text-xs text-red-500">{error}</p>}
     </div>
   )
@@ -649,28 +665,25 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
     if (ok) setMsg('✅ Admin approved (Pay Later). Generate invoice & confirm booking.')
   }
 
-  async function generateInvoiceAndConfirm() {
+  // Was generateInvoiceAndConfirm() — generated the invoice AND confirmed
+  // the booking in one action, right after payment. Per the updated
+  // workflow (Payment → ... → Completed → Generate Invoice), invoicing no
+  // longer happens here at all — this now only confirms the booking.
+  // Invoice generation moved to the new completed-only action below
+  // (see generateInvoiceAfterCompletion), reusing the exact same
+  // POST /api/admin/invoices endpoint — nothing about how an invoice is
+  // built or numbered changed, only when this button offers to create one.
+  async function confirmBooking() {
     setLoading(true); setErr(''); setMsg('')
-    let invoiceNumber = ''; let emailSent = false
-    try {
-      const invRes = await fetch('/api/admin/invoices', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-        body: JSON.stringify({ booking_id: booking.id, send_email: true }),
-      })
-      const invData = await invRes.json()
-      invoiceNumber = invData.invoice?.invoice_number ?? ''
-      emailSent     = invData.email_sent === true
-    } catch { /* non-critical */ }
-    await patchBooking({ status: 'confirmed' })
-    const parts = ['🎉 Booking confirmed!']
-    if (invoiceNumber) parts.push(`Invoice ${invoiceNumber} generated.`)
-    if (emailSent) parts.push(`Emailed to ${booking.customer_email}.`)
-    else if (invoiceNumber) parts.push('(No email — not sent.)')
-    setMsg(parts.join(' '))
+    const ok = await patchBooking({ status: 'confirmed' })
+    if (ok) setMsg('🎉 Booking confirmed! Invoice can be generated once this booking reaches Completed.')
     setLoading(false)
   }
 
+  // Kept for any already-in-flight booking that reached 'confirmed' before
+  // this change and still expects the old confirmed→invoice_generated step
+  // to exist. New bookings won't use this — see the 'completed'-only
+  // generateInvoiceAfterCompletion below for the new flow.
   async function generateInvoice() {
     setLoading(true); setErr(''); setMsg('')
     try {
@@ -686,6 +699,33 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
       setMsg(`Invoice ${invData.invoice?.invoice_number ?? ''} generated.`)
     } catch {
       setErr('Failed to generate invoice'); setLoading(false)
+    }
+  }
+
+  // ── Generate Invoice AFTER Completed (new location per updated workflow) ──
+  // 'completed' is a locked/terminal status (patchBooking's completed-lock
+  // guard rejects any status change once a booking is completed), so this
+  // deliberately never calls patchBooking — it only creates the invoice
+  // record via the same existing endpoint used everywhere else. The
+  // booking's own status stays 'completed'; the invoice is bookkeeping on
+  // top of it, not a workflow step.
+  async function generateInvoiceAfterCompletion() {
+    setLoading(true); setErr(''); setMsg('')
+    try {
+      const invRes = await fetch('/api/admin/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_id: booking.id, send_email: true }),
+      })
+      const invData = await invRes.json()
+      if (!invRes.ok) { setErr(invData.error ?? 'Invoice generation failed'); setLoading(false); return }
+      setInvoiceData(invData.invoice)
+      setMsg(`Invoice ${invData.invoice?.invoice_number ?? ''} generated` +
+        (invData.email_sent ? ` and emailed to ${booking.customer_email}.` : '.'))
+    } catch {
+      setErr('Failed to generate invoice')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -935,11 +975,11 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
         </div>
       )}
 
-      {/* ── PAYMENT RECEIVED / ADMIN APPROVED: Generate Invoice + Confirm ── */}
+      {/* ── PAYMENT RECEIVED / ADMIN APPROVED: Payment Proof + Confirm ── */}
       {(s === 'payment_received' || s === 'payment_approved') && (
         <div className="space-y-3">
           <p className="text-xs font-bold uppercase tracking-widest text-green-500">
-            {s === 'payment_received' ? '✅ Payment Received — Generate Invoice & Confirm Booking' : '🏦 Admin Approved — Generate Invoice & Confirm Booking'}
+            {s === 'payment_received' ? '✅ Payment Received — Confirm Booking' : '🏦 Admin Approved — Confirm Booking'}
           </p>
           <div className="flex flex-wrap items-start gap-4">
             <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-5 py-3">
@@ -955,35 +995,35 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
               </div>
             </div>
             <div className="flex-1 rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
-              <p className="text-sm font-bold text-blue-800">Next: Generate Invoice & Confirm Booking</p>
+              <p className="text-sm font-bold text-blue-800">Next: Confirm Booking</p>
               <p className="text-xs text-blue-600">
-                This will generate an invoice, email it{booking.customer_email ? ` to ${booking.customer_email}` : ''}, and confirm the booking.
+                Invoicing now happens later, once this booking reaches Completed — this step just confirms the booking.
               </p>
-              <button onClick={generateInvoiceAndConfirm} disabled={loading}
+              <button onClick={confirmBooking} disabled={loading}
                 className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40 transition-colors">
-                <Receipt className="h-4 w-4" />
-                {loading ? 'Processing...' : 'Generate Invoice & Confirm Booking →'}
+                <CheckCircle className="h-4 w-4" />
+                {loading ? 'Processing...' : 'Confirm Booking →'}
               </button>
-              {!booking.customer_email && (
-                <p className="text-[10px] text-blue-400">⚠ No email — invoice will be generated but not emailed.</p>
-              )}
             </div>
           </div>
         </div>
       )}
 
       {/* ── BOOKING CONFIRMED: Generate Invoice ── */}
+      {/* Invoice generation used to be offered right here. Per the updated
+          workflow, invoicing now only happens once the booking reaches
+          Completed (see the new block below, near the 'completed' status) —
+          so a confirmed booking moves straight to scheduling pickup instead,
+          same action/button already used at the old invoice_sent step. */}
       {s === 'confirmed' && (
         <div className="space-y-3">
-          <p className="text-xs font-bold uppercase tracking-widest text-blue-500">🎉 Booking Confirmed — Generate Invoice</p>
+          <p className="text-xs font-bold uppercase tracking-widest text-blue-500">🎉 Booking Confirmed — Schedule Pickup</p>
           <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
-            <p className="text-sm text-blue-700">
-              Generate a GST invoice for this booking. You will be able to preview, download, and email it to the customer in the next step.
-            </p>
-            <button onClick={generateInvoice} disabled={loading}
+            <p className="text-sm text-blue-700">Coordinate with the customer and schedule bag pickup. Invoicing happens later, once this booking is Completed.</p>
+            <button onClick={() => patchBooking({ status: 'pickup_scheduled' })} disabled={loading}
               className="flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-40 transition-colors">
-              <Receipt className="h-4 w-4" />
-              {loading ? 'Generating...' : 'Generate Invoice →'}
+              <Calendar className="h-4 w-4" />
+              {loading ? 'Updating...' : 'Pickup Scheduled →'}
             </button>
           </div>
         </div>
@@ -1773,18 +1813,38 @@ export default function AdminDashboard() {
                                 <span className="font-mono text-[10px] text-blue-600 font-semibold">
                                   {b.tracking_id.replace(/^BDA-/, 'BDL-')}
                                 </span>
-                                {b.lead_id ? (
-                                  <Link href={`/admin/quotes/view/${b.lead_id}`}
-                                    className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors"
-                                    onClick={e => e.stopPropagation()}>
-                                    <FileText className="h-2.5 w-2.5" /> View Quote
-                                  </Link>
-                                ) : (
+                                {!b.lead_id && (
                                   <span className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600">
                                     <Users className="h-2.5 w-2.5" /> Lead
                                   </span>
                                 )}
                               </>
+                            )}
+                            {/* Preview/Edit Quote — previously only shown for
+                                BDA-prefixed bookings, which hid it for the
+                                large majority of real (BD-prefixed website)
+                                bookings that also have a quote. Now shown for
+                                any booking with a lead_id. Both point at the
+                                existing quote pages (no new pages built) —
+                                Preview opens the same view the customer's
+                                quote link shows; Edit reuses the same
+                                lead_id+edit=true route the Leads tab's own
+                                Edit Quote pencil button already uses, so
+                                editing here can't create a duplicate lead or
+                                reset the booking's workflow status/history. */}
+                            {b.lead_id && (
+                              <div className="flex gap-1">
+                                <Link href={`/admin/quotes/view/${b.lead_id}`}
+                                  className="inline-flex w-fit items-center gap-0.5 rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 hover:bg-blue-100 transition-colors"
+                                  onClick={e => e.stopPropagation()}>
+                                  <FileText className="h-2.5 w-2.5" /> Preview Quote
+                                </Link>
+                                <Link href={`/admin/quotes/new?lead_id=${b.lead_id}&edit=true`}
+                                  className="inline-flex w-fit items-center gap-0.5 rounded-full bg-gray-50 px-1.5 py-0.5 text-[10px] font-semibold text-gray-600 hover:bg-gray-100 transition-colors"
+                                  onClick={e => e.stopPropagation()}>
+                                  <Pencil className="h-2.5 w-2.5" /> Edit Quote
+                                </Link>
+                              </div>
                             )}
                           </div>
                         </td>

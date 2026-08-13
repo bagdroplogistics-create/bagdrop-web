@@ -160,10 +160,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
           // the customer already received.
           const prevNotified = Array.isArray(bk.notified_statuses) ? bk.notified_statuses as string[] : []
           const alreadyNotified = prevNotified.includes(newBkStatus)
-          const shouldNotifyCustomer = isForwardMove(bk.status, newBkStatus) && !alreadyNotified
+          // admin_approve: true on the PATCH body — same "workflow update
+          // only, don't contact the customer" escape hatch as
+          // app/api/admin/bookings/[id]/route.ts's admin_approve, exposed
+          // here too since picked_up/in_transit/out_for_delivery/delivered
+          // are normally advanced from the Trip Sheet, not that route.
+          const shouldNotifyCustomer = body.admin_approve === true
+            ? false
+            : isForwardMove(bk.status, newBkStatus) && !alreadyNotified
 
           const bookingUpdate: Record<string, unknown> = { status: newBkStatus, status_history: bkHistory }
-          if (shouldNotifyCustomer && notifiedStatusesSupported) bookingUpdate.notified_statuses = [...prevNotified, newBkStatus]
+          if ((shouldNotifyCustomer || body.admin_approve === true) && notifiedStatusesSupported && !alreadyNotified) {
+            bookingUpdate.notified_statuses = [...prevNotified, newBkStatus]
+          }
 
           const { data: updatedBooking } = await supabaseAdmin
             .from('bookings')

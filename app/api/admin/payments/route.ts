@@ -75,11 +75,26 @@ export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
-  const status = searchParams.get('status')
-  const search = searchParams.get('search')
+  const status     = searchParams.get('status')
+  const search     = searchParams.get('search')
+  // Booking Workflow's Outstanding Amount calculation (spec item 14) —
+  // when set, returns only this booking's real payments rows (skips the
+  // synthetic-row merge below entirely, since that's only meant for the
+  // all-bookings Payments tab view, not a single booking's ledger).
+  const bookingId  = searchParams.get('booking_id')
   const page   = parseInt(searchParams.get('page') ?? '1', 10)
   const limit  = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset = (page - 1) * limit
+
+  if (bookingId) {
+    const { data, error } = await supabaseAdmin
+      .from('payments')
+      .select('*')
+      .eq('booking_id', bookingId)
+      .order('created_at', { ascending: false })
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ payments: data ?? [], total: data?.length ?? 0, page: 1, limit: data?.length ?? 0 })
+  }
 
   // Fetch every real payment row (uncapped by page/limit here — the merge
   // with synthetic booking-derived rows happens in-memory below, then the
