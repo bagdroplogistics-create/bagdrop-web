@@ -61,6 +61,7 @@ export interface PaymentVerificationRequestData {
   proofUrl:       string
   proofType:      'image' | 'pdf'
   adminUrl:       string  // deep link back into the admin Booking Workflow for this booking
+  reviewUrl:      string  // public, no-login Approve/Reject page — see app/payment-verification/[token]/page.tsx
 }
 
 /**
@@ -94,7 +95,14 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
         <a href="${data.proofUrl}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 18px;border-radius:6px">
           View ${data.proofType === 'pdf' ? 'Payment Receipt (PDF)' : 'Payment Screenshot'}
         </a>
-        <p style="margin:20px 0 8px;font-size:13px;color:#6b7280">Review in Booking Workflow</p>
+
+        <p style="margin:24px 0 8px;font-size:13px;color:#6b7280">Approve or reject — no dashboard login needed</p>
+        <a href="${data.reviewUrl}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:6px">
+          Review &amp; Approve / Reject Payment →
+        </a>
+        <p style="margin:6px 0 0;font-size:11px;color:#9ca3af">This link is valid for 30 days and only works once.</p>
+
+        <p style="margin:20px 0 8px;font-size:13px;color:#6b7280">Or, review in the full Booking Workflow (admin login required)</p>
         <a href="${data.adminUrl}" style="display:inline-block;background:#111827;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 18px;border-radius:6px">
           Open Booking ${data.trackingId}
         </a>

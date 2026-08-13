@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { SITE } from '@/lib/constants'
 import { sendPaymentVerificationRequest } from '@/lib/payment-verification-notification'
+import { generateVerificationToken, VERIFICATION_TOKEN_VALID_DAYS } from '@/lib/payment-verification-token'
 
 // Payment Screenshot / PDF Upload + Payment Verification Request
 // (Booking Workflow spec items 1 & 2).
@@ -93,7 +94,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const proofUrl = urlData.publicUrl
 
   // ── Create the payment record (pending_verification, never auto-'paid') ──
+  // verification_token lets Accounts approve/reject straight from the
+  // email (see app/api/payment-verification/[token]/route.ts) without an
+  // admin dashboard login — same random-token model as the indemnity bond
+  // signing links (lib/indemnity-token.ts).
   const paymentId = await nextPaymentId()
+  const verificationToken = generateVerificationToken()
+  const verificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_VALID_DAYS * 24 * 60 * 60 * 1000).toISOString()
   const { data: payment, error: paymentErr } = await supabaseAdmin
     .from('payments')
     .insert({
@@ -107,6 +114,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       proof_url:      proofUrl,
       proof_type:     proofType,
       notes:          `Payment proof uploaded ${new Date().toLocaleString('en-IN')}`,
+      verification_token:            verificationToken,
+      verification_token_expires_at: verificationTokenExpiresAt,
     })
     .select()
     .single()
@@ -151,7 +160,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       paymentDate,
       proofUrl,
       proofType,
-      adminUrl: `${SITE.url}/admin?highlight=${bookingId}`,
+      adminUrl:  `${SITE.url}/admin?highlight=${bookingId}`,
+      reviewUrl: `${SITE.url}/payment-verification/${verificationToken}`,
     })
   } catch (err) {
     console.error('[payment-proof] verification-request notification failed (non-fatal):', err)

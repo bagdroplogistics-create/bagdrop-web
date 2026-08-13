@@ -231,8 +231,6 @@ const STATUS_STEPS_BASE = [
   { key: 'confirmed',        label: 'Booking Confirmed' },
   { key: 'indemnity_bond_sent',   label: 'Indemnity Bond Sent' },
   { key: 'indemnity_bond_signed', label: 'Indemnity Bond Signed' },
-  { key: 'invoice_generated',label: 'Invoice Generated' },
-  { key: 'invoice_sent',     label: 'Invoice Sent' },
   { key: 'pickup_scheduled', label: 'Pickup Scheduled' },
   { key: 'picked_up',        label: 'Bags Picked Up' },
   { key: 'in_transit',       label: 'In Transit' },
@@ -240,6 +238,15 @@ const STATUS_STEPS_BASE = [
   { key: 'delivered',        label: 'Delivered' },
   { key: 'trip_created',     label: 'Trip Sheet Created' },
   { key: 'completed',        label: 'Completed' },
+  // Invoice Generated / Invoice Sent moved to the very end of the visual
+  // stepper — invoice generation now only happens after 'completed' (see
+  // Step 17 below), so these two circles should appear after it, not
+  // between Indemnity Bond Signed and Pickup Scheduled where they used to
+  // sit. Their "done" state is computed from the invoice record itself
+  // (stepIsAtOrPast below), not from statusOrder position, since a new
+  // booking's status never actually equals these two keys anymore.
+  { key: 'invoice_generated',label: 'Invoice Generated' },
+  { key: 'invoice_sent',     label: 'Invoice Sent' },
 ]
 
 const DRIVER_DETAILS_STEP = { key: 'driver_details_shared', label: 'Driver Details Shared' }
@@ -723,6 +730,33 @@ export default function QuoteViewPage() {
   // Helper: is booking exactly at a status (or one of a list)?
   function atStatus(...statuses: string[]): boolean {
     return statuses.includes(booking?.status ?? '')
+  }
+
+  // Stepper-only "done" check for the two Invoice circles, which now sit
+  // at the end of the visual step list (after Completed) but are no longer
+  // real statuses a new booking's status ever equals — invoice generation
+  // was decoupled from the status machine so it can fire after 'completed'
+  // (a locked/terminal status) without a status change. Driven by the
+  // invoice record itself instead of statusOrder position. Old bookings
+  // still sitting at a literal 'invoice_generated'/'invoice_sent' status
+  // from before that change still read correctly here too, since their
+  // invoice was already generated in the same action that set that status.
+  // Every other step key falls through to the normal atOrPast index check.
+  function stepIsAtOrPast(key: string): boolean {
+    if (key === 'invoice_generated') return !!invoice
+    if (key === 'invoice_sent')      return !!invoice?.sent_email
+    return atOrPast(key)
+  }
+
+  // Companion "current" check for the same two keys — matches exactly the
+  // condition each invoice action card below uses to decide it should show
+  // (atStatus('completed') && !invoice, and atStatus('completed') && !!invoice
+  // respectively), so the orange "you are here" ring lines up with whichever
+  // card is actually visible.
+  function stepIsCurrent(key: string): boolean {
+    if (key === 'invoice_generated') return atStatus('completed') && !invoice
+    if (key === 'invoice_sent')      return atStatus('completed') && !!invoice && !invoice.sent_email
+    return booking?.status === key
   }
 
   async function doSendQuote() {
@@ -1269,25 +1303,12 @@ export default function QuoteViewPage() {
               {STATUS_LABEL[booking.status] ?? booking.status}
             </span>
           )}
-          {/* Payment status badge — click to toggle */}
-          <button
-            onClick={async () => {
-              const next = lead.payment_status === 'received' ? 'pending' : 'received'
-              await fetch(`/api/admin/leads/${lead.id}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
-                body: JSON.stringify({ payment_status: next }),
-              })
-              loadAll(key)
-            }}
-            className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors ${
-              lead.payment_status === 'received'
-                ? 'border-green-200 bg-green-50 text-green-700 hover:bg-green-100'
-                : 'border-amber-200 bg-amber-50 text-amber-700 hover:bg-amber-100'
-            }`}
-            title="Click to toggle payment status">
-            {lead.payment_status === 'received' ? '✓ Payment Received' : '⏳ Payment Pending'}
-          </button>
+          {/* Pending/Received payment toggle removed from this header per
+              request — same reasoning as the Leads table (see
+              app/(admin)/admin/leads/page.tsx): payment status is now only
+              managed through the Booking Workflow / payment verification
+              flow below, not as an inline click-to-toggle badge up here.
+              lead.payment_status itself is untouched. */}
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => window.print()}
@@ -1733,8 +1754,8 @@ export default function QuoteViewPage() {
               <div className="overflow-x-auto px-6 py-4">
                 <div className="flex min-w-max items-center">
                   {steps.map((step, idx) => {
-                    const done    = atOrPast(step.key) && booking.status !== step.key
-                    const current = booking.status === step.key
+                    const done    = stepIsAtOrPast(step.key) && !stepIsCurrent(step.key)
+                    const current = stepIsCurrent(step.key)
                     return (
                       <div key={step.key} className="flex items-center">
                         <div className="flex flex-col items-center" style={{ minWidth: 56 }}>
@@ -1754,7 +1775,7 @@ export default function QuoteViewPage() {
                           </span>
                         </div>
                         {idx < steps.length - 1 && (
-                          <div className={`h-0.5 w-6 shrink-0 mb-4 ${atOrPast(steps[idx + 1].key) ? 'bg-green-400' : 'bg-gray-200'}`} />
+                          <div className={`h-0.5 w-6 shrink-0 mb-4 ${stepIsAtOrPast(steps[idx + 1].key) ? 'bg-green-400' : 'bg-gray-200'}`} />
                         )}
                       </div>
                     )
