@@ -31,6 +31,10 @@ interface Payment {
   // real payments.id to Verify/Refund against; the id is "booking:<uuid>"
   // purely so the frontend has a stable React key.
   is_synthetic?:     boolean
+  // Matches Zoho Books' Payments Received columns — computed server-side,
+  // see the enrichment in GET /api/admin/payments.
+  invoice_number?:   string | null
+  unused_amount?:    number
 }
 
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
@@ -298,7 +302,7 @@ export default function PaymentsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Payment ID', 'Customer', 'Amount', 'Method', 'Reference', 'Status', 'Date', 'Actions'].map(h => (
+                    {['Payment ID', 'Customer', 'Invoice #', 'Amount', 'Unused Amount', 'Method', 'Reference', 'Status', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -318,7 +322,17 @@ export default function PaymentsPage() {
                         <p className="font-semibold text-gray-900">{formatCustomerName(p.title, p.customer_name) || p.customer_name}</p>
                         <p className="text-xs text-gray-400">{p.customer_phone}</p>
                       </td>
+                      <td className="px-4 py-3 text-xs">
+                        {p.invoice_number
+                          ? <span className="font-mono font-bold text-orange-600">{p.invoice_number}</span>
+                          : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3 font-bold text-gray-900">{fmtRs(p.amount)}</td>
+                      <td className="px-4 py-3 text-xs">
+                        {(p.unused_amount ?? 0) > 0
+                          ? <span className="font-semibold text-amber-600">{fmtRs(p.unused_amount ?? 0)}</span>
+                          : <span className="text-gray-400">₹0</span>}
+                      </td>
                       <td className="px-4 py-3 text-gray-600">{METHOD_LABELS[p.payment_method] ?? p.payment_method}</td>
                       <td className="px-4 py-3 text-xs text-gray-500">{p.is_synthetic ? 'No payment logged yet' : (p.payment_reference || '—')}</td>
                       <td className="px-4 py-3"><Badge status={p.payment_status} /></td>

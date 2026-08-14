@@ -16,6 +16,13 @@ interface PaymentRecord {
   notes: string | null; verified_by: string | null; verified_at: string | null
   refund_amount: number | null; created_at: string
   is_synthetic?: boolean
+  // Added to match Zoho Books' Payments Received columns (Invoice#, Unused
+  // Amount) — both computed below in GET, never stored on the payments
+  // table itself. invoice_number is resolved via the shared booking_id
+  // (invoices.payment_id exists on the table but nothing that creates an
+  // invoice ever sets it, so booking_id is the only reliable link).
+  invoice_number?: string | null
+  unused_amount?: number
 }
 
 async function nextPaymentId(): Promise<string> {
@@ -123,7 +130,37 @@ export async function GET(req: NextRequest) {
   const merged = [...realPayments, ...synthetic].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
   const page_ = merged.slice(offset, offset + limit)
 
-  return NextResponse.json({ payments: page_, total: merged.length, page, limit })
+  // Invoice# + Unused Amount — matches Zoho Books' Payments Received
+  // columns. Resolved via booking_id (the reliable link — see the
+  // PaymentRecord comment above) only for the page actually being
+  // returned, not the full merged list, since this is purely a display
+  // enrichment.
+  const pageBookingIds = [...new Set(page_.map(p => p.booking_id).filter((id): id is string => !!id))]
+  let invoiceByBooking: Record<string, { invoice_number: string; total_amount: number }> = {}
+  if (pageBookingIds.length > 0) {
+    const { data: invRows } = await supabaseAdmin
+      .from('invoices')
+      .select('booking_id, invoice_number, total_amount')
+      .in('booking_id', pageBookingIds)
+    invoiceByBooking = Object.fromEntries(
+      (invRows ?? []).map(i => [i.booking_id as string, { invoice_number: i.invoice_number as string, total_amount: Number(i.total_amount ?? 0) }])
+    )
+  }
+
+  const enriched = page_.map(p => {
+    const inv = p.booking_id ? invoiceByBooking[p.booking_id] : undefined
+    // No invoice yet for this booking: the whole payment is "unused" (not
+    // applied against anything), matching Zoho's own definition. An
+    // invoice exists and covers the payment: fully applied (0 unused). An
+    // invoice exists but is smaller than the payment (overpayment): the
+    // difference is unused.
+    const unused_amount = !inv
+      ? Number(p.amount)
+      : Math.max(0, Number(p.amount) - inv.total_amount)
+    return { ...p, invoice_number: inv?.invoice_number ?? null, unused_amount }
+  })
+
+  return NextResponse.json({ payments: enriched, total: merged.length, page, limit })
 }
 
 export async function POST(req: NextRequest) {
