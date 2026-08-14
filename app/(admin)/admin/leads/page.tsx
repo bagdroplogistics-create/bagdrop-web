@@ -39,6 +39,10 @@ interface Lead {
   booking_id:           string | null
   lead_number:          string | null
   status:               string
+  // Read-only, computed server-side in GET /api/admin/leads — 'confirmed'
+  // when the linked booking has reached that status, otherwise equal to
+  // `status`. Never present on POST/PATCH payloads; display-only.
+  effective_status?:    string
   notes:                string | null
   assigned_to:          string | null
   created_at:           string
@@ -73,7 +77,18 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   qualified: { label: 'Qualified', color: '#7c3aed', bg: '#ede9fe' },
   converted: { label: 'Converted', color: '#16a34a', bg: '#dcfce7' },
   lost:      { label: 'Lost',      color: '#dc2626', bg: '#fee2e2' },
+  // Not a real leads.status value — it's the linked booking's real status
+  // (bookings.status = 'confirmed'), surfaced here as a read-only display
+  // status (see `effective_status` in GET /api/admin/leads). Included in
+  // this lookup table so the badge/filter dropdown can render it, but kept
+  // OUT of EDITABLE_LEAD_STATUSES below since it can never be set directly
+  // on a lead.
+  confirmed: { label: 'Confirmed', color: '#0e7490', bg: '#cffafe' },
 }
+
+// The lead-funnel statuses an admin can actually set via the Edit Quote
+// modal. 'confirmed' is deliberately excluded — see the comment above.
+const EDITABLE_LEAD_STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost']
 
 const SOURCE_LABELS: Record<string, string> = {
   manual:         'Manual',
@@ -449,7 +464,7 @@ function LeadModal({
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-gray-600">Status</label>
               <select value={form.status} onChange={set('status')} className={sel}>
-                {Object.entries(STATUS_CONFIG).map(([v, c]) => <option key={v} value={v}>{c.label}</option>)}
+                {EDITABLE_LEAD_STATUSES.map(v => <option key={v} value={v}>{STATUS_CONFIG[v].label}</option>)}
               </select>
             </div>
             <Field label="From City" value={form.from_city} onChange={set('from_city')} placeholder="Mumbai" />
@@ -1089,7 +1104,8 @@ function LeadsPageInner() {
                       </td>
                       <td className="px-4 py-3">
                         {(() => {
-                          const cfg = STATUS_CONFIG[l.status] ?? { label: l.status, color: '#6b7280', bg: '#f3f4f6' }
+                          const displayStatus = l.effective_status ?? l.status
+                          const cfg = STATUS_CONFIG[displayStatus] ?? { label: displayStatus, color: '#6b7280', bg: '#f3f4f6' }
                           return (
                             <span style={{ color: cfg.color, background: cfg.bg }}
                               className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold">

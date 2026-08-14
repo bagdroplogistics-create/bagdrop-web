@@ -52,6 +52,27 @@ export async function GET(req: NextRequest) {
     excludedBookingIds = (cancelledBookings ?? []).map(b => b.id)
   }
 
+  // ── "Confirmed" — a real bookings.status value, not a leads.status one ──
+  // leads.status is a separate CRM-funnel field (new/contacted/qualified/
+  // converted/lost — see STATUS_CONFIG in app/(admin)/admin/leads/page.tsx)
+  // that never itself contains 'confirmed'; a booking reaching Confirmed
+  // doesn't write anything back to its lead. So a lead never actually gets
+  // "excluded" by any filter bug — the Leads tab simply had no concept of
+  // this booking-side status at all. Fixed here by resolving which
+  // booking_ids are currently Confirmed and using that to (a) answer the
+  // status=confirmed filter directly against booking_id, and (b) compute a
+  // read-only `effective_status` per lead below — the lead's own `status`
+  // column is never written to, so this can't create a duplicate record or
+  // change the underlying booking/confirmation workflow.
+  let confirmedBookingIds: string[] = []
+  if (!deleted) {
+    const { data: confirmedBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id')
+      .eq('status', 'confirmed')
+    confirmedBookingIds = (confirmedBookings ?? []).map(b => b.id)
+  }
+
   let query = supabaseAdmin
     .from('leads')
     .select('*', { count: 'exact' })
@@ -67,7 +88,22 @@ export async function GET(req: NextRequest) {
   }
 
   if (!deleted && status && status !== 'all') {
-    query = query.eq('status', status)
+    if (status === 'confirmed') {
+      // Every lead whose linked booking is Confirmed — regardless of the
+      // lead's own raw status — and none of the "no confirmed bookings
+      // exist yet" case falling through to an unfiltered (i.e. wrong) list.
+      query = confirmedBookingIds.length > 0
+        ? query.in('booking_id', confirmedBookingIds)
+        : query.eq('id', '00000000-0000-0000-0000-000000000000')
+    } else {
+      query = query.eq('status', status)
+      // A lead whose booking has since reached Confirmed is now shown
+      // under the Confirmed filter instead — never under both, so a
+      // confirmed inquiry is always counted exactly once.
+      if (confirmedBookingIds.length > 0) {
+        query = query.or(`booking_id.is.null,booking_id.not.in.(${confirmedBookingIds.join(',')})`)
+      }
+    }
   }
 
   if (source && source !== 'all') {
@@ -105,7 +141,16 @@ export async function GET(req: NextRequest) {
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
     if (!deleted && status && status !== 'all') {
-      fallbackQuery = fallbackQuery.eq('status', status)
+      if (status === 'confirmed') {
+        fallbackQuery = confirmedBookingIds.length > 0
+          ? fallbackQuery.in('booking_id', confirmedBookingIds)
+          : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
+      } else {
+        fallbackQuery = fallbackQuery.eq('status', status)
+        if (confirmedBookingIds.length > 0) {
+          fallbackQuery = fallbackQuery.or(`booking_id.is.null,booking_id.not.in.(${confirmedBookingIds.join(',')})`)
+        }
+      }
     }
     if (source && source !== 'all') {
       fallbackQuery = fallbackQuery.eq('source', source)
@@ -129,7 +174,17 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ leads: data, total: count, page, limit })
+  // Read-only display status — 'confirmed' when the linked booking is,
+  // otherwise the lead's own untouched status. Computed here (not stored)
+  // so this is purely additive: leads.status keeps meaning exactly what it
+  // always has for every other system that reads it (sales-followup
+  // reminders, etc.).
+  const enriched = (data ?? []).map(l => ({
+    ...l,
+    effective_status: l.booking_id && confirmedBookingIds.includes(l.booking_id) ? 'confirmed' : l.status,
+  }))
+
+  return NextResponse.json({ leads: enriched, total: count, page, limit })
 }
 
 export async function POST(req: NextRequest) {
