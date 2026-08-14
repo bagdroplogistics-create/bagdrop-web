@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { formatCustomerName } from '@/lib/constants'
-import { Download, Loader2, RefreshCw } from 'lucide-react'
+import { Download, Loader2, RefreshCw, ArrowLeftRight } from 'lucide-react'
 import type { InvoicePDFLineItem, InvoicePDFProps } from '../InvoicePDF'
 
 interface Invoice {
@@ -83,6 +83,11 @@ export default function InvoicePrintPage() {
   const [pdfMods, setPdfMods] = useState<PdfModules | null>(null)
   const [assigning, setAssigning] = useState(false)
   const [assignErr, setAssignErr] = useState('')
+  const [swapOpen, setSwapOpen] = useState(false)
+  const [swapWith, setSwapWith] = useState('')
+  const [swapping, setSwapping] = useState(false)
+  const [swapErr,  setSwapErr]  = useState('')
+  const [swapMsg,  setSwapMsg]  = useState('')
 
   function loadInvoice(key: string) {
     return fetch(`/api/admin/invoices/${id}?key=${key}`)
@@ -124,6 +129,33 @@ export default function InvoicePrintPage() {
       setAssignErr('Network error — please try again')
     } finally {
       setAssigning(false)
+    }
+  }
+
+  // Manual correction for numbers assigned out of chronological order (see
+  // app/api/admin/invoices/[id]/swap-number/route.ts) — swaps THIS
+  // invoice's number with whatever invoice currently holds the number
+  // typed in. Deliberately requires typing the other invoice's CURRENT
+  // number (not picking from a list) so this can never be used by
+  // accident; it's a rare, explicit correction action.
+  async function swapNumber() {
+    const key = getKey()
+    if (!key || swapping || !swapWith.trim()) return
+    setSwapping(true); setSwapErr(''); setSwapMsg('')
+    try {
+      const r = await fetch(`/api/admin/invoices/${id}/swap-number?key=${key}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ with_invoice_number: swapWith.trim() }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setSwapErr(d.error ?? 'Swap failed'); return }
+      setInvoice(d.invoice ?? invoice)
+      setSwapMsg(`Swapped — this invoice is now ${d.invoice?.invoice_number}.`)
+      setSwapWith('')
+    } catch {
+      setSwapErr('Network error — please try again')
+    } finally {
+      setSwapping(false)
     }
   }
 
@@ -183,6 +215,13 @@ export default function InvoicePrintPage() {
               {assigning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Assigning…</> : <><RefreshCw className="h-3.5 w-3.5" /> Assign Invoice Number</>}
             </button>
           )}
+          {!isLegacyPlaceholder && (
+            <button onClick={() => setSwapOpen(v => !v)}
+              title="Correct a number assigned out of order by swapping it with another invoice's number"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-600 hover:bg-gray-50">
+              <ArrowLeftRight className="h-3.5 w-3.5" /> Fix Number
+            </button>
+          )}
           <button onClick={() => window.history.back()} className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50">← Back</button>
           <button onClick={downloadPDF} disabled={downloading}
             className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
@@ -190,6 +229,28 @@ export default function InvoicePrintPage() {
           </button>
         </div>
       </div>
+
+      {swapOpen && (
+        <div className="border-b border-gray-200 bg-gray-50 px-6 py-3">
+          <p className="mb-1.5 text-xs text-gray-500">
+            Swaps this invoice&apos;s number with another invoice&apos;s current number — use this when a number was
+            assigned out of chronological order. Neither invoice&apos;s amount, customer, or any other data changes.
+          </p>
+          <div className="flex items-center gap-2">
+            <input
+              value={swapWith} onChange={e => setSwapWith(e.target.value)}
+              placeholder="Other invoice's current number, e.g. BLS2600044"
+              className="w-72 rounded-lg border border-gray-200 px-3 py-1.5 text-sm focus:border-orange-400 focus:outline-none"
+            />
+            <button onClick={swapNumber} disabled={swapping || !swapWith.trim()}
+              className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-900 disabled:opacity-50">
+              {swapping ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Swapping…</> : 'Swap'}
+            </button>
+          </div>
+          {swapErr && <p className="mt-1.5 text-xs font-semibold text-red-600">{swapErr}</p>}
+          {swapMsg && <p className="mt-1.5 text-xs font-semibold text-green-600">{swapMsg}</p>}
+        </div>
+      )}
 
       {/* Live preview of the ACTUAL generated PDF (react-pdf's PDFViewer
           renders it into an iframe) — this is exactly the same document

@@ -59,6 +59,12 @@ function fmtDate(d: string | null) {
 function fmtRs(n: number) {
   return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 })
 }
+// Same "what's still owed" logic as InvoicePDF.tsx's balanceDue prop —
+// paid means fully settled (0 due), anything else is the full total still
+// outstanding. Matches the Balance Due column in Zoho Books.
+function balanceDue(inv: Pick<Invoice, 'payment_status' | 'total_amount'>) {
+  return inv.payment_status === 'paid' ? 0 : Number(inv.total_amount ?? 0)
+}
 
 export default function InvoicesPage() {
   const router = useRouter()
@@ -198,7 +204,7 @@ export default function InvoicesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Invoice #', 'Customer', 'Route', 'Amount', 'GST', 'Total', 'Status', 'Date', 'Sent', 'Actions'].map(h => (
+                    {['Invoice #', 'Customer', 'Route', 'Amount', 'GST', 'Total', 'Balance Due', 'Status', 'Date', 'Sent', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -217,6 +223,11 @@ export default function InvoicesPage() {
                       <td className="px-4 py-3 text-gray-700">{fmtRs(inv.base_amount)}</td>
                       <td className="px-4 py-3 text-gray-500 text-xs">{fmtRs(inv.cgst + inv.sgst)}</td>
                       <td className="px-4 py-3 font-bold text-gray-900">{fmtRs(inv.total_amount)}</td>
+                      <td className="px-4 py-3">
+                        {balanceDue(inv) > 0
+                          ? <span className="font-semibold text-red-600">{fmtRs(balanceDue(inv))}</span>
+                          : <span className="text-gray-400">{fmtRs(0)}</span>}
+                      </td>
                       <td className="px-4 py-3"><Badge status={inv.payment_status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(inv.invoice_date)}</td>
                       <td className="px-4 py-3">
