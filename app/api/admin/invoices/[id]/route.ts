@@ -19,7 +19,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const allowed = [
     "customer_name", "customer_phone", "customer_email", "customer_address",
-    "base_amount", "cgst", "sgst", "total_amount",
+    "base_amount", "cgst", "sgst", "igst", "total_amount",
     "payment_status", "payment_method", "payment_reference",
     "notes", "due_date", "sent_email", "sent_whatsapp",
   ]
@@ -30,9 +30,23 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   if ("base_amount" in updates) {
     const base = Number(updates.base_amount) || 0
-    updates.cgst         = parseFloat((base * 0.025).toFixed(2))
-    updates.sgst         = parseFloat((base * 0.025).toFixed(2))
-    updates.total_amount = parseFloat((base + (updates.cgst as number) + (updates.sgst as number)).toFixed(2))
+    // Preserve whichever GST treatment this invoice was actually created
+    // with (see resolveGstTreatment() in lib/zoho-books.ts) — an interstate
+    // invoice keeps recalculating igst on edit, never silently reintroduces
+    // cgst/sgst it was never meant to have, and vice versa.
+    const { data: existing } = await supabaseAdmin.from("invoices").select("igst").eq("id", id).maybeSingle()
+    const wasInterstate = Number(existing?.igst ?? 0) > 0
+    if (wasInterstate) {
+      updates.igst          = parseFloat((base * 0.05).toFixed(2))
+      updates.cgst          = 0
+      updates.sgst          = 0
+      updates.total_amount  = parseFloat((base + (updates.igst as number)).toFixed(2))
+    } else {
+      updates.cgst          = parseFloat((base * 0.025).toFixed(2))
+      updates.sgst          = parseFloat((base * 0.025).toFixed(2))
+      updates.igst          = 0
+      updates.total_amount  = parseFloat((base + (updates.cgst as number) + (updates.sgst as number)).toFixed(2))
+    }
   }
 
   const { data, error } = await supabaseAdmin.from("invoices").update(updates).eq("id", id).select().single()

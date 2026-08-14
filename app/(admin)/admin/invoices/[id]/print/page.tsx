@@ -3,179 +3,209 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { formatCustomerName } from '@/lib/constants'
+import { Download, Loader2, RefreshCw } from 'lucide-react'
+import type { InvoicePDFLineItem, InvoicePDFProps } from '../InvoicePDF'
 
 interface Invoice {
   id: string; invoice_number: string; booking_id: string | null
+  po_number?: string | null
   title?: string | null
   customer_name: string; customer_phone: string; customer_email: string | null; customer_address: string | null
   // Business Customer support — see supabase/migrations/20260807_
   // business_customer_fields.sql.
   customer_type?: string | null
   business_name?: string | null
+  gst_number?: string | null
   service_type: string | null; from_city: string; to_city: string; total_bags: number
-  base_amount: number; cgst: number; sgst: number; total_amount: number
+  base_amount: number; cgst: number; sgst: number; igst?: number; total_amount: number
   payment_status: string; payment_method: string | null; payment_reference: string | null
   notes: string | null; invoice_date: string; created_at: string
+  due_date?: string | null; place_of_supply?: string | null; consignment_no?: string | null
+  pickup_date?: string | null; delivery_date?: string | null
+  line_items?: InvoicePDFLineItem[] | null
 }
 
-function fmtDate(d: string | null) {
-  if (!d) return '—'
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+// Shared by both the on-screen live preview (PDFViewer below) and the
+// Download PDF button — one place building the props means the preview and
+// the downloaded/emailed file can never visually drift apart again (the
+// old version of this page hand-coded a SEPARATE, non-Zoho-style HTML
+// preview here, which is exactly what looked wrong/stale on screen even
+// after the real PDF generation was fixed).
+function buildPdfProps(invoice: Invoice): InvoicePDFProps {
+  const lineItems: InvoicePDFLineItem[] = Array.isArray(invoice.line_items) ? invoice.line_items : []
+  return {
+    invoiceNumber: invoice.invoice_number,
+    invoiceDate:   invoice.invoice_date,
+    dueDate:       invoice.due_date ?? null,
+    terms:         'Due on Receipt',
+    poNumber:      invoice.po_number ?? null,
+    placeOfSupply: invoice.place_of_supply ?? null,
+    consignmentNo: invoice.consignment_no ?? null,
+    totalBags:     invoice.total_bags ?? null,
+    pickupDate:    invoice.pickup_date ?? null,
+    deliveryDate:  invoice.delivery_date ?? null,
+    billToName:    invoice.customer_type === 'business' && invoice.business_name
+      ? invoice.business_name
+      : (formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name),
+    billToAddress: invoice.customer_address ?? null,
+    billToPhone:   invoice.customer_phone ?? null,
+    billToEmail:   invoice.customer_email ?? null,
+    billToGstin:   invoice.gst_number ?? null,
+    shipToLabel:   'Ship To',
+    shipToLines:   [invoice.to_city, 'India'].filter(Boolean) as string[],
+    lineItems,
+    subtotal:      Number(invoice.base_amount ?? 0),
+    cgst:          Number(invoice.cgst ?? 0),
+    sgst:          Number(invoice.sgst ?? 0),
+    igst:          Number(invoice.igst ?? 0),
+    total:         Number(invoice.total_amount ?? 0),
+    paymentMade:   invoice.payment_status === 'paid' ? Number(invoice.total_amount ?? 0) : 0,
+    balanceDue:    invoice.payment_status === 'paid' ? 0 : Number(invoice.total_amount ?? 0),
+    notes:         invoice.notes ?? null,
+    termsText:     null,
+    paid:          invoice.payment_status === 'paid',
+  }
 }
-function fmtRs(n: number) {
-  return '₹ ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-}
+
+// react-pdf pieces are dynamically imported (client-only — PDFViewer
+// renders into an iframe and touches browser APIs that don't exist during
+// SSR), same pattern already used for the Download PDF button and for
+// QuotePDF's downloadPDF() elsewhere in the admin.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type PdfModules = { PDFViewer: any; InvoicePDF: any }
 
 export default function InvoicePrintPage() {
   const { id } = useParams<{ id: string }>()
   const [invoice, setInvoice] = useState<Invoice | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
+  const [downloading, setDownloading] = useState(false)
+  const [pdfMods, setPdfMods] = useState<PdfModules | null>(null)
+  const [assigning, setAssigning] = useState(false)
+  const [assignErr, setAssignErr] = useState('')
 
-  useEffect(() => {
-    const urlKey = new URLSearchParams(window.location.search).get('key')
-    const key    = urlKey || sessionStorage.getItem('bagdrop_admin_key')
-    if (!key) { setError('Unauthorized'); setLoading(false); return }
-    fetch(`/api/admin/invoices/${id}?key=${key}`)
+  function loadInvoice(key: string) {
+    return fetch(`/api/admin/invoices/${id}?key=${key}`)
       .then(r => r.json())
       .then(d => { setInvoice(d.invoice ?? null); setLoading(false) })
       .catch(() => { setError('Failed to load invoice'); setLoading(false) })
-  }, [id])
+  }
+
+  function getKey(): string | null {
+    const urlKey = new URLSearchParams(window.location.search).get('key')
+    return urlKey || sessionStorage.getItem('bagdrop_admin_key')
+  }
 
   useEffect(() => {
-    if (invoice) setTimeout(() => window.print(), 600)
-  }, [invoice])
+    const key = getKey()
+    if (!key) { setError('Unauthorized'); setLoading(false); return }
+    loadInvoice(key)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  // One-time upgrade path for invoices still carrying the very old local
+  // placeholder number (BDI-{year}-{seq}, from before Bagdrop had any real
+  // numbering source) — assigns a real number from the current local
+  // "BLS26" sequence, without touching the already-billed amounts. Only
+  // ever shown for legacy invoices (see the button's render condition
+  // below) and guarded server-side against being run twice.
+  async function assignInvoiceNumber() {
+    const key = getKey()
+    if (!key || assigning) return
+    setAssigning(true); setAssignErr('')
+    try {
+      const r = await fetch(`/api/admin/invoices/${id}/assign-number?key=${key}`, {
+        method: 'POST', headers: { 'x-admin-key': key },
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setAssignErr(d.error ?? 'Assigning invoice number failed'); return }
+      setInvoice(d.invoice ?? invoice)
+    } catch {
+      setAssignErr('Network error — please try again')
+    } finally {
+      setAssigning(false)
+    }
+  }
+
+  useEffect(() => {
+    Promise.all([import('@react-pdf/renderer'), import('../InvoicePDF')]).then(
+      ([{ PDFViewer }, invoicePdfModule]) => setPdfMods({ PDFViewer, InvoicePDF: invoicePdfModule.default })
+    )
+  }, [])
+
+  async function downloadPDF() {
+    if (!invoice || downloading) return
+    setDownloading(true)
+    try {
+      const { pdf }                  = await import('@react-pdf/renderer')
+      const { default: InvoicePDF }  = await import('../InvoicePDF')
+
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob = await pdf(InvoicePDF(buildPdfProps(invoice)) as any).toBlob()
+
+      const url  = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href     = url
+      link.download = `${invoice.invoice_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Invoice PDF generation failed:', e)
+      alert('PDF generation failed. Please try again.')
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   if (loading) return <div className="flex items-center justify-center min-h-screen text-gray-400">Loading invoice...</div>
   if (error || !invoice) return <div className="flex items-center justify-center min-h-screen text-red-400">{error || 'Invoice not found'}</div>
 
-  return (
-    <>
-      <style>{`
-        @media print {
-          @page { size: A4; margin: 18mm; }
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-          .no-print { display: none !important; }
-        }
-        body { font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; color: #111827; background: #fff; }
-        .text-gray-400, .text-gray-500, .text-gray-600 { color: #545454 !important; }
-      `}</style>
+  const { PDFViewer, InvoicePDF } = pdfMods ?? {}
+  const isLegacyPlaceholder = String(invoice.invoice_number ?? '').startsWith('BDI-')
 
-      <div className="no-print fixed inset-x-0 top-0 z-10 flex items-center justify-between border-b border-gray-100 bg-white px-6 py-3 shadow-sm">
-        <p className="text-sm font-bold text-gray-700">{invoice.invoice_number} — Invoice PDF</p>
+  return (
+    <div className="flex h-screen flex-col bg-gray-100">
+      <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3 shadow-sm">
+        <div>
+          <p className="text-sm font-bold text-gray-700">{invoice.invoice_number} — Tax Invoice</p>
+          {isLegacyPlaceholder && (
+            <p className="text-xs text-amber-600">Legacy invoice — no real invoice number assigned yet.</p>
+          )}
+          {assignErr && <p className="text-xs font-semibold text-red-600">{assignErr}</p>}
+        </div>
         <div className="flex gap-3">
+          {isLegacyPlaceholder && (
+            <button onClick={assignInvoiceNumber} disabled={assigning}
+              title="Assigns the next real invoice number (from the current BLS26 series) to this record — the billed amount is never changed."
+              className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-1.5 text-sm font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60">
+              {assigning ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Assigning…</> : <><RefreshCw className="h-3.5 w-3.5" /> Assign Invoice Number</>}
+            </button>
+          )}
           <button onClick={() => window.history.back()} className="rounded-lg border border-gray-200 px-4 py-1.5 text-sm text-gray-600 hover:bg-gray-50">← Back</button>
-          <button onClick={() => window.print()} className="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Print / PDF</button>
+          <button onClick={downloadPDF} disabled={downloading}
+            className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+            {downloading ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><Download className="h-3.5 w-3.5" /> Download PDF</>}
+          </button>
         </div>
       </div>
 
-      <div className="mx-auto mt-16 max-w-[794px] bg-white p-12 shadow-lg print:mt-0 print:shadow-none">
-
-        {/* Header */}
-        <div className="flex items-start justify-between pb-6 mb-6 border-b-2 border-orange-500">
-          <div>
-            {/* Icon + wordmark lockup (icon asset is transparent-orange, works
-                on this white header — logo-full-white.png used by the Quote/LR
-                headers is white-on-transparent and would be invisible here) */}
-            <div className="flex items-center gap-2">
-              <img src="/images/logo-icon.png" alt="Bagdrop" className="h-8 w-auto" />
-              <p className="text-2xl font-black tracking-tight text-orange-500">BAGDROP</p>
-            </div>
-            <p className="text-[13px] font-bold uppercase tracking-wide text-gray-500 mt-1">India&apos;s First Digital Baggage Infrastructure</p>
-            <p className="text-xs text-gray-400 mt-1">bagdrop.co · info@bagdrop.co</p>
-          </div>
-          <div className="text-right">
-            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400">Tax Invoice</p>
-            <p className="text-2xl font-black text-gray-900 mt-0.5">{invoice.invoice_number}</p>
-            <p className="text-xs text-gray-500 mt-1">Date: {fmtDate(invoice.invoice_date)}</p>
-            {invoice.booking_id && <p className="text-xs text-gray-400 mt-0.5">Booking: {invoice.booking_id.slice(0,8).toUpperCase()}</p>}
-          </div>
-        </div>
-
-        {/* Bill to / Service */}
-        <div className="mb-8 grid grid-cols-2 gap-8">
-          <div>
-            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-2">Bill To</p>
-            <p className="text-base font-bold text-gray-900">
-              {invoice.customer_type === 'business' && invoice.business_name ? invoice.business_name : (formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name)}
-            </p>
-            {invoice.customer_type === 'business' && invoice.business_name && (
-              <p className="text-sm text-gray-600">{formatCustomerName(invoice.title, invoice.customer_name) || invoice.customer_name}</p>
-            )}
-            <p className="text-sm text-gray-600">{invoice.customer_phone}</p>
-            {invoice.customer_email && <p className="text-sm text-gray-600">{invoice.customer_email}</p>}
-            {/* Address value bumped bigger + bolder + darker, matching
-                QuotePDF.tsx's Pickup/Delivery Address treatment. */}
-            {invoice.customer_address && <p className="text-sm font-semibold text-gray-800 mt-1">{invoice.customer_address}</p>}
-          </div>
-          <div>
-            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-2">Service Details</p>
-            <p className="text-sm font-semibold text-gray-800">{invoice.service_type?.replace('airport-to-door','Airport → Doorstep').replace('door-to-airport','Doorstep → Airport').replace('intercity','Intercity') ?? 'Baggage Delivery'}</p>
-            <p className="text-sm text-gray-600">{invoice.from_city} → {invoice.to_city}</p>
-            <p className="text-sm text-gray-500 mt-1">{invoice.total_bags} bag{invoice.total_bags !== 1 ? 's' : ''}</p>
-            {invoice.payment_method && <p className="text-sm text-gray-500">Payment: {invoice.payment_method.toUpperCase()}</p>}
-            {invoice.payment_reference && <p className="text-xs text-gray-400">Ref: {invoice.payment_reference}</p>}
-          </div>
-        </div>
-
-        {/* Line items */}
-        <table className="w-full mb-8 text-sm">
-          <thead>
-            <tr className="bg-gray-900 text-white">
-              <th className="px-4 py-3 text-left font-semibold">Description</th>
-              <th className="px-4 py-3 text-center font-semibold">Qty</th>
-              <th className="px-4 py-3 text-right font-semibold">Rate</th>
-              <th className="px-4 py-3 text-right font-semibold">Amount</th>
-            </tr>
-          </thead>
-          <tbody>
-            <tr className="border-b border-gray-100">
-              <td className="px-4 py-3 text-gray-800">
-                Baggage Delivery Service
-                <span className="text-gray-400 text-xs"> · {invoice.from_city} → {invoice.to_city}</span>
-              </td>
-              <td className="px-4 py-3 text-center text-gray-700">{invoice.total_bags}</td>
-              <td className="px-4 py-3 text-right text-gray-700">{fmtRs(invoice.base_amount / invoice.total_bags)}</td>
-              <td className="px-4 py-3 text-right font-semibold text-gray-900">{fmtRs(invoice.base_amount)}</td>
-            </tr>
-          </tbody>
-        </table>
-
-        {/* Totals */}
-        <div className="flex justify-end mb-8">
-          <div className="w-72 space-y-2 text-sm">
-            <div className="flex justify-between text-gray-600"><span>Subtotal (excl. GST)</span><span>{fmtRs(invoice.base_amount)}</span></div>
-            <div className="flex justify-between text-gray-500"><span>CGST @ 2.5%</span><span>{fmtRs(invoice.cgst)}</span></div>
-            <div className="flex justify-between text-gray-500"><span>SGST @ 2.5%</span><span>{fmtRs(invoice.sgst)}</span></div>
-            <div className="flex justify-between border-t-2 border-gray-900 pt-3 text-base font-bold text-gray-900">
-              <span>Total Amount</span>
-              <span className="text-orange-500">{fmtRs(invoice.total_amount)}</span>
-            </div>
-            <div className="flex justify-between text-sm font-semibold" style={{color: invoice.payment_status === 'paid' ? '#16a34a' : '#d97706'}}>
-              <span>Payment Status</span>
-              <span>{invoice.payment_status === 'paid' ? '✓ PAID' : 'PENDING'}</span>
-            </div>
-          </div>
-        </div>
-
-        {invoice.notes && (
-          <div className="rounded-xl bg-gray-50 px-5 py-4 mb-8">
-            <p className="text-[13px] font-bold uppercase tracking-widest text-gray-400 mb-1">Notes</p>
-            <p className="text-sm text-gray-700">{invoice.notes}</p>
+      {/* Live preview of the ACTUAL generated PDF (react-pdf's PDFViewer
+          renders it into an iframe) — this is exactly the same document
+          the Download button saves and the same one attached to the
+          invoice email, not a separate hand-styled approximation. */}
+      <div className="flex-1">
+        {PDFViewer && InvoicePDF ? (
+          <PDFViewer style={{ width: '100%', height: '100%', border: 'none' }} showToolbar={false}>
+            <InvoicePDF {...buildPdfProps(invoice)} />
+          </PDFViewer>
+        ) : (
+          <div className="flex h-full items-center justify-center text-gray-400">
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> Rendering invoice…
           </div>
         )}
-
-        <div className="text-xs text-gray-400 border-t border-gray-100 pt-6 space-y-1">
-          <p className="font-semibold text-gray-500">Terms & Conditions</p>
-          <p>1. GST applicable at 5% (CGST 2.5% + SGST 2.5%) as per prevailing tax laws.</p>
-          <p>2. This is a computer-generated invoice and does not require a physical signature.</p>
-          <p>3. For disputes or queries, contact info@bagdrop.co within 7 days of invoice date.</p>
-        </div>
-
-        <div className="mt-8 text-center text-xs text-gray-300 border-t border-gray-100 pt-4">
-          Bagdrop · India's Digital Baggage Infrastructure Platform · bagdrop.co
-        </div>
       </div>
-    </>
+    </div>
   )
 }

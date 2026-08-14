@@ -257,6 +257,114 @@ export async function createZohoEstimate(input: CreateEstimateInput): Promise<Zo
   }
 }
 
+// ── Invoice helpers ───────────────────────────────────────────────
+//
+// Mirrors createZohoEstimate() above exactly, but against Zoho Books'
+// /invoices endpoint instead of /estimates. This is what makes an
+// invoice's number genuinely Zoho-sourced: Zoho assigns invoice_number
+// from the organization's own configured numbering series atomically at
+// creation time (no template_id needed here — Zoho uses the org's default
+// invoice template unless one is explicitly passed). See
+// app/api/admin/invoices/route.ts for the caller — a failed call here
+// must never fall back to a locally-fabricated number; the invoice simply
+// isn't created until Zoho succeeds.
+
+export interface CreateInvoiceInput {
+  customer_id:       string
+  date:              string          // YYYY-MM-DD — invoice date
+  due_date?:         string          // YYYY-MM-DD
+  reference_number?: string          // e.g. Bagdrop tracking ID / consignment no
+  line_items:        ZohoLineItem[]
+  notes?:            string
+  terms?:            string
+  send_email?:       boolean
+}
+
+export interface ZohoInvoiceResult {
+  invoice_id:     string
+  invoice_number: string          // e.g. "BLS2600042" — the real Zoho series number
+  status:         string
+  total:          number
+  zoho_url:       string
+}
+
+export async function createZohoInvoice(input: CreateInvoiceInput): Promise<ZohoInvoiceResult> {
+  const body: Record<string, unknown> = {
+    customer_id: input.customer_id,
+    date:        input.date,
+    line_items:  input.line_items,
+  }
+  if (input.due_date)         body.due_date         = input.due_date
+  if (input.reference_number) body.reference_number = input.reference_number
+  if (input.notes)            body.notes            = input.notes
+  if (input.terms)            body.terms            = input.terms
+
+  const query: Record<string, string> = { organization_id: ZOHO_ORG_ID }
+  if (input.send_email) query.send = 'true'
+
+  const token = await getZohoAccessToken()
+  const qs    = new URLSearchParams(query)
+  const res   = await fetch(`${ZOHO_BASE}/invoices?${qs}`, {
+    method:  'POST',
+    headers: {
+      Authorization:  `Zoho-oauthtoken ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const data = await res.json() as Record<string, unknown>
+  if ((data.code as number) !== 0) {
+    throw new Error(`Create Zoho invoice failed: [${data.code}] ${data.message}`)
+  }
+
+  const inv = data.invoice as Record<string, unknown>
+  return {
+    invoice_id:     inv.invoice_id     as string,
+    invoice_number: inv.invoice_number as string,
+    status:         inv.status         as string,
+    total:          inv.total          as number,
+    zoho_url:       `https://books.zoho.in/app/${ZOHO_ORG_ID}#/invoices/${inv.invoice_id}`,
+  }
+}
+
+// ── GST treatment (Place of Supply / CGST+SGST vs IGST) ────────────
+//
+// Bagdrop's home state for GST purposes is Gujarat (state code 24 — see
+// LR_COMPANY.gstin in lib/lr-constants.ts, "24AAACC9320N2ZL"). An
+// individual/consumer customer (no GSTIN) is always treated as intrastate
+// (CGST+SGST) — this matches the invoice system's existing, unchanged
+// default. A business customer with a GSTIN is only switched to IGST if
+// their GSTIN's leading state code differs from Gujarat's.
+const GST_STATE_CODES: Record<string, string> = {
+  '01': 'Jammu and Kashmir', '02': 'Himachal Pradesh', '03': 'Punjab',
+  '04': 'Chandigarh', '05': 'Uttarakhand', '06': 'Haryana', '07': 'Delhi',
+  '08': 'Rajasthan', '09': 'Uttar Pradesh', '10': 'Bihar', '11': 'Sikkim',
+  '12': 'Arunachal Pradesh', '13': 'Nagaland', '14': 'Manipur', '15': 'Mizoram',
+  '16': 'Tripura', '17': 'Meghalaya', '18': 'Assam', '19': 'West Bengal',
+  '20': 'Jharkhand', '21': 'Odisha', '22': 'Chhattisgarh', '23': 'Madhya Pradesh',
+  '24': 'Gujarat', '26': 'Dadra and Nagar Haveli and Daman and Diu', '27': 'Maharashtra',
+  '28': 'Andhra Pradesh (Old)', '29': 'Karnataka', '30': 'Goa', '31': 'Lakshadweep',
+  '32': 'Kerala', '33': 'Tamil Nadu', '34': 'Puducherry', '35': 'Andaman and Nicobar Islands',
+  '36': 'Telangana', '37': 'Andhra Pradesh', '38': 'Ladakh',
+}
+export const BAGDROP_HOME_STATE_CODE = '24'
+
+export interface GstTreatment {
+  placeOfSupply: string           // e.g. "Gujarat (24)"
+  isInterstate:  boolean
+}
+
+/** Derives Place of Supply + intrastate/interstate from an optional customer GSTIN. */
+export function resolveGstTreatment(customerGstin?: string | null): GstTreatment {
+  const code = customerGstin?.trim().slice(0, 2)
+  const stateName = (code && GST_STATE_CODES[code]) || GST_STATE_CODES[BAGDROP_HOME_STATE_CODE]
+  const resolvedCode = (code && GST_STATE_CODES[code]) ? code : BAGDROP_HOME_STATE_CODE
+  return {
+    placeOfSupply: `${stateName} (${resolvedCode})`,
+    isInterstate:  resolvedCode !== BAGDROP_HOME_STATE_CODE,
+  }
+}
+
 // ── Pricing helpers ───────────────────────────────────────────────
 
 /**

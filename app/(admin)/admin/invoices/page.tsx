@@ -4,13 +4,13 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Receipt, Search, RefreshCw, ChevronDown, Eye,
-  Download, Mail, MessageCircle, CheckCircle, Clock,
+  Download, Mail, MessageCircle, CheckCircle, Clock, FileText, Loader2,
 } from 'lucide-react'
 import { formatCustomerName } from '@/lib/constants'
 
 interface Invoice {
   id:                string
-  invoice_number:    string
+  invoice_number:    string | null
   booking_id:        string | null
   title?:            string | null
   customer_name:     string
@@ -30,6 +30,10 @@ interface Invoice {
   sent_whatsapp:     boolean
   invoice_date:      string
   created_at:        string
+  // false = a completed inquiry with no real invoice row yet (see the
+  // merged bookings+invoices logic in GET /api/admin/invoices) — shown
+  // with a "Generate Invoice" action instead of Download/Email/WhatsApp.
+  generated:          boolean
 }
 
 const PAY_STATUS: Record<string, { label: string; color: string; bg: string }> = {
@@ -65,6 +69,7 @@ export default function InvoicesPage() {
   const [filter,   setFilter]   = useState('all')
   const [search,   setSearch]   = useState('')
   const [sending,  setSending]  = useState<string | null>(null)
+  const [generating, setGenerating] = useState<string | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key')
@@ -98,7 +103,32 @@ export default function InvoicesPage() {
     fetchInvoices()
   }
 
+  // Assigns the next number from the local BLS26 series and creates the
+  // real invoice row for a completed booking that doesn't have one yet —
+  // same POST used by the per-booking "Generate Invoice" step in the
+  // booking workflow, just triggered from this list so the backlog can be
+  // worked through in order (the list is sorted oldest → newest for
+  // exactly this reason).
+  async function generateInvoice(bookingId: string) {
+    setGenerating(bookingId)
+    try {
+      const res = await fetch('/api/admin/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_id: bookingId }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(d.error ?? 'Failed to generate invoice'); return }
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setGenerating(null)
+      fetchInvoices()
+    }
+  }
+
   const totalRevenue = invoices.filter(i => i.payment_status === 'paid').reduce((s, i) => s + Number(i.total_amount), 0)
+  const notGeneratedCount = invoices.filter(i => !i.generated).length
 
   if (!authed) return null
 
@@ -108,7 +138,7 @@ export default function InvoicesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Invoices</h1>
-            <p className="mt-0.5 text-sm text-gray-400">{invoices.length} invoices · {fmtRs(totalRevenue)} collected</p>
+            <p className="mt-0.5 text-sm text-gray-400">{invoices.length} completed inquiries · {fmtRs(totalRevenue)} collected</p>
           </div>
         </div>
       </div>
@@ -117,9 +147,9 @@ export default function InvoicesPage() {
         {/* Summary cards */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Total Invoices', value: invoices.length,                                                      color: '#2563eb', bg: '#dbeafe' },
+            { label: 'Completed Inquiries', value: invoices.length,                                                 color: '#2563eb', bg: '#dbeafe' },
+            { label: 'Not Generated',  value: notGeneratedCount,                                                     color: '#dc2626', bg: '#fee2e2' },
             { label: 'Paid',           value: invoices.filter(i => i.payment_status === 'paid').length,             color: '#16a34a', bg: '#dcfce7' },
-            { label: 'Pending',        value: invoices.filter(i => i.payment_status === 'pending').length,          color: '#d97706', bg: '#fef3c7' },
             { label: 'Revenue',        value: fmtRs(totalRevenue),                                                  color: '#FF6300', bg: '#fff7f0' },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -143,6 +173,7 @@ export default function InvoicesPage() {
             <select value={filter} onChange={e => setFilter(e.target.value)}
               className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none">
               <option value="all">All</option>
+              <option value="not_generated">Not Generated</option>
               <option value="paid">Paid</option>
               <option value="pending">Pending</option>
             </select>
@@ -160,7 +191,7 @@ export default function InvoicesPage() {
           ) : invoices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
               <Receipt className="mb-3 h-10 w-10 text-gray-200" />
-              <p className="text-sm text-gray-400">Invoices are auto-generated when a booking is marked Delivered.</p>
+              <p className="text-sm text-gray-400">No completed inquiries yet — this list fills up once a booking's workflow reaches Completed.</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -174,8 +205,10 @@ export default function InvoicesPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {invoices.map(inv => (
-                    <tr key={inv.id} className="hover:bg-orange-50/30 transition-colors">
-                      <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">{inv.invoice_number}</td>
+                    <tr key={inv.id} className={inv.generated ? 'hover:bg-orange-50/30 transition-colors' : 'bg-amber-50/40 hover:bg-amber-50/70 transition-colors'}>
+                      <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">
+                        {inv.generated ? inv.invoice_number : <span className="text-amber-600">Not generated</span>}
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">{formatCustomerName(inv.title, inv.customer_name) || inv.customer_name}</p>
                         <p className="text-xs text-gray-400">{inv.customer_phone}</p>
@@ -187,40 +220,57 @@ export default function InvoicesPage() {
                       <td className="px-4 py-3"><Badge status={inv.payment_status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(inv.invoice_date)}</td>
                       <td className="px-4 py-3">
-                        <div className="flex gap-1">
-                          <div title={inv.sent_email ? "Email sent" : "Email not sent"}>
-                            {inv.sent_email ? (
-                                <CheckCircle className="h-3.5 w-3.5 text-green-400" />
-                              ) : (
-                                <Clock className="h-3.5 w-3.5 text-gray-300" />
-                              )}
-                            </div>
-                         <div title={inv.sent_whatsapp ? "WhatsApp sent" : "WhatsApp not sent"}>
-                              {inv.sent_whatsapp ? (
-                                <CheckCircle className="h-3.5 w-3.5 text-green-400" />
-                              ) : (
-                                <Clock className="h-3.5 w-3.5 text-gray-300" />
-                              )}
-                         </div>
-                        </div>
+                        {inv.generated ? (
+                          <div className="flex gap-1">
+                            <div title={inv.sent_email ? "Email sent" : "Email not sent"}>
+                              {inv.sent_email ? (
+                                  <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                                ) : (
+                                  <Clock className="h-3.5 w-3.5 text-gray-300" />
+                                )}
+                              </div>
+                           <div title={inv.sent_whatsapp ? "WhatsApp sent" : "WhatsApp not sent"}>
+                                {inv.sent_whatsapp ? (
+                                  <CheckCircle className="h-3.5 w-3.5 text-green-400" />
+                                ) : (
+                                  <Clock className="h-3.5 w-3.5 text-gray-300" />
+                                )}
+                           </div>
+                          </div>
+                        ) : (
+                          <span className="text-xs text-gray-300">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex items-center gap-1">
-                          <button onClick={() => printInvoice(inv.id)} title="Download PDF"
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500 transition-colors">
-                            <Download className="h-3.5 w-3.5" />
+                        {inv.generated ? (
+                          <div className="flex items-center gap-1">
+                            <button onClick={() => printInvoice(inv.id)} title="Download PDF"
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500 transition-colors">
+                              <Download className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => markSent(inv.id, 'email')} disabled={sending === inv.id + 'email' || inv.sent_email}
+                              title="Mark email sent"
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-500 transition-colors disabled:opacity-40">
+                              <Mail className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => markSent(inv.id, 'whatsapp')} disabled={sending === inv.id + 'whatsapp' || inv.sent_whatsapp}
+                              title="Mark WhatsApp sent"
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-500 transition-colors disabled:opacity-40">
+                              <MessageCircle className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => inv.booking_id && generateInvoice(inv.booking_id)}
+                            disabled={generating === inv.booking_id || !inv.booking_id}
+                            title="Assigns the next number in the BLS26 series and creates the invoice"
+                            className="flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-60"
+                          >
+                            {generating === inv.booking_id
+                              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
+                              : <><FileText className="h-3.5 w-3.5" /> Generate Invoice</>}
                           </button>
-                          <button onClick={() => markSent(inv.id, 'email')} disabled={sending === inv.id + 'email' || inv.sent_email}
-                            title="Mark email sent"
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-500 transition-colors disabled:opacity-40">
-                            <Mail className="h-3.5 w-3.5" />
-                          </button>
-                          <button onClick={() => markSent(inv.id, 'whatsapp')} disabled={sending === inv.id + 'whatsapp' || inv.sent_whatsapp}
-                            title="Mark WhatsApp sent"
-                            className="rounded-lg p-1.5 text-gray-400 hover:bg-green-50 hover:text-green-500 transition-colors disabled:opacity-40">
-                            <MessageCircle className="h-3.5 w-3.5" />
-                          </button>
-                        </div>
+                        )}
                       </td>
                     </tr>
                   ))}

@@ -329,13 +329,15 @@ export async function PATCH(
       })
       updates.status_history = history
 
-      // Still create the invoice record for bookkeeping if this jump passes
-      // through (or lands on) 'delivered' — matches what a normal delivery
-      // would do — but this never contacts the customer either way.
-      const deliveredIdx = STATUS_ORDER.indexOf('delivered')
-      if (existing && deliveredIdx !== -1 && toIdx >= deliveredIdx) {
-        await autoCreateInvoice(id, existing)
-      }
+      // NOTE: this used to also auto-create a local, non-Zoho invoice
+      // (autoCreateInvoice) the moment a jump passed through 'delivered'.
+      // Removed — invoice generation is now exclusively the explicit
+      // "Generate Invoice" action after 'completed' (Step 17 in the
+      // Booking Workflow), which calls Zoho Books for a real invoice
+      // number. Auto-creating one here first, with a fake local number,
+      // would permanently block that later Zoho call from ever running
+      // for this booking (POST /api/admin/invoices only calls Zoho when
+      // no invoice row exists yet for the booking).
 
       // Deliberately skipped for this path: notifyBookingStatus,
       // sendLifecycleWhatsApp (shouldSendLifecycleWhatsApp stays false),
@@ -389,9 +391,8 @@ export async function PATCH(
       })
       updates.status_history = history
 
-      if (status === 'delivered' && existing) {
-        await autoCreateInvoice(id, existing)
-      }
+      // (autoCreateInvoice call removed here too — see the matching note
+      // in the historical-jump branch above for why.)
 
       // Auto-create a draft quote when booking is accepted (so it appears in Quotes tab)
       if (status === 'accepted' && existing) {
@@ -479,73 +480,10 @@ export async function PATCH(
   return NextResponse.json({ booking: data })
 }
 
-// ── Auto-create (or fix ₹0) invoice on delivery ──────────────────
-async function autoCreateInvoice(bookingId: string, booking: Record<string, unknown>) {
-  const total   = Number(booking.total_amount ?? 0)
-  const baseAmt = parseFloat((total / 1.05).toFixed(2))
-  const cgst    = parseFloat((baseAmt * 0.025).toFixed(2))
-  const sgst    = parseFloat((baseAmt * 0.025).toFixed(2))
-
-  const invoicePayload = {
-    booking_id:        bookingId,
-    title:             (booking.title as string) ?? DEFAULT_TITLE,
-    customer_name:     booking.customer_name as string,
-    customer_phone:    booking.customer_phone as string,
-    customer_email:    (booking.customer_email as string) ?? null,
-    service_type:      (booking.service_type as string) ?? null,
-    from_city:         booking.from_city as string,
-    to_city:           booking.to_city as string,
-    total_bags:        Number(booking.total_bags ?? 1),
-    base_amount:       baseAmt,
-    cgst,
-    sgst,
-    total_amount:      total,
-    payment_status:    (booking.payment_status as string) ?? 'paid',
-    payment_method:    (booking.payment_method as string) ?? null,
-    payment_reference: (booking.payment_reference as string) ?? null,
-    invoice_date:      new Date().toISOString().split('T')[0],
-  }
-
-  // Check if invoice already exists for this booking
-  const { data: existingInv } = await supabaseAdmin
-    .from('invoices')
-    .select('id, total_amount')
-    .eq('booking_id', bookingId)
-    .maybeSingle()
-
-  if (existingInv) {
-    // If existing invoice has correct amount, skip
-    if (Number(existingInv.total_amount) > 0) {
-      console.log(`[autoCreateInvoice] invoice already exists for booking ${bookingId}, skipping`)
-      return
-    }
-    // Existing invoice has ₹0 (created by old buggy code) — update it with correct amounts
-    const { error } = await supabaseAdmin
-      .from('invoices')
-      .update({ base_amount: baseAmt, cgst, sgst, total_amount: total, payment_status: invoicePayload.payment_status })
-      .eq('id', existingInv.id)
-    if (error) console.error('[autoCreateInvoice] update failed:', error.message)
-    else console.log(`[autoCreateInvoice] updated ₹0 invoice for booking ${bookingId} → ₹${total}`)
-    return
-  }
-
-  // No invoice yet — create one
-  const year = new Date().getFullYear()
-  const { count } = await supabaseAdmin
-    .from('invoices')
-    .select('*', { count: 'exact', head: true })
-    .like('invoice_number', `BDI-${year}-%`)
-
-  const seq    = String((count ?? 0) + 1).padStart(4, '0')
-  const invNum = `BDI-${year}-${seq}`
-
-  const { error } = await supabaseAdmin
-    .from('invoices')
-    .insert({ invoice_number: invNum, ...invoicePayload })
-
-  if (error) console.error('[autoCreateInvoice] insert failed:', error.message)
-  else console.log(`[autoCreateInvoice] created ${invNum} for booking ${bookingId} — ₹${total}`)
-}
+// autoCreateInvoice() removed — see the two removal notes above. Invoice
+// creation now happens exclusively via POST /api/admin/invoices (Step 17,
+// after 'completed'), which sources the real invoice number from Zoho
+// Books instead of a local BDI-{year}-{seq} counter.
 
 // ── Auto-create draft quote when booking is accepted ──────────────
 async function autoCreateDraftQuote(bookingId: string, booking: Record<string, unknown>) {
