@@ -90,6 +90,38 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
 // modal. 'confirmed' is deliberately excluded — see the comment above.
 const EDITABLE_LEAD_STATUSES = ['new', 'contacted', 'qualified', 'converted', 'lost']
 
+// Real bookings.status labels/colors — mirrors STATUS_CONFIG in
+// app/(admin)/admin/page.tsx (minus icons) and must stay in sync with it.
+// A Confirmed lead's badge shows one of these (via `effective_status` from
+// GET /api/admin/leads), e.g. "Invoice Sent" or "Pickup Scheduled", so the
+// Leads tab shows exactly where each inquiry currently sits in the
+// pipeline — the same detail the Dashboard's bookings table shows —
+// instead of collapsing everything under a single "Confirmed" label.
+const BOOKING_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
+  inquiry:               { label: 'New Inquiry',         color: '#92400e', bg: '#fef3c7' },
+  quote_created:         { label: 'Quote Created',       color: '#4f46e5', bg: '#eef2ff' },
+  quote_sent:            { label: 'Quote Sent',          color: '#6d28d9', bg: '#ede9fe' },
+  accepted:              { label: 'Quote Accepted',      color: '#0891b2', bg: '#cffafe' },
+  rejected:              { label: 'Quote Rejected',      color: '#dc2626', bg: '#fee2e2' },
+  closed:                { label: 'Inquiry Closed',      color: '#6b7280', bg: '#f3f4f6' },
+  payment_pending:       { label: 'Payment Requested',   color: '#d97706', bg: '#fef3c7' },
+  payment_received:      { label: 'Payment Received',    color: '#059669', bg: '#d1fae5' },
+  payment_approved:      { label: 'Admin Approved',      color: '#059669', bg: '#d1fae5' },
+  confirmed:             { label: 'Booking Confirmed',   color: '#2563eb', bg: '#dbeafe' },
+  invoice_generated:     { label: 'Invoice Generated',   color: '#7c3aed', bg: '#ede9fe' },
+  invoice_sent:          { label: 'Invoice Sent',        color: '#6d28d9', bg: '#ede9fe' },
+  pickup_scheduled:      { label: 'Pickup Scheduled',    color: '#7c3aed', bg: '#ede9fe' },
+  picked_up:             { label: 'Bags Picked Up',      color: '#7c3aed', bg: '#ede9fe' },
+  in_transit:            { label: 'In Transit',          color: '#0891b2', bg: '#cffafe' },
+  out_for_delivery:      { label: 'Out for Delivery',    color: '#ea580c', bg: '#ffedd5' },
+  driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe' },
+  indemnity_bond_sent:   { label: 'Indemnity Bond Sent', color: '#b45309', bg: '#fef3c7' },
+  delivered:             { label: 'Delivered',           color: '#16a34a', bg: '#dcfce7' },
+  trip_created:          { label: 'Trip Sheet Created',  color: '#0891b2', bg: '#cffafe' },
+  completed:             { label: 'Completed',           color: '#14532d', bg: '#bbf7d0' },
+  cancelled:             { label: 'Cancelled',           color: '#dc2626', bg: '#fee2e2' },
+}
+
 const SOURCE_LABELS: Record<string, string> = {
   manual:         'Manual',
   website:        'Website',
@@ -1105,7 +1137,12 @@ function LeadsPageInner() {
                       <td className="px-4 py-3">
                         {(() => {
                           const displayStatus = l.effective_status ?? l.status
-                          const cfg = STATUS_CONFIG[displayStatus] ?? { label: displayStatus, color: '#6b7280', bg: '#f3f4f6' }
+                          // effective_status is a real bookings.status value
+                          // (e.g. 'invoice_sent') once a lead is Confirmed —
+                          // check that table first, falling back to the
+                          // lead-funnel STATUS_CONFIG for everything else.
+                          const cfg = BOOKING_STATUS_CONFIG[displayStatus] ?? STATUS_CONFIG[displayStatus]
+                            ?? { label: displayStatus, color: '#6b7280', bg: '#f3f4f6' }
                           return (
                             <span style={{ color: cfg.color, background: cfg.bg }}
                               className="inline-flex rounded-full px-2.5 py-1 text-xs font-semibold">

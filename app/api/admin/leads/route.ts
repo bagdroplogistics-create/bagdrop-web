@@ -52,25 +52,50 @@ export async function GET(req: NextRequest) {
     excludedBookingIds = (cancelledBookings ?? []).map(b => b.id)
   }
 
-  // ── "Confirmed" — a real bookings.status value, not a leads.status one ──
+  // ── "Confirmed" — matches the Dashboard's "Total Confirmed Bookings" ──
   // leads.status is a separate CRM-funnel field (new/contacted/qualified/
   // converted/lost — see STATUS_CONFIG in app/(admin)/admin/leads/page.tsx)
-  // that never itself contains 'confirmed'; a booking reaching Confirmed
-  // doesn't write anything back to its lead. So a lead never actually gets
-  // "excluded" by any filter bug — the Leads tab simply had no concept of
-  // this booking-side status at all. Fixed here by resolving which
-  // booking_ids are currently Confirmed and using that to (a) answer the
-  // status=confirmed filter directly against booking_id, and (b) compute a
-  // read-only `effective_status` per lead below — the lead's own `status`
-  // column is never written to, so this can't create a duplicate record or
-  // change the underlying booking/confirmation workflow.
-  let confirmedBookingIds: string[] = []
+  // that never itself contains 'confirmed'; a booking's real progress lives
+  // on bookings.status instead, and 'confirmed' there is only a brief,
+  // transient point a booking passes through on its way to
+  // invoice_generated/pickup_scheduled/etc. — almost nothing ever sits at
+  // literal status='confirmed'. What the Dashboard actually calls "Total
+  // Confirmed Bookings" is its 'active' bucket: bookings.status in
+  // ACTIVE_STATUSES below AND the lead has a real quote_number (the
+  // "hasQuote" guard — see the identical logic + comment in
+  // app/api/admin/dashboard-analytics/route.ts, which this must stay in
+  // sync with). Matching that exact definition here so the Leads tab's
+  // Confirmed count always agrees with the Dashboard's. `effective_status`
+  // is computed read-only below — leads.status is never written to, so
+  // this can't create a duplicate record or change the confirmation
+  // workflow itself.
+  const ACTIVE_STATUSES = [
+    'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
+    'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
+    'indemnity_bond_sent', 'delivered', 'trip_created',
+  ]
+  let confirmedLeadIds: string[] = []
+  // booking_id -> its real bookings.status (e.g. 'invoice_sent',
+  // 'payment_received', 'pickup_scheduled') — so a Confirmed lead's badge
+  // can show exactly where it actually is in the pipeline, the same way
+  // the Dashboard's bookings table does, instead of a single flat
+  // "Confirmed" label that would hide that detail.
+  let bookingStatusMap: Record<string, string> = {}
   if (!deleted) {
-    const { data: confirmedBookings } = await supabaseAdmin
+    const { data: activeBookings } = await supabaseAdmin
       .from('bookings')
-      .select('id')
-      .eq('status', 'confirmed')
-    confirmedBookingIds = (confirmedBookings ?? []).map(b => b.id)
+      .select('id, status')
+      .in('status', ACTIVE_STATUSES)
+    bookingStatusMap = Object.fromEntries((activeBookings ?? []).map(b => [b.id, b.status]))
+    const activeBookingIds = Object.keys(bookingStatusMap)
+    if (activeBookingIds.length > 0) {
+      const { data: confirmedLeads } = await supabaseAdmin
+        .from('leads')
+        .select('id')
+        .in('booking_id', activeBookingIds)
+        .not('quote_number', 'is', null)
+      confirmedLeadIds = (confirmedLeads ?? []).map(l => l.id)
+    }
   }
 
   let query = supabaseAdmin
@@ -89,19 +114,20 @@ export async function GET(req: NextRequest) {
 
   if (!deleted && status && status !== 'all') {
     if (status === 'confirmed') {
-      // Every lead whose linked booking is Confirmed — regardless of the
-      // lead's own raw status — and none of the "no confirmed bookings
-      // exist yet" case falling through to an unfiltered (i.e. wrong) list.
-      query = confirmedBookingIds.length > 0
-        ? query.in('booking_id', confirmedBookingIds)
+      // Every lead that qualifies as Confirmed by the Dashboard's
+      // definition — regardless of the lead's own raw funnel status — and
+      // none of the "no confirmed leads exist yet" case falling through to
+      // an unfiltered (i.e. wrong) list.
+      query = confirmedLeadIds.length > 0
+        ? query.in('id', confirmedLeadIds)
         : query.eq('id', '00000000-0000-0000-0000-000000000000')
     } else {
       query = query.eq('status', status)
-      // A lead whose booking has since reached Confirmed is now shown
-      // under the Confirmed filter instead — never under both, so a
-      // confirmed inquiry is always counted exactly once.
-      if (confirmedBookingIds.length > 0) {
-        query = query.or(`booking_id.is.null,booking_id.not.in.(${confirmedBookingIds.join(',')})`)
+      // A lead that now qualifies as Confirmed is shown under the
+      // Confirmed filter instead — never under both, so it's always
+      // counted exactly once.
+      if (confirmedLeadIds.length > 0) {
+        query = query.not('id', 'in', `(${confirmedLeadIds.join(',')})`)
       }
     }
   }
@@ -142,13 +168,13 @@ export async function GET(req: NextRequest) {
       .range(offset, offset + limit - 1)
     if (!deleted && status && status !== 'all') {
       if (status === 'confirmed') {
-        fallbackQuery = confirmedBookingIds.length > 0
-          ? fallbackQuery.in('booking_id', confirmedBookingIds)
+        fallbackQuery = confirmedLeadIds.length > 0
+          ? fallbackQuery.in('id', confirmedLeadIds)
           : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
       } else {
         fallbackQuery = fallbackQuery.eq('status', status)
-        if (confirmedBookingIds.length > 0) {
-          fallbackQuery = fallbackQuery.or(`booking_id.is.null,booking_id.not.in.(${confirmedBookingIds.join(',')})`)
+        if (confirmedLeadIds.length > 0) {
+          fallbackQuery = fallbackQuery.not('id', 'in', `(${confirmedLeadIds.join(',')})`)
         }
       }
     }
@@ -174,14 +200,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  // Read-only display status — 'confirmed' when the linked booking is,
-  // otherwise the lead's own untouched status. Computed here (not stored)
-  // so this is purely additive: leads.status keeps meaning exactly what it
-  // always has for every other system that reads it (sales-followup
-  // reminders, etc.).
+  // Read-only display status — the linked booking's actual real-time
+  // status (e.g. 'invoice_sent', 'pickup_scheduled') once a lead qualifies
+  // as Confirmed, so its badge shows exactly what's currently happening
+  // instead of a single flat "Confirmed" label; otherwise the lead's own
+  // untouched funnel status. Computed here (not stored) so this is purely
+  // additive: leads.status keeps meaning exactly what it always has for
+  // every other system that reads it (sales-followup reminders, etc.).
   const enriched = (data ?? []).map(l => ({
     ...l,
-    effective_status: l.booking_id && confirmedBookingIds.includes(l.booking_id) ? 'confirmed' : l.status,
+    effective_status: confirmedLeadIds.includes(l.id)
+      ? (bookingStatusMap[l.booking_id ?? ''] ?? 'confirmed')
+      : l.status,
   }))
 
   return NextResponse.json({ leads: enriched, total: count, page, limit })
