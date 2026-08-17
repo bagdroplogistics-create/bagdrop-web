@@ -141,7 +141,7 @@ function formatDateTime(iso: string) {
   } catch { return iso }
 }
 
-const SOURCE_LABELS: Record<string, string> = {
+export const SOURCE_LABELS: Record<string, string> = {
   website:      'Website Booking Form',
   'mobile-app': 'Mobile App',
   admin:        'Admin — Manual Entry',
@@ -153,6 +153,7 @@ const SOURCE_LABELS: Record<string, string> = {
   b2b:          'B2B Partner',
   b2c:        'B2C Direct',
   referral:   'Referral',
+  'contact-form': 'Contact Form',
   email:      'Email Inquiry',
 }
 

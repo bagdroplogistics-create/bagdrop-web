@@ -11,14 +11,22 @@
 // no-ops silently (just logs) until FAST2SMS_NEW_INQUIRY_MESSAGE_ID is set,
 // so nothing breaks before the template is approved/configured.
 //
-// Approved template (Category: Utility, Language: en) variable order:
-//   {{1}} Inquiry ID   {{2}} Customer   {{3}} Mobile   {{4}} Email
-//   {{5}} Pickup       {{6}} Delivery   {{7}} Pickup Date
+// Approved template (Category: Utility, Language: en) variable order —
+// CORRECTED 2026-08-17 after a real send (BDL-2026-0104) came back Failed
+// in Fast2SMS's Delivery Report. The template's live body actually has 10
+// variables, not 7 — the delivery report's message preview showed literal
+// "*" placeholders for Delivery Date/Bags/Source because this file was
+// only sending the first 7, and WhatsApp rejects the send outright when an
+// approved template's declared variables aren't all filled (not a partial
+// send with blanks — the whole message fails, matching what happened):
+//   {{1}} Inquiry ID    {{2}} Customer   {{3}} Mobile      {{4}} Email
+//   {{5}} Pickup        {{6}} Delivery   {{7}} Pickup Date {{8}} Delivery Date
+//   {{9}} Bags          {{10}} Source
 
 import { supabaseAdmin } from './supabase'
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
 import { formatCustomerName } from './constants'
-import type { InquiryEmailData } from './email'
+import { SOURCE_LABELS, type InquiryEmailData } from './email'
 
 const DEFAULT_OPS_WHATSAPP = '+916357115711'
 
@@ -85,13 +93,16 @@ export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<vo
     const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
     const variables = [
-      data.inquiryNumber,
-      displayName,
-      data.customerPhone || '—',
-      data.customerEmail || '—',
-      data.pickupAddress || '—',
-      data.deliveryAddress || '—',
-      fmtDate(data.pickupDate),
+      data.inquiryNumber,                                              // {{1}} Inquiry ID
+      displayName,                                                     // {{2}} Customer
+      data.customerPhone || '—',                                       // {{3}} Mobile
+      data.customerEmail || '—',                                       // {{4}} Email
+      data.pickupAddress || '—',                                       // {{5}} Pickup
+      data.deliveryAddress || '—',                                     // {{6}} Delivery
+      fmtDate(data.pickupDate),                                        // {{7}} Pickup Date
+      fmtDate(data.deliveryDate),                                      // {{8}} Delivery Date
+      data.bagsCount != null ? String(data.bagsCount) : '—',           // {{9}} Bags
+      SOURCE_LABELS[data.source?.toLowerCase() ?? ''] ?? data.source ?? '—', // {{10}} Source
     ]
 
     const result = await sendWhatsAppTemplateFast2SMS(opsNumber, templateId, variables)
