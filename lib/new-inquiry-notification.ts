@@ -42,16 +42,42 @@ function fmtDate(d: string | null | undefined): string {
   } catch { return d }
 }
 
+// Best-effort, non-fatal status write-back — see supabase/migrations/
+// 20260817b_whatsapp_notification_status.sql. Matched by lead_number
+// (== data.inquiryNumber) since every call site already has that value on
+// hand without needing to plumb the lead's uuid through as well. If this
+// update itself fails (e.g. migration not yet run), it only logs — it must
+// never make the notification attempt itself look like it failed.
+async function recordStatus(inquiryNumber: string, status: 'sent' | 'failed' | 'skipped', error: string | null) {
+  try {
+    await supabaseAdmin
+      .from('leads')
+      .update({ ops_whatsapp_status: status, ops_whatsapp_error: error, ops_whatsapp_sent_at: new Date().toISOString() })
+      .eq('lead_number', inquiryNumber)
+  } catch (err) {
+    console.error('[NewInquiryWhatsApp] status write-back failed (non-fatal):', err)
+  }
+}
+
 /**
  * Sends the new-inquiry WhatsApp ping to ops. Accepts the exact same data
  * shape already built for sendInquiryNotification at every call site, so
  * callers can pass the identical object to both without restating fields.
+ *
+ * Never marks the attempt 'sent' unless Fast2SMS's own response indicated
+ * success (see sendWhatsAppTemplateFast2SMS's `!res.ok` / HTTP-level check
+ * — Fast2SMS returns a genuine 400/401 on failure, not a 200 with a hidden
+ * failure flag, so that check is reliable). Every outcome — sent, failed,
+ * or skipped because the template isn't configured — is written to
+ * leads.ops_whatsapp_status so it's queryable later, not just visible in
+ * whichever Vercel deployment's logs happened to catch it.
  */
 export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<void> {
   try {
     const templateId = process.env.FAST2SMS_NEW_INQUIRY_MESSAGE_ID
     if (!templateId) {
       console.log(`[NewInquiryWhatsApp] ${data.inquiryNumber} — skipped: template not configured (FAST2SMS_NEW_INQUIRY_MESSAGE_ID)`)
+      await recordStatus(data.inquiryNumber, 'skipped', 'FAST2SMS_NEW_INQUIRY_MESSAGE_ID not set')
       return
     }
 
@@ -71,7 +97,10 @@ export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<vo
     const result = await sendWhatsAppTemplateFast2SMS(opsNumber, templateId, variables)
     console.log(`[NewInquiryWhatsApp] ${data.inquiryNumber} — ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`))
+    await recordStatus(data.inquiryNumber, result.success ? 'sent' : 'failed', result.success ? null : (result.error ?? 'unknown error'))
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err)
     console.error('[NewInquiryWhatsApp] Unexpected error (non-fatal):', err)
+    await recordStatus(data.inquiryNumber, 'failed', msg)
   }
 }

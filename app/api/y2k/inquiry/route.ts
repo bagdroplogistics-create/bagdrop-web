@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 
 // Y2K booking form restrictions — mirrors the constants of the same name in
 // app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
@@ -167,6 +168,25 @@ export async function POST(req: NextRequest) {
             console.error('[y2k/inquiry] Lead insert error:', leadInsertErr.message)
           } else {
             console.log(`[y2k/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
+            // Internal ops WhatsApp ping — this route only ever emailed
+            // info@bagdrop.co, same gap as the contact form had (see
+            // app/api/contact/route.ts). Added so every inquiry source
+            // notifies ops the same way.
+            await sendNewInquiryWhatsApp({
+              inquiryNumber:   leadNumber,
+              source:          'website',
+              customerName:    name.trim(),
+              customerPhone:   '+91' + digits,
+              customerEmail:   email?.trim().toLowerCase() || null,
+              serviceType:     'destination-weddings',
+              fromCity:        'Udaipur',
+              toCity:          'Udaipur',
+              pickupAddress:   pickupAddress || null,
+              deliveryAddress: deliveryAddress || null,
+              pickupDate:      arrivalDate,
+              notes:           `#Y2K wedding inquiry ${trackingId}`,
+              submittedAt:     new Date().toISOString(),
+            })
           }
         }
       } catch (leadErr) {

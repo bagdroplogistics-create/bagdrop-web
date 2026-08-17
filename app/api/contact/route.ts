@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
+import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 
 const RESEND_API = 'https://api.resend.com/emails'
@@ -182,6 +183,26 @@ export async function POST(req: Request) {
           email: cleanEmail,
         })
       }
+      // Internal ops WhatsApp ping (new_inquiry_notification template) —
+      // this route previously never sent it at all, unlike the main
+      // booking form (app/api/bookings/route.ts). Confirmed root cause for
+      // contact-form inquiries never reaching 6357115711 on WhatsApp, even
+      // though the admin-notification EMAIL above was always working —
+      // the two channels were never actually wired together here.
+      await sendNewInquiryWhatsApp({
+        inquiryNumber:   leadNumber,
+        source:          'contact-form',
+        customerTitle:   title,
+        customerName:    (name as string).trim(),
+        customerPhone:   normalizedPhone,
+        customerEmail:   cleanEmail || null,
+        serviceType:     serviceLabel,
+        pickupAddress:   null,
+        deliveryAddress: null,
+        pickupDate:      null,
+        notes:           message,
+        submittedAt:     new Date().toISOString(),
+      })
     }
   } catch (leadErr) {
     // Non-fatal — the inquiry email still sends below even if this fails.
