@@ -2,7 +2,8 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Lock, Eye, EyeOff } from 'lucide-react'
+import Image from 'next/image'
+import { Eye, EyeOff } from 'lucide-react'
 
 export default function AdminLoginPage() {
   const router  = useRouter()
@@ -37,11 +38,18 @@ export default function AdminLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-stone-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-500 shadow-lg">
-            <Lock className="h-6 w-6 text-white" />
-          </div>
-          <h1 className="text-2xl font-black tracking-tight text-gray-900">BAGDROP</h1>
-          <p className="mt-1 text-sm text-gray-500">Admin Dashboard</p>
+          {/* Full logo lockup, stacked — the real orange icon (same asset
+              used on the website) plus the "BAGDROP" wordmark plus the
+              "BAG. BOX. DELIVERED" tagline, exactly like the brand mark
+              you sent, just centered above "Admin Dashboard" instead of a
+              separate plain heading. */}
+          <Image src="/images/logo-icon.png" alt="Bagdrop" width={200} height={260}
+            className="mx-auto h-24 w-auto" priority />
+          <p className="mt-2 text-3xl font-black tracking-tight text-[#FF6300]">BAGDROP</p>
+          <p className="mt-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-gray-400">
+            Bag. Box. Delivered
+          </p>
+          <p className="mt-3 text-sm text-gray-500">Admin Dashboard</p>
         </div>
 
         <div className="rounded-2xl border border-stone-200 bg-white p-8 shadow-sm">

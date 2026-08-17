@@ -6,6 +6,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
+import { nextLeadNumber, nextTrackingId } from '@/lib/number-series'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -266,25 +267,25 @@ export async function POST(req: NextRequest) {
   const phoneCountryCode = body.phone_country_code || phoneParsed.iso2
   const phoneNational    = body.phone_national     || phoneParsed.nationalNumber
 
-  // Generate Lead Number
-  const year = new Date().getFullYear()
-
-  const { data: lastLead } = await supabaseAdmin
-    .from('leads')
-    .select('lead_number')
-    .like('lead_number', `BDL-${year}-%`)
-    .order('lead_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  let nextSeq = 1
-  if (lastLead?.lead_number) {
-    const parts = lastLead.lead_number.split('-')
-    const last = parseInt(parts[parts.length - 1], 10)
-    if (!isNaN(last)) nextSeq = last + 1
-  }
-
-  const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+  // Lead number and tracking ID — each atomically assigned via
+  // next_series_number() (see lib/number-series.ts / supabase/migrations/
+  // 20260817_atomic_number_series.sql), never derived from or reused off
+  // an existing lead/booking. Every new inquiry gets its OWN lead row and
+  // its OWN booking row, even when the phone number matches an existing
+  // customer — same customer does not mean same inquiry.
+  //
+  // This used to short-circuit here: a 409 DUPLICATE_PHONE guard blocked
+  // (or, via the "existing website booking" branch, silently reused) an
+  // existing lead/booking whenever the phone matched. That reuse path
+  // meant a repeat customer's second inquiry overwrote the FIRST inquiry's
+  // quote/pickup/tracking data in place on the same row — exactly the bug
+  // reported 2026-08-17 (Sachin Patel's 10 Aug inquiry disappearing when
+  // his 15 Aug inquiry reused the same lead, and BDA- tracking numbers
+  // getting reassigned to a different inquiry). Every inquiry is now its
+  // own independent, permanent record; nothing here ever updates a
+  // pre-existing lead or booking row.
+  const leadNumber = await nextLeadNumber()
+  const trackingId = await nextTrackingId()
 
   const serviceLabelMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',
@@ -295,162 +296,67 @@ export async function POST(req: NextRequest) {
     'airport-to-airport':   'Airport → Airport',
   }
 
-  // Duplicate phone guard: prevent creating a duplicate lead for the same phone
-  // (allow override via body.force_duplicate = true)
-  if (!body.force_duplicate) {
-    const { data: dupeLead } = await supabaseAdmin
-      .from('leads')
-      .select('id, lead_number, name, status')
-      .eq('phone', normPhone)
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    if (dupeLead) {
-      return NextResponse.json(
-        {
-          error: `A lead already exists for this phone number.`,
-          duplicate_lead: {
-            id:          dupeLead.id,
-            lead_number: dupeLead.lead_number,
-            name:        dupeLead.name,
-            status:      dupeLead.status,
-          },
-          code: 'DUPLICATE_PHONE',
-        },
-        { status: 409 }
-      )
-    }
+  const bookingPayload = {
+    tracking_id:    trackingId,
+    title:          bodyTitle,
+    customer_name:  body.name.trim(),
+    customer_phone: normPhone,
+    customer_phone_country_code: phoneCountryCode,
+    customer_phone_national:     phoneNational,
+    customer_email: body.email?.trim()?.toLowerCase() || '',
+    service_type:   serviceVal || '',
+    service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
+    from_city:      body.from_city?.trim() || '',
+    to_city:        body.to_city?.trim() || '',
+    pickup_date:    nullDate(body.pickup_date),
+    delivery_date:  nullDate(body.delivery_date),
+    time_slot:      body.pickup_time?.trim() || null,
+    pickup_address: body.pickup_address?.trim() || null,
+    drop_address:   body.drop_address?.trim() || null,
+    total_bags:     Number(body.bags_count) || 1,
+    flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
+    notes:          body.notes?.trim() || null,
+    status:         'inquiry',
+    status_history: [{
+      from:       null,
+      to:         'inquiry',
+      timestamp:  new Date().toISOString(),
+      changed_by: 'system',
+      note:       `Auto-created from lead ${leadNumber}`,
+    }],
+    // Business Customer support — see supabase/migrations/20260807_
+    // business_customer_fields.sql.
+    customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
+    business_name:    body.business_name?.trim()    || null,
+    business_address: body.business_address?.trim() || null,
+    gst_number:       body.gst_number?.trim()        || null,
+    payment_terms:    body.payment_terms             || 'Due on Receipt',
   }
-
-  // Check for existing website booking for this phone (BD-XXXX only, not BDA-)
-  // Note: .is('lead_id', null) omitted — lead_id column may not exist in all DB schemas
-  const { data: existingWebBooking } = await supabaseAdmin
-    .from('bookings')
-    .select('id, tracking_id, status, status_history')
-    .eq('customer_phone', normPhone)
-    .like('tracking_id', 'BD-%')
-    .not('tracking_id', 'like', 'BDA-%')
-    .order('created_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
 
   let booking: { id: string; tracking_id: string } | null = null
 
-  if (existingWebBooking) {
-    // Reuse existing website booking
-    const history = existingWebBooking.status_history ?? []
-    history.push({
-      from:       existingWebBooking.status,
-      to:         'inquiry',
-      timestamp:  new Date().toISOString(),
-      changed_by: 'admin',
-      note:       `Linked to admin lead ${leadNumber} — existing website booking reused`,
-    })
+  const { data: newBooking, error: bookingErr } = await supabaseAdmin
+    .from('bookings')
+    .insert(bookingPayload)
+    .select('id, tracking_id')
+    .single()
 
-    const { data: updated, error: updateErr } = await supabaseAdmin
+  if (bookingErr) {
+    console.error('[leads POST] booking insert failed:', bookingErr.message)
+    // Fallback: try to find an existing booking for this tracking_id (race/retry)
+    const { data: existingByTracking } = await supabaseAdmin
       .from('bookings')
-      .update({
-        title:          bodyTitle,
-        customer_name:  body.name.trim(),
-        customer_email: body.email?.trim()?.toLowerCase() || '',
-        service_type:   serviceVal || '',
-        service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
-        from_city:      body.from_city?.trim() || '',
-        to_city:        body.to_city?.trim() || '',
-        pickup_date:    nullDate(body.pickup_date),
-        delivery_date:  nullDate(body.delivery_date),
-        time_slot:      body.pickup_time?.trim() || null,
-        pickup_address: body.pickup_address?.trim() || null,
-        drop_address:   body.drop_address?.trim() || null,
-        total_bags:     Number(body.bags_count) || 1,
-        flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
-        notes:          body.notes?.trim() || null,
-        status:         'inquiry',
-        status_history: history,
-        // Business Customer support — carried through to the booking so
-        // Invoice/LR (generated from bookings, not leads) can also show
-        // the company name. See supabase/migrations/20260807_business_
-        // customer_fields.sql.
-        customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
-        business_name:    body.business_name?.trim()    || null,
-        business_address: body.business_address?.trim() || null,
-        gst_number:       body.gst_number?.trim()        || null,
-        payment_terms:    body.payment_terms             || 'Due on Receipt',
-      })
-      .eq('id', existingWebBooking.id)
       .select('id, tracking_id')
-      .single()
-
-    if (updateErr) {
-      console.error('[leads POST] existing booking update failed (non-fatal):', updateErr.message)
+      .eq('tracking_id', trackingId)
+      .maybeSingle()
+    if (existingByTracking) {
+      console.log('[leads POST] Recovered existing booking for', trackingId)
+      booking = existingByTracking
     }
-    booking = updated ?? { id: existingWebBooking.id, tracking_id: existingWebBooking.tracking_id }
-
+    // If still null, the lead is created without a booking — admin can repair via
+    // /api/admin/repair/create-booking-for-lead
   } else {
-    // No existing booking — create a new BDA- booking derived from lead number.
-    // BDL-2026-0001 → BDA-2026-0001 (guaranteed unique, no race conditions)
-    const trackingId = leadNumber.replace(/^BDL-/, 'BDA-')
-
-    const bookingPayload = {
-      tracking_id:    trackingId,
-      title:          bodyTitle,
-      customer_name:  body.name.trim(),
-      customer_phone: normPhone,
-      customer_phone_country_code: phoneCountryCode,
-      customer_phone_national:     phoneNational,
-      customer_email: body.email?.trim()?.toLowerCase() || '',
-      service_type:   serviceVal || '',
-      service_label:  serviceVal ? (serviceLabelMap[serviceVal] ?? serviceVal) : '',
-      from_city:      body.from_city?.trim() || '',
-      to_city:        body.to_city?.trim() || '',
-      pickup_date:    nullDate(body.pickup_date),
-      delivery_date:  nullDate(body.delivery_date),
-      time_slot:      body.pickup_time?.trim() || null,
-      pickup_address: body.pickup_address?.trim() || null,
-      drop_address:   body.drop_address?.trim() || null,
-      total_bags:     Number(body.bags_count) || 1,
-      flight_number:  needsFlight ? (body.flight_number?.trim() || null) : null,
-      notes:          body.notes?.trim() || null,
-      status:         'inquiry',
-      status_history: [{
-        from:       null,
-        to:         'inquiry',
-        timestamp:  new Date().toISOString(),
-        changed_by: 'system',
-        note:       `Auto-created from lead ${leadNumber}`,
-      }],
-      // Business Customer support — see comment on the update branch above.
-      customer_type:    body.customer_type === 'business' ? 'business' : 'individual',
-      business_name:    body.business_name?.trim()    || null,
-      business_address: body.business_address?.trim() || null,
-      gst_number:       body.gst_number?.trim()        || null,
-      payment_terms:    body.payment_terms             || 'Due on Receipt',
-    }
-
-    const { data: newBooking, error: bookingErr } = await supabaseAdmin
-      .from('bookings')
-      .insert(bookingPayload)
-      .select('id, tracking_id')
-      .single()
-
-    if (bookingErr) {
-      console.error('[leads POST] booking insert failed:', bookingErr.message)
-      // Fallback: try to find an existing booking for this tracking_id (race/retry)
-      const { data: existingByTracking } = await supabaseAdmin
-        .from('bookings')
-        .select('id, tracking_id')
-        .eq('tracking_id', trackingId)
-        .maybeSingle()
-      if (existingByTracking) {
-        console.log('[leads POST] Recovered existing booking for', trackingId)
-        booking = existingByTracking
-      }
-      // If still null, the lead is created without a booking — admin can repair via
-      // /api/admin/repair/create-booking-for-lead
-    } else {
-      booking = newBooking ?? null
-    }
+    booking = newBooking ?? null
   }
 
   // Create Lead and link it to the booking

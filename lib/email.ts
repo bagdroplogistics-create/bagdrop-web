@@ -449,10 +449,11 @@ export async function sendQuoteEmail(data: QuoteEmailData) {
     '<div style="background:#f8f9fa;border-radius:8px;padding:16px 20px;margin-bottom:24px;">' +
     '<h3 style="margin:0 0 12px;font-size:12px;font-weight:700;color:#444;text-transform:uppercase;letter-spacing:0.5px;">Payment Details</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0">' +
-    row('Bank Name',    'Indian Overseas Bank (IOB)') +
+    row('Bank Name',    'Indian Overseas Bank') +
     row('Account Name', 'Bagdrop Logistics Solutions Pvt. Ltd.') +
-    row('Account No.',  '258702000000058') +
-    row('IFSC Code',    'IOBA0002587') +
+    row('Account No.',  '171702000001297') +
+    row('IFSC Code',    'IOBA0001717') +
+    row('Branch',       'Gotri Road, Vadodara') +
     row('UPI',          'BAGDROP1717@IOB') +
     '</table>' +
     '<div style="text-align:center;margin-top:14px;">' +

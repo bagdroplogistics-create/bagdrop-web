@@ -314,6 +314,12 @@ export async function POST(req: NextRequest) {
     payment_method:    booking.payment_method ?? null,
     payment_reference: booking.payment_reference ?? null,
     invoice_date:      new Date().toISOString().split('T')[0],
+    // Terms are always "Due on Receipt" (see InvoicePDF.tsx / buildPdfProps)
+    // — due date is the invoice date itself. Was previously omitted from
+    // this payload entirely, so every invoice's Due Date came back null;
+    // fixed here for new/re-generated invoices, and via a read-only
+    // fallback in GET /api/admin/invoices/[id] for already-existing rows.
+    due_date:          new Date().toISOString().split('T')[0],
     place_of_supply:   placeOfSupply,
     pickup_date:       booking.pickup_date ?? null,
     delivery_date:     booking.delivery_date ?? null,

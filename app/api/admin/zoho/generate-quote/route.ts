@@ -36,6 +36,7 @@ import { supabaseAdmin }             from '@/lib/supabase'
 import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
 import { findRouteMatch }            from '@/lib/city-normalize'
+import { nextTrackingId }            from '@/lib/number-series'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
 
@@ -379,9 +380,14 @@ export async function POST(req: NextRequest) {
   if (!isReturnQuote) {
   // ── Ensure linked booking exists (PRIMARY / ONWARD quote) ──────────
   if (!bookingId) {
-    // No booking yet — create one.
-    // Derive tracking ID from lead number (BDL-2026-0001 → BDA-2026-0001)
-    const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
+    // No booking yet — create one. Tracking ID comes from its own atomic
+    // sequence (lib/number-series.ts) — it used to be derived by swapping
+    // the lead number's "BDL-" prefix for "BDA-", which meant a booking's
+    // number was never actually independent of its lead. That's fine as
+    // long as every lead is genuinely a new inquiry (now true — see
+    // app/api/admin/leads/route.ts), but deriving it was never necessary
+    // and isn't race-safe, so it's generated fresh here regardless.
+    const trackingId = await nextTrackingId()
 
     const { data: newBooking, error: createErr } = await supabaseAdmin
       .from('bookings')
@@ -500,9 +506,22 @@ export async function POST(req: NextRequest) {
     // own booking row (trip_leg: 'return') with its own status, so it
     // can later carry its own LR / driver assignment / status workflow
     // without ever touching the onward booking. Tracking ID mirrors the
-    // quote-number pattern (BDA-2026-0001 onward → BDA-2026-0001-R return).
+    // PRIMARY BOOKING's own real tracking_id (BDA-2026-0001 onward ->
+    // BDA-2026-0001-R return) — same inquiry's return leg, not a new
+    // inquiry, so it intentionally reuses that number instead of minting
+    // a fresh one. Previously derived from lead.lead_number instead,
+    // which matched 1:1 only because the primary booking's own number
+    // used to be derived the same way; now that the primary's number
+    // comes from its own atomic sequence, this reads it directly off the
+    // primary booking row so the two can never drift apart.
     let returnBookingId: string | null = lead.return_booking_id ?? null
-    const returnTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-') + '-R'
+    let primaryTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-') // fallback only
+    if (lead.booking_id) {
+      const { data: primaryBooking } = await supabaseAdmin
+        .from('bookings').select('tracking_id').eq('id', lead.booking_id).maybeSingle()
+      if (primaryBooking?.tracking_id) primaryTrackingId = primaryBooking.tracking_id
+    }
+    const returnTrackingId = primaryTrackingId + '-R'
     const returnPickupDate = pickupDtOverride ? pickupDtOverride.slice(0, 10) : null
     const returnPickupTime = pickupDtOverride ? pickupDtOverride.slice(11, 16) : null
 

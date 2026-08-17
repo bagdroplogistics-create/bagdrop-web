@@ -4,10 +4,16 @@
 // Invoice PDF, instead of yet another hardcoded copy. Re-exports the
 // already-confirmed-correct LR_COMPANY block (lib/lr-constants.ts — GSTIN
 // 24AAACC9320N2ZL was explicitly confirmed by the founder there) and adds
-// the bank details block, using the IFSC the founder confirmed as correct
-// (IOBA0002587 — the one already used in lib/email.ts's invoice email,
-// NOT the older IOBA0001717 still hardcoded in QuotePDF.tsx/quote print
-// views, which is now known to be stale but is out of scope to fix here).
+// the bank details block.
+//
+// Bank details — CORRECTED 2026-08-17: the founder confirmed via a
+// screenshot of the real "Payment Details" panel that the correct account
+// is Indian Overseas Bank, A/C 171702000001297, IFSC IOBA0001717, Gotri
+// Road, Vadodara branch. This REPLACES the previously "confirmed" IOBA0002587
+// / 258702000000058 pairing, which was flagged and found to resolve to an
+// Indian Overseas Bank branch in Patancheru, Telangana — not Vadodara —
+// i.e. that earlier value was wrong. lib/email.ts's invoice email still
+// hardcodes the old (also wrong) IOBA0002587 — same fix needed there.
 //
 // Note: the `settings` table (app/api/admin/settings/route.ts) has
 // company_gst/payment_bank_name/payment_ifsc/etc. fields too, but they're
@@ -32,9 +38,10 @@ export const INVOICE_COMPANY = {
 } as const
 
 export const INVOICE_BANK = {
-  bankName:    'Indian Overseas Bank (IOB)',
+  bankName:    'Indian Overseas Bank',
   accountName: 'Bagdrop Logistics Solutions Pvt. Ltd.',
-  accountNo:   '258702000000058',
-  ifsc:        'IOBA0002587',
+  accountNo:   '171702000001297',
+  ifsc:        'IOBA0001717',
+  branch:      'Gotri Road, Vadodara',
   upi:         'BAGDROP1717@IOB',
 } as const

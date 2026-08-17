@@ -17,41 +17,74 @@ import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
 const DARK   = '#111827'
 const GREY   = '#4b5563'
 const LIGHT  = '#f9fafb'
-const BORDER = '#e5e7eb'
+// Darkened from the original #e5e7eb — that pale a gray rendered as
+// essentially invisible hairlines once compressed into a screenshot, even
+// though it technically painted. Zoho's own reference uses a clearly
+// visible mid-gray rule for every section divider, so this now matches
+// that contrast level instead of just being "technically present."
+const BORDER = '#9ca3af'
 const GREEN  = '#16a34a'
+const RED    = '#dc2626'
+// Bagdrop brand orange — matches textColor/#FF6300 in components/ui/logo.tsx
+// (the "default" variant used on the website's light-background pages and,
+// in spirit, the admin dashboard's orange sidebar mark).
+const ORANGE = '#FF6300'
 
+// Plain, unboxed, traditional-logistics-invoice style — matches the Zoho
+// Books reference invoice (BLS2600042.pdf) exactly: thin horizontal rules
+// instead of bordered/rounded "card" boxes, a light (not dark-filled)
+// two-row item-table header with merged CGST/SGST super-columns, plain
+// Bill To/Ship To text, plain Notes/Bank Details text, and a red "Payment
+// Made" line. The only deliberate deviation from that reference is the
+// logo itself (Bagdrop's real orange mark instead of Zoho's old one).
 const s = StyleSheet.create({
   page: { fontFamily: 'Helvetica', fontSize: 9, color: DARK, backgroundColor: '#fff', padding: '28 32' },
 
+  // Thin black bar across the very top of the page, matching the
+  // reference's top accent stripe — absolutely positioned so it spans the
+  // full page width regardless of the page's own padding.
+  topBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 5, backgroundColor: DARK },
+
   // Header
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  // Full BAGDROP lockup (icon + wordmark + tagline), pre-cropped to its
-  // visible content bounds — aspect ratio ~1.965:1. Sized here by width,
-  // with height derived from that ratio, so it never looks squashed.
-  logo:      { width: 118, height: 60, marginBottom: 6 },
+  // Same lockup as components/ui/logo.tsx's <BagdropLogo variant="default">
+  // — the orange bag/B icon (logo-icon.png, already orange-colored, not a
+  // black lockup) next to a plain-text "BAGDROP" wordmark in the exact
+  // same brand orange, matching what's used on the website and dashboard.
+  logoRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
+  logoIcon:     { width: 20, height: 26 },
+  logoTextCol:  { flexDirection: 'column' },
+  logoWordmark: { fontSize: 16, fontFamily: 'Helvetica-Bold', color: ORANGE, letterSpacing: -0.3 },
+  logoTagline:  { fontSize: 5.5, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 1, marginTop: 1 },
   coName:    { fontSize: 11, fontFamily: 'Helvetica-Bold', color: DARK },
   coLine:    { fontSize: 8, color: GREY, marginTop: 1.5 },
   taxInvTitle: { fontSize: 20, fontFamily: 'Helvetica-Bold', color: DARK, textAlign: 'right' },
 
-  // Metadata strip
-  metaBox:   { flexDirection: 'row', marginTop: 14, borderWidth: 1, borderColor: BORDER, borderRadius: 4 },
-  metaCol:   { flex: 1, padding: '8 12' },
-  metaColL:  { borderRightWidth: 1, borderRightColor: BORDER },
+  // Metadata strip — plain two-column row bordered top+bottom only (no
+  // box, no rounded corners, no vertical divider), "Label : Value" pairs.
+  metaBox:   { flexDirection: 'row', marginTop: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: BORDER, paddingVertical: 8 },
+  metaCol:   { flex: 1 },
   metaRow:   { flexDirection: 'row', marginBottom: 3 },
-  metaKey:   { width: 90, fontSize: 8, color: GREY },
+  metaKey:   { width: 96, fontSize: 8, color: GREY },
   metaVal:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, flex: 1 },
 
-  // Bill To / Ship To
-  addrRow:   { flexDirection: 'row', gap: 12, marginTop: 12 },
-  addrBox:   { flex: 1, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: '8 12' },
+  // Bill To / Ship To — plain text columns, only the label itself gets a
+  // thin underline (no box around the whole block).
+  addrRow:   { flexDirection: 'row', gap: 24, marginTop: 12 },
+  addrCol:   { flex: 1 },
   addrLbl:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: BORDER, paddingBottom: 3 },
-  addrName:  { fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#2563eb' },
+  addrName:  { fontSize: 10, fontFamily: 'Helvetica-Bold', color: DARK },
   addrLine:  { fontSize: 8.5, color: '#374151', marginTop: 1.5 },
 
-  // Item table
-  table:     { marginTop: 14 },
-  thRow:     { flexDirection: 'row', backgroundColor: DARK, padding: '6 6' },
-  th:        { color: '#fff', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
+  // Item table — light (not dark-filled) two-row header: super-columns
+  // "CGST"/"SGST" (or "IGST") spanning their %/Amt sub-columns underneath,
+  // exactly matching the reference's grouped tax-column header.
+  table:     { marginTop: 14, borderTopWidth: 1, borderTopColor: DARK },
+  thRow:     { flexDirection: 'row', backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '5 6' },
+  thSubRow:  { flexDirection: 'row', backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: DARK, padding: '0 6 4' },
+  th:        { color: DARK, fontSize: 7.5, fontFamily: 'Helvetica-Bold' },
+  thSub:     { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold' },
+  cTaxGroup: { width: 68, textAlign: 'center' },
   tRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 6', alignItems: 'flex-start' },
   td:        { fontSize: 8.5, color: '#374151' },
   tdDesc:    { fontSize: 7.5, color: GREY, marginTop: 1.5 },
@@ -69,38 +102,35 @@ const s = StyleSheet.create({
   leftCol:   { flex: 1.2 },
   rightCol:  { flex: 1 },
 
-  wordsBox:  { backgroundColor: LIGHT, borderRadius: 4, padding: '6 10', marginBottom: 10 },
   wordsLbl:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginBottom: 2 },
-  wordsTxt:  { fontSize: 8.5, fontFamily: 'Helvetica-Oblique', color: DARK },
+  wordsTxt:  { fontSize: 8.5, fontFamily: 'Helvetica-Oblique', color: DARK, marginBottom: 10 },
 
   notesLbl:  { fontSize: 8, fontFamily: 'Helvetica-Bold', color: GREY, marginBottom: 2, marginTop: 8 },
   notesTxt:  { fontSize: 8, color: '#374151', lineHeight: 1.4 },
 
-  bankBox:   { marginTop: 10, borderWidth: 1, borderColor: BORDER, borderRadius: 4, padding: '8 10' },
-  bankLbl:   { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginBottom: 4 },
+  bankLbl:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: GREY, marginBottom: 4, marginTop: 10 },
   bankRow:   { flexDirection: 'row', marginBottom: 2 },
-  bankKey:   { width: 78, fontSize: 8, color: GREY },
+  bankKey:   { width: 92, fontSize: 8, color: GREY },
   bankVal:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, flex: 1 },
 
   totRow:    { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 2.5 },
   totKey:    { fontSize: 9, color: GREY },
   totVal:    { fontSize: 9, color: DARK },
-  totDivider:{ borderTopWidth: 1, borderTopColor: BORDER, marginTop: 3, paddingTop: 4 },
-  grandRow:  { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 2, borderTopColor: DARK, marginTop: 3, paddingTop: 5 },
+  grandRow:  { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: DARK, marginTop: 3, paddingTop: 5 },
   grandKey:  { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: DARK },
   grandVal:  { fontSize: 12, fontFamily: 'Helvetica-Bold', color: DARK },
   paidRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 3 },
-  paidKey:   { fontSize: 9, color: GREEN },
-  paidVal:   { fontSize: 9, fontFamily: 'Helvetica-Bold', color: GREEN },
+  paidKey:   { fontSize: 9, color: RED },
+  paidVal:   { fontSize: 9, fontFamily: 'Helvetica-Bold', color: RED },
   balRow:    { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: BORDER, marginTop: 3, paddingTop: 5 },
   balKey:    { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: DARK },
   balVal:    { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: DARK },
 
-  // Signature
+  // Signature — just the line + label, no "For {company}" subtitle
+  // underneath (the reference doesn't show one).
   sigWrap:   { marginTop: 30, alignItems: 'flex-end' },
   sigLine:   { borderTopWidth: 1, borderTopColor: '#9ca3af', width: 140, textAlign: 'center', paddingTop: 4 },
   sigText:   { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK },
-  sigSub:    { fontSize: 7, color: GREY, marginTop: 1 },
 
   // PAID ribbon
   ribbonWrap: { position: 'absolute', top: 34, left: -34, width: 150, alignItems: 'center' },
@@ -184,6 +214,7 @@ export default function InvoicePDF(p: InvoicePDFProps) {
   return (
     <Document>
       <Page size="A4" style={s.page}>
+        <View style={s.topBar} fixed />
 
         {p.paid && (
           <View style={s.ribbonWrap} fixed>
@@ -194,8 +225,14 @@ export default function InvoicePDF(p: InvoicePDFProps) {
         {/* Header */}
         <View style={s.headerRow}>
           <View>
-            {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image style={s.logo} src="/images/bagdrop-logo-invoice.png" />
+            <View style={s.logoRow}>
+              {/* eslint-disable-next-line jsx-a11y/alt-text */}
+              <Image style={s.logoIcon} src="/images/logo-icon.png" />
+              <View style={s.logoTextCol}>
+                <Text style={s.logoWordmark}>BAGDROP</Text>
+                <Text style={s.logoTagline}>BAG. BOX. DELIVERED.</Text>
+              </View>
+            </View>
             <Text style={s.coName}>{INVOICE_COMPANY.name}</Text>
             <Text style={s.coLine}>{INVOICE_COMPANY.addressLine1}</Text>
             <Text style={s.coLine}>{INVOICE_COMPANY.addressLine2}</Text>
@@ -208,25 +245,25 @@ export default function InvoicePDF(p: InvoicePDFProps) {
 
         {/* Metadata strip */}
         <View style={s.metaBox}>
-          <View style={[s.metaCol, s.metaColL]}>
-            <View style={s.metaRow}><Text style={s.metaKey}>Invoice #</Text><Text style={s.metaVal}>{p.invoiceNumber}</Text></View>
-            <View style={s.metaRow}><Text style={s.metaKey}>Invoice Date</Text><Text style={s.metaVal}>{fmtDate(p.invoiceDate)}</Text></View>
-            {p.terms ? <View style={s.metaRow}><Text style={s.metaKey}>Terms</Text><Text style={s.metaVal}>{p.terms}</Text></View> : null}
-            {p.dueDate ? <View style={s.metaRow}><Text style={s.metaKey}>Due Date</Text><Text style={s.metaVal}>{fmtDate(p.dueDate)}</Text></View> : null}
-            {p.poNumber ? <View style={s.metaRow}><Text style={s.metaKey}>P.O.#</Text><Text style={s.metaVal}>{p.poNumber}</Text></View> : null}
+          <View style={s.metaCol}>
+            <View style={s.metaRow}><Text style={s.metaKey}># :</Text><Text style={s.metaVal}>{p.invoiceNumber}</Text></View>
+            <View style={s.metaRow}><Text style={s.metaKey}>Invoice Date :</Text><Text style={s.metaVal}>{fmtDate(p.invoiceDate)}</Text></View>
+            {p.terms ? <View style={s.metaRow}><Text style={s.metaKey}>Terms :</Text><Text style={s.metaVal}>{p.terms}</Text></View> : null}
+            {p.dueDate ? <View style={s.metaRow}><Text style={s.metaKey}>Due Date :</Text><Text style={s.metaVal}>{fmtDate(p.dueDate)}</Text></View> : null}
+            {p.poNumber ? <View style={s.metaRow}><Text style={s.metaKey}>P.O.# :</Text><Text style={s.metaVal}>{p.poNumber}</Text></View> : null}
           </View>
           <View style={s.metaCol}>
-            {p.placeOfSupply ? <View style={s.metaRow}><Text style={s.metaKey}>Place Of Supply</Text><Text style={s.metaVal}>{p.placeOfSupply}</Text></View> : null}
-            {p.consignmentNo ? <View style={s.metaRow}><Text style={s.metaKey}>Consignment No</Text><Text style={s.metaVal}>{p.consignmentNo}</Text></View> : null}
-            {p.totalBags ? <View style={s.metaRow}><Text style={s.metaKey}>No Of Bags</Text><Text style={s.metaVal}>{p.totalBags}</Text></View> : null}
-            {p.pickupDate ? <View style={s.metaRow}><Text style={s.metaKey}>Pickup Date</Text><Text style={s.metaVal}>{fmtDate(p.pickupDate)}</Text></View> : null}
-            {p.deliveryDate ? <View style={s.metaRow}><Text style={s.metaKey}>Delivery Date</Text><Text style={s.metaVal}>{fmtDate(p.deliveryDate)}</Text></View> : null}
+            {p.placeOfSupply ? <View style={s.metaRow}><Text style={s.metaKey}>Place Of Supply :</Text><Text style={s.metaVal}>{p.placeOfSupply}</Text></View> : null}
+            {p.consignmentNo ? <View style={s.metaRow}><Text style={s.metaKey}>Consignment No :</Text><Text style={s.metaVal}>{p.consignmentNo}</Text></View> : null}
+            {p.totalBags ? <View style={s.metaRow}><Text style={s.metaKey}>No Of Bags :</Text><Text style={s.metaVal}>{p.totalBags}</Text></View> : null}
+            {p.pickupDate ? <View style={s.metaRow}><Text style={s.metaKey}>Pickup Date :</Text><Text style={s.metaVal}>{fmtDate(p.pickupDate)}</Text></View> : null}
+            {p.deliveryDate ? <View style={s.metaRow}><Text style={s.metaKey}>Delivery Date :</Text><Text style={s.metaVal}>{fmtDate(p.deliveryDate)}</Text></View> : null}
           </View>
         </View>
 
         {/* Bill To / Ship To */}
         <View style={s.addrRow}>
-          <View style={s.addrBox}>
+          <View style={s.addrCol}>
             <Text style={s.addrLbl}>Bill To</Text>
             <Text style={s.addrName}>{p.billToName}</Text>
             {p.billToAddress ? <Text style={s.addrLine}>{p.billToAddress}</Text> : null}
@@ -234,13 +271,15 @@ export default function InvoicePDF(p: InvoicePDFProps) {
             {p.billToEmail ? <Text style={s.addrLine}>{p.billToEmail}</Text> : null}
             {p.billToGstin ? <Text style={s.addrLine}>GSTIN: {p.billToGstin}</Text> : null}
           </View>
-          <View style={s.addrBox}>
+          <View style={s.addrCol}>
             <Text style={s.addrLbl}>{p.shipToLabel}</Text>
             {p.shipToLines.map((line, i) => <Text key={i} style={s.addrLine}>{line}</Text>)}
           </View>
         </View>
 
-        {/* Item table */}
+        {/* Item table — two-row header: CGST/SGST (or IGST) as merged
+            super-columns over their %/Amt sub-columns, light background,
+            matching the Zoho reference exactly (not a dark filled bar). */}
         <View style={s.table}>
           <View style={s.thRow}>
             <Text style={[s.th, s.cIdx]}>#</Text>
@@ -249,19 +288,30 @@ export default function InvoicePDF(p: InvoicePDFProps) {
             <Text style={[s.th, s.cQty]}>Qty</Text>
             <Text style={[s.th, s.cRate]}>Rate</Text>
             {hasIgst ? (
-              <>
-                <Text style={[s.th, s.cTaxPct]}>IGST%</Text>
-                <Text style={[s.th, s.cTaxAmt]}>IGST Amt</Text>
-              </>
+              <Text style={[s.th, s.cTaxGroup]}>IGST</Text>
             ) : (
               <>
-                <Text style={[s.th, s.cTaxPct]}>CGST%</Text>
-                <Text style={[s.th, s.cTaxAmt]}>CGST Amt</Text>
-                <Text style={[s.th, s.cTaxPct]}>SGST%</Text>
-                <Text style={[s.th, s.cTaxAmt]}>SGST Amt</Text>
+                <Text style={[s.th, s.cTaxGroup]}>CGST</Text>
+                <Text style={[s.th, s.cTaxGroup]}>SGST</Text>
               </>
             )}
-            <Text style={[s.th, s.cAmt, { color: '#fff' }]}>Amount</Text>
+            <Text style={[s.th, s.cAmt]}>Amount</Text>
+          </View>
+          <View style={s.thSubRow}>
+            <Text style={[s.thSub, s.cIdx]} />
+            <Text style={[s.thSub, s.cDesc]} />
+            <Text style={[s.thSub, s.cHsn]} />
+            <Text style={[s.thSub, s.cQty]} />
+            <Text style={[s.thSub, s.cRate]} />
+            <Text style={[s.thSub, s.cTaxPct]}>%</Text>
+            <Text style={[s.thSub, s.cTaxAmt]}>Amt</Text>
+            {!hasIgst && (
+              <>
+                <Text style={[s.thSub, s.cTaxPct]}>%</Text>
+                <Text style={[s.thSub, s.cTaxAmt]}>Amt</Text>
+              </>
+            )}
+            <Text style={[s.thSub, s.cAmt]} />
           </View>
           {p.lineItems.map((li, idx) => (
             <View key={idx} style={s.tRow}>
@@ -295,10 +345,10 @@ export default function InvoicePDF(p: InvoicePDFProps) {
         <View style={s.bottomRow}>
           <View style={s.leftCol}>
             {p.total > 0 && (
-              <View style={s.wordsBox}>
+              <>
                 <Text style={s.wordsLbl}>Total In Words</Text>
                 <Text style={s.wordsTxt}>{toWords(p.total)}</Text>
-              </View>
+              </>
             )}
 
             {p.notes ? (
@@ -315,14 +365,11 @@ export default function InvoicePDF(p: InvoicePDFProps) {
               </>
             ) : null}
 
-            <View style={s.bankBox}>
-              <Text style={s.bankLbl}>Payment / Bank Details</Text>
-              <View style={s.bankRow}><Text style={s.bankKey}>Bank Name</Text><Text style={s.bankVal}>{INVOICE_BANK.bankName}</Text></View>
-              <View style={s.bankRow}><Text style={s.bankKey}>Account Name</Text><Text style={s.bankVal}>{INVOICE_BANK.accountName}</Text></View>
-              <View style={s.bankRow}><Text style={s.bankKey}>Account No</Text><Text style={s.bankVal}>{INVOICE_BANK.accountNo}</Text></View>
-              <View style={s.bankRow}><Text style={s.bankKey}>IFSC Code</Text><Text style={s.bankVal}>{INVOICE_BANK.ifsc}</Text></View>
-              <View style={s.bankRow}><Text style={s.bankKey}>UPI</Text><Text style={s.bankVal}>{INVOICE_BANK.upi}</Text></View>
-            </View>
+            <Text style={s.bankLbl}>Bank Details</Text>
+            <View style={s.bankRow}><Text style={s.bankKey}>Bank Name :</Text><Text style={s.bankVal}>{INVOICE_BANK.bankName}</Text></View>
+            <View style={s.bankRow}><Text style={s.bankKey}>Account Number :</Text><Text style={s.bankVal}>{INVOICE_BANK.accountNo}</Text></View>
+            <View style={s.bankRow}><Text style={s.bankKey}>IFSC Code :</Text><Text style={s.bankVal}>{INVOICE_BANK.ifsc}</Text></View>
+            <View style={s.bankRow}><Text style={s.bankKey}>Branch :</Text><Text style={s.bankVal}>{INVOICE_BANK.branch}</Text></View>
           </View>
 
           <View style={s.rightCol}>
@@ -344,7 +391,6 @@ export default function InvoicePDF(p: InvoicePDFProps) {
             <View style={s.sigWrap}>
               <View style={s.sigLine}>
                 <Text style={s.sigText}>Authorized Signature</Text>
-                <Text style={s.sigSub}>For {INVOICE_COMPANY.name}</Text>
               </View>
             </View>
           </View>
