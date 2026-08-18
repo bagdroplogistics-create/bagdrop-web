@@ -42,7 +42,7 @@
 
 import { supabaseAdmin } from './supabase'
 import { STATUS_ORDER } from './lifecycle-notifications'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
 
 const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
 const REMINDER_TYPES = ['two_days_before', 'day_before', 'day_of'] as const
@@ -56,7 +56,7 @@ const REMINDER_TYPE_LABEL: Record<ReminderType, string> = {
 
 interface ReminderSettings {
   enabled: boolean
-  whatsapp: string
+  whatsapp: string[]
   twoDaysBeforeTime: string    // 'HH:MM', IST
   dayBeforeTime: string        // 'HH:MM', IST
   dayOfTime: string            // 'HH:MM', IST
@@ -84,10 +84,10 @@ async function getReminderSettings(): Promise<ReminderSettings> {
     enabled:           map.ops_reminder_enabled !== 'false',      // default on
     // Same self-send fix as lib/new-inquiry-notification.ts and
     // lib/sales-followup-reminders.ts — +916357115711 is the registered
-    // WABA sender, so an internal reminder defaulting to that same number
-    // would always fail with "You can not send message to your own
-    // number". +916357335733 is Bagdrop's other live number.
-    whatsapp:          map.ops_reminder_whatsapp || '+916357335733',
+    // WABA sender, so an internal reminder must never default there. Per
+    // founder request (2026-08-18), this now fans out to BOTH internal
+    // numbers — see lib/internal-whatsapp-recipients.ts.
+    whatsapp:          parseWhatsAppRecipients(map.ops_reminder_whatsapp),
     twoDaysBeforeTime: map.ops_reminder_two_days_before_time || '18:00',
     dayBeforeTime:     map.ops_reminder_day_before_time || '18:00',
     dayOfTime:         map.ops_reminder_day_of_time || '08:00',
@@ -194,7 +194,7 @@ export async function syncBookingReminders(booking: BookingForReminders): Promis
             sent_at:         null,
             delivery_status: null,
             channel:         'whatsapp',
-            recipient:       settings.whatsapp,
+            recipient:       settings.whatsapp.join(', '),
             detail:          null,
           },
           { onConflict: 'booking_id,reminder_type' }
@@ -329,14 +329,14 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
 
       const settings = await getReminderSettings()
       const templateId = process.env.FAST2SMS_OPS_REMINDER_MESSAGE_ID ?? ''
-      const result = await sendWhatsAppTemplateFast2SMS(settings.whatsapp, templateId, buildReminderVariables(booking))
+      const result = await sendToAllRecipients(settings.whatsapp, templateId, buildReminderVariables(booking))
 
       await supabaseAdmin.from('booking_reminders')
         .update({
-          status:          result.success ? 'sent' : 'failed',
-          delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),
+          status:          result.anySuccess ? 'sent' : 'failed',
+          delivery_status: result.summary,
           channel:         'whatsapp',
-          recipient:       settings.whatsapp,
+          recipient:       settings.whatsapp.join(', '),
           detail:          `${REMINDER_TYPE_LABEL[row.reminder_type]} pickup reminder for ${booking.tracking_id}`,
         })
         .eq('id', row.id)
@@ -348,8 +348,7 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
       const history = Array.isArray(histRow?.status_history) ? histRow!.status_history : []
       history.push({
         from: booking.status, to: booking.status, timestamp: nowIso, changed_by: 'system',
-        note: `Ops ${REMINDER_TYPE_LABEL[row.reminder_type].toLowerCase()} pickup reminder ${result.success ? 'sent' : 'failed'} to ${settings.whatsapp}` +
-              (result.success ? '' : ` — ${result.error ?? 'unknown error'}`),
+        note: `Ops ${REMINDER_TYPE_LABEL[row.reminder_type].toLowerCase()} pickup reminder — ${result.summary}`,
       })
       await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
     }

@@ -35,8 +35,8 @@
 //                   lead.status becomes 'lost'.
 
 import { supabaseAdmin } from './supabase'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
 import { sendEmail } from './email'
+import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
 
 // NOTE: "24" here is a fixed internal tier KEY (matches the
 // quote_pending_24h/response_24h reminder_type values already locked into
@@ -69,7 +69,7 @@ export interface FollowupSettings {
   enabled: boolean
   whatsappEnabled: boolean
   emailEnabled: boolean
-  whatsapp: string
+  whatsapp: string[]
   email: string[]
   quoteReminderHours: number
   responseReminderHours: number
@@ -97,10 +97,11 @@ export async function getFollowupSettings(): Promise<FollowupSettings> {
     // registered WABA sender — WhatsApp Business API refuses to let a
     // number message itself (confirmed via a real Failed delivery report:
     // "You can not send message to your own number"), so this internal
-    // reminder must default to a different number. +916357335733 is
-    // Bagdrop's other live number — same fix as lib/new-inquiry-
-    // notification.ts and lib/ops-reminders.ts.
-    whatsapp:               map.sales_followup_whatsapp || '+916357335733',
+    // reminder must never default there. Per founder request (2026-08-18),
+    // this now fans out to BOTH internal numbers — see
+    // lib/internal-whatsapp-recipients.ts (also used by lib/new-inquiry-
+    // notification.ts and lib/ops-reminders.ts).
+    whatsapp:               parseWhatsAppRecipients(map.sales_followup_whatsapp),
     email:                  (map.sales_followup_email || '').split(',').map((s: string) => s.trim()).filter(Boolean),
     quoteReminderHours:     Number(map.sales_followup_quote_reminder_hours) || 24,
     responseReminderHours:  Number(map.sales_followup_response_reminder_hours) || 24,
@@ -173,7 +174,7 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
             {
               lead_id: lead.id, reminder_type: QUOTE_PENDING_TYPE[tier], channel,
               scheduled_for: scheduledFor, status: 'pending', sent_at: null, delivery_status: null,
-              recipient: channel === 'whatsapp' ? settings.whatsapp : settings.email.join(', '), detail: null,
+              recipient: channel === 'whatsapp' ? settings.whatsapp.join(', ') : settings.email.join(', '), detail: null,
             },
             { onConflict: 'lead_id,reminder_type,channel', ignoreDuplicates: true }
           )
@@ -217,7 +218,7 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
             {
               lead_id: lead.id, reminder_type: RESPONSE_TYPE[tier], channel,
               scheduled_for: scheduledFor, status: 'pending', sent_at: null, delivery_status: null,
-              recipient: channel === 'whatsapp' ? settings.whatsapp : settings.email.join(', '), detail: null,
+              recipient: channel === 'whatsapp' ? settings.whatsapp.join(', ') : settings.email.join(', '), detail: null,
             },
             { onConflict: 'lead_id,reminder_type,channel', ignoreDuplicates: true }
           )
@@ -329,17 +330,17 @@ async function sendDuePending(): Promise<{ processed: number }> {
           ? [lead.name || 'Customer', lead.lead_number, route, fmtDateTime(lead.created_at), lead.phone || '—']
           : [lead.name || 'Customer', lead.lead_number, fmtDateTime(lead.quote_date), route, lead.phone || '—']
 
-        const result = await sendWhatsAppTemplateFast2SMS(settings.whatsapp, templateId, variables)
+        const result = await sendToAllRecipients(settings.whatsapp, templateId, variables)
         await supabaseAdmin.from('lead_followups').update({
-          status: result.success ? 'sent' : 'failed',
-          delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),
-          recipient: settings.whatsapp,
+          status: result.anySuccess ? 'sent' : 'failed',
+          delivery_status: result.summary,
+          recipient: settings.whatsapp.join(', '),
           detail: `${isQuoteTrack ? 'Quote pending' : 'Customer follow-up'} reminder (${stageLabel}) for ${lead.lead_number}`,
         }).eq('id', row.id)
 
         await appendCommunicationLog(lead.id, {
-          channel: 'whatsapp', status: result.success ? 'sent' : 'failed', timestamp: nowIso,
-          detail: `Sales follow-up reminder (${row.reminder_type}) to ${settings.whatsapp}` + (result.success ? '' : ` — ${result.error ?? 'unknown error'}`),
+          channel: 'whatsapp', status: result.anySuccess ? 'sent' : 'failed', timestamp: nowIso,
+          detail: `Sales follow-up reminder (${row.reminder_type}) — ${result.summary}`,
         })
       } else {
         const subject = isQuoteTrack

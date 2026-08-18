@@ -24,29 +24,28 @@
 //   {{9}} Bags          {{10}} Source
 
 import { supabaseAdmin } from './supabase'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
 import { formatCustomerName } from './constants'
 import { SOURCE_LABELS, type InquiryEmailData } from './email'
+import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
 
 // +916357115711 is the customer-facing booking-inquiry number and is
 // registered as the WABA sender for this template — WhatsApp Business API
 // categorically refuses to let a number message itself (confirmed via a
 // real Failed delivery report, reason "You can not send message to your
-// own number"), so ops notifications must go to a genuinely different
-// number. +916357335733 is Bagdrop's other live number (already shown to
-// customers as an alternate contact in the driver-details message).
-const DEFAULT_OPS_WHATSAPP = '+916357335733'
-
+// own number"), so ops notifications must never go there. Per founder
+// request (2026-08-18), this now fans out to BOTH internal numbers —
+// +916357335733 and +919130063884 — see lib/internal-whatsapp-recipients.ts.
+//
 // Configurable via Admin Settings → settings table (key
-// 'new_inquiry_whatsapp'), same pattern as ops_reminder_whatsapp /
-// sales_followup_whatsapp — falls back to the standard ops number.
-async function getNewInquiryWhatsAppNumber(): Promise<string> {
+// 'new_inquiry_whatsapp', comma-separated for multiple numbers), same
+// pattern as ops_reminder_whatsapp / sales_followup_whatsapp.
+async function getNewInquiryWhatsAppNumbers(): Promise<string[]> {
   const { data } = await supabaseAdmin
     .from('settings')
     .select('value')
     .eq('key', 'new_inquiry_whatsapp')
     .maybeSingle()
-  return data?.value || DEFAULT_OPS_WHATSAPP
+  return parseWhatsAppRecipients(data?.value)
 }
 
 function fmtDate(d: string | null | undefined): string {
@@ -96,7 +95,7 @@ export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<vo
       return
     }
 
-    const opsNumber   = await getNewInquiryWhatsAppNumber()
+    const opsNumbers  = await getNewInquiryWhatsAppNumbers()
     const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
     const variables = [
@@ -112,10 +111,12 @@ export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<vo
       SOURCE_LABELS[data.source?.toLowerCase() ?? ''] ?? data.source ?? '—', // {{10}} Source
     ]
 
-    const result = await sendWhatsAppTemplateFast2SMS(opsNumber, templateId, variables)
-    console.log(`[NewInquiryWhatsApp] ${data.inquiryNumber} — ` +
-      (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`))
-    await recordStatus(data.inquiryNumber, result.success ? 'sent' : 'failed', result.success ? null : (result.error ?? 'unknown error'))
+    const result = await sendToAllRecipients(opsNumbers, templateId, variables)
+    console.log(`[NewInquiryWhatsApp] ${data.inquiryNumber} — ${result.summary}`)
+    // Detail always carries the per-recipient breakdown when anything failed
+    // — even on a partial success — so a silently-broken second number
+    // doesn't hide behind an overall "sent" status.
+    await recordStatus(data.inquiryNumber, result.anySuccess ? 'sent' : 'failed', result.failCount > 0 ? result.summary : null)
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
     console.error('[NewInquiryWhatsApp] Unexpected error (non-fatal):', err)
