@@ -35,6 +35,7 @@ import { useRouter } from 'next/navigation'
 import {
   Plus, Trash2, Upload, Paperclip, Loader2, Save, X,
 } from 'lucide-react'
+import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
 
 interface CustomerSearchResult {
   title: string | null; name: string; phone: string; email: string | null
@@ -58,6 +59,49 @@ function todayStr() { return new Date().toISOString().slice(0, 10) }
 
 function fmtRs(n: number) {
   return '₹' + Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+
+// ── ItemSearchLocal ──────────────────────────────────────────────────
+// Same item-catalog autocomplete used in the New Quote form's item table
+// (app/(admin)/admin/quotes/new/page.tsx) — typing filters BAGDROP_ITEMS
+// via searchItems(), picking a suggestion fills name/description/rate.
+// Reimplemented here (not imported) to match this codebase's convention
+// of small duplication over cross-page component sharing.
+function ItemSearchLocal({ value, onTextChange, onSelect }: {
+  value: string
+  onTextChange: (v: string) => void
+  onSelect: (item: BagdropItem) => void
+}) {
+  const [open, setOpen] = useState(false)
+  const results = searchItems(value)
+
+  return (
+    <div className="relative">
+      <input
+        type="text"
+        value={value}
+        onChange={e => { onTextChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => setTimeout(() => setOpen(false), 160)}
+        placeholder="Type or click to select an item"
+        className="w-full rounded border border-gray-200 px-2 py-1 text-xs focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-200"
+      />
+      {open && results.length > 0 && (
+        <div className="absolute left-0 top-full z-50 max-h-52 w-[360px] overflow-y-auto rounded-lg border border-gray-200 bg-white shadow-xl">
+          {results.map(item => (
+            <button
+              key={item.id}
+              onMouseDown={() => { onSelect(item); setOpen(false) }}
+              className="w-full border-b border-gray-50 px-3 py-2 text-left last:border-0 hover:bg-orange-50"
+            >
+              <p className="text-xs font-semibold leading-tight text-gray-800">{item.name}</p>
+              <p className="mt-0.5 text-xs font-bold text-orange-600">₹{item.rate.toLocaleString('en-IN')}</p>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  )
 }
 
 export default function NewInvoicePage() {
@@ -139,6 +183,9 @@ export default function NewInvoicePage() {
 
   function updateItem(idx: number, patch: Partial<ItemRow>) {
     setItems(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r))
+  }
+  function selectCatalogItem(idx: number, item: BagdropItem) {
+    updateItem(idx, { name: item.name, description: item.description ?? '', rate: String(item.rate) })
   }
   function addRow() { setItems(rows => [...rows, blankItem()]) }
   function removeRow(idx: number) { setItems(rows => rows.length > 1 ? rows.filter((_, i) => i !== idx) : rows) }
@@ -426,8 +473,13 @@ export default function NewInvoicePage() {
                 {items.map((r, i) => (
                   <tr key={i} className="border-t border-gray-100">
                     <td className="px-3 py-2">
-                      <input value={r.name} onChange={e => updateItem(i, { name: e.target.value })}
-                        placeholder="Item name" className="mb-1 w-full rounded border border-gray-200 px-2 py-1 text-xs" />
+                      <div className="mb-1">
+                        <ItemSearchLocal
+                          value={r.name}
+                          onTextChange={v => updateItem(i, { name: v })}
+                          onSelect={item => selectCatalogItem(i, item)}
+                        />
+                      </div>
                       <input value={r.description} onChange={e => updateItem(i, { description: e.target.value })}
                         placeholder="Description" className="w-full rounded border border-gray-100 px-2 py-1 text-[11px] text-gray-500" />
                     </td>

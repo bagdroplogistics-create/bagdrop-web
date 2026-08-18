@@ -94,7 +94,7 @@ interface LineItemRow {
 const ZOHO_ORG_ID  = '60041657788'
 const TAX_GST5     = '2568730000000033236'
 const SAC_CODE     = '996511'
-const SALESPERSONS = ['Saurabh Muley', 'Vijay Thacker']
+const SALESPERSONS = ['Vijay Thacker']
 
 const SOURCES = [
   { value: 'admin',     label: 'Manual Entry' },
@@ -294,7 +294,7 @@ function QuotePageInner() {
 
   // Quote-specific header
   const [agentName,   setAgentName]   = useState('')
-  const [salesperson, setSalesperson] = useState('Saurabh Muley')
+  const [salesperson, setSalesperson] = useState('Vijay Thacker')
   const [expiryDate,  setExpiryDate]  = useState('')
 
   // Post-booking custom fields
