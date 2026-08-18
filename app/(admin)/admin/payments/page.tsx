@@ -918,14 +918,14 @@ export default function PaymentsPage() {
                     <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(p.created_at)}</td>
                       <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">
-                        {p.is_synthetic ? (
-                          p.payment_id
-                        ) : (
-                          <button onClick={() => setViewingPaymentId(p.id)}
-                            className="inline-flex items-center gap-1.5 hover:underline">
-                            <FileText className="h-3 w-3 shrink-0" /> {p.payment_id}
-                          </button>
-                        )}
+                        {/* Synthetic (booking-derived, no payment logged yet) rows have no
+                            real payments.id, so there's no receipt to fetch — clicking opens
+                            the same Log Payment flow as the Actions column's button instead
+                            of a 404. Real rows open the actual Payment Receipt panel. */}
+                        <button onClick={() => p.is_synthetic ? openLogPaymentModal(p) : setViewingPaymentId(p.id)}
+                          className="inline-flex items-center gap-1.5 hover:underline">
+                          <FileText className="h-3 w-3 shrink-0" /> {p.payment_id}
+                        </button>
                         {p.is_synthetic && (
                           <span className="ml-1.5 inline-flex items-center rounded-full bg-blue-100 px-1.5 py-0.5 text-[10px] font-semibold text-blue-700">
                             From Booking
