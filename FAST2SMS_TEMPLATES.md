@@ -297,6 +297,94 @@ facing impact).
 
 ---
 
+## 12. Confirmed & Ongoing Inquiry Summary — `confirmed_ongoing_summary`
+
+**Internal only — never sent to a customer.** Sent automatically to the
+internal ops WhatsApp numbers (Settings → `confirmed_ongoing_summary_whatsapp`,
+default same two numbers as every other internal template — see
+lib/internal-whatsapp-recipients.ts) twice daily, 9:00 AM and 6:00 PM IST,
+listing every booking currently Confirmed or Ongoing so nothing gets missed
+just because nobody opened the dashboard. See
+lib/confirmed-ongoing-summary.ts for the full implementation.
+
+**Why only 1 variable, unlike the other templates:** a WhatsApp template
+can't have a variable number of placeholders, but this report's inquiry
+count changes every send. The whole report chunk (summary + inquiry list,
+or "no inquiries" message, or "Part 2/3" continuation) is pre-rendered in
+code and passed as ONE variable. An earlier 2-variable version (short
+header + body, almost no fixed wrapper text) was **rejected by Fast2SMS/
+Meta** with "This template has too many variables for its length" — their
+approval check requires enough fixed template text relative to variable
+count. Fixed by dropping to 1 variable and adding real fixed sentences
+around it (below).
+
+**Variables (1):** {{1}} — the full report chunk for that message: date +
+report time + "(Part X/Y)" when split, summary counts (first part only),
+and one block per inquiry — or "No confirmed or ongoing inquiries at this
+time." when the list is empty.
+
+```
+BAGDROP DAILY OPERATIONS UPDATE
+
+This is your automated Confirmed and Ongoing bookings report from the Bagdrop Admin System, generated at the scheduled report time shown below.
+
+{{1}}
+
+Please review all Confirmed and Ongoing bookings listed above and take any necessary action. This message was sent automatically by the Bagdrop system.
+```
+
+Example {{1}} (short case):
+```
+Date: 18 Aug 2026 | Report: 9:00 AM
+
+SUMMARY
+✅ Confirmed: 1
+🟢 Ongoing: 1
+📦 Total: 2
+━━━━━━━━━━━━━━
+1. Mr. Sachin Patel
+🆔 Inquiry: BDL-2026-0090
+📦 Tracking: BDA-2026-0090
+📍 Route: Vadodara → Mumbai
+📅 Pickup: 20 Aug 2026, 10:00 AM
+🧳 Bags: 3
+📱 Mobile: +919825017493
+💰 Payment: Received
+📝 Quote: Accepted
+🔵 Status: Confirmed
+━━━━━━━━━━━━━━
+```
+
+**Approval-risk note:** your two already-approved templates are both plain
+text with zero emoji/formatting, and this repo's own experience (see the
+formatting note at the top of this file) is that plain text approves
+fastest and most reliably. This template's {{1}} content is emoji-heavy
+per the original spec, though the new fixed intro/outro sentences are
+plain text. If Meta rejects or stalls on the emoji version, the safe
+fallback is resubmitting with the emoji stripped from the *sample* {{1}}
+text you submit for approval — the code doesn't care either way, since
+{{1}}'s actual content is just a string built in
+lib/confirmed-ongoing-summary.ts (see `buildEntry()`/`buildReportChunks()`)
+and can be switched to a plain-text render with a one-line change if needed.
+
+Set `FAST2SMS_CONFIRMED_ONGOING_SUMMARY_MESSAGE_ID=<id>` in Vercel once
+approved — the cron job
+(`app/api/cron/send-confirmed-ongoing-summary/route.ts`, polled every 10
+minutes by your external scheduler same as the other three cron routes)
+is already built and will start sending real messages the moment that env
+var exists; until then it safely no-ops each due report (logged as
+`failed` with "No template configured" on the scheduled_report_runs row,
+no crash, no customer-facing impact — customers are never on this
+template's recipient list anyway).
+
+Test without waiting for 9AM/6PM: `POST /api/admin/confirmed-ongoing-summary/test`
+with header `x-admin-key: <your admin key>` and body
+`{"reportType":"morning","dryRun":true}` — returns the exact rendered
+message text (no Fast2SMS call, no DB row) so you can eyeball it. Drop
+`dryRun` (or set `false`) to actually send once the template is approved.
+
+---
+
 ## After submission
 
 Once Fast2SMS/Meta approves each one (24–48h typically), send me the list of
