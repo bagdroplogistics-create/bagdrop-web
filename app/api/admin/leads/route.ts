@@ -223,6 +223,27 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Whole-handler try/catch — was missing entirely, unlike every other
+  // creation route (bookings/contact/skybird/y2k all wrap their POST body).
+  // Without it, an unhandled throw (e.g. nextLeadNumber()/nextTrackingId()
+  // failing because the next_series_number() Postgres function/migration
+  // isn't present yet — see supabase/migrations/20260817_atomic_number_
+  // series.sql) crashed the request with an EMPTY 500 response. The New
+  // Quote page's `res.json().catch(() => ({}))` then got `{}`, `cj.error`
+  // was undefined, and the admin only ever saw the generic fallback text
+  // "Failed to create lead" with no way to tell what actually broke.
+  try {
+    return await handleCreateLead(req)
+  } catch (err) {
+    console.error('[leads POST] Unhandled error:', err)
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Failed to create lead (unexpected server error)' },
+      { status: 500 }
+    )
+  }
+}
+
+async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
   const body = await req.json().catch(() => null)
 
   if (!body?.name || !body?.phone) {
