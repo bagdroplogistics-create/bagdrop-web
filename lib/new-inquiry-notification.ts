@@ -28,7 +28,14 @@ import { sendWhatsAppTemplateFast2SMS } from './notifications'
 import { formatCustomerName } from './constants'
 import { SOURCE_LABELS, type InquiryEmailData } from './email'
 
-const DEFAULT_OPS_WHATSAPP = '+916357115711'
+// +916357115711 is the customer-facing booking-inquiry number and is
+// registered as the WABA sender for this template — WhatsApp Business API
+// categorically refuses to let a number message itself (confirmed via a
+// real Failed delivery report, reason "You can not send message to your
+// own number"), so ops notifications must go to a genuinely different
+// number. +916357335733 is Bagdrop's other live number (already shown to
+// customers as an alternate contact in the driver-details message).
+const DEFAULT_OPS_WHATSAPP = '+916357335733'
 
 // Configurable via Admin Settings → settings table (key
 // 'new_inquiry_whatsapp'), same pattern as ops_reminder_whatsapp /

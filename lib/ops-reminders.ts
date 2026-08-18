@@ -82,7 +82,12 @@ async function getReminderSettings(): Promise<ReminderSettings> {
   const map = Object.fromEntries((data ?? []).map(r => [r.key, r.value as string]))
   return {
     enabled:           map.ops_reminder_enabled !== 'false',      // default on
-    whatsapp:          map.ops_reminder_whatsapp || '+916357115711',
+    // Same self-send fix as lib/new-inquiry-notification.ts and
+    // lib/sales-followup-reminders.ts — +916357115711 is the registered
+    // WABA sender, so an internal reminder defaulting to that same number
+    // would always fail with "You can not send message to your own
+    // number". +916357335733 is Bagdrop's other live number.
+    whatsapp:          map.ops_reminder_whatsapp || '+916357335733',
     twoDaysBeforeTime: map.ops_reminder_two_days_before_time || '18:00',
     dayBeforeTime:     map.ops_reminder_day_before_time || '18:00',
     dayOfTime:         map.ops_reminder_day_of_time || '08:00',

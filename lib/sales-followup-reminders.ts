@@ -93,7 +93,14 @@ export async function getFollowupSettings(): Promise<FollowupSettings> {
     enabled:                map.sales_followup_enabled !== 'false',           // default on
     whatsappEnabled:        map.sales_followup_whatsapp_enabled !== 'false',  // default on
     emailEnabled:           map.sales_followup_email_enabled === 'true',      // default off
-    whatsapp:               map.sales_followup_whatsapp || '+916357115711',
+    // +916357115711 is the customer-facing booking-inquiry number AND the
+    // registered WABA sender — WhatsApp Business API refuses to let a
+    // number message itself (confirmed via a real Failed delivery report:
+    // "You can not send message to your own number"), so this internal
+    // reminder must default to a different number. +916357335733 is
+    // Bagdrop's other live number — same fix as lib/new-inquiry-
+    // notification.ts and lib/ops-reminders.ts.
+    whatsapp:               map.sales_followup_whatsapp || '+916357335733',
     email:                  (map.sales_followup_email || '').split(',').map((s: string) => s.trim()).filter(Boolean),
     quoteReminderHours:     Number(map.sales_followup_quote_reminder_hours) || 24,
     responseReminderHours:  Number(map.sales_followup_response_reminder_hours) || 24,
