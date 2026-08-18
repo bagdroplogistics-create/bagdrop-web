@@ -50,8 +50,12 @@ export async function GET(req: NextRequest) {
   // series in the right order. Now: real invoices (any status/booking,
   // never hidden) PLUS one placeholder row per completed booking that
   // doesn't have a real invoice yet — those get a "Generate Invoice"
-  // action instead of Download/Email/WhatsApp. Sorted oldest → newest so
-  // working top-down assigns numbers in the correct chronological order.
+  // action instead of Download/Email/WhatsApp. Sorted newest → oldest so
+  // the most recent activity shows first (standard admin-list convention).
+  // Number assignment itself (assignNextInvoiceNumber(), see the POST
+  // handler below) is driven by a database sequence keyed off the highest
+  // existing invoice number, not by this display order, so reversing it
+  // here doesn't risk numbers being assigned out of chronological order.
   const { data: allInvoices, error: invErr } = await supabaseAdmin
     .from('invoices')
     .select('*')
@@ -102,7 +106,7 @@ export async function GET(req: NextRequest) {
     ...placeholders,
   ]
 
-  merged.sort((a, b) => new Date(a.invoice_date ?? a.created_at).getTime() - new Date(b.invoice_date ?? b.created_at).getTime())
+  merged.sort((a, b) => new Date(b.invoice_date ?? b.created_at).getTime() - new Date(a.invoice_date ?? a.created_at).getTime())
 
   if (status === 'not_generated') merged = merged.filter(r => !r.generated)
   else if (status && status !== 'all') merged = merged.filter(r => r.payment_status === status)

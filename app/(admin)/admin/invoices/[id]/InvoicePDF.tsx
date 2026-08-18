@@ -1,56 +1,66 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
+import { LOGO_ICON_DATA_URI } from '@/lib/invoice-logo'
 
-// BAGDROP — Invoice PDF, styled to match the Zoho Books tax-invoice layout
-// used as the visual reference (logo + company block left / TAX INVOICE
-// right, a bordered metadata strip, Bill To / Ship To two-up, a dark
-// item-table header with HSN/tax columns, a right-aligned totals box,
-// Amount in Words, Notes + Bank Details + Authorized Signature footer, and
-// a diagonal PAID ribbon when the invoice is actually paid).
+// BAGDROP — Invoice PDF, rebuilt to match Zoho Books' ACTUAL rendered
+// invoice structure, sourced 2026-08-18 straight from Zoho's own
+// HTML/CSS for the real reference invoice (BLS2600042, fetched via the
+// Zoho Books MCP connector's get_invoice with accept:'html' — NOT the
+// accept:'pdf' variant, whose binary payload gets corrupted in transit).
+// That HTML confirmed several real structural gaps this file previously
+// had versus Zoho's template ("excel" style):
 //
-// Pure presentational component (props only, no data fetching) — same
-// pattern as ../../quotes/view/[lead_id]/QuotePDF.tsx — so it can be
-// imported directly server-side (email attachment generation) or
-// dynamically imported client-side (Download PDF button) without any
-// duplication between the two call sites.
+//   1. The ENTIRE invoice (header through totals) sits inside one
+//      continuous bordered rectangle (.pcs-template-bodysection), not
+//      just a series of horizontal rules.
+//   2. The metadata strip (# / Invoice Date / ... left, Place of Supply /
+//      Consignment No / ... right) has a vertical divider line between
+//      its two columns.
+//   3. Bill To / Ship To has the same vertical divider between columns.
+//   4. The item table is a full Excel-style GRID — vertical border lines
+//      between every column, not just horizontal row rules.
+//   5. The totals box has a left border separating it from Notes/Bank
+//      Details, and a bottom border closing off the box after Balance Due.
+//   6. A page-number footer with a top border.
+//
+// Column widths below use the exact percentages read from Zoho's own
+// itemtable CSS (# 5%, Item & Description 28%, HSN/SAC 10%, Qty 11%,
+// Rate 11%, CGST 11% / SGST 11% as merged super-columns, Amount 13% —
+// sums to 100%); the %/Amt split within each tax super-column isn't
+// separately specified in Zoho's CSS, so that inner split (4.5/6.5) is a
+// reasonable visual approximation, not a verified exact figure.
+//
+// Deliberate, explicit deviations from the Zoho reference (kept on
+// purpose, not oversights):
+//   - The logo is Bagdrop's own orange mark + "BAG. BOX. DELIVERED."
+//     tagline, not Zoho's old logo.
+//   - Bank Details show Bagdrop's actual Indian Overseas Bank account
+//     (confirmed correct by the founder) — NOT the "Central Bank of
+//     India" details that happen to appear as one-off free-text Notes
+//     content on that one specific historical reference invoice.
 
 const DARK   = '#111827'
 const GREY   = '#4b5563'
-const LIGHT  = '#f9fafb'
-// Darkened from the original #e5e7eb — that pale a gray rendered as
-// essentially invisible hairlines once compressed into a screenshot, even
-// though it technically painted. Zoho's own reference uses a clearly
-// visible mid-gray rule for every section divider, so this now matches
-// that contrast level instead of just being "technically present."
-const BORDER = '#9ca3af'
+const LIGHT  = '#f2f3f4'  // Zoho's exact itemtable-header background (#f2f3f4)
+const BORDER = '#9e9e9e'  // Zoho's exact rule/border color (#9e9e9e)
 const GREEN  = '#16a34a'
 const RED    = '#dc2626'
 // Bagdrop brand orange — matches textColor/#FF6300 in components/ui/logo.tsx
-// (the "default" variant used on the website's light-background pages and,
-// in spirit, the admin dashboard's orange sidebar mark).
 const ORANGE = '#FF6300'
 
-// Plain, unboxed, traditional-logistics-invoice style — matches the Zoho
-// Books reference invoice (BLS2600042.pdf) exactly: thin horizontal rules
-// instead of bordered/rounded "card" boxes, a light (not dark-filled)
-// two-row item-table header with merged CGST/SGST super-columns, plain
-// Bill To/Ship To text, plain Notes/Bank Details text, and a red "Payment
-// Made" line. The only deliberate deviation from that reference is the
-// logo itself (Bagdrop's real orange mark instead of Zoho's old one).
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9, color: DARK, backgroundColor: '#fff', padding: '28 32' },
+  page: { fontFamily: 'Helvetica', fontSize: 9, color: DARK, backgroundColor: '#fff', padding: '28 32 46' },
 
-  // Thin black bar across the very top of the page, matching the
-  // reference's top accent stripe — absolutely positioned so it spans the
-  // full page width regardless of the page's own padding.
+  // Thin black bar across the very top of the page — a deliberate Bagdrop
+  // accent stripe sitting above Zoho's own bordered body box below.
   topBar: { position: 'absolute', top: 0, left: 0, right: 0, height: 5, backgroundColor: DARK },
+
+  // The single continuous bordered box wrapping the whole invoice body —
+  // matches Zoho's .pcs-template-bodysection { border: 1px solid #9e9e9e }.
+  bodyBox: { borderWidth: 1, borderColor: BORDER, padding: 14, marginTop: 10 },
 
   // Header
   headerRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  // Same lockup as components/ui/logo.tsx's <BagdropLogo variant="default">
-  // — the orange bag/B icon (logo-icon.png, already orange-colored, not a
-  // black lockup) next to a plain-text "BAGDROP" wordmark in the exact
-  // same brand orange, matching what's used on the website and dashboard.
   logoRow:      { flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 6 },
   logoIcon:     { width: 20, height: 26 },
   logoTextCol:  { flexDirection: 'column' },
@@ -60,47 +70,71 @@ const s = StyleSheet.create({
   coLine:    { fontSize: 8, color: GREY, marginTop: 1.5 },
   taxInvTitle: { fontSize: 20, fontFamily: 'Helvetica-Bold', color: DARK, textAlign: 'right' },
 
-  // Metadata strip — plain two-column row bordered top+bottom only (no
-  // box, no rounded corners, no vertical divider), "Label : Value" pairs.
-  metaBox:   { flexDirection: 'row', marginTop: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: BORDER, paddingVertical: 8 },
-  metaCol:   { flex: 1 },
-  metaRow:   { flexDirection: 'row', marginBottom: 3 },
-  metaKey:   { width: 96, fontSize: 8, color: GREY },
-  metaVal:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, flex: 1 },
+  // Metadata strip — bordered top+bottom, with a vertical divider between
+  // the two columns (Zoho's invoice-detailstable border-right).
+  metaBox:    { flexDirection: 'row', marginTop: 14, borderTopWidth: 1, borderBottomWidth: 1, borderColor: BORDER, paddingVertical: 8 },
+  metaCol:    { flex: 1, paddingHorizontal: 10 },
+  metaColDiv: { borderRightWidth: 1, borderRightColor: BORDER },
+  metaRow:    { flexDirection: 'row', marginBottom: 3 },
+  metaKey:    { width: 92, fontSize: 8, color: GREY },
+  metaVal:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: DARK, flex: 1 },
 
-  // Bill To / Ship To — plain text columns, only the label itself gets a
-  // thin underline (no box around the whole block).
-  addrRow:   { flexDirection: 'row', gap: 24, marginTop: 12 },
-  addrCol:   { flex: 1 },
-  addrLbl:   { fontSize: 8, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: BORDER, paddingBottom: 3 },
-  addrName:  { fontSize: 10, fontFamily: 'Helvetica-Bold', color: DARK },
-  addrLine:  { fontSize: 8.5, color: '#374151', marginTop: 1.5 },
+  // Bill To / Ship To — same vertical-divider treatment as the metadata
+  // strip (Zoho's pcs-addresstable border-right on the left cell).
+  addrRow:    { flexDirection: 'row', marginTop: 12 },
+  addrCol:    { flex: 1, paddingHorizontal: 10 },
+  addrColDiv: { borderRightWidth: 1, borderRightColor: BORDER },
+  addrLbl:    { fontSize: 8, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 4, borderBottomWidth: 1, borderBottomColor: BORDER, paddingBottom: 3 },
+  addrName:   { fontSize: 10, fontFamily: 'Helvetica-Bold', color: DARK },
+  addrLine:   { fontSize: 8.5, color: '#374151', marginTop: 1.5 },
 
-  // Item table — light (not dark-filled) two-row header: super-columns
-  // "CGST"/"SGST" (or "IGST") spanning their %/Amt sub-columns underneath,
-  // exactly matching the reference's grouped tax-column header.
-  table:     { marginTop: 14, borderTopWidth: 1, borderTopColor: DARK },
-  thRow:     { flexDirection: 'row', backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '5 6' },
-  thSubRow:  { flexDirection: 'row', backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: DARK, padding: '0 6 4' },
-  th:        { color: DARK, fontSize: 7.5, fontFamily: 'Helvetica-Bold' },
-  thSub:     { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold' },
-  cTaxGroup: { width: 68, textAlign: 'center' },
-  tRow:      { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: BORDER, padding: '6 6', alignItems: 'flex-start' },
-  td:        { fontSize: 8.5, color: '#374151' },
-  tdDesc:    { fontSize: 7.5, color: GREY, marginTop: 1.5 },
-  cIdx:      { width: 16 },
-  cDesc:     { flex: 1 },
-  cHsn:      { width: 42, textAlign: 'center' },
-  cQty:      { width: 26, textAlign: 'center' },
-  cRate:     { width: 48, textAlign: 'right' },
-  cTaxPct:   { width: 26, textAlign: 'center' },
-  cTaxAmt:   { width: 42, textAlign: 'right' },
-  cAmt:      { width: 56, textAlign: 'right', fontFamily: 'Helvetica-Bold', color: DARK },
+  // Item table — full Excel-style grid: every cell gets a right border
+  // (removed on the last column) AND a bottom border, matching Zoho's
+  // pcs-item-row / pcs-itemtable-header rules exactly, not just the
+  // horizontal-only rules this file used before.
+  table:        { marginTop: 14, borderTopWidth: 1, borderTopColor: DARK, borderLeftWidth: 1, borderLeftColor: BORDER, borderRightWidth: 1, borderRightColor: BORDER },
+  thRow:        { flexDirection: 'row', backgroundColor: LIGHT },
+  thSubRow:     { flexDirection: 'row', backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: DARK },
+  thCell:       { paddingVertical: 5, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: BORDER, borderBottomWidth: 1, borderBottomColor: BORDER },
+  thCellLast:   { paddingVertical: 5, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: BORDER },
+  th:           { color: DARK, fontSize: 7.5, fontFamily: 'Helvetica-Bold' },
+  thSub:        { color: GREY, fontSize: 7, fontFamily: 'Helvetica-Bold' },
+  tRow:         { flexDirection: 'row', alignItems: 'stretch' },
+  tCell:        { paddingVertical: 6, paddingHorizontal: 6, borderRightWidth: 1, borderRightColor: BORDER, borderBottomWidth: 1, borderBottomColor: BORDER },
+  tCellLast:    { paddingVertical: 6, paddingHorizontal: 6, borderBottomWidth: 1, borderBottomColor: BORDER },
+  td:           { fontSize: 8.5, color: '#374151' },
+  tdDesc:       { fontSize: 7.5, color: GREY, marginTop: 1.5 },
+  alignCenter:  { textAlign: 'center' },
+  alignRight:   { textAlign: 'right' },
 
-  // Bottom section: Notes/Bank (left) + Totals (right)
-  bottomRow: { flexDirection: 'row', marginTop: 14, gap: 16 },
-  leftCol:   { flex: 1.2 },
-  rightCol:  { flex: 1 },
+  // Column widths — exact percentages from Zoho's itemtable CSS (see file
+  // header comment). Sums to 100% either branch (CGST+SGST or IGST-only).
+  wIdx:       { width: '5%' },
+  wDesc:      { width: '28%' },
+  wHsn:       { width: '10%' },
+  wQty:       { width: '11%' },
+  wRate:      { width: '11%' },
+  wTaxGroup:  { width: '11%' },
+  wTaxPct:    { width: '4.5%' },
+  wTaxAmt:    { width: '6.5%' },
+  wIgstGroup: { width: '22%' },
+  wIgstPct:   { width: '9%' },
+  wIgstAmt:   { width: '13%' },
+  // Tighter padding + smaller type for the narrow %/Amt sub-columns only
+  // — the 11%-wide CGST/SGST group is genuinely tight at the standard 6pt
+  // cell padding, so these cells use their own compact variant instead of
+  // widening the column (which would drift from Zoho's verified 11%/11%
+  // CGST/SGST split).
+  taxCell:    { paddingHorizontal: 2 },
+  taxText:    { fontSize: 7 },
+  wAmt:       { width: '13%' },
+  amtBold:    { fontFamily: 'Helvetica-Bold', color: DARK },
+
+  // Bottom section: Notes/Bank (left) + Totals (right) — totals gets a
+  // left border only, matching Zoho's .pcs-totaltable { border-left }.
+  bottomRow: { flexDirection: 'row', marginTop: 14 },
+  leftCol:   { flex: 1.2, paddingRight: 14 },
+  rightCol:  { flex: 1, borderLeftWidth: 1, borderLeftColor: BORDER, paddingLeft: 14 },
 
   wordsLbl:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginBottom: 2 },
   wordsTxt:  { fontSize: 8.5, fontFamily: 'Helvetica-Oblique', color: DARK, marginBottom: 10 },
@@ -122,15 +156,21 @@ const s = StyleSheet.create({
   paidRow:   { flexDirection: 'row', justifyContent: 'space-between', paddingTop: 3 },
   paidKey:   { fontSize: 9, color: RED },
   paidVal:   { fontSize: 9, fontFamily: 'Helvetica-Bold', color: RED },
-  balRow:    { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: BORDER, marginTop: 3, paddingTop: 5 },
+  // Closes off the totals box with a bottom border after Balance Due,
+  // matching Zoho's trailing bordered-empty row under the totals table.
+  balRow:    { flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: BORDER, borderBottomWidth: 1, borderBottomColor: BORDER, marginTop: 3, paddingTop: 5, paddingBottom: 8 },
   balKey:    { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: DARK },
   balVal:    { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: DARK },
 
-  // Signature — just the line + label, no "For {company}" subtitle
-  // underneath (the reference doesn't show one).
+  // Signature — just the line + label
   sigWrap:   { marginTop: 30, alignItems: 'flex-end' },
-  sigLine:   { borderTopWidth: 1, borderTopColor: '#9ca3af', width: 140, textAlign: 'center', paddingTop: 4 },
+  sigLine:   { borderTopWidth: 1, borderTopColor: BORDER, width: 140, textAlign: 'center', paddingTop: 4 },
   sigText:   { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK },
+
+  // Page-number footer — matches Zoho's .pcs-template-footer (bordered
+  // top rule + right-aligned page number).
+  footer:     { position: 'absolute', bottom: 18, left: 32, right: 32, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 4, flexDirection: 'row', justifyContent: 'flex-end' },
+  footerText: { fontSize: 7.5, color: GREY },
 
   // PAID ribbon
   ribbonWrap: { position: 'absolute', top: 34, left: -34, width: 150, alignItems: 'center' },
@@ -143,6 +183,13 @@ function fmtRs(n: number | null | undefined) {
   // 'Rs.' not '₹' — react-pdf's default Helvetica has no Rupee glyph (see
   // the same fix in QuotePDF.tsx's fmtRs).
   return 'Rs. ' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+}
+// Bare number, no "Rs." prefix — used only in the narrow CGST/SGST/IGST
+// "Amt" sub-columns, which are already labelled "Amt" by their own header
+// cell, so repeating "Rs." there is redundant AND doesn't fit the width.
+function fmtNum(n: number | null | undefined) {
+  if (n == null) return '—'
+  return Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
 }
 function fmtDate(d: string | null | undefined) {
   if (!d) return '—'
@@ -222,178 +269,192 @@ export default function InvoicePDF(p: InvoicePDFProps) {
           </View>
         )}
 
-        {/* Header */}
-        <View style={s.headerRow}>
-          <View>
-            <View style={s.logoRow}>
-              {/* eslint-disable-next-line jsx-a11y/alt-text */}
-              <Image style={s.logoIcon} src="/images/logo-icon.png" />
-              <View style={s.logoTextCol}>
-                <Text style={s.logoWordmark}>BAGDROP</Text>
-                <Text style={s.logoTagline}>BAG. BOX. DELIVERED.</Text>
+        <View style={s.bodyBox}>
+
+          {/* Header */}
+          <View style={s.headerRow}>
+            <View>
+              <View style={s.logoRow}>
+                {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                <Image style={s.logoIcon} src={LOGO_ICON_DATA_URI} />
+                <View style={s.logoTextCol}>
+                  <Text style={s.logoWordmark}>BAGDROP</Text>
+                  <Text style={s.logoTagline}>BAG. BOX. DELIVERED.</Text>
+                </View>
               </View>
+              <Text style={s.coName}>{INVOICE_COMPANY.name}</Text>
+              <Text style={s.coLine}>{INVOICE_COMPANY.addressLine1}</Text>
+              <Text style={s.coLine}>{INVOICE_COMPANY.addressLine2}</Text>
+              <Text style={s.coLine}>GSTIN: {INVOICE_COMPANY.gstin}</Text>
+              <Text style={s.coLine}>{INVOICE_COMPANY.phone}  ·  {INVOICE_COMPANY.email}</Text>
+              <Text style={s.coLine}>{INVOICE_COMPANY.web}</Text>
             </View>
-            <Text style={s.coName}>{INVOICE_COMPANY.name}</Text>
-            <Text style={s.coLine}>{INVOICE_COMPANY.addressLine1}</Text>
-            <Text style={s.coLine}>{INVOICE_COMPANY.addressLine2}</Text>
-            <Text style={s.coLine}>GSTIN: {INVOICE_COMPANY.gstin}</Text>
-            <Text style={s.coLine}>{INVOICE_COMPANY.phone}  ·  {INVOICE_COMPANY.email}</Text>
-            <Text style={s.coLine}>{INVOICE_COMPANY.web}</Text>
+            <Text style={s.taxInvTitle}>TAX INVOICE</Text>
           </View>
-          <Text style={s.taxInvTitle}>TAX INVOICE</Text>
-        </View>
 
-        {/* Metadata strip */}
-        <View style={s.metaBox}>
-          <View style={s.metaCol}>
-            <View style={s.metaRow}><Text style={s.metaKey}># :</Text><Text style={s.metaVal}>{p.invoiceNumber}</Text></View>
-            <View style={s.metaRow}><Text style={s.metaKey}>Invoice Date :</Text><Text style={s.metaVal}>{fmtDate(p.invoiceDate)}</Text></View>
-            {p.terms ? <View style={s.metaRow}><Text style={s.metaKey}>Terms :</Text><Text style={s.metaVal}>{p.terms}</Text></View> : null}
-            {p.dueDate ? <View style={s.metaRow}><Text style={s.metaKey}>Due Date :</Text><Text style={s.metaVal}>{fmtDate(p.dueDate)}</Text></View> : null}
-            {p.poNumber ? <View style={s.metaRow}><Text style={s.metaKey}>P.O.# :</Text><Text style={s.metaVal}>{p.poNumber}</Text></View> : null}
+          {/* Metadata strip */}
+          <View style={s.metaBox}>
+            <View style={[s.metaCol, s.metaColDiv]}>
+              <View style={s.metaRow}><Text style={s.metaKey}># :</Text><Text style={s.metaVal}>{p.invoiceNumber}</Text></View>
+              <View style={s.metaRow}><Text style={s.metaKey}>Invoice Date :</Text><Text style={s.metaVal}>{fmtDate(p.invoiceDate)}</Text></View>
+              {p.terms ? <View style={s.metaRow}><Text style={s.metaKey}>Terms :</Text><Text style={s.metaVal}>{p.terms}</Text></View> : null}
+              {p.dueDate ? <View style={s.metaRow}><Text style={s.metaKey}>Due Date :</Text><Text style={s.metaVal}>{fmtDate(p.dueDate)}</Text></View> : null}
+              {p.poNumber ? <View style={s.metaRow}><Text style={s.metaKey}>P.O.# :</Text><Text style={s.metaVal}>{p.poNumber}</Text></View> : null}
+            </View>
+            <View style={s.metaCol}>
+              {p.placeOfSupply ? <View style={s.metaRow}><Text style={s.metaKey}>Place Of Supply :</Text><Text style={s.metaVal}>{p.placeOfSupply}</Text></View> : null}
+              {p.consignmentNo ? <View style={s.metaRow}><Text style={s.metaKey}>Consignment No :</Text><Text style={s.metaVal}>{p.consignmentNo}</Text></View> : null}
+              {p.totalBags ? <View style={s.metaRow}><Text style={s.metaKey}>No Of Bags :</Text><Text style={s.metaVal}>{p.totalBags}</Text></View> : null}
+              {p.pickupDate ? <View style={s.metaRow}><Text style={s.metaKey}>Pickup Date :</Text><Text style={s.metaVal}>{fmtDate(p.pickupDate)}</Text></View> : null}
+              {p.deliveryDate ? <View style={s.metaRow}><Text style={s.metaKey}>Delivery Date :</Text><Text style={s.metaVal}>{fmtDate(p.deliveryDate)}</Text></View> : null}
+            </View>
           </View>
-          <View style={s.metaCol}>
-            {p.placeOfSupply ? <View style={s.metaRow}><Text style={s.metaKey}>Place Of Supply :</Text><Text style={s.metaVal}>{p.placeOfSupply}</Text></View> : null}
-            {p.consignmentNo ? <View style={s.metaRow}><Text style={s.metaKey}>Consignment No :</Text><Text style={s.metaVal}>{p.consignmentNo}</Text></View> : null}
-            {p.totalBags ? <View style={s.metaRow}><Text style={s.metaKey}>No Of Bags :</Text><Text style={s.metaVal}>{p.totalBags}</Text></View> : null}
-            {p.pickupDate ? <View style={s.metaRow}><Text style={s.metaKey}>Pickup Date :</Text><Text style={s.metaVal}>{fmtDate(p.pickupDate)}</Text></View> : null}
-            {p.deliveryDate ? <View style={s.metaRow}><Text style={s.metaKey}>Delivery Date :</Text><Text style={s.metaVal}>{fmtDate(p.deliveryDate)}</Text></View> : null}
-          </View>
-        </View>
 
-        {/* Bill To / Ship To */}
-        <View style={s.addrRow}>
-          <View style={s.addrCol}>
-            <Text style={s.addrLbl}>Bill To</Text>
-            <Text style={s.addrName}>{p.billToName}</Text>
-            {p.billToAddress ? <Text style={s.addrLine}>{p.billToAddress}</Text> : null}
-            {p.billToPhone ? <Text style={s.addrLine}>{p.billToPhone}</Text> : null}
-            {p.billToEmail ? <Text style={s.addrLine}>{p.billToEmail}</Text> : null}
-            {p.billToGstin ? <Text style={s.addrLine}>GSTIN: {p.billToGstin}</Text> : null}
+          {/* Bill To / Ship To */}
+          <View style={s.addrRow}>
+            <View style={[s.addrCol, s.addrColDiv]}>
+              <Text style={s.addrLbl}>Bill To</Text>
+              <Text style={s.addrName}>{p.billToName}</Text>
+              {p.billToAddress ? <Text style={s.addrLine}>{p.billToAddress}</Text> : null}
+              {p.billToPhone ? <Text style={s.addrLine}>{p.billToPhone}</Text> : null}
+              {p.billToEmail ? <Text style={s.addrLine}>{p.billToEmail}</Text> : null}
+              {p.billToGstin ? <Text style={s.addrLine}>GSTIN: {p.billToGstin}</Text> : null}
+            </View>
+            <View style={s.addrCol}>
+              <Text style={s.addrLbl}>{p.shipToLabel}</Text>
+              {p.shipToLines.map((line, i) => <Text key={i} style={s.addrLine}>{line}</Text>)}
+            </View>
           </View>
-          <View style={s.addrCol}>
-            <Text style={s.addrLbl}>{p.shipToLabel}</Text>
-            {p.shipToLines.map((line, i) => <Text key={i} style={s.addrLine}>{line}</Text>)}
-          </View>
-        </View>
 
-        {/* Item table — two-row header: CGST/SGST (or IGST) as merged
-            super-columns over their %/Amt sub-columns, light background,
-            matching the Zoho reference exactly (not a dark filled bar). */}
-        <View style={s.table}>
-          <View style={s.thRow}>
-            <Text style={[s.th, s.cIdx]}>#</Text>
-            <Text style={[s.th, s.cDesc]}>Item &amp; Description</Text>
-            <Text style={[s.th, s.cHsn]}>HSN/SAC</Text>
-            <Text style={[s.th, s.cQty]}>Qty</Text>
-            <Text style={[s.th, s.cRate]}>Rate</Text>
-            {hasIgst ? (
-              <Text style={[s.th, s.cTaxGroup]}>IGST</Text>
-            ) : (
-              <>
-                <Text style={[s.th, s.cTaxGroup]}>CGST</Text>
-                <Text style={[s.th, s.cTaxGroup]}>SGST</Text>
-              </>
-            )}
-            <Text style={[s.th, s.cAmt]}>Amount</Text>
-          </View>
-          <View style={s.thSubRow}>
-            <Text style={[s.thSub, s.cIdx]} />
-            <Text style={[s.thSub, s.cDesc]} />
-            <Text style={[s.thSub, s.cHsn]} />
-            <Text style={[s.thSub, s.cQty]} />
-            <Text style={[s.thSub, s.cRate]} />
-            <Text style={[s.thSub, s.cTaxPct]}>%</Text>
-            <Text style={[s.thSub, s.cTaxAmt]}>Amt</Text>
-            {!hasIgst && (
-              <>
-                <Text style={[s.thSub, s.cTaxPct]}>%</Text>
-                <Text style={[s.thSub, s.cTaxAmt]}>Amt</Text>
-              </>
-            )}
-            <Text style={[s.thSub, s.cAmt]} />
-          </View>
-          {p.lineItems.map((li, idx) => (
-            <View key={idx} style={s.tRow}>
-              <Text style={[s.td, s.cIdx]}>{idx + 1}</Text>
-              <View style={s.cDesc}>
-                <Text style={[s.td, { fontFamily: 'Helvetica-Bold' }]}>{li.name}</Text>
-                {li.description ? <Text style={s.tdDesc}>{li.description}</Text> : null}
-              </View>
-              <Text style={[s.td, s.cHsn]}>{li.hsn}</Text>
-              <Text style={[s.td, s.cQty]}>{li.quantity}</Text>
-              <Text style={[s.td, s.cRate]}>{fmtRs(li.rate)}</Text>
+          {/* Item table — full Excel-style grid, matching Zoho's
+              template_type:"excel" reference exactly: vertical border on
+              every column (dropped on the last) plus horizontal rules,
+              two-row header with merged CGST/SGST (or IGST) super-columns. */}
+          <View style={s.table}>
+            <View style={s.thRow}>
+              <View style={[s.thCell, s.wIdx]}><Text style={s.th}>#</Text></View>
+              <View style={[s.thCell, s.wDesc]}><Text style={s.th}>Item &amp; Description</Text></View>
+              <View style={[s.thCell, s.wHsn]}><Text style={[s.th, s.alignCenter]}>HSN/SAC</Text></View>
+              <View style={[s.thCell, s.wQty]}><Text style={[s.th, s.alignCenter]}>Qty</Text></View>
+              <View style={[s.thCell, s.wRate]}><Text style={[s.th, s.alignRight]}>Rate</Text></View>
+              {hasIgst ? (
+                <View style={[s.thCell, s.wIgstGroup]}><Text style={[s.th, s.alignCenter]}>IGST</Text></View>
+              ) : (
+                <>
+                  <View style={[s.thCell, s.wTaxGroup]}><Text style={[s.th, s.alignCenter]}>CGST</Text></View>
+                  <View style={[s.thCell, s.wTaxGroup]}><Text style={[s.th, s.alignCenter]}>SGST</Text></View>
+                </>
+              )}
+              <View style={[s.thCellLast, s.wAmt]}><Text style={[s.th, s.alignRight]}>Amount</Text></View>
+            </View>
+            <View style={s.thSubRow}>
+              <View style={[s.thCell, s.wIdx]} />
+              <View style={[s.thCell, s.wDesc]} />
+              <View style={[s.thCell, s.wHsn]} />
+              <View style={[s.thCell, s.wQty]} />
+              <View style={[s.thCell, s.wRate]} />
               {hasIgst ? (
                 <>
-                  <Text style={[s.td, s.cTaxPct]}>{li.igstPct ?? 5}%</Text>
-                  <Text style={[s.td, s.cTaxAmt]}>{fmtRs(li.igstAmt ?? 0)}</Text>
+                  <View style={[s.thCell, s.wIgstPct, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>%</Text></View>
+                  <View style={[s.thCell, s.wIgstAmt, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>Amt</Text></View>
                 </>
               ) : (
                 <>
-                  <Text style={[s.td, s.cTaxPct]}>{li.cgstPct ?? 2.5}%</Text>
-                  <Text style={[s.td, s.cTaxAmt]}>{fmtRs(li.cgstAmt ?? 0)}</Text>
-                  <Text style={[s.td, s.cTaxPct]}>{li.sgstPct ?? 2.5}%</Text>
-                  <Text style={[s.td, s.cTaxAmt]}>{fmtRs(li.sgstAmt ?? 0)}</Text>
+                  <View style={[s.thCell, s.wTaxPct, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>%</Text></View>
+                  <View style={[s.thCell, s.wTaxAmt, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>Amt</Text></View>
+                  <View style={[s.thCell, s.wTaxPct, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>%</Text></View>
+                  <View style={[s.thCell, s.wTaxAmt, s.taxCell]}><Text style={[s.thSub, s.alignCenter]}>Amt</Text></View>
                 </>
               )}
-              <Text style={[s.td, s.cAmt]}>{fmtRs(li.amount)}</Text>
+              <View style={[s.thCellLast, s.wAmt]} />
             </View>
-          ))}
-        </View>
-
-        {/* Bottom: Notes/Bank (left) + Totals (right) */}
-        <View style={s.bottomRow}>
-          <View style={s.leftCol}>
-            {p.total > 0 && (
-              <>
-                <Text style={s.wordsLbl}>Total In Words</Text>
-                <Text style={s.wordsTxt}>{toWords(p.total)}</Text>
-              </>
-            )}
-
-            {p.notes ? (
-              <>
-                <Text style={s.notesLbl}>Notes</Text>
-                <Text style={s.notesTxt}>{p.notes}</Text>
-              </>
-            ) : null}
-
-            {p.termsText ? (
-              <>
-                <Text style={s.notesLbl}>Terms &amp; Conditions</Text>
-                <Text style={s.notesTxt}>{p.termsText}</Text>
-              </>
-            ) : null}
-
-            <Text style={s.bankLbl}>Bank Details</Text>
-            <View style={s.bankRow}><Text style={s.bankKey}>Bank Name :</Text><Text style={s.bankVal}>{INVOICE_BANK.bankName}</Text></View>
-            <View style={s.bankRow}><Text style={s.bankKey}>Account Number :</Text><Text style={s.bankVal}>{INVOICE_BANK.accountNo}</Text></View>
-            <View style={s.bankRow}><Text style={s.bankKey}>IFSC Code :</Text><Text style={s.bankVal}>{INVOICE_BANK.ifsc}</Text></View>
-            <View style={s.bankRow}><Text style={s.bankKey}>Branch :</Text><Text style={s.bankVal}>{INVOICE_BANK.branch}</Text></View>
+            {p.lineItems.map((li, idx) => (
+              <View key={idx} style={s.tRow}>
+                <View style={[s.tCell, s.wIdx]}><Text style={s.td}>{idx + 1}</Text></View>
+                <View style={[s.tCell, s.wDesc]}>
+                  <Text style={[s.td, { fontFamily: 'Helvetica-Bold' }]}>{li.name}</Text>
+                  {li.description ? <Text style={s.tdDesc}>{li.description}</Text> : null}
+                </View>
+                <View style={[s.tCell, s.wHsn]}><Text style={[s.td, s.alignCenter]}>{li.hsn}</Text></View>
+                <View style={[s.tCell, s.wQty]}><Text style={[s.td, s.alignCenter]}>{li.quantity}</Text></View>
+                <View style={[s.tCell, s.wRate]}><Text style={[s.td, s.alignRight]}>{fmtRs(li.rate)}</Text></View>
+                {hasIgst ? (
+                  <>
+                    <View style={[s.tCell, s.wIgstPct, s.taxCell]}><Text style={[s.td, s.taxText, s.alignCenter]}>{li.igstPct ?? 5}%</Text></View>
+                    <View style={[s.tCell, s.wIgstAmt, s.taxCell]}><Text style={[s.td, s.taxText, s.alignRight]}>{fmtNum(li.igstAmt ?? 0)}</Text></View>
+                  </>
+                ) : (
+                  <>
+                    <View style={[s.tCell, s.wTaxPct, s.taxCell]}><Text style={[s.td, s.taxText, s.alignCenter]}>{li.cgstPct ?? 2.5}%</Text></View>
+                    <View style={[s.tCell, s.wTaxAmt, s.taxCell]}><Text style={[s.td, s.taxText, s.alignRight]}>{fmtNum(li.cgstAmt ?? 0)}</Text></View>
+                    <View style={[s.tCell, s.wTaxPct, s.taxCell]}><Text style={[s.td, s.taxText, s.alignCenter]}>{li.sgstPct ?? 2.5}%</Text></View>
+                    <View style={[s.tCell, s.wTaxAmt, s.taxCell]}><Text style={[s.td, s.taxText, s.alignRight]}>{fmtNum(li.sgstAmt ?? 0)}</Text></View>
+                  </>
+                )}
+                <View style={[s.tCellLast, s.wAmt]}><Text style={[s.td, s.alignRight, s.amtBold]}>{fmtRs(li.amount)}</Text></View>
+              </View>
+            ))}
           </View>
 
-          <View style={s.rightCol}>
-            <View style={s.totRow}><Text style={s.totKey}>Sub Total</Text><Text style={s.totVal}>{fmtRs(p.subtotal)}</Text></View>
-            {hasIgst ? (
-              <View style={s.totRow}><Text style={s.totKey}>IGST</Text><Text style={s.totVal}>{fmtRs(p.igst)}</Text></View>
-            ) : (
-              <>
-                <View style={s.totRow}><Text style={s.totKey}>CGST</Text><Text style={s.totVal}>{fmtRs(p.cgst)}</Text></View>
-                <View style={s.totRow}><Text style={s.totKey}>SGST</Text><Text style={s.totVal}>{fmtRs(p.sgst)}</Text></View>
-              </>
-            )}
-            <View style={s.grandRow}><Text style={s.grandKey}>Total</Text><Text style={s.grandVal}>{fmtRs(p.total)}</Text></View>
-            {p.paymentMade > 0 && (
-              <View style={s.paidRow}><Text style={s.paidKey}>Payment Made</Text><Text style={s.paidVal}>(-) {fmtRs(p.paymentMade)}</Text></View>
-            )}
-            <View style={s.balRow}><Text style={s.balKey}>Balance Due</Text><Text style={s.balVal}>{fmtRs(p.balanceDue)}</Text></View>
+          {/* Bottom: Notes/Bank (left) + Totals (right) */}
+          <View style={s.bottomRow}>
+            <View style={s.leftCol}>
+              {p.total > 0 && (
+                <>
+                  <Text style={s.wordsLbl}>Total In Words</Text>
+                  <Text style={s.wordsTxt}>{toWords(p.total)}</Text>
+                </>
+              )}
 
-            <View style={s.sigWrap}>
-              <View style={s.sigLine}>
-                <Text style={s.sigText}>Authorized Signature</Text>
+              {p.notes ? (
+                <>
+                  <Text style={s.notesLbl}>Notes</Text>
+                  <Text style={s.notesTxt}>{p.notes}</Text>
+                </>
+              ) : null}
+
+              {p.termsText ? (
+                <>
+                  <Text style={s.notesLbl}>Terms &amp; Conditions</Text>
+                  <Text style={s.notesTxt}>{p.termsText}</Text>
+                </>
+              ) : null}
+
+              <Text style={s.bankLbl}>Bank Details</Text>
+              <View style={s.bankRow}><Text style={s.bankKey}>Bank Name :</Text><Text style={s.bankVal}>{INVOICE_BANK.bankName}</Text></View>
+              <View style={s.bankRow}><Text style={s.bankKey}>Account Number :</Text><Text style={s.bankVal}>{INVOICE_BANK.accountNo}</Text></View>
+              <View style={s.bankRow}><Text style={s.bankKey}>IFSC Code :</Text><Text style={s.bankVal}>{INVOICE_BANK.ifsc}</Text></View>
+              <View style={s.bankRow}><Text style={s.bankKey}>Branch :</Text><Text style={s.bankVal}>{INVOICE_BANK.branch}</Text></View>
+            </View>
+
+            <View style={s.rightCol}>
+              <View style={s.totRow}><Text style={s.totKey}>Sub Total</Text><Text style={s.totVal}>{fmtRs(p.subtotal)}</Text></View>
+              {hasIgst ? (
+                <View style={s.totRow}><Text style={s.totKey}>IGST</Text><Text style={s.totVal}>{fmtRs(p.igst)}</Text></View>
+              ) : (
+                <>
+                  <View style={s.totRow}><Text style={s.totKey}>CGST</Text><Text style={s.totVal}>{fmtRs(p.cgst)}</Text></View>
+                  <View style={s.totRow}><Text style={s.totKey}>SGST</Text><Text style={s.totVal}>{fmtRs(p.sgst)}</Text></View>
+                </>
+              )}
+              <View style={s.grandRow}><Text style={s.grandKey}>Total</Text><Text style={s.grandVal}>{fmtRs(p.total)}</Text></View>
+              {p.paymentMade > 0 && (
+                <View style={s.paidRow}><Text style={s.paidKey}>Payment Made</Text><Text style={s.paidVal}>(-) {fmtRs(p.paymentMade)}</Text></View>
+              )}
+              <View style={s.balRow}><Text style={s.balKey}>Balance Due</Text><Text style={s.balVal}>{fmtRs(p.balanceDue)}</Text></View>
+
+              <View style={s.sigWrap}>
+                <View style={s.sigLine}>
+                  <Text style={s.sigText}>Authorized Signature</Text>
+                </View>
               </View>
             </View>
           </View>
+
+        </View>
+
+        <View style={s.footer} fixed>
+          <Text style={s.footerText} render={({ pageNumber, totalPages }) => `Page ${pageNumber} of ${totalPages}`} />
         </View>
 
       </Page>
