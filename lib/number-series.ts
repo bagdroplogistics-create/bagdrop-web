@@ -35,3 +35,11 @@ export function nextTrackingId(): Promise<string> {
 export function nextLeadNumber(): Promise<string> {
   return nextSeriesNumber('BDL')
 }
+
+// BDQ-YYYY-NNNN — quote number for a new quote row (app/api/admin/quotes/
+// route.ts). Consolidated here 2026-08-18 — that route previously had its
+// own local "SELECT MAX(quote_number) ... +1" helper, the same race-
+// condition-prone pattern this file replaced everywhere else.
+export function nextQuoteNumber(): Promise<string> {
+  return nextSeriesNumber('BDQ')
+}

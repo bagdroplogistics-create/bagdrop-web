@@ -6,6 +6,7 @@ import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
+import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 
 // Best-effort mapping from the old '+91'/'+1'/'+44'/'+1CA' dial-code-string
 // convention to an ISO2 country — only hit if a client sends the pre-
@@ -57,8 +58,13 @@ export async function POST(req: Request) {
     // is treated as 'website'. Whitelisted so an unexpected value can't leak into
     // the tracking ID prefix or lead/CRM source fields.
     const bookingSource: 'mobile-app' | 'website' = booking?.source === 'mobile-app' ? 'mobile-app' : 'website'
-    const trackingIdPrefix = bookingSource === 'mobile-app' ? 'BDM-' : 'BD-'
-    const trackingId = trackingIdPrefix + Math.random().toString(36).toUpperCase().slice(2, 8)
+    // Atomic, race-safe BDA-YYYY-NNNN tracking ID — was a random 6-char
+    // string with a BD-/BDM- prefix per source (e.g. "BD-OGQYCM"), which
+    // broke the continuous numbering every other inquiry source uses and
+    // isn't sortable/predictable. Source is still fully preserved on the
+    // linked lead's `source` column below, so nothing is lost by dropping
+    // the source-specific prefix. See lib/number-series.ts.
+    const trackingId = await nextTrackingId()
 
     const { data: savedBooking, error: dbError } = await supabaseAdmin
       .from('bookings')
@@ -144,22 +150,10 @@ export async function POST(req: Request) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          // Generate lead number: BDL-YYYY-NNNN (max-based to avoid collisions on delete)
-          const year = new Date().getFullYear()
-          const { data: lastLead } = await supabaseAdmin
-            .from('leads')
-            .select('lead_number')
-            .like('lead_number', `BDL-${year}-%`)
-            .order('lead_number', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          let nextSeq = 1
-          if (lastLead?.lead_number) {
-            const parts = lastLead.lead_number.split('-')
-            const last = parseInt(parts[parts.length - 1], 10)
-            if (!isNaN(last)) nextSeq = last + 1
-          }
-          const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+          // Atomic, race-safe BDL-YYYY-NNNN lead number — was a
+          // "SELECT MAX ... +1" query, which can hand the same number to
+          // two near-simultaneous submissions. See lib/number-series.ts.
+          const leadNumber = await nextLeadNumber()
 
           const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,

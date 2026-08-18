@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
+import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -103,24 +104,15 @@ export async function POST(req: Request) {
     const cleanEmail = (email as string).trim().toLowerCase()
     const serviceLabel = subject || 'General Inquiry'
 
-    const year = new Date().getFullYear()
-    const { data: lastLead } = await supabaseAdmin
-      .from('leads')
-      .select('lead_number')
-      .like('lead_number', `BDL-${year}-%`)
-      .order('lead_number', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    let nextSeq = 1
-    if (lastLead?.lead_number) {
-      const parts = lastLead.lead_number.split('-')
-      const last = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(last)) nextSeq = last + 1
-    }
-    const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
-    // BDC- = Bagdrop Contact-form — derived from the lead number so it's
-    // guaranteed unique, same trick used for BDA- (admin) bookings.
-    const trackingId = leadNumber.replace(/^BDL-/, 'BDC-')
+    // Atomic, race-safe BDL-/BDA- numbers (lib/number-series.ts) — this used
+    // to run its own "SELECT MAX ... +1" query for the lead number (not
+    // safe against two near-simultaneous submissions) and then derive the
+    // tracking ID as "BDC-" + that same numeric suffix, which broke the
+    // continuous numbering every other source uses (e.g. "BDC-2026-0104"
+    // sitting next to unrelated "BDA-2026-0102" bookings). Both numbers now
+    // come from the same shared sequences as every other inquiry source.
+    const leadNumber = await nextLeadNumber()
+    const trackingId = await nextTrackingId()
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')

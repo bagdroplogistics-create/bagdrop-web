@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
+import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 
 // Y2K booking form restrictions — mirrors the constants of the same name in
 // app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
@@ -58,7 +59,10 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Delivery time must be Morning, Afternoon, or Evening.' }, { status: 400 })
     }
 
-    const trackingId = 'Y2K-' + Math.random().toString(36).toUpperCase().slice(2, 8)
+    // Atomic, race-safe BDA-YYYY-NNNN tracking ID — was a random 'Y2K-'
+    // prefixed string, which broke the continuous numbering every other
+    // inquiry source uses. See lib/number-series.ts.
+    const trackingId = await nextTrackingId()
 
     // ── Save to database ──────────────────────────────────────
     let savedBookingId: string | null = null
@@ -122,23 +126,9 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          // Same BDL-YYYY-NNNN numbering as app/api/bookings/route.ts —
-          // one shared sequence across both booking sources.
-          const year = new Date().getFullYear()
-          const { data: lastLead } = await supabaseAdmin
-            .from('leads')
-            .select('lead_number')
-            .like('lead_number', `BDL-${year}-%`)
-            .order('lead_number', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          let nextSeq = 1
-          if (lastLead?.lead_number) {
-            const parts = lastLead.lead_number.split('-')
-            const last = parseInt(parts[parts.length - 1], 10)
-            if (!isNaN(last)) nextSeq = last + 1
-          }
-          const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+          // Same shared, atomic BDL-YYYY-NNNN sequence as every other
+          // inquiry source — see lib/number-series.ts.
+          const leadNumber = await nextLeadNumber()
 
           const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,

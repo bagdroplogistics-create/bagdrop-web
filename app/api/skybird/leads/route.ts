@@ -6,6 +6,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
+import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped leads API
@@ -195,24 +196,11 @@ export async function POST(req: NextRequest) {
   const phoneCountryCode = body.phone_country_code || phoneParsed.iso2
   const phoneNational    = body.phone_national     || phoneParsed.nationalNumber
 
-  // Lead number generation — same global BDL-YYYY-#### sequence used by
-  // /api/admin/leads/route.ts (shared table, must not collide).
-  const year = new Date().getFullYear()
-  const { data: lastLead } = await supabaseAdmin
-    .from('leads')
-    .select('lead_number')
-    .like('lead_number', `BDL-${year}-%`)
-    .order('lead_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  let nextSeq = 1
-  if (lastLead?.lead_number) {
-    const parts = lastLead.lead_number.split('-')
-    const last = parseInt(parts[parts.length - 1], 10)
-    if (!isNaN(last)) nextSeq = last + 1
-  }
-  const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+  // Lead number generation — same shared, atomic BDL-YYYY-NNNN sequence
+  // used by /api/admin/leads/route.ts (lib/number-series.ts). Was a
+  // "SELECT MAX ... +1" query, not safe against two near-simultaneous
+  // submissions (same class of bug already fixed in admin/leads/route.ts).
+  const leadNumber = await nextLeadNumber()
 
   const serviceLabelMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',
@@ -248,7 +236,12 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const trackingId = leadNumber.replace(/^BDL-/, 'BDA-')
+  // Independently-sequenced atomic BDA- tracking ID (was derived from the
+  // lead number by string substitution — the exact bug already root-
+  // caused and fixed in /api/admin/leads/route.ts, since a booking is
+  // conceptually a different record from its lead and deserves its own
+  // number, not a borrowed one).
+  const trackingId = await nextTrackingId()
 
   const bookingPayload = {
     tracking_id:    trackingId,

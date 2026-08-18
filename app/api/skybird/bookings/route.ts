@@ -7,6 +7,7 @@ import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITL
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
+import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped bookings API
@@ -23,9 +24,12 @@ import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/
 //   - source is ALWAYS forced to 'skybird' and partner_name to 'Skybird USA'
 //     server-side — whatever the client sends is ignored. Skybird agents
 //     can never spoof or see these fields.
-//   - Tracking IDs use the 'BDS-' prefix (Bagdrop-Skybird), matching the
-//     existing per-surface prefix convention (BD- website, BDM- mobile app,
-//     BDA- admin-created lead).
+//   - Tracking IDs and lead numbers come from the same shared atomic
+//     BDA-/BDL- sequences every other inquiry source uses (lib/number-
+//     series.ts) — was a per-surface 'BDS-' random prefix, which broke the
+//     continuous numbering the founder expects across every inquiry
+//     source. Partner origin is preserved via `partner_name`/`source`
+//     fields instead of a tracking-ID prefix.
 // ============================================================================
 
 export async function POST(req: NextRequest) {
@@ -61,7 +65,7 @@ export async function POST(req: NextRequest) {
     const customerPhone = toE164(rawPhone, countryIso2)
 
     // Source is fixed — never trust the client here.
-    const trackingId = 'BDS-' + Math.random().toString(36).toUpperCase().slice(2, 8)
+    const trackingId = await nextTrackingId()
 
     const { data: savedBooking, error: dbError } = await supabaseAdmin
       .from('bookings')
@@ -147,21 +151,7 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          const year = new Date().getFullYear()
-          const { data: lastLead } = await supabaseAdmin
-            .from('leads')
-            .select('lead_number')
-            .like('lead_number', `BDL-${year}-%`)
-            .order('lead_number', { ascending: false })
-            .limit(1)
-            .maybeSingle()
-          let nextSeq = 1
-          if (lastLead?.lead_number) {
-            const parts = lastLead.lead_number.split('-')
-            const last = parseInt(parts[parts.length - 1], 10)
-            if (!isNaN(last)) nextSeq = last + 1
-          }
-          const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+          const leadNumber = await nextLeadNumber()
 
           const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,

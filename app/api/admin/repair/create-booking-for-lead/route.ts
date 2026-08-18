@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { nextTrackingId } from '@/lib/number-series'
 
 /**
  * POST /api/admin/repair/create-booking-for-lead
  * Body: { lead_id: string }
  *
- * Creates a BDA-XXXX booking for a lead that has no booking linked,
+ * Creates a BDA-YYYY-NNNN booking for a lead that has no booking linked,
  * then writes booking_id back onto the lead row.
  * Idempotent — if a booking already exists (by booking_id or lead_id) it returns it.
  */
@@ -40,8 +41,12 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ booking: existing, created: false })
   }
 
-  // Also check by derived BDA- tracking_id in case booking exists but wasn't linked
-  // (lead_id column does not exist on bookings — relationship is via leads.booking_id only)
+  // Also check by the OLD derived BDA- tracking_id scheme (lead_number with
+  // its BDL- prefix swapped for BDA-) in case this repair tool was run
+  // against this lead before that scheme was replaced — kept purely for
+  // idempotency against pre-existing rows, not used for new bookings below.
+  // (lead_id column does not exist on bookings — relationship is via
+  // leads.booking_id only.)
   const derivedTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
   const { data: existingByTracking } = await supabaseAdmin
     .from('bookings')
@@ -58,9 +63,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ booking: existingByTracking, created: false })
   }
 
-  // ── 3. Derive BDA- tracking ID from lead number (guaranteed unique) ──────────
-  // BDL-2026-0001 → BDA-2026-0001 — enables cross-referencing across modules
-  const trackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
+  // ── 3. Independently-sequenced atomic BDA- tracking ID ───────────────────────
+  // Was derived from the lead number by string substitution — that could
+  // collide with a genuinely different booking that already claimed that
+  // exact number via the atomic sequence in the meantime. Same shared
+  // sequence as every other inquiry source (lib/number-series.ts).
+  const trackingId = await nextTrackingId()
 
   // ── 4. Service label map ─────────────────────────────────────────────────────
   const serviceLabelMap: Record<string, string> = {

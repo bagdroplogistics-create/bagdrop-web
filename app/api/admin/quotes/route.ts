@@ -5,30 +5,7 @@ import { sendInquiryNotification } from '@/lib/email'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
-
-// ── Quote number: BDQ-YYYY-NNNN ──────────────────────────────────
-// Uses MAX of existing quote numbers (not COUNT) so deletions never cause collisions.
-async function nextQuoteNumber(): Promise<string> {
-  const year   = new Date().getFullYear()
-  const prefix = `BDQ-${year}-`
-
-  const { data } = await supabaseAdmin
-    .from('quotes')
-    .select('quote_number')
-    .like('quote_number', `${prefix}%`)
-    .order('quote_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  let nextSeq = 1
-  if (data?.quote_number) {
-    const lastPart = data.quote_number.split('-').pop()
-    const lastNum  = parseInt(lastPart ?? '0', 10)
-    if (!isNaN(lastNum)) nextSeq = lastNum + 1
-  }
-
-  return `${prefix}${String(nextSeq).padStart(4, '0')}`
-}
+import { nextTrackingId, nextQuoteNumber } from '@/lib/number-series'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -201,23 +178,14 @@ export async function POST(req: NextRequest) {
     // (fall through to the INSERT block below with linkedBookingId already set)
   }
 
-  // ── No lead (or lead had no booking) → create a fresh BDQ booking ──
+  // ── No lead (or lead had no booking) → create a fresh booking ──
   if (!linkedBookingId) {
-    const { data: lastBDQ } = await supabaseAdmin
-      .from('bookings')
-      .select('tracking_id')
-      .like('tracking_id', 'BDQ-%')
-      .order('created_at', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-
-    let bdqSeq = 1
-    if (lastBDQ?.tracking_id) {
-      const parts = lastBDQ.tracking_id.split('-')
-      const last = parseInt(parts[parts.length - 1], 10)
-      if (!isNaN(last)) bdqSeq = last + 1
-    }
-    trackingId = `BDQ-${String(bdqSeq).padStart(4, '0')}`
+    // Atomic, race-safe BDA-YYYY-NNNN tracking ID — same shared sequence
+    // every other inquiry source uses. Was a locally-computed "BDQ-NNNN"
+    // (no year segment at all, and a race-prone MAX query) — this whole
+    // branch currently has no live frontend caller, but is fixed here too
+    // for consistency in case that changes.
+    trackingId = await nextTrackingId()
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')
