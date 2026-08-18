@@ -17,7 +17,48 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
 
   const { data, error } = await supabaseAdmin.from('payments').select('*').eq('id', id).single()
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
-  return NextResponse.json({ payment: data })
+
+  // Enrichment for the Payment Receipt detail view (Zoho Books "Payments
+  // Received" receipt layout — see app/(admin)/admin/payments/page.tsx's
+  // PaymentReceiptPanel): the invoice this payment was applied against (if
+  // any, resolved via booking_id — same reliable link GET /api/admin/
+  // payments's list already uses for its Invoice#/Unused Amount columns),
+  // plus the customer's billing address for the "Received From" block
+  // (invoice.customer_address first, falling back to the booking's pickup
+  // address — a payment row itself has no address field of its own).
+  type LinkedInvoice = { invoice_number: string; invoice_date: string | null; total_amount: number; customer_address: string | null }
+  let invoice: LinkedInvoice | null = null
+  let bookingPickupAddress: string | null = null
+  if (data.booking_id) {
+    const [{ data: inv }, { data: booking }] = await Promise.all([
+      supabaseAdmin
+        .from('invoices')
+        .select('invoice_number, invoice_date, total_amount, customer_address')
+        .eq('booking_id', data.booking_id)
+        .maybeSingle(),
+      supabaseAdmin
+        .from('bookings')
+        .select('pickup_address')
+        .eq('id', data.booking_id)
+        .maybeSingle(),
+    ])
+    invoice = (inv as LinkedInvoice | null) ?? null
+    bookingPickupAddress = booking?.pickup_address ?? null
+  }
+
+  // Same unused-amount definition as the list route: no invoice yet = the
+  // whole payment is unused; invoice exists and covers it = fully applied;
+  // invoice exists but is smaller than the payment = the difference.
+  const unused_amount = !invoice
+    ? Number(data.amount)
+    : Math.max(0, Number(data.amount) - Number(invoice.total_amount))
+
+  return NextResponse.json({
+    payment: data,
+    invoice,
+    customer_address: invoice?.customer_address ?? bookingPickupAddress ?? null,
+    unused_amount,
+  })
 }
 
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {

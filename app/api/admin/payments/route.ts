@@ -176,6 +176,15 @@ export async function POST(req: NextRequest) {
   // Convert empty strings to null for UUID columns — PostgreSQL rejects ""
   const bookingId = (body.booking_id ?? '').toString().trim() || null
 
+  // Payment Date — from the new Zoho-style Record Payment form (see
+  // supabase/migrations/20260818b_payments_zoho_fields.sql). Written to
+  // BOTH the dedicated payment_date column AND created_at, so every
+  // existing read path that already displays/sorts by created_at (the
+  // Payments table's Date column, the Payment Receipt panel's "Payment
+  // Date" field) shows the admin-entered date with no further changes —
+  // created_at otherwise defaults to "now" as before when omitted.
+  const paymentDate = (body.payment_date ?? '').toString().trim() || null
+
   const { data, error } = await supabaseAdmin.from('payments').insert({
     payment_id:        paymentId,
     booking_id:        bookingId,
@@ -186,6 +195,11 @@ export async function POST(req: NextRequest) {
     payment_status:    body.payment_status ?? 'pending',
     payment_reference: body.payment_reference?.trim() || null,
     notes:             body.notes?.trim() || null,
+    payment_date:       paymentDate,
+    ...(paymentDate ? { created_at: new Date(paymentDate + 'T12:00:00').toISOString() } : {}),
+    bank_charges:       body.bank_charges != null && body.bank_charges !== '' ? Number(body.bank_charges) : 0,
+    tds_deducted:       !!body.tds_deducted,
+    tds_amount:         body.tds_deducted && body.tds_amount != null && body.tds_amount !== '' ? Number(body.tds_amount) : null,
   }).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
