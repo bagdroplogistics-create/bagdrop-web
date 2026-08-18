@@ -172,10 +172,15 @@ const s = StyleSheet.create({
   footer:     { position: 'absolute', bottom: 18, left: 32, right: 32, borderTopWidth: 1, borderTopColor: BORDER, paddingTop: 4, flexDirection: 'row', justifyContent: 'flex-end' },
   footerText: { fontSize: 7.5, color: GREY },
 
-  // PAID ribbon
-  ribbonWrap: { position: 'absolute', top: 34, left: -34, width: 150, alignItems: 'center' },
-  ribbon:     { backgroundColor: GREEN, paddingVertical: 3, transform: 'rotate(-40deg)' },
-  ribbonText: { color: '#fff', fontSize: 10, fontFamily: 'Helvetica-Bold', letterSpacing: 2 },
+  // PAID ribbon — confined to a small clipped corner box (overflow:
+  // hidden), same treatment as the Payment Receipt panel's PAID ribbon
+  // (app/(admin)/admin/payments/page.tsx) rather than a long unclipped
+  // diagonal sash — the earlier version had no clipping container, so the
+  // ribbon rendered as a long banner cutting across toward the logo
+  // instead of a small corner flag.
+  ribbonBox:  { position: 'absolute', top: 0, left: 0, width: 96, height: 96, overflow: 'hidden' },
+  ribbon:     { position: 'absolute', top: 18, left: -32, width: 120, backgroundColor: GREEN, paddingVertical: 3, alignItems: 'center', transform: 'rotate(-45deg)' },
+  ribbonText: { color: '#fff', fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 2 },
 })
 
 function fmtRs(n: number | null | undefined) {
@@ -264,7 +269,7 @@ export default function InvoicePDF(p: InvoicePDFProps) {
         <View style={s.topBar} fixed />
 
         {p.paid && (
-          <View style={s.ribbonWrap} fixed>
+          <View style={s.ribbonBox} fixed>
             <View style={s.ribbon}><Text style={s.ribbonText}>PAID</Text></View>
           </View>
         )}

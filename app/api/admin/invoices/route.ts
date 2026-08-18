@@ -171,7 +171,7 @@ async function buildInvoicePdfBase64(inv: any): Promise<string | null> {
       paymentMade:   inv.payment_status === 'paid' ? Number(inv.total_amount ?? 0) : 0,
       balanceDue:    inv.payment_status === 'paid' ? 0 : Number(inv.total_amount ?? 0),
       notes:         inv.notes ?? null,
-      termsText:     null,
+      termsText:     inv.terms_conditions ?? null,
       paid:          inv.payment_status === 'paid',
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
     }) as any
@@ -182,6 +182,180 @@ async function buildInvoicePdfBase64(inv: any): Promise<string | null> {
     console.error('[invoices POST] PDF generation for email attachment failed (non-fatal):', err)
     return null
   }
+}
+
+// ── Manual "New Invoice" creation (Zoho Books parity) ───────────────────
+// See app/(admin)/admin/invoices/new/page.tsx and
+// supabase/migrations/20260818e_manual_invoice_fields.sql. Unlike the
+// booking-derived flow below, every field here comes straight from the
+// admin's typed input — a freely-picked customer (no booking required)
+// and a hand-built item table, one row per line item, each with its own
+// tax mode (this app still only ever applies one uniform GST rate per
+// LINE, not a full multi-rate-per-invoice system — matches the existing
+// "this app never mixes multiple GST rates on one invoice" constraint,
+// just applied per-row instead of per-invoice so a manual invoice can mix
+// a couple of differently-taxed lines if genuinely needed).
+//
+// Tax/discount/TDS ordering (documented since it's a judgment call, not a
+// literal spec): Subtotal = sum of item amounts (each item's own tax is
+// computed on ITS OWN amount, unaffected by discount) → Discount is a
+// flat deduction off the subtotal, shown as its own line, not redistributed
+// per-item → TDS/TCS is computed as a percentage of (subtotal - discount +
+// total tax) → Adjustment is added/subtracted last. This matches how most
+// simple invoicing tools (and Zoho's own default behavior) order these,
+// but flagging it since Zoho's TDS/TCS base can be configured differently
+// per account.
+interface ManualLineItemInput {
+  name?: string; description?: string; hsn?: string
+  quantity?: number; rate?: number
+  taxMode?: 'gst5' | 'igst5' | 'none'
+}
+
+async function createManualInvoice(body: Record<string, unknown>) {
+  const customerName = (body.customer_name as string ?? '').trim()
+  if (!customerName) return NextResponse.json({ error: 'Customer name is required' }, { status: 400 })
+  if (!body.pickup_date) return NextResponse.json({ error: 'Pickup date is required' }, { status: 400 })
+
+  const rawItems = Array.isArray(body.line_items) ? (body.line_items as ManualLineItemInput[]) : []
+  const validItems = rawItems.filter(i => (i.name ?? '').toString().trim() && Number(i.rate) > 0)
+  if (validItems.length === 0) {
+    return NextResponse.json({ error: 'At least one item with a name and rate is required' }, { status: 400 })
+  }
+
+  const gstin = (body.gst_number as string) || null
+
+  const lineItemsSnapshot: InvoicePDFLineItem[] = validItems.map(i => {
+    const quantity = Number(i.quantity ?? 1) || 1
+    const rate     = Number(i.rate ?? 0) || 0
+    const amount   = parseFloat((quantity * rate).toFixed(2))
+    const mode     = i.taxMode ?? 'gst5'
+    const base = {
+      name: (i.name ?? '').toString().trim(),
+      description: (i.description ?? '').toString().trim() || null,
+      hsn: (i.hsn ?? '').toString().trim() || SAC_TRANSPORT,
+      quantity, rate, amount,
+    }
+    if (mode === 'igst5') {
+      return { ...base, igstPct: 5, igstAmt: parseFloat((amount * 0.05).toFixed(2)) }
+    }
+    if (mode === 'none') {
+      return { ...base }
+    }
+    return { ...base, cgstPct: 2.5, cgstAmt: parseFloat((amount * 0.025).toFixed(2)), sgstPct: 2.5, sgstAmt: parseFloat((amount * 0.025).toFixed(2)) }
+  })
+
+  const subtotal = parseFloat(lineItemsSnapshot.reduce((s, i) => s + i.amount, 0).toFixed(2))
+  const cgst = parseFloat(lineItemsSnapshot.reduce((s, i) => s + (i.cgstAmt ?? 0), 0).toFixed(2))
+  const sgst = parseFloat(lineItemsSnapshot.reduce((s, i) => s + (i.sgstAmt ?? 0), 0).toFixed(2))
+  const igst = parseFloat(lineItemsSnapshot.reduce((s, i) => s + (i.igstAmt ?? 0), 0).toFixed(2))
+
+  const discountPercent = Number(body.discount_percent) || 0
+  const discountAmount  = parseFloat((subtotal * discountPercent / 100).toFixed(2))
+
+  const beforeAdjustment = parseFloat((subtotal - discountAmount + cgst + sgst + igst).toFixed(2))
+
+  const tdsTcsType    = body.tds_tcs_type === 'tds' || body.tds_tcs_type === 'tcs' ? body.tds_tcs_type : null
+  const tdsTcsPercent = Number(body.tds_tcs_percent) || 0
+  const tdsTcsAmount  = tdsTcsType ? parseFloat((beforeAdjustment * tdsTcsPercent / 100).toFixed(2)) : 0
+
+  const adjustmentLabel  = (body.adjustment_label as string) || null
+  const adjustmentAmount = Number(body.adjustment_amount) || 0
+
+  const total = parseFloat((
+    beforeAdjustment
+    + (tdsTcsType === 'tcs' ? tdsTcsAmount : 0)
+    - (tdsTcsType === 'tds' ? tdsTcsAmount : 0)
+    + adjustmentAmount
+  ).toFixed(2))
+
+  const { placeOfSupply } = resolveGstTreatment(gstin)
+  const invoiceDate = (body.invoice_date as string) || new Date().toISOString().split('T')[0]
+  const dueDate      = (body.due_date as string) || invoiceDate
+
+  let invoiceNumber: string
+  try {
+    invoiceNumber = await assignNextInvoiceNumber()
+  } catch (err) {
+    console.error('[invoices POST manual] Local invoice number assignment failed — no invoice was created:', err)
+    return NextResponse.json({
+      error: `Could not assign an invoice number, so no invoice was generated. Details: ${(err as Error)?.message ?? 'unknown error'}`,
+    }, { status: 500 })
+  }
+
+  const payload = {
+    invoice_number:     invoiceNumber,
+    booking_id:          null,
+    customer_name:       customerName,
+    customer_phone:      (body.customer_phone as string) || '',
+    customer_email:      (body.customer_email as string) || null,
+    customer_address:    (body.customer_address as string) || null,
+    customer_type:       (body.customer_type as string) || 'individual',
+    business_name:       (body.business_name as string) || null,
+    business_address:    (body.business_address as string) || null,
+    gst_number:          gstin,
+    service_type:        null,
+    from_city:           (body.from_city as string) || '',
+    to_city:             (body.to_city as string) || '',
+    total_bags:          Number(body.total_bags) || 0,
+    base_amount:         parseFloat((subtotal - discountAmount).toFixed(2)),
+    cgst, sgst, igst,
+    total_amount:        total,
+    payment_status:      'pending',
+    payment_method:      null,
+    payment_reference:   null,
+    notes:               (body.notes as string) || null,
+    invoice_date:        invoiceDate,
+    due_date:            dueDate,
+    place_of_supply:     placeOfSupply,
+    pickup_date:         body.pickup_date as string,
+    delivery_date:       (body.delivery_date as string) || null,
+    consignment_no:      (body.consignment_no as string) || null,
+    line_items:          lineItemsSnapshot,
+    po_number:           (body.salesperson as string) || null,
+    order_number:        (body.order_number as string) || null,
+    pickup_time:         (body.pickup_time as string) || null,
+    delivery_time:       (body.delivery_time as string) || null,
+    pickup_address:      (body.pickup_address as string) || null,
+    delivery_address:    (body.delivery_address as string) || null,
+    subject:             (body.subject as string) || null,
+    terms_conditions:    (body.terms_conditions as string) || null,
+    discount_percent:    discountPercent,
+    discount_amount:     discountAmount,
+    tds_tcs_type:        tdsTcsType,
+    tds_tcs_percent:     tdsTcsPercent,
+    tds_tcs_amount:      tdsTcsAmount,
+    adjustment_label:    adjustmentLabel,
+    adjustment_amount:   adjustmentAmount,
+    is_manual:           true,
+  }
+
+  const { data: created, error: cErr } = await supabaseAdmin.from('invoices').insert(payload).select().single()
+  if (cErr) return NextResponse.json({ error: cErr.message }, { status: 500 })
+
+  let email_sent = false
+  if (body.send_email && payload.customer_email) {
+    const pdfBase64 = await buildInvoicePdfBase64(created)
+    email_sent = await sendInvoiceEmail({
+      to:               payload.customer_email,
+      customerName:     formatCustomerName(null, payload.customer_name) || payload.customer_name,
+      invoiceNumber,
+      serviceType:      'Baggage Delivery',
+      fromCity:         payload.from_city,
+      toCity:           payload.to_city,
+      totalBags:        payload.total_bags,
+      baseAmount:       payload.base_amount,
+      cgst:             payload.cgst,
+      sgst:             payload.sgst,
+      totalAmount:      payload.total_amount,
+      paymentMethod:    'UPI',
+      paymentReference: '',
+      trackingId:       payload.consignment_no ?? '',
+      pdfBase64,
+    })
+    if (email_sent) await supabaseAdmin.from('invoices').update({ sent_email: true }).eq('id', created.id)
+  }
+
+  return NextResponse.json({ invoice: created, action: 'created', email_sent }, { status: 201 })
 }
 
 // POST /api/admin/invoices — manually generate invoice from a booking_id.
@@ -203,6 +377,17 @@ export async function POST(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
+
+  // ── Manual invoice (Zoho-style New Invoice form, no booking behind it) ──
+  // Every OTHER invoice in this app is derived from a completed booking
+  // (below) — this is the one path that creates a standalone invoice from
+  // a freely-picked customer and a hand-typed item table, matching
+  // app/(admin)/admin/invoices/new/page.tsx. Kept as an early, fully
+  // separate branch rather than threading `manual` conditionals through
+  // the booking-derived logic below, so the existing (heavily-relied-on)
+  // booking → invoice flow is untouched.
+  if (body?.manual) return createManualInvoice(body)
+
   if (!body?.booking_id) return NextResponse.json({ error: 'booking_id required' }, { status: 400 })
 
   const bookingId = body.booking_id
