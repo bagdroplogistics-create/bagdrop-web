@@ -109,11 +109,17 @@ const s = StyleSheet.create({
 
   // Column widths — exact percentages from Zoho's itemtable CSS (see file
   // header comment). Sums to 100% either branch (CGST+SGST or IGST-only).
+  // wDesc/wRate deliberately shifted 2pts (28→26 / 11→13) from the Zoho
+  // baseline — the Rate column's "Rs. 12,500.00"-style strings were
+  // wrapping onto two lines at the original 11% width, and Description is
+  // the one column with enough spare room to give up 2pts without visibly
+  // cramping — the CGST/SGST/IGST group widths are untouched (see taxCell
+  // comment below for why those stay put).
   wIdx:       { width: '5%' },
-  wDesc:      { width: '28%' },
+  wDesc:      { width: '26%' },
   wHsn:       { width: '10%' },
   wQty:       { width: '11%' },
-  wRate:      { width: '11%' },
+  wRate:      { width: '13%' },
   wTaxGroup:  { width: '11%' },
   wTaxPct:    { width: '4.5%' },
   wTaxAmt:    { width: '6.5%' },
@@ -127,6 +133,10 @@ const s = StyleSheet.create({
   // CGST/SGST split).
   taxCell:    { paddingHorizontal: 2 },
   taxText:    { fontSize: 7 },
+  // Tighter horizontal padding for the Rate cell only, on top of the wider
+  // 13% column above — belt-and-braces against "Rs. 12,500.00"-style
+  // amounts wrapping onto a second line.
+  rateCell:   { paddingHorizontal: 3 },
   wAmt:       { width: '13%' },
   amtBold:    { fontFamily: 'Helvetica-Bold', color: DARK },
 
@@ -292,6 +302,7 @@ export default function InvoicePDF(p: InvoicePDFProps) {
               <Text style={s.coLine}>{INVOICE_COMPANY.addressLine2}</Text>
               <Text style={s.coLine}>GSTIN: {INVOICE_COMPANY.gstin}</Text>
               <Text style={s.coLine}>{INVOICE_COMPANY.phone}  ·  {INVOICE_COMPANY.email}</Text>
+              <Text style={s.coLine}>Tel: +91 63573 35733</Text>
               <Text style={s.coLine}>{INVOICE_COMPANY.web}</Text>
             </View>
             <Text style={s.taxInvTitle}>TAX INVOICE</Text>
@@ -341,7 +352,7 @@ export default function InvoicePDF(p: InvoicePDFProps) {
               <View style={[s.thCell, s.wDesc]}><Text style={s.th}>Item &amp; Description</Text></View>
               <View style={[s.thCell, s.wHsn]}><Text style={[s.th, s.alignCenter]}>HSN/SAC</Text></View>
               <View style={[s.thCell, s.wQty]}><Text style={[s.th, s.alignCenter]}>Qty</Text></View>
-              <View style={[s.thCell, s.wRate]}><Text style={[s.th, s.alignRight]}>Rate</Text></View>
+              <View style={[s.thCell, s.wRate, s.rateCell]}><Text style={[s.th, s.alignRight]}>Rate</Text></View>
               {hasIgst ? (
                 <View style={[s.thCell, s.wIgstGroup]}><Text style={[s.th, s.alignCenter]}>IGST</Text></View>
               ) : (
@@ -382,7 +393,7 @@ export default function InvoicePDF(p: InvoicePDFProps) {
                 </View>
                 <View style={[s.tCell, s.wHsn]}><Text style={[s.td, s.alignCenter]}>{li.hsn}</Text></View>
                 <View style={[s.tCell, s.wQty]}><Text style={[s.td, s.alignCenter]}>{li.quantity}</Text></View>
-                <View style={[s.tCell, s.wRate]}><Text style={[s.td, s.alignRight]}>{fmtRs(li.rate)}</Text></View>
+                <View style={[s.tCell, s.wRate, s.rateCell]}><Text style={[s.td, s.alignRight]}>{fmtRs(li.rate)}</Text></View>
                 {hasIgst ? (
                   <>
                     <View style={[s.tCell, s.wIgstPct, s.taxCell]}><Text style={[s.td, s.taxText, s.alignCenter]}>{li.igstPct ?? 5}%</Text></View>

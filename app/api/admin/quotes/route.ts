@@ -35,7 +35,40 @@ export async function GET(req: NextRequest) {
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ quotes: data, total: count, page, limit })
+
+  // Read-only display status — a quote's own `status` column (draft/sent/
+  // accepted/rejected/expired) never gets touched once the customer's
+  // booking moves forward, so the Quote Table could otherwise show a stale
+  // "Sent"/"Accepted" badge for an inquiry that's actually long since been
+  // confirmed. Same ACTIVE_STATUSES definition + pattern already used by
+  // the Leads tab (app/api/admin/leads/route.ts) and the Dashboard's "Total
+  // Confirmed Bookings" bucket (app/api/admin/dashboard-analytics/route.ts)
+  // — must stay in sync with both. Computed here, not stored: quotes.status
+  // keeps meaning exactly what it always has for every other consumer.
+  const ACTIVE_STATUSES = [
+    'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
+    'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
+    'indemnity_bond_sent', 'delivered', 'trip_created',
+  ]
+  const bookingIds = Array.from(
+    new Set((data ?? []).map(q => q.booking_id).filter((id): id is string => !!id))
+  )
+  let confirmedBookingIds = new Set<string>()
+  if (bookingIds.length > 0) {
+    const { data: activeBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id, status')
+      .in('id', bookingIds)
+      .in('status', ACTIVE_STATUSES)
+    confirmedBookingIds = new Set((activeBookings ?? []).map(b => b.id))
+  }
+
+  const enriched = (data ?? []).map(q => ({
+    ...q,
+    effective_status: confirmedBookingIds.has(q.booking_id ?? '') ? 'confirmed' : q.status,
+  }))
+
+  return NextResponse.json({ quotes: enriched, total: count, page, limit })
 }
 
 export async function POST(req: NextRequest) {

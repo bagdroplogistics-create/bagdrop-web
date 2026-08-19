@@ -380,10 +380,12 @@ export async function POST(req: NextRequest) {
     .maybeSingle()
 
   // "P.O.#" on the PDF, Zoho-style — the referring agent if one was
-  // recorded on the lead (e.g. "Aditya Sir"), else the in-house
-  // salesperson who quoted it. Never hardcoded/fabricated: null renders no
-  // P.O.# row at all (see InvoicePDF.tsx).
-  const poNumber = lead?.agent_name?.trim() || lead?.salesperson_name?.trim() || null
+  // recorded on the lead, else the in-house salesperson who quoted it,
+  // else "ADITYA SIR" (founder request, 2026-08-19) as the default
+  // fallback when a booking's lead has neither field set — only applies
+  // to invoices generated from here on; existing invoices' stored
+  // po_number values are untouched.
+  const poNumber = lead?.agent_name?.trim() || lead?.salesperson_name?.trim() || 'ADITYA SIR'
 
   const total = Number(booking.total_amount ?? 0)
   const gstin = booking.gst_number ?? lead?.gst_number ?? null
@@ -403,7 +405,12 @@ export async function POST(req: NextRequest) {
       }))
     : [{
         name: `Transportation of Goods (Upto ${Number(booking.total_bags ?? 1)} Bag${Number(booking.total_bags ?? 1) !== 1 ? 's' : ''}) — ${booking.from_city ?? ''} to ${booking.to_city ?? ''}`,
-        description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery',
+        // Description sub-line intentionally left blank per founder
+        // request (2026-08-19) — the "Airport-to-Doorstep / Doorstep-to-
+        // Airport baggage delivery" text no longer shows on the invoice.
+        // `hsn` (SAC 996511) below is untouched — a separate column,
+        // still required for GST reporting.
+        description: '',
         hsn:      SAC_TRANSPORT,
         quantity: 1,
         rate:     parseFloat((total / 1.05).toFixed(2)),

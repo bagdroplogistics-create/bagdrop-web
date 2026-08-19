@@ -31,6 +31,14 @@ interface Quote {
   sgst:           number
   total_amount:   number
   status:         string
+  // Read-only, computed server-side (see GET /api/admin/quotes) — the
+  // linked booking's real status once it's reached 'confirmed' or beyond,
+  // so the table never shows a stale/outdated funnel status (draft/sent/
+  // accepted) for a quote whose inquiry has actually moved on. Falls back
+  // to `status` itself when the booking hasn't reached that point yet.
+  // Mirrors the identical effective_status pattern already used by the
+  // Leads tab (app/api/admin/leads/route.ts).
+  effective_status?: string
   valid_until:    string | null
   notes:          string | null
   version:        number
@@ -38,11 +46,12 @@ interface Quote {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
-  draft:    { label: 'Draft',    color: '#6b7280', bg: '#f3f4f6' },
-  sent:     { label: 'Sent',     color: '#2563eb', bg: '#dbeafe' },
-  accepted: { label: 'Accepted', color: '#16a34a', bg: '#dcfce7' },
-  rejected: { label: 'Rejected', color: '#dc2626', bg: '#fee2e2' },
-  expired:  { label: 'Expired',  color: '#d97706', bg: '#fef3c7' },
+  draft:     { label: 'Draft',     color: '#6b7280', bg: '#f3f4f6' },
+  sent:      { label: 'Sent',      color: '#2563eb', bg: '#dbeafe' },
+  accepted:  { label: 'Accepted',  color: '#16a34a', bg: '#dcfce7' },
+  rejected:  { label: 'Rejected',  color: '#dc2626', bg: '#fee2e2' },
+  expired:   { label: 'Expired',   color: '#d97706', bg: '#fef3c7' },
+  confirmed: { label: 'Confirmed', color: '#0891b2', bg: '#cffafe' },
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -372,7 +381,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
             <h2 className="text-xl font-black text-gray-900">{quote.quote_number}</h2>
           </div>
           <div className="flex items-center gap-2">
-            <StatusBadge status={quote.status} />
+            <StatusBadge status={quote.effective_status ?? quote.status} />
             <button onClick={onClose}><X className="h-4 w-4 text-gray-400 hover:text-gray-600" /></button>
           </div>
         </div>
@@ -658,7 +667,7 @@ export default function QuotesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
-                    {['Quote #', 'Ver.', 'Customer', 'Route', 'Bags', 'Amount', 'Status', 'Valid Until', 'Actions'].map(h => (
+                    {['Quote #', 'Ver.', 'Customer', 'Route', 'Pickup Date', 'Bags', 'Amount', 'Status', 'Valid Until', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -673,9 +682,10 @@ export default function QuotesPage() {
                         <p className="text-xs text-gray-400">{q.customer_phone}</p>
                       </td>
                       <td className="px-4 py-3 text-xs text-gray-500">{q.from_city} → {q.to_city}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(q.pickup_date)}</td>
                       <td className="px-4 py-3 text-center font-medium text-gray-700">{q.total_bags}</td>
                       <td className="px-4 py-3 font-bold text-gray-900">{fmtRs(q.total_amount)}</td>
-                      <td className="px-4 py-3"><StatusBadge status={q.status} /></td>
+                      <td className="px-4 py-3"><StatusBadge status={q.effective_status ?? q.status} /></td>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(q.valid_until)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
