@@ -218,15 +218,20 @@ export default function NewQuote() {
         const items: Row[] = [{
           id: uid(),
           name: `Transportation of Goods (Upto 2 Bags) — ${fromCity} → ${toCity}`,
-          description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
-          qty: '1',
+          // Description sub-line removed + Qty reflects real bag count
+          // (capped at 2) — mirrors the same founder-requested fix
+          // (2026-08-19) already applied on the website's quote form.
+          // `rate` (p.base_price) is untouched — the flat "up to 2 bags"
+          // price itself is not recalculated, only the displayed quantity.
+          description: '',
+          qty: String(Math.min(bags, 2)),
           rate: String(p.base_price),
         }]
         if (bags > 2) {
           items.push({
             id: uid(),
             name: `Additional Bag(s) — ${fromCity} → ${toCity}`,
-            description: 'Per extra bag beyond 2 · SAC 996511',
+            description: '',
             qty: String(bags - 2),
             rate: String(p.per_bag_rate ?? 0),
           })

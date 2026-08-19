@@ -345,12 +345,22 @@ function QuotePageInner() {
   function populateReturnItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
     const items: LineItemRow[] = [{
       id: uid(), name: `Transportation of Goods (Upto 2 Bags) — ${from} → ${to}`,
-      description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
-      qty: 1, rate: p.base_price!, taxId: TAX_GST5,
+      // Description sub-line removed per founder request (2026-08-19) —
+      // "Airport-to-Doorstep..." text no longer appears anywhere this
+      // quote's line items are shown (quote preview, PDF, or any invoice
+      // later generated from it). Not replaced with anything else.
+      description: '',
+      // Qty reflects the real bag count, capped at 2 (this item covers
+      // "up to 2 bags") — was hardcoded to 1 regardless of whether the
+      // customer had 1 or 2 bags, which read as if only 1 bag was
+      // covered. `rate` (p.base_price!) is deliberately untouched per
+      // founder instruction (2026-08-19) — the flat "up to 2 bags" price
+      // itself is not being recalculated, only the displayed quantity.
+      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5,
     }]
     if (bags > 2) items.push({
       id: uid(), name: `Additional Bag(s) — ${from} → ${to}`,
-      description: 'Per extra bag beyond 2 · SAC 996511',
+      description: '',
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setReturnLineItems(items); returnItemsFromPricing.current = true
@@ -580,12 +590,22 @@ function QuotePageInner() {
   function populateItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
     const items: LineItemRow[] = [{
       id: uid(), name: `Transportation of Goods (Upto 2 Bags) — ${from} → ${to}`,
-      description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
-      qty: 1, rate: p.base_price!, taxId: TAX_GST5,
+      // Description sub-line removed per founder request (2026-08-19) —
+      // "Airport-to-Doorstep..." text no longer appears anywhere this
+      // quote's line items are shown (quote preview, PDF, or any invoice
+      // later generated from it). Not replaced with anything else.
+      description: '',
+      // Qty reflects the real bag count, capped at 2 (this item covers
+      // "up to 2 bags") — was hardcoded to 1 regardless of whether the
+      // customer had 1 or 2 bags, which read as if only 1 bag was
+      // covered. `rate` (p.base_price!) is deliberately untouched per
+      // founder instruction (2026-08-19) — the flat "up to 2 bags" price
+      // itself is not being recalculated, only the displayed quantity.
+      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5,
     }]
     if (bags > 2) items.push({
       id: uid(), name: `Additional Bag(s) — ${from} → ${to}`,
-      description: 'Per extra bag beyond 2 · SAC 996511',
+      description: '',
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setLineItems(items); itemsFromPricing.current = true
