@@ -23,6 +23,10 @@ const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
   { key: 'pending_verification', label: 'Pending Verification' },
+  // Was missing — web's filter dropdown is built from STATUS_CFG's entries
+  // directly so it already had this state; mobile's chip row is a fixed
+  // list and had no way to isolate VIP/Admin-Approved-but-unpaid bookings.
+  { key: 'approved_pending', label: 'Admin Approved (VIP)' },
   { key: 'paid', label: 'Paid' },
   { key: 'rejected', label: 'Rejected' },
   { key: 'refunded', label: 'Refunded' },

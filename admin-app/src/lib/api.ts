@@ -180,6 +180,12 @@ export interface BookingPatch {
   // mirrors doSendQuote() in app/(admin)/admin/quotes/view/[lead_id]/
   // page.tsx exactly (same PATCH /api/admin/bookings/[id] call).
   send_quote_email?: boolean
+  // "Admin Approve — Pay Later" (VIP bypass). Must be sent this way, NOT
+  // as a raw payment_status: 'approved_pending' — the backend
+  // (app/api/admin/bookings/[id]/route.ts) only enforces its admin-only
+  // role gate and writes approved_by/status='payment_approved' when this
+  // exact field is present. Sending payment_status directly skips both.
+  approved_without_payment?: boolean
 }
 
 export function updateBooking(key: string, id: string, patch: BookingPatch) {

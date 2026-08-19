@@ -35,7 +35,14 @@ const PAYMENT_OPTIONS = [
 
 export default function BookingDetail() {
   const { id } = useLocalSearchParams<{ id: string }>()
-  const { adminKey } = useAdminAuth()
+  const { adminKey, role } = useAdminAuth()
+  // "Approved (pending payment)" is the VIP/Admin-Approve-without-payment
+  // bypass — website restricts it to role='admin' only
+  // (app/api/admin/bookings/[id]/route.ts). Hiding it here for non-admins
+  // too, since the field-level fix below (routing through
+  // approved_without_payment) makes the backend actually enforce that gate
+  // on mobile now, where previously a raw payment_status write skipped it.
+  const paymentOptions = role === 'admin' ? PAYMENT_OPTIONS : PAYMENT_OPTIONS.filter(o => o.value !== 'approved_pending')
   const [booking, setBooking] = useState<AdminBooking | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
@@ -180,10 +187,19 @@ export default function BookingDetail() {
     if (!adminKey || !id || !paymentStatusValue) return
     setError(''); setPaymentSaving(true); setPaymentSuccess(false)
     try {
-      const { booking: b } = await updateBooking(adminKey, id, {
-        payment_status: paymentStatusValue,
-        payment_reference: paymentReference.trim() || undefined,
-      })
+      // "Approved (pending payment)" must go through approved_without_
+      // payment, not a raw payment_status write — matches doAdminApprove()
+      // in app/(admin)/admin/quotes/view/[lead_id]/page.tsx on the website.
+      // Sending payment_status: 'approved_pending' directly used to skip
+      // the backend's admin-only role check entirely (any staff user could
+      // set it) and left approved_by/approved_without_payment unset,
+      // inconsistent with the same state reached from the website. Every
+      // other payment status here is unaffected.
+      const { booking: b } = await updateBooking(adminKey, id,
+        paymentStatusValue === 'approved_pending'
+          ? { approved_without_payment: true, payment_reference: paymentReference.trim() || undefined }
+          : { payment_status: paymentStatusValue, payment_reference: paymentReference.trim() || undefined }
+      )
       setBooking(b)
       setPaymentSuccess(true)
       setTimeout(() => setPaymentSuccess(false), 2000)
@@ -376,7 +392,7 @@ export default function BookingDetail() {
             <SelectField
               label="Payment Status"
               value={paymentStatusValue}
-              options={PAYMENT_OPTIONS}
+              options={paymentOptions}
               onChange={setPaymentStatusValue}
             />
             <TextField label="Payment Reference (optional)" value={paymentReference} onChangeText={setPaymentReference} placeholder="UTR / transaction ID" />

@@ -106,7 +106,13 @@ const BOOKING_STATUS_CONFIG: Record<string, { label: string; color: string; bg: 
   closed:                { label: 'Inquiry Closed',      color: '#6b7280', bg: '#f3f4f6' },
   payment_pending:       { label: 'Payment Requested',   color: '#d97706', bg: '#fef3c7' },
   payment_received:      { label: 'Payment Received',    color: '#059669', bg: '#d1fae5' },
-  payment_approved:      { label: 'Admin Approved',      color: '#059669', bg: '#d1fae5' },
+  // Deliberately NOT the same green as Payment Received — this status
+  // means the booking was let through without an actual payment (VIP /
+  // Admin Approve — Pay Later). Amber matches the Payments tab's own
+  // "Approved (Unpaid)" badge for the same underlying payment_status
+  // value ('approved_pending'), so Accounts can tell at a glance which
+  // customers have actually paid (founder spec, 2026-08-20).
+  payment_approved:      { label: 'Admin Approved (VIP)', color: '#d97706', bg: '#fef3c7' },
   confirmed:             { label: 'Booking Confirmed',   color: '#2563eb', bg: '#dbeafe' },
   invoice_generated:     { label: 'Invoice Generated',   color: '#7c3aed', bg: '#ede9fe' },
   invoice_sent:          { label: 'Invoice Sent',        color: '#6d28d9', bg: '#ede9fe' },

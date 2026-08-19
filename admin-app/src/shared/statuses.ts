@@ -17,6 +17,14 @@ export const BOOKING_FUNNEL: StatusMeta[] = [
   { key: 'rejected', label: 'Quotes Rejected', color: '#dc2626', bg: '#fee2e2' },
   { key: 'payment_pending', label: 'Payment Pending', color: '#d97706', bg: '#fef3c7' },
   { key: 'payment_received', label: 'Payment Received', color: '#059669', bg: '#d1fae5' },
+  // VIP / "Admin Approve — Pay Later" — booking allowed to proceed without
+  // an actual payment. Was missing here entirely, so statusLabel() fell
+  // back to printing the raw 'payment_approved' string on mobile. Amber,
+  // not the same green as Payment Received — matches PAYMENT_STATUS_META's
+  // own 'approved_pending' color below and the website Leads tab (founder
+  // spec, 2026-08-20): Accounts should see at a glance that this one
+  // hasn't actually been paid.
+  { key: 'payment_approved', label: 'Admin Approved (VIP)', color: '#d97706', bg: '#fef3c7' },
   { key: 'confirmed', label: 'Booking Confirmed', color: '#2563eb', bg: '#dbeafe' },
   { key: 'in_transit', label: 'In Transit', color: '#0891b2', bg: '#cffafe' },
   { key: 'out_for_delivery', label: 'Out for Delivery', color: '#ea580c', bg: '#ffedd5' },

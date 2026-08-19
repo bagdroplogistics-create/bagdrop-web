@@ -324,6 +324,24 @@ const STATUS_COLOR: Record<string, string> = {
   rejected:         'bg-red-100 text-red-700',
 }
 
+// bookings.payment_status labels — was previously printed as the raw DB
+// value (e.g. an admin-approved-without-payment booking showed literally
+// "approved_pending" in the Quick Info footer, easy to misread as "paid at
+// some approved rate"). Distinguishes an actually-paid booking (green)
+// from one an admin let through without payment (amber — "money has not
+// been received/approved", per founder spec 2026-08-20) so Accounts can
+// tell the two apart at a glance, matching the same distinction the
+// Payments tab already draws (see approved_pending in that page's own
+// STATUS_CFG). Real value set confirmed in app/api/admin/reports/
+// detailed/route.ts's own comment: 'paid' | 'pending' | 'approved_pending'
+// | 'refunded'.
+const PAYMENT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
+  paid:             { label: 'Paid',                        color: 'text-green-600' },
+  approved_pending: { label: 'VIP / Admin Approved (Unpaid)', color: 'text-amber-600' },
+  pending:          { label: 'Payment Pending',              color: 'text-gray-600' },
+  refunded:         { label: 'Refunded',                     color: 'text-purple-600' },
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 
 export default function QuoteViewPage() {
@@ -2493,7 +2511,10 @@ export default function QuoteViewPage() {
                   {!!booking.total_amount && (
                     <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
                   )}
-                  {booking.payment_status && <span>Payment: <strong className="text-gray-700">{booking.payment_status}</strong></span>}
+                  {booking.payment_status && (() => {
+                    const pm = PAYMENT_STATUS_LABELS[booking.payment_status] ?? { label: booking.payment_status, color: 'text-gray-700' }
+                    return <span>Payment: <strong className={pm.color}>{pm.label}</strong></span>
+                  })()}
                   {booking.payment_reference && <span>Ref: <strong className="font-mono text-gray-700">{booking.payment_reference}</strong></span>}
                   <span>Booking: <strong className="font-mono text-gray-700">{booking.tracking_id}</strong></span>
                 </div>
