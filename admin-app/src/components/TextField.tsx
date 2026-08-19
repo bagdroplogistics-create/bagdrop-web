@@ -14,7 +14,7 @@ export function TextField({ label, error, style, ...rest }: Props) {
       {label ? <Text style={styles.label}>{label}</Text> : null}
       <TextInput
         placeholderTextColor={colors.neutralLight}
-        style={[styles.input, error && styles.inputError, style]}
+        style={[styles.input, !!error && styles.inputError, style]}
         {...rest}
       />
       {error ? <Text style={styles.error}>{error}</Text> : null}

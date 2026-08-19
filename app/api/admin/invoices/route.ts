@@ -4,11 +4,11 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import { DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import { resolveGstTreatment, SAC_TRANSPORT } from '@/lib/zoho-books'
 import { assignNextInvoiceNumber } from '@/lib/invoice-numbering'
-import { pdf } from '@react-pdf/renderer'
+import { generateInvoicePdfBuffer } from '@/lib/invoice-pdf'
 // NOTE: lives under the (admin) route group, not this route's own folder —
 // '@/app/...' resolves fine at import time (route-group parens only affect
 // URL routing, not module resolution).
-import InvoicePDF, { type InvoicePDFLineItem } from '@/app/(admin)/admin/invoices/[id]/InvoicePDF'
+import { type InvoicePDFLineItem } from '@/app/(admin)/admin/invoices/[id]/InvoicePDF'
 
 // Bookings whose workflow has reached (or passed) Completed — the set that
 // should ever be eligible to appear on the Invoices tab. 'invoice_generated'
@@ -132,56 +132,16 @@ interface InvoiceLineItemRow {
   quantity: number; rate: number; amount: number
 }
 
-// Renders InvoicePDF server-side (same component the Download PDF button
-// uses client-side — see app/(admin)/admin/invoices/[id]/InvoicePDF.tsx)
-// straight from an already-saved invoice row, so the emailed PDF and the
-// downloaded PDF are always pixel-identical. Never throws — a PDF failure
-// must not block the invoice email itself from sending.
+// Thin wrapper around lib/invoice-pdf.ts's shared generateInvoicePdfBuffer()
+// (same component the Download PDF button uses client-side, and the same
+// buffer GET /api/admin/invoices/[id]/pdf/route.ts serves to the mobile
+// app) — converts to base64 for the email-attachment call sites below.
+// Never throws — a PDF failure must not block the invoice email itself
+// from sending.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function buildInvoicePdfBase64(inv: any): Promise<string | null> {
-  try {
-    const lineItems: InvoicePDFLineItem[] = Array.isArray(inv.line_items) ? inv.line_items : []
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const el = InvoicePDF({
-      invoiceNumber: inv.invoice_number,
-      invoiceDate:   inv.invoice_date,
-      dueDate:       inv.due_date ?? null,
-      terms:         'Due on Receipt',
-      poNumber:      inv.po_number ?? null,
-      placeOfSupply: inv.place_of_supply ?? null,
-      consignmentNo: inv.consignment_no ?? null,
-      totalBags:     inv.total_bags ?? null,
-      pickupDate:    inv.pickup_date ?? null,
-      deliveryDate:  inv.delivery_date ?? null,
-      billToName:    inv.customer_type === 'business' && inv.business_name
-        ? inv.business_name
-        : (formatCustomerName(inv.title, inv.customer_name) || inv.customer_name),
-      billToAddress: inv.customer_address ?? null,
-      billToPhone:   inv.customer_phone ?? null,
-      billToEmail:   inv.customer_email ?? null,
-      billToGstin:   inv.gst_number ?? null,
-      shipToLabel:   'Ship To',
-      shipToLines:   [inv.to_city, 'India'].filter(Boolean),
-      lineItems,
-      subtotal:      Number(inv.base_amount ?? 0),
-      cgst:          Number(inv.cgst ?? 0),
-      sgst:          Number(inv.sgst ?? 0),
-      igst:          Number(inv.igst ?? 0),
-      total:         Number(inv.total_amount ?? 0),
-      paymentMade:   inv.payment_status === 'paid' ? Number(inv.total_amount ?? 0) : 0,
-      balanceDue:    inv.payment_status === 'paid' ? 0 : Number(inv.total_amount ?? 0),
-      notes:         inv.notes ?? null,
-      termsText:     inv.terms_conditions ?? null,
-      paid:          inv.payment_status === 'paid',
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    }) as any
-    const blob = await pdf(el).toBlob()
-    const arr  = await blob.arrayBuffer()
-    return Buffer.from(arr).toString('base64')
-  } catch (err) {
-    console.error('[invoices POST] PDF generation for email attachment failed (non-fatal):', err)
-    return null
-  }
+  const buf = await generateInvoicePdfBuffer(inv)
+  return buf ? buf.toString('base64') : null
 }
 
 // ── Manual "New Invoice" creation (Zoho Books parity) ───────────────────

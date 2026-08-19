@@ -297,7 +297,7 @@ export function buildQuoteHtml(d: QuotePrintData): string {
 // Opens a new tab with the invoice HTML and triggers the browser's print
 // dialog (from which the admin can "Save as PDF"). Returns false if not
 // running in a browser (e.g. native iOS/Android build), so callers can
-// show a fallback message.
+// fall back to downloadQuotePdfNative() below.
 export function openQuotePrint(html: string): boolean {
   if (typeof window === 'undefined' || typeof window.open !== 'function') return false
   const w = window.open('', '_blank')
@@ -308,4 +308,29 @@ export function openQuotePrint(html: string): boolean {
   w.focus()
   setTimeout(() => { try { w.print() } catch { /* ignore */ } }, 300)
   return true
+}
+
+// Native (iOS/Android) counterpart to openQuotePrint() — window.open()
+// doesn't exist there, so this renders the exact same HTML to a real PDF
+// file via expo-print (Chromium/WebKit's print-to-PDF, running fully
+// on-device, no server round trip) and hands it to the native share sheet.
+// Kept as a separate function rather than branching inside openQuotePrint
+// so web keeps its lighter window.print() flow (no need to pull in
+// expo-print's native module there) and native gets a real file it can
+// actually save/share, matching how invoice PDFs already work
+// (admin-app/app/invoices/[id].tsx's FileSystem.downloadAsync + Sharing
+// pair) instead of the web-only dead end this used to hit on a phone.
+export async function downloadQuotePdfNative(html: string, dialogTitle: string): Promise<void> {
+  // Dynamic imports — these two packages have no web implementation to
+  // speak of and this function is only ever called on native platforms
+  // (callers check Platform.OS !== 'web' first), so there's no reason to
+  // pull them into the web bundle at all.
+  const Print = await import('expo-print')
+  const Sharing = await import('expo-sharing')
+  const { uri } = await Print.printToFileAsync({ html, base64: false })
+  if (await Sharing.isAvailableAsync()) {
+    await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle })
+  } else {
+    throw new Error(`PDF saved to ${uri} — sharing isn't available on this device.`)
+  }
 }

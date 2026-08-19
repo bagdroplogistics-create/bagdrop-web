@@ -7,17 +7,27 @@ import { TextField } from '@/components/TextField'
 import { colors, radius } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
-import { fetchAdminBookings, AdminBooking } from '@/lib/api'
-import { BOOKING_FUNNEL, statusLabel } from '@/shared/statuses'
+import { fetchInvoices, AdminInvoice } from '@/lib/api'
+import { paymentStatusMeta } from '@/shared/statuses'
 import { rupees } from '@/shared/quotes'
 import { timeAgo, formatCustomerName } from '@/shared/format'
 
-const FILTERS = [{ key: 'all', label: 'All' }, ...BOOKING_FUNNEL.map(s => ({ key: s.key, label: s.label }))]
+// Mirrors app/(admin)/admin/invoices/page.tsx — every COMPLETED booking
+// shows up here, not just ones someone already generated an invoice for
+// (the `generated: false` placeholder rows from GET /api/admin/invoices).
+// Same statuses, same "not_generated" filter, same source of truth.
+const FILTERS = [
+  { key: 'all', label: 'All' },
+  { key: 'not_generated', label: 'Not Generated' },
+  { key: 'paid', label: 'Paid' },
+  { key: 'pending', label: 'Pending' },
+]
+
 const PAGE_SIZE = 200
 
-export default function Bookings() {
+export default function Invoices() {
   const { adminKey } = useAdminAuth()
-  const [bookings, setBookings] = useState<AdminBooking[]>([])
+  const [invoices, setInvoices] = useState<AdminInvoice[]>([])
   const [total, setTotal] = useState(0)
   const [page, setPage] = useState(1)
   const [filter, setFilter] = useState('all')
@@ -32,17 +42,17 @@ export default function Bookings() {
     if (pageNum === 1) setLoading(true)
     else setLoadingMore(true)
     try {
-      const res = await fetchAdminBookings(adminKey, {
+      const res = await fetchInvoices(adminKey, {
         status: filter === 'all' ? undefined : filter,
         search: search.trim() || undefined,
         page: pageNum,
         limit: PAGE_SIZE,
       })
-      setBookings(prev => (pageNum === 1 ? res.bookings : [...prev, ...res.bookings]))
+      setInvoices(prev => (pageNum === 1 ? res.invoices : [...prev, ...res.invoices]))
       setTotal(res.total)
       setPage(pageNum)
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load bookings.')
+      setError(e instanceof Error ? e.message : 'Could not load invoices.')
     } finally {
       setLoading(false)
       setLoadingMore(false)
@@ -51,21 +61,39 @@ export default function Bookings() {
 
   useEffect(() => { load(1) }, [load])
 
-  const hasMore = bookings.length < total
+  const hasMore = invoices.length < total
   const loadMore = () => { if (!loadingMore && !loading && hasMore) load(page + 1) }
+
+  const notGeneratedCount = invoices.filter(i => !i.generated).length
+  const paidCount = invoices.filter(i => i.payment_status === 'paid').length
+  const revenue = invoices.filter(i => i.payment_status === 'paid').reduce((s, i) => s + Number(i.total_amount), 0)
 
   return (
     <Screen scroll={false} padded={false}>
       <View style={styles.header}>
         <View>
-          <Text style={styles.title}>Bookings</Text>
-          <Text style={styles.sub}>{total} total</Text>
+          <Text style={styles.title}>Invoices</Text>
+          <Text style={styles.sub}>{total} completed inquiries · {rupees(revenue)} collected</Text>
         </View>
+      </View>
+
+      <View style={styles.summaryGrid}>
+        {[
+          { label: 'Completed', value: String(total), color: '#2563eb' },
+          { label: 'Not Generated', value: String(notGeneratedCount), color: '#dc2626' },
+          { label: 'Paid', value: String(paidCount), color: '#16a34a' },
+          { label: 'Revenue', value: rupees(revenue), color: colors.brand },
+        ].map(c => (
+          <View key={c.label} style={styles.summaryCard}>
+            <Text style={styles.summaryLabel}>{c.label}</Text>
+            <Text style={[styles.summaryValue, { color: c.color }]} numberOfLines={1} adjustsFontSizeToFit>{c.value}</Text>
+          </View>
+        ))}
       </View>
 
       <View style={{ paddingHorizontal: 20 }}>
         <TextField
-          placeholder="Search name, phone, email, or tracking ID"
+          placeholder="Search name, phone, or invoice number"
           value={search}
           onChangeText={setSearch}
           onSubmitEditing={() => load(1)}
@@ -93,15 +121,15 @@ export default function Bookings() {
       {error ? <Text style={styles.error}>{error}</Text> : null}
 
       <FlatList
-        data={bookings}
-        keyExtractor={b => b.id}
+        data={invoices}
+        keyExtractor={i => i.id}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingTop: 4 }}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(1)} tintColor={colors.brand} />}
         onEndReached={loadMore}
         onEndReachedThreshold={0.4}
         ListEmptyComponent={
-          !loading ? <Card><Text style={styles.emptyText}>No bookings found.</Text></Card> : null
+          !loading ? <Card><Text style={styles.emptyText}>No invoices found.</Text></Card> : null
         }
         ListFooterComponent={
           loadingMore ? (
@@ -113,24 +141,28 @@ export default function Bookings() {
           ) : null
         }
         renderItem={({ item }) => {
-          const meta = BOOKING_FUNNEL.find(s => s.key === item.status)
-          const bg = meta?.bg ?? '#f3f4f6'
-          const fg = meta?.color ?? '#6b7280'
+          const meta = paymentStatusMeta(item.payment_status)
           return (
-            <Pressable onPress={() => router.push(`/bookings/${item.id}`)}>
+            <Pressable onPress={() => router.push(`/invoices/${item.id}`)}>
               <Card style={{ marginBottom: 10 }}>
                 <View style={styles.row}>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.trackingId}>{item.tracking_id}</Text>
-                    <Text style={styles.name}>{(formatCustomerName(item.title, item.customer_name) || item.customer_name) || 'Unknown customer'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                      {item.generated ? (
+                        <Text style={styles.invoiceNo}>{item.invoice_number}</Text>
+                      ) : (
+                        <View style={styles.notGenBadge}><Text style={styles.notGenBadgeText}>Not Generated</Text></View>
+                      )}
+                    </View>
+                    <Text style={styles.name}>{formatCustomerName(item.title, item.customer_name) || item.customer_name}</Text>
                     <Text style={styles.meta}>
-                      {(item.from_city as string) || '—'} → {(item.to_city as string) || '—'} · {timeAgo(item.updated_at || item.created_at)}
+                      {item.from_city || '—'} → {item.to_city || '—'} · {timeAgo(item.invoice_date || item.created_at)}
                     </Text>
                   </View>
                   <View style={{ alignItems: 'flex-end' }}>
                     <Text style={styles.total}>{rupees(Number(item.total_amount ?? 0))}</Text>
-                    <View style={[styles.badge, { backgroundColor: bg, marginTop: 6 }]}>
-                      <Text style={[styles.badgeText, { color: fg }]}>{statusLabel(item.status)}</Text>
+                    <View style={[styles.badge, { backgroundColor: meta.bg, marginTop: 6 }]}>
+                      <Text style={[styles.badgeText, { color: meta.color }]}>{meta.label}</Text>
                     </View>
                   </View>
                 </View>
@@ -150,6 +182,16 @@ const styles = StyleSheet.create({
   },
   title: { ...type.displaySm, color: colors.textPrimary },
   sub: { ...type.small, color: colors.textMuted, marginTop: 2 },
+  summaryGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', paddingHorizontal: 20, gap: 8, marginBottom: 12,
+  },
+  summaryCard: {
+    flexBasis: '47%', flexGrow: 1,
+    backgroundColor: colors.surface, borderRadius: radius.lg, borderWidth: 1, borderColor: colors.border,
+    paddingVertical: 10, paddingHorizontal: 12,
+  },
+  summaryLabel: { ...type.caption, color: colors.textMuted },
+  summaryValue: { ...type.h1, marginTop: 2 },
   filterList: { flexGrow: 0, flexShrink: 0 },
   filterListContent: { paddingHorizontal: 20, gap: 8, paddingBottom: 12, alignItems: 'center' },
   chip: {
@@ -162,7 +204,9 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#fff', fontWeight: '700' },
   error: { ...type.small, color: colors.error, textAlign: 'center', marginTop: 8 },
   row: { flexDirection: 'row', alignItems: 'flex-start' },
-  trackingId: { ...type.caption, color: colors.brand, fontWeight: '700', marginBottom: 2 },
+  invoiceNo: { ...type.caption, color: colors.brand, fontWeight: '700', marginBottom: 2 },
+  notGenBadge: { backgroundColor: '#fee2e2', borderRadius: 999, paddingHorizontal: 6, paddingVertical: 2, marginBottom: 2 },
+  notGenBadgeText: { fontSize: 10, fontWeight: '700', color: '#dc2626' },
   name: { ...type.bodyBold, color: colors.textPrimary },
   meta: { ...type.caption, color: colors.textMuted, marginTop: 2 },
   total: { ...type.bodyBold, color: colors.textPrimary },

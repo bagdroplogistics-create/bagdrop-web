@@ -27,3 +27,23 @@ export const BOOKING_FUNNEL: StatusMeta[] = [
 export function statusLabel(status: string): string {
   return BOOKING_FUNNEL.find(s => s.key === status)?.label ?? status
 }
+
+// Kept in sync with app/(admin)/admin/payments/page.tsx's STATUS_CFG on
+// the website. Used by both the Payments list and Payment detail screens.
+export const PAYMENT_STATUS_META: Record<string, StatusMeta> = {
+  pending:              { key: 'pending', label: 'Pending', color: '#d97706', bg: '#fef3c7' },
+  pending_verification: { key: 'pending_verification', label: 'Pending Verification', color: '#d97706', bg: '#fef3c7' },
+  approved_pending:     { key: 'approved_pending', label: 'Approved (Unpaid)', color: '#d97706', bg: '#fef3c7' },
+  paid:                 { key: 'paid', label: 'Paid', color: '#16a34a', bg: '#dcfce7' },
+  rejected:             { key: 'rejected', label: 'Rejected', color: '#dc2626', bg: '#fee2e2' },
+  failed:               { key: 'failed', label: 'Failed', color: '#dc2626', bg: '#fee2e2' },
+  refunded:             { key: 'refunded', label: 'Refunded', color: '#7c3aed', bg: '#ede9fe' },
+}
+
+export function paymentStatusMeta(status: string): StatusMeta {
+  return PAYMENT_STATUS_META[status] ?? { key: status, label: status, color: '#6b7280', bg: '#f3f4f6' }
+}
+
+export const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  upi: 'UPI', qr: 'QR Code', bank: 'Bank Transfer', cash: 'Cash', upload: 'Uploaded Proof',
+}

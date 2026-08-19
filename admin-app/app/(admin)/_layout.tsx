@@ -32,7 +32,19 @@ export default function AdminTabsLayout() {
         options={{ title: 'Quotes', tabBarIcon: ({ color, size }) => <Ionicons name="document-text" color={color} size={size} /> }}
       />
       <Tabs.Screen
+        name="payments"
+        options={{ title: 'Payments', tabBarIcon: ({ color, size }) => <Ionicons name="wallet" color={color} size={size} /> }}
+      />
+      <Tabs.Screen
         name="bookings"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="invoices"
+        options={{ href: null }}
+      />
+      <Tabs.Screen
+        name="customers"
         options={{ href: null }}
       />
       <Tabs.Screen

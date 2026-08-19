@@ -5,22 +5,22 @@
 // reminders, and ops pickup reminders (lib/new-inquiry-notification.ts,
 // lib/sales-followup-reminders.ts, lib/ops-reminders.ts respectively).
 //
-// Per founder request (2026-08-18), every one of these now fans out to
-// BOTH internal numbers, not just one — +916357335733 and +919130063884.
-// +916357115711 (the customer-facing booking-inquiry number) must never
-// appear here: it's the registered WABA sender for these templates, and
-// WhatsApp Business API refuses to let a number message itself ("You can
-// not send message to your own number", confirmed via real Fast2SMS
-// delivery reports).
+// Per founder request (2026-08-18, extended 2026-08-19), every one of
+// these now fans out to all THREE internal numbers: +916357335733,
+// +919130063884, and +919998665328. +916357115711 (the customer-facing
+// booking-inquiry number) must never appear here: it's the registered
+// WABA sender for these templates, and WhatsApp Business API refuses to
+// let a number message itself ("You can not send message to your own
+// number", confirmed via real Fast2SMS delivery reports).
 //
 // Configurable via the `settings` table (keys: new_inquiry_whatsapp,
 // sales_followup_whatsapp, ops_reminder_whatsapp) as a comma-separated
-// list, e.g. "+916357335733,+919130063884" — falls back to
+// list, e.g. "+916357335733,+919130063884,+919998665328" — falls back to
 // DEFAULT_INTERNAL_WHATSAPP_NUMBERS when the setting is unset/empty.
 
 import { sendWhatsAppTemplateFast2SMS } from './notifications'
 
-export const DEFAULT_INTERNAL_WHATSAPP_NUMBERS = ['+916357335733', '+919130063884']
+export const DEFAULT_INTERNAL_WHATSAPP_NUMBERS = ['+916357335733', '+919130063884', '+919998665328']
 
 /** Parses a `settings.value` string into a recipient list, falling back to the default pair when unset/blank. */
 export function parseWhatsAppRecipients(settingValue: string | null | undefined): string[] {

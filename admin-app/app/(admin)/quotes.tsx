@@ -17,26 +17,43 @@ const PAYMENT_META: Record<string, { label: string; color: string; bg: string }>
   pending: { label: 'Payment Pending', color: '#b45309', bg: '#fef3c7' },
 }
 
+const PAGE_SIZE = 300
+
 export default function Quotes() {
   const { adminKey } = useAdminAuth()
   const [leads, setLeads] = useState<AdminLead[]>([])
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
 
   const load = useCallback(async () => {
     if (!adminKey) return
     setError('')
+    setLoading(true)
     try {
       // No dedicated "list quotes" endpoint exists — quotes live as quote_*
-      // fields on leads. Fetch a large page and filter client-side, same
-      // pattern the dashboard uses for its booking funnel tally.
-      const res = await fetchLeads(adminKey, { limit: 300 })
-      setLeads(res.leads)
+      // fields on leads. Since we filter client-side for leads that have a
+      // quote_number, a single capped page can silently hide quotes past
+      // page 1. Walk every page (progressively rendering as we go) so the
+      // full quote backlog always shows, same as the website's own list.
+      let page = 1
+      let all: AdminLead[] = []
+      let total = Infinity
+      while (all.length < total) {
+        setLoadingMore(page > 1)
+        const res = await fetchLeads(adminKey, { page, limit: PAGE_SIZE })
+        all = page === 1 ? res.leads : [...all, ...res.leads]
+        total = res.total
+        setLeads(all)
+        if (res.leads.length === 0) break
+        page += 1
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load quotes.')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [adminKey])
 
@@ -64,7 +81,9 @@ export default function Quotes() {
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Quotes</Text>
-          <Text style={styles.sub}>{quoted.length} quote{quoted.length !== 1 ? 's' : ''}</Text>
+          <Text style={styles.sub}>
+            {quoted.length} quote{quoted.length !== 1 ? 's' : ''}{loadingMore ? ' · loading more…' : ''}
+          </Text>
         </View>
         <Pressable style={styles.addBtn} onPress={() => router.push('/quotes/new')}>
           <Ionicons name="add" size={20} color="#fff" />

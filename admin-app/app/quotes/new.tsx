@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { View, Text, StyleSheet, Pressable, Switch, ActivityIndicator } from 'react-native'
+import { View, Text, StyleSheet, Pressable, Switch, ActivityIndicator, Platform } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
@@ -23,7 +23,7 @@ import {
 } from '@/shared/quotes'
 import { PICKUP_LOCATIONS, OTHERS_VALUE, matchLocation, toRouteCityKey } from '@/shared/locations'
 import { TIME_OPTIONS, timeLabel } from '@/shared/time-options'
-import { buildQuoteHtml, openQuotePrint } from '@/shared/quotePrint'
+import { buildQuoteHtml, openQuotePrint, downloadQuotePdfNative } from '@/shared/quotePrint'
 import { parseStoredPhone, toE164 } from '@/shared/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/shared/phone-countries'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/shared/format'
@@ -71,7 +71,7 @@ export default function NewQuote() {
 
   // Quote header
   const [agentName, setAgentName] = useState('')
-  const [salesperson, setSalesperson] = useState<string | null>('Saurabh Muley')
+  const [salesperson, setSalesperson] = useState<string | null>('Vijay Thacker')
   const [expiryDate, setExpiryDate] = useState('')
   const [paymentStatus, setPaymentStatus] = useState<string | null>('pending')
 
@@ -96,6 +96,7 @@ export default function NewQuote() {
 
   const [generating, setGenerating] = useState(false)
   const [result, setResult] = useState<GenerateQuoteResult & { resolvedLeadId: string } | null>(null)
+  const [downloadingQuote, setDownloadingQuote] = useState(false)
   const [saving, setSaving] = useState(false)
   const [saveSuccess, setSaveSuccess] = useState(false)
 
@@ -365,7 +366,7 @@ export default function NewQuote() {
     }
   }
 
-  function handleDownloadQuote(source: (GenerateQuoteResult & { resolvedLeadId: string }) | null) {
+  async function handleDownloadQuote(source: (GenerateQuoteResult & { resolvedLeadId: string }) | null) {
     if (!source) return
     const html = buildQuoteHtml({
       quoteNumber: source.estimate_number || source.quote_number,
@@ -398,8 +399,20 @@ export default function NewQuote() {
       agentName: agentName || undefined,
       expiryDate: expiryDate || undefined,
     })
-    const opened = openQuotePrint(html)
-    if (!opened) setError('Download is available from the web version of the admin app for now.')
+    if (Platform.OS === 'web') {
+      const opened = openQuotePrint(html)
+      if (!opened) setError('Could not open the print dialog.')
+      return
+    }
+
+    setDownloadingQuote(true); setError('')
+    try {
+      await downloadQuotePdfNative(html, `${source.estimate_number || source.quote_number}.pdf`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate the PDF.')
+    } finally {
+      setDownloadingQuote(false)
+    }
   }
 
   async function handleSaveEdit() {
@@ -493,7 +506,12 @@ export default function NewQuote() {
 
         <Button label="View Quote" onPress={() => router.replace(`/quotes/${result.resolvedLeadId}`)} />
         <View style={{ height: 10 }} />
-        <Button label="Download Quote (PDF)" variant="outline" onPress={() => handleDownloadQuote(result)} />
+        <Button
+          label={downloadingQuote ? 'Preparing…' : 'Download Quote (PDF)'}
+          variant="outline"
+          onPress={() => handleDownloadQuote(result)}
+          loading={downloadingQuote}
+        />
         <View style={{ height: 10 }} />
         <Button label="Back to Quotes" variant="outline" onPress={() => router.replace('/(admin)/quotes')} />
       </Screen>

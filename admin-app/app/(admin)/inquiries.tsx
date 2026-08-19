@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { View, Text, StyleSheet, Pressable, FlatList, RefreshControl } from 'react-native'
+import { View, Text, StyleSheet, Pressable, FlatList, RefreshControl, ActivityIndicator } from 'react-native'
 import { router } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
@@ -13,35 +13,46 @@ import { LEAD_STATUSES, leadStatusMeta } from '@/shared/leads'
 import { timeAgo, formatCustomerName } from '@/shared/format'
 
 const FILTERS = [{ key: 'all', label: 'All' }, ...LEAD_STATUSES.map(s => ({ key: s.key, label: s.label }))]
+const PAGE_SIZE = 100
 
 export default function Inquiries() {
   const { adminKey } = useAdminAuth()
   const [leads, setLeads] = useState<AdminLead[]>([])
   const [total, setTotal] = useState(0)
+  const [page, setPage] = useState(1)
   const [filter, setFilter] = useState('all')
   const [search, setSearch] = useState('')
   const [loading, setLoading] = useState(true)
+  const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState('')
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (pageNum = 1) => {
     if (!adminKey) return
     setError('')
+    if (pageNum === 1) setLoading(true)
+    else setLoadingMore(true)
     try {
       const res = await fetchLeads(adminKey, {
         status: filter === 'all' ? undefined : filter,
         search: search.trim() || undefined,
-        limit: 100,
+        page: pageNum,
+        limit: PAGE_SIZE,
       })
-      setLeads(res.leads)
+      setLeads(prev => (pageNum === 1 ? res.leads : [...prev, ...res.leads]))
       setTotal(res.total)
+      setPage(pageNum)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load inquiries.')
     } finally {
       setLoading(false)
+      setLoadingMore(false)
     }
   }, [adminKey, filter, search])
 
-  useEffect(() => { load() }, [load])
+  useEffect(() => { load(1) }, [load])
+
+  const hasMore = leads.length < total
+  const loadMore = () => { if (!loadingMore && !loading && hasMore) load(page + 1) }
 
   return (
     <Screen scroll={false} padded={false}>
@@ -60,7 +71,7 @@ export default function Inquiries() {
           placeholder="Search name, phone, or email"
           value={search}
           onChangeText={setSearch}
-          onSubmitEditing={load}
+          onSubmitEditing={() => load(1)}
           returnKeyType="search"
         />
       </View>
@@ -89,9 +100,20 @@ export default function Inquiries() {
         keyExtractor={l => l.id}
         style={{ flex: 1 }}
         contentContainerStyle={{ padding: 20, paddingTop: 4 }}
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={load} tintColor={colors.brand} />}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={() => load(1)} tintColor={colors.brand} />}
+        onEndReached={loadMore}
+        onEndReachedThreshold={0.4}
         ListEmptyComponent={
           !loading ? <Card><Text style={styles.emptyText}>No leads found.</Text></Card> : null
+        }
+        ListFooterComponent={
+          loadingMore ? (
+            <ActivityIndicator style={{ marginVertical: 16 }} color={colors.brand} />
+          ) : hasMore ? (
+            <Pressable style={styles.loadMoreBtn} onPress={loadMore}>
+              <Text style={styles.loadMoreText}>Load More</Text>
+            </Pressable>
+          ) : null
         }
         renderItem={({ item }) => {
           const meta = leadStatusMeta(item.status)
@@ -145,4 +167,9 @@ const styles = StyleSheet.create({
   badge: { borderRadius: radius.sm, paddingHorizontal: 8, paddingVertical: 4 },
   badgeText: { ...type.caption, fontWeight: '700' },
   emptyText: { ...type.body, color: colors.textMuted, textAlign: 'center' },
+  loadMoreBtn: {
+    alignSelf: 'center', marginVertical: 16, paddingVertical: 10, paddingHorizontal: 20,
+    borderRadius: radius.md, borderWidth: 1, borderColor: colors.border, backgroundColor: colors.surface,
+  },
+  loadMoreText: { ...type.smallBold, color: colors.brand },
 })

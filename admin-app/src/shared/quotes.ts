@@ -1,7 +1,7 @@
 // Constants mirrored from app/(admin)/admin/quotes/new/page.tsx so the
 // mobile "New Quote" form produces identical quote data to the website.
 
-export const SALESPERSONS = ['Saurabh Muley', 'Vijay Thacker']
+export const SALESPERSONS = ['Vijay Thacker']
 
 export const SAC_CODE = '996511'
 export const GST_PCT = 5 // 2.5% CGST + 2.5% SGST

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useState } from 'react'
-import { View, Text, StyleSheet, ActivityIndicator } from 'react-native'
+import { View, Text, StyleSheet, ActivityIndicator, Platform } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { Ionicons } from '@expo/vector-icons'
 import { Screen } from '@/components/Screen'
@@ -9,10 +9,10 @@ import { BackHeader } from '@/components/BackHeader'
 import { colors, radius } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
-import { AdminLead, SavedQuoteLineItem, fetchLead } from '@/lib/api'
+import { AdminLead, SavedQuoteLineItem, fetchLead, updateBooking } from '@/lib/api'
 import { rupees, rupeesDecimal } from '@/shared/quotes'
 import { formatDateTime, formatCustomerName } from '@/shared/format'
-import { buildQuoteHtml, openQuotePrint } from '@/shared/quotePrint'
+import { buildQuoteHtml, openQuotePrint, downloadQuotePdfNative } from '@/shared/quotePrint'
 
 const PAYMENT_META: Record<string, { label: string; color: string; bg: string }> = {
   received: { label: 'Payment Received', color: '#15803d', bg: '#dcfce7' },
@@ -25,6 +25,9 @@ export default function QuoteDetail() {
   const [lead, setLead] = useState<AdminLead | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [sending, setSending] = useState(false)
+  const [sent, setSent] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   const load = useCallback(async () => {
     if (!adminKey || !leadId) return
@@ -62,7 +65,7 @@ export default function QuoteDetail() {
   const total = Number(lead.quote_total ?? 0)
   const meta = PAYMENT_META[(lead.payment_status as string) ?? 'pending'] ?? PAYMENT_META.pending
 
-  function handleDownload() {
+  async function handleDownload() {
     if (!lead) return
     const quoteDate = lead.quote_date
       ? new Date(lead.quote_date as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -95,8 +98,38 @@ export default function QuoteDetail() {
       agentName: (lead.agent_name as string) || undefined,
       expiryDate: (lead.quote_expiry_date as string) || undefined,
     })
-    const opened = openQuotePrint(html)
-    if (!opened) setError('Download is available from the web version of the admin app for now.')
+    if (Platform.OS === 'web') {
+      const opened = openQuotePrint(html)
+      if (!opened) setError('Could not open the print dialog.')
+      return
+    }
+
+    setDownloading(true); setError('')
+    try {
+      await downloadQuotePdfNative(html, `${lead.quote_number}.pdf`)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not generate the PDF.')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  // Mirrors doSendQuote() on the website's quote view page exactly — same
+  // PATCH /api/admin/bookings/[id] with { status: 'quote_sent',
+  // send_quote_email: true }. Only meaningful once a booking exists for
+  // this lead (bookings, not leads, carry the workflow status machine).
+  async function handleSendQuote() {
+    if (!adminKey || !lead?.booking_id) return
+    setSending(true); setError(''); setSent(false)
+    try {
+      await updateBooking(adminKey, lead.booking_id, { status: 'quote_sent', send_quote_email: true })
+      setSent(true)
+      setTimeout(() => setSent(false), 4000)
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Could not send the quote email.')
+    } finally {
+      setSending(false)
+    }
   }
 
   return (
@@ -172,7 +205,18 @@ export default function QuoteDetail() {
       <View style={{ marginTop: 8, marginBottom: 24 }}>
         <Button label="Edit Quote" onPress={() => router.push(`/quotes/new?leadId=${lead.id}&edit=true`)} />
         <View style={{ height: 10 }} />
-        <Button label="Download Quote (PDF)" variant="outline" onPress={handleDownload} />
+        {lead.booking_id && lead.email ? (
+          <>
+            <Button
+              label={sent ? 'Quote Sent ✓' : sending ? 'Sending…' : `Send Quote to ${lead.email}`}
+              variant={sent ? 'secondary' : 'outline'}
+              onPress={handleSendQuote}
+              loading={sending}
+            />
+            <View style={{ height: 10 }} />
+          </>
+        ) : null}
+        <Button label={downloading ? 'Preparing…' : 'Download Quote (PDF)'} variant="outline" onPress={handleDownload} loading={downloading} />
         <View style={{ height: 10 }} />
         <Button label="View Inquiry" variant="ghost" onPress={() => router.push(`/leads/${lead.id}`)} />
       </View>
