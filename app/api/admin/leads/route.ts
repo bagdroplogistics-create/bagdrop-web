@@ -131,6 +131,15 @@ export async function GET(req: NextRequest) {
         query = query.not('id', 'in', `(${confirmedLeadIds.join(',')})`)
       }
     }
+  } else if (!deleted && !search) {
+    // Default view (no explicit status filter, no search term) — founder
+    // decision (2026-08-19): Lost leads are hidden here by default, not
+    // deleted. Picking "Lost" from the status filter dropdown still shows
+    // them (goes through the branch above via query.eq('status', 'lost')).
+    // A search is left unfiltered on purpose — if staff search for a
+    // specific customer by name/phone/email, a Lost lead shouldn't be
+    // invisible just because it's excluded from the default browse view.
+    query = query.neq('status', 'lost')
   }
 
   if (source && source !== 'all') {

@@ -159,12 +159,12 @@ export async function GET(req: NextRequest) {
   let deletedAtSupported = true
   let leadsRes = await supabaseAdmin
     .from('leads')
-    .select('id, created_at, booking_id, quote_number')
+    .select('id, created_at, booking_id, quote_number, status')
     .is('deleted_at', null)
     .limit(20000)
   if (leadsRes.error?.message?.includes('deleted_at')) {
     deletedAtSupported = false
-    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number').limit(20000)
+    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number, status').limit(20000)
   }
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
 
@@ -211,9 +211,18 @@ export async function GET(req: NextRequest) {
   const statusByBookingId = new Map<string, string>()
   for (const b of bookingsData) statusByBookingId.set(b.id, b.status)
 
+  // Founder decision (2026-08-19): Lost leads (leads.status='lost', the CRM
+  // disposition an admin sets on the Leads tab — separate from
+  // bookings.status) should be hidden from the Dashboard by default, not
+  // deleted. Grouped into the 'rejected' bucket, the same "didn't convert"
+  // outcome bucketFor() already gives a rejected/closed booking — so a Lost
+  // lead now correctly stops inflating Total Inquiries and Pending, instead
+  // of falling through to 'pending' (no booking yet, so bucketFor got a
+  // null status and treated it as still needing action, which is exactly
+  // what the module comment on bucketFor already assumed didn't happen).
   const leads = (leadsRes.data ?? []).map(l => ({
     created_at: l.created_at as string,
-    bucket: bucketFor(
+    bucket: l.status === 'lost' ? 'rejected' as const : bucketFor(
       l.booking_id ? (statusByBookingId.get(l.booking_id as string) ?? null) : null,
       !!l.quote_number
     ),
