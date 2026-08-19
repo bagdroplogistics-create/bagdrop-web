@@ -40,6 +40,16 @@ export function normalizeCity(raw: string | null | undefined): string {
   s = s.replace(/\s*\([^)]*\)\s*/g, ' ')
   // Strip the word "airport" on its own — "Mumbai Airport" → "Mumbai".
   s = s.replace(/\bairport\b/g, ' ')
+  // Strip a BARE terminal suffix — not wrapped in parentheses — e.g.
+  // "Mumbai Airport T2" or "Delhi T1". Fix (2026-08-20): "Mumbai Airport
+  // T2" is one of the standard preset city-picker labels (lib/constants.ts,
+  // id 'mumbai-airport-t2') and was silently normalizing to "mumbait2"
+  // instead of "mumbai" — never matching any route_pricing row for
+  // "mumbai", so the "Reset from route pricing" button/auto-populate
+  // silently never appeared for any lead using that exact preset, even
+  // though the route itself was correctly configured.
+  s = s.replace(/\bterminal\s*[12]\b/g, ' ')
+  s = s.replace(/\bt[12]\b/g, ' ')
   // Collapse whitespace, then strip it entirely so multi-word variants
   // ("New Delhi") key the same as single-word aliases below.
   s = s.replace(/\s+/g, '').trim()
