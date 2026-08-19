@@ -1011,7 +1011,7 @@ function LeadsPageInner() {
         </div>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6">
         {/* Filters + sort */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
@@ -1095,7 +1095,7 @@ function LeadsPageInner() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Quote #', 'Customer', 'Service', 'Route', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Pickup Date', 'Bags', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -1113,6 +1113,16 @@ function LeadsPageInner() {
                         <div className="flex items-center gap-1 text-xs text-gray-400">
                           <Phone className="h-3 w-3" />{l.phone}
                         </div>
+                        {/* Small standalone "Confirmed" tag under the name —
+                            same test as the Status column's badge-source
+                            pick (BOOKING_STATUS_CONFIG match = a real
+                            bookings.status, i.e. this inquiry has actually
+                            reached Confirmed-or-later), so it's always in
+                            sync with the Status badge instead of a second,
+                            separately-computed source of truth. */}
+                        {BOOKING_STATUS_CONFIG[l.effective_status ?? l.status] ? (
+                          <p className="mt-0.5 text-[11px] font-semibold text-cyan-700">Confirmed</p>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.service_interest ?? l.service_type ?? '—'}
@@ -1120,6 +1130,8 @@ function LeadsPageInner() {
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
                       </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{formatDate(l.pickup_date)}</td>
+                      <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{l.bags_count ?? '—'}</td>
                       <td className="px-4 py-3">
                         {l.source ? (
                           <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ${

@@ -185,7 +185,16 @@ export default function NewInvoicePage() {
     setItems(rows => rows.map((r, i) => i === idx ? { ...r, ...patch } : r))
   }
   function selectCatalogItem(idx: number, item: BagdropItem) {
-    updateItem(idx, { name: item.name, description: item.description ?? '', rate: String(item.rate) })
+    // Split the catalog's flat per-booking rate across the actual bag
+    // count (from the "No Of Bags" field above) so Qty always matches the
+    // customer's real number of bags — otherwise a 2-bag customer sees
+    // "Qty 1" next to a "Luggage - Up to 2pcs" line item and doubts the
+    // pricing. Amount is unchanged: Rate is divided down to compensate
+    // (item.rate / bags), it's never multiplied up. Falls back to Qty 1 /
+    // the catalog's own rate when No Of Bags hasn't been filled in yet.
+    const bags = Math.max(1, Math.floor(Number(totalBags)) || 1)
+    const rate = bags > 1 ? parseFloat((item.rate / bags).toFixed(2)) : item.rate
+    updateItem(idx, { name: item.name, description: item.description ?? '', rate: String(rate), quantity: String(bags) })
   }
   function addRow() { setItems(rows => [...rows, blankItem()]) }
   function removeRow(idx: number) { setItems(rows => rows.length > 1 ? rows.filter((_, i) => i !== idx) : rows) }

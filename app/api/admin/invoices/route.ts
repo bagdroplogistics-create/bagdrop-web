@@ -379,13 +379,15 @@ export async function POST(req: NextRequest) {
     .eq('booking_id', bookingId)
     .maybeSingle()
 
-  // "P.O.#" on the PDF, Zoho-style — the referring agent if one was
-  // recorded on the lead, else the in-house salesperson who quoted it,
-  // else "ADITYA SIR" (founder request, 2026-08-19) as the default
-  // fallback when a booking's lead has neither field set — only applies
-  // to invoices generated from here on; existing invoices' stored
-  // po_number values are untouched.
-  const poNumber = lead?.agent_name?.trim() || lead?.salesperson_name?.trim() || 'ADITYA SIR'
+  // "P.O.#" on the PDF, Zoho-style — always "Aditya Shah" (founder
+  // request, 2026-08-19, revised same day after "Saurabh Muley" — a
+  // pre-existing lead.salesperson_name value from before that name was
+  // removed from the salesperson dropdown — was still showing on newly
+  // generated invoices). No longer reads lead.agent_name/salesperson_name
+  // at all for this field. Only applies to invoices generated from here on;
+  // an already-saved invoice's stored po_number is untouched until that
+  // invoice is regenerated.
+  const poNumber = 'Aditya Shah'
 
   const total = Number(booking.total_amount ?? 0)
   const gstin = booking.gst_number ?? lead?.gst_number ?? null
@@ -397,7 +399,17 @@ export async function POST(req: NextRequest) {
   const items: InvoiceLineItemRow[] = leadItems.length > 0
     ? leadItems.map(li => ({
         name:        li.name ?? 'Baggage Delivery Service',
-        description: li.description ?? '',
+        // Description sub-line is intentionally dropped here at invoice-
+        // generation time — per founder request (2026-08-19), boilerplate
+        // text like "Airport-to-Doorstep / Doorstep-to-Airport baggage
+        // delivery · SAC 996511" or "Per extra bag beyond 2 · SAC 996511"
+        // (stored on the lead's own quote_line_items by the quote-creation
+        // flow, which is untouched by this change — only how the invoice
+        // RENDERS it, not how the quote computes/stores it) should never
+        // appear on the invoice. `hsn`/`quantity`/`rate`/`amount` below are
+        // all still read straight from the quote's own line items,
+        // unchanged — this only blanks the descriptive sub-text.
+        description: '',
         hsn:         li.hsn_or_sac ?? SAC_TRANSPORT,
         quantity:    Number(li.quantity ?? 1),
         rate:        Number(li.rate ?? 0),

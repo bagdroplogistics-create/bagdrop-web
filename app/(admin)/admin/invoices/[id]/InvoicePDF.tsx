@@ -301,8 +301,8 @@ export default function InvoicePDF(p: InvoicePDFProps) {
               <Text style={s.coLine}>{INVOICE_COMPANY.addressLine1}</Text>
               <Text style={s.coLine}>{INVOICE_COMPANY.addressLine2}</Text>
               <Text style={s.coLine}>GSTIN: {INVOICE_COMPANY.gstin}</Text>
-              <Text style={s.coLine}>{INVOICE_COMPANY.phone}  ·  {INVOICE_COMPANY.email}</Text>
-              <Text style={s.coLine}>Tel: +91 63573 35733</Text>
+              <Text style={s.coLine}>Tel: {INVOICE_COMPANY.phone} |+91 63573 35733</Text>
+              <Text style={s.coLine}>{INVOICE_COMPANY.email}</Text>
               <Text style={s.coLine}>{INVOICE_COMPANY.web}</Text>
             </View>
             <Text style={s.taxInvTitle}>TAX INVOICE</Text>
