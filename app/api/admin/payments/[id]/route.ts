@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole } from '@/lib/admin-auth'
 import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
+import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 
 // Booking statuses from which an approved payment verification should
 // auto-advance the workflow to 'confirmed'. Matches the gate the Payment
@@ -86,9 +87,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const { data, error } = await supabaseAdmin.from('payments').update(updates).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Sync payment_status back to booking
+  // Recompute the booking's aggregate payment_status from the full ledger
+  // (Total Paid vs Total Amount — lib/payment-status.ts) rather than blindly
+  // copying this one payment row's own status onto the booking. That old
+  // behavior broke multi-payment accounting: approving payment #2 of 3 used
+  // to set the booking straight to 'paid' even though a balance remained,
+  // and rejecting/refunding one payment on a booking with other approved
+  // payments used to wipe those out too. This is also what the
+  // email-based Accounts approval link (app/api/payment-verification/
+  // [token]/route.ts) goes through, since it PATCHes this same endpoint.
   if (data.booking_id && body.payment_status) {
-    await supabaseAdmin.from('bookings').update({ payment_status: body.payment_status }).eq('id', data.booking_id)
+    await recomputeBookingPaymentStatus(data.booking_id)
   }
 
   // ── Payment Verification sync ─────────────────────────────────────

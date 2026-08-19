@@ -40,6 +40,10 @@ export function statusLabel(status: string): string {
 // the website. Used by both the Payments list and Payment detail screens.
 export const PAYMENT_STATUS_META: Record<string, StatusMeta> = {
   pending:              { key: 'pending', label: 'Pending', color: '#d97706', bg: '#fef3c7' },
+  // Added by the Full/Partial/VIP/Verification payment-accounting rework
+  // (2026-08-19) — see lib/payment-status.ts on the website. Some amount
+  // has been approved but not the full total.
+  partially_paid:       { key: 'partially_paid', label: 'Partially Paid', color: '#ea580c', bg: '#ffedd5' },
   pending_verification: { key: 'pending_verification', label: 'Pending Verification', color: '#d97706', bg: '#fef3c7' },
   approved_pending:     { key: 'approved_pending', label: 'Approved (Unpaid)', color: '#d97706', bg: '#fef3c7' },
   paid:                 { key: 'paid', label: 'Paid', color: '#16a34a', bg: '#dcfce7' },

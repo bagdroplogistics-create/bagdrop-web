@@ -332,14 +332,16 @@ const STATUS_COLOR: Record<string, string> = {
 // been received/approved", per founder spec 2026-08-20) so Accounts can
 // tell the two apart at a glance, matching the same distinction the
 // Payments tab already draws (see approved_pending in that page's own
-// STATUS_CFG). Real value set confirmed in app/api/admin/reports/
-// detailed/route.ts's own comment: 'paid' | 'pending' | 'approved_pending'
-// | 'refunded'.
+// STATUS_CFG). Payment-accounting rework (2026-08-19) added
+// 'partially_paid' and 'pending_verification' — see lib/payment-status.ts
+// for the full derived-status value set and precedence rules.
 const PAYMENT_STATUS_LABELS: Record<string, { label: string; color: string }> = {
-  paid:             { label: 'Paid',                        color: 'text-green-600' },
-  approved_pending: { label: 'VIP / Admin Approved (Unpaid)', color: 'text-amber-600' },
-  pending:          { label: 'Payment Pending',              color: 'text-gray-600' },
-  refunded:         { label: 'Refunded',                     color: 'text-purple-600' },
+  paid:                 { label: 'Paid',                          color: 'text-green-600' },
+  partially_paid:       { label: 'Partially Paid',                color: 'text-orange-600' },
+  pending_verification: { label: 'Under Verification',            color: 'text-amber-600' },
+  approved_pending:     { label: 'VIP / Admin Approved (Unpaid)',  color: 'text-amber-600' },
+  pending:              { label: 'Payment Pending',                color: 'text-gray-600' },
+  refunded:             { label: 'Refunded',                      color: 'text-purple-600' },
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -393,6 +395,23 @@ export default function QuoteViewPage() {
   // uses its own dedicated endpoint, not patchBooking).
   const [adminApproveMode, setAdminApproveMode] = useState(false)
 
+  // Correct Payment Status — until now there was no way to undo a mistaken
+  // "Mark Payment Received" (e.g. staff clicked Payment Received for a
+  // client whose payment hadn't actually come in yet). This edits
+  // bookings.payment_status directly via PATCH, independent of `status`,
+  // so it never touches the booking-workflow funnel stage — matches the
+  // founder's rule that payment state and workflow state are separate.
+  const [editingPaymentStatus, setEditingPaymentStatus] = useState(false)
+  const [paymentStatusDraft, setPaymentStatusDraft]     = useState('pending')
+  const [savingPaymentStatus, setSavingPaymentStatus]   = useState(false)
+
+  async function doCorrectPaymentStatus() {
+    setSavingPaymentStatus(true)
+    const ok = await patchBooking('correct_payment_status', { payment_status: paymentStatusDraft })
+    setSavingPaymentStatus(false)
+    if (ok) setEditingPaymentStatus(false)
+  }
+
   // Payment proof upload (Booking Workflow spec items 1–3)
   const [proofFile, setProofFile]           = useState<File | null>(null)
   const [uploadingProof, setUploadingProof] = useState(false)
@@ -407,6 +426,10 @@ export default function QuoteViewPage() {
   // never reduces it. Rejected/pending_verification payments are excluded
   // automatically since only payment_status === 'paid' is summed.
   const [paidTotal, setPaidTotal] = useState(0)
+  // Bumped after doMarkPaymentReceived creates a new payments row, so this
+  // effect re-fetches immediately instead of waiting for some other field
+  // (like payment_verification_status) to happen to change too.
+  const [paymentRefreshTick, setPaymentRefreshTick] = useState(0)
   useEffect(() => {
     if (!booking?.id || !key) { setPaidTotal(0); return }
     fetch(`/api/admin/payments?booking_id=${booking.id}&key=${encodeURIComponent(key)}`)
@@ -419,7 +442,7 @@ export default function QuoteViewPage() {
       })
       .catch(() => setPaidTotal(0))
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [booking?.id, booking?.payment_verification_status, key])
+  }, [booking?.id, booking?.payment_verification_status, paymentRefreshTick, key])
   const outstandingAmount = Math.max(0, (Number(booking?.total_amount) || 0) - paidTotal)
 
   // ── Load data ─────────────────────────────────────────────────────
@@ -859,13 +882,43 @@ export default function QuoteViewPage() {
     // the customer got the same invoice twice. Invoice generation + sending
     // now only ever happen at the dedicated Invoice Generated (Step 8) and
     // Send Invoice (Step 9) steps below, so this step is a pure status change.
+    //
+    // payment_status is no longer set directly here. This used to just flip
+    // bookings.payment_status='paid' with no payments-ledger row behind it,
+    // which meant "Total Paid" (summed from the ledger) never actually
+    // matched what the booking claimed to be paid — the exact bug the
+    // payment-accounting rework was meant to fix. Now this creates a real
+    // payments row for whatever's still outstanding (usually the full
+    // amount, but correctly smaller if a partial payment was already
+    // approved), and the booking's payment_status is then derived from that
+    // ledger by recomputeBookingPaymentStatus() (see POST /api/admin/
+    // payments and lib/payment-status.ts).
+    if (booking?.id && lead && key) {
+      const amount = Math.round(outstandingAmount * 100) / 100
+      if (amount > 0) {
+        await fetch(`/api/admin/payments?key=${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            booking_id:         booking.id,
+            customer_name:      formatCustomerName(lead.title, lead.name) || lead.name,
+            customer_phone:     booking.customer_phone ?? lead.phone,
+            amount,
+            payment_method:     'upi',
+            payment_status:     'paid',
+            payment_reference:  paymentRef.trim() || undefined,
+            notes:              'Marked Payment Received — Booking Workflow',
+          }),
+        }).catch(err => console.error('[doMarkPaymentReceived] payment create failed:', err))
+      }
+    }
     await patchBooking('mark_payment', {
       status: 'payment_received',
-      payment_status: 'paid',
       ...(paymentRef ? { payment_reference: paymentRef } : {}),
     })
     setShowPaymentInput(false)
     setPaymentRef('')
+    setPaymentRefreshTick(t => t + 1)
   }
 
   async function doAdminApprove() {
@@ -2508,13 +2561,54 @@ export default function QuoteViewPage() {
                   {/* Outstanding Amount — booking total minus approved
                       ('paid') payments only, recomputed live from the
                       payments ledger (see the paidTotal effect above). */}
+                  {/* Paid — spec §10 dashboard display (Total/Paid/Balance/
+                      Payment Status all visible together). Same paidTotal
+                      the Outstanding figure below is derived from. */}
+                  {paidTotal > 0 && (
+                    <span>Paid: <strong className="text-green-600">{fmtRs(paidTotal)}</strong></span>
+                  )}
                   {!!booking.total_amount && (
                     <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
                   )}
-                  {booking.payment_status && (() => {
+                  {booking.payment_status && !editingPaymentStatus && (() => {
                     const pm = PAYMENT_STATUS_LABELS[booking.payment_status] ?? { label: booking.payment_status, color: 'text-gray-700' }
-                    return <span>Payment: <strong className={pm.color}>{pm.label}</strong></span>
+                    return (
+                      <span>Payment: <strong className={pm.color}>{pm.label}</strong>{' '}
+                        <button
+                          onClick={() => { setPaymentStatusDraft(booking.payment_status ?? 'pending'); setEditingPaymentStatus(true) }}
+                          className="text-[11px] font-medium text-blue-600 underline decoration-dotted underline-offset-2 hover:text-blue-800"
+                          title="Correct payment status (does not change booking/workflow stage)"
+                        >
+                          correct
+                        </button>
+                      </span>
+                    )
                   })()}
+                  {editingPaymentStatus && (
+                    <span className="inline-flex items-center gap-1.5">
+                      Payment:
+                      <select
+                        value={paymentStatusDraft}
+                        onChange={e => setPaymentStatusDraft(e.target.value)}
+                        className="rounded border border-gray-300 px-1.5 py-0.5 text-xs"
+                      >
+                        <option value="pending">Payment Pending</option>
+                        <option value="partially_paid">Partially Paid</option>
+                        <option value="pending_verification">Under Verification</option>
+                        <option value="approved_pending">VIP / Admin Approved (Unpaid)</option>
+                        <option value="paid">Paid</option>
+                        <option value="refunded">Refunded</option>
+                      </select>
+                      <button onClick={doCorrectPaymentStatus} disabled={savingPaymentStatus}
+                        className="rounded bg-blue-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50">
+                        {savingPaymentStatus ? 'Saving…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingPaymentStatus(false)} disabled={savingPaymentStatus}
+                        className="text-[11px] text-gray-500 hover:text-gray-700">
+                        Cancel
+                      </button>
+                    </span>
+                  )}
                   {booking.payment_reference && <span>Ref: <strong className="font-mono text-gray-700">{booking.payment_reference}</strong></span>}
                   <span>Booking: <strong className="font-mono text-gray-700">{booking.tracking_id}</strong></span>
                 </div>

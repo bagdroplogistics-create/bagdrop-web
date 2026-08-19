@@ -46,12 +46,24 @@ interface Payment {
   attachments?: { url: string; filename: string; size: number; type: string; uploaded_at: string }[]
 }
 
+// This filter/badge set covers two different value spaces that GET
+// /api/admin/payments merges into one list: real `payments` rows (own
+// status can be pending / pending_verification / paid / rejected / failed /
+// refunded) and synthetic per-booking rows for confirmed bookings with no
+// logged payment (status here is the booking's own derived aggregate —
+// pending / partially_paid / pending_verification / approved_pending /
+// paid). partially_paid, pending_verification and rejected were added by
+// the Full/Partial/VIP/Verification payment-accounting rework (2026-08-19)
+// — see lib/payment-status.ts.
 const STATUS_CFG: Record<string, { label: string; color: string; bg: string; icon: React.ReactNode }> = {
-  pending:          { label: 'Pending',          color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
-  approved_pending: { label: 'Approved (Unpaid)', color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
-  paid:             { label: 'Paid',              color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
-  failed:           { label: 'Failed',            color: '#dc2626', bg: '#fee2e2', icon: <XCircle className="h-3 w-3" /> },
-  refunded:         { label: 'Refunded',          color: '#7c3aed', bg: '#ede9fe', icon: <AlertCircle className="h-3 w-3" /> },
+  pending:              { label: 'Pending',              color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
+  partially_paid:       { label: 'Partially Paid',        color: '#ea580c', bg: '#ffedd5', icon: <Clock className="h-3 w-3" /> },
+  pending_verification: { label: 'Under Verification',    color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
+  approved_pending:     { label: 'Approved (Unpaid)',     color: '#d97706', bg: '#fef3c7', icon: <Clock className="h-3 w-3" /> },
+  paid:                 { label: 'Paid',                  color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
+  rejected:             { label: 'Rejected',              color: '#dc2626', bg: '#fee2e2', icon: <XCircle className="h-3 w-3" /> },
+  failed:               { label: 'Failed',                color: '#dc2626', bg: '#fee2e2', icon: <XCircle className="h-3 w-3" /> },
+  refunded:             { label: 'Refunded',              color: '#7c3aed', bg: '#ede9fe', icon: <AlertCircle className="h-3 w-3" /> },
 }
 
 const METHOD_LABELS: Record<string, string> = {

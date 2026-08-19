@@ -6,6 +6,7 @@ import { sendDriverDetails } from '@/lib/driver-details'
 import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import { syncBookingReminders } from '@/lib/ops-reminders'
+import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import type { BookingStatus } from '@/lib/supabase'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
@@ -135,7 +136,11 @@ export async function PATCH(
   if (approved_without_payment !== undefined) {
     updates.approved_without_payment = approved_without_payment
     updates.approved_by = 'admin'
-    if (approved_without_payment) updates.payment_status = 'approved_pending'
+    // payment_status is no longer hand-set here — it's derived from the
+    // payments ledger + this flag by recomputeBookingPaymentStatus(), called
+    // after the update below. That also correctly handles VIP + a later
+    // partial payment (spec §9): approved_without_payment=true does NOT
+    // force 'approved_pending' once real money has come in.
   }
   if (rejection_reason  !== undefined) updates.rejection_reason  = rejection_reason
   if (rejection_comment !== undefined) updates.rejection_comment = rejection_comment ?? null
@@ -424,6 +429,20 @@ export async function PATCH(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Recompute the derived payment_status whenever something that feeds its
+  // calculation changed: the VIP/Admin-Approve flag, or the booking's total
+  // (which shifts the partially_paid/paid boundary). Best-effort — a
+  // recompute failure must never turn an otherwise-successful status update
+  // into a failed request; `data` still reflects the write above either way.
+  if (!error && (approved_without_payment !== undefined || total_amount !== undefined)) {
+    try {
+      const recomputed = await recomputeBookingPaymentStatus(id)
+      if (recomputed) data.payment_status = recomputed.status
+    } catch (err) {
+      console.error('[bookings PATCH] payment-status recompute failed (non-fatal):', err)
+    }
+  }
 
   // Awaited (not fire-and-forget) so Vercel doesn't tear down the function
   // before the send completes — mirrors sendLeadAcknowledgment's approach.

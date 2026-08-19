@@ -22,6 +22,9 @@ import { timeAgo, formatCustomerName } from '@/shared/format'
 const FILTERS = [
   { key: 'all', label: 'All' },
   { key: 'pending', label: 'Pending' },
+  // Full/Partial/VIP/Verification payment-accounting rework (2026-08-19) —
+  // see lib/payment-status.ts on the website.
+  { key: 'partially_paid', label: 'Partially Paid' },
   { key: 'pending_verification', label: 'Pending Verification' },
   // Was missing — web's filter dropdown is built from STATUS_CFG's entries
   // directly so it already had this state; mobile's chip row is a fixed

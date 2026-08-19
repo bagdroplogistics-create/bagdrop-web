@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 
 // Confirmed-or-later bookings that have no matching row in `payments` at all
 // show up here as "no payment logged" — same slice used by
@@ -204,13 +205,20 @@ export async function POST(req: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // Link payment status back to booking if provided
+  // Link payment method/reference back to the booking, and recompute its
+  // derived payment_status from the full ledger (Total Paid vs Total Amount
+  // — see lib/payment-status.ts). This used to blindly overwrite
+  // bookings.payment_status with whatever status this one new payment was
+  // created with, which broke multi-payment/partial-payment accounting: a
+  // 2nd installment created as 'paid' would stomp a correctly-computed
+  // 'partially_paid' from the total, and a 3rd payment logged as merely
+  // 'pending' would wipe out an already-'paid' booking back to pending.
   if (bookingId && data) {
     await supabaseAdmin.from('bookings').update({
-      payment_status:    body.payment_status ?? 'pending',
       payment_method:    body.payment_method ?? 'upi',
       payment_reference: body.payment_reference?.trim() || null,
     }).eq('id', bookingId)
+    await recomputeBookingPaymentStatus(bookingId)
   }
 
   return NextResponse.json({ payment: data }, { status: 201 })

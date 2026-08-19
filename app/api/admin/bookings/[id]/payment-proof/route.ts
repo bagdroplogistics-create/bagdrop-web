@@ -4,6 +4,7 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import { SITE } from '@/lib/constants'
 import { sendPaymentVerificationRequest } from '@/lib/payment-verification-notification'
 import { generateVerificationToken, VERIFICATION_TOKEN_VALID_DAYS } from '@/lib/payment-verification-token'
+import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 
 // Payment Screenshot / PDF Upload + Payment Verification Request
 // (Booking Workflow spec items 1 & 2).
@@ -136,6 +137,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   if (bookingUpdateErr) {
     console.error('[payment-proof] booking update error (non-fatal, payment record still saved):', bookingUpdateErr)
+  }
+
+  // Surface "Under Verification" as the booking's payment status right away
+  // (spec §1/§7) — only takes effect if there's no already-approved payment
+  // covering some/all of the total, in which case the derived status
+  // correctly stays 'paid'/'partially_paid' instead (recomputeBookingPaymentStatus
+  // precedence). Best-effort, never blocks the upload response.
+  try {
+    await recomputeBookingPaymentStatus(bookingId)
+  } catch (err) {
+    console.error('[payment-proof] payment-status recompute failed (non-fatal):', err)
   }
 
   // ── Notify Accounts — best-effort, never blocks the upload response ──
