@@ -16,7 +16,6 @@ const NAV = [
     items: [
       { label: 'Dashboard & Bookings', href: '/admin',             icon: LayoutDashboard },
       { label: 'Trip Sheets',          href: '/admin/trip-sheets', icon: Truck           },
-      { label: 'LR / GC',              href: '/admin/lrs',         icon: FileText        },
     ],
   },
   {
@@ -32,6 +31,7 @@ const NAV = [
     group: 'Analytics',
     items: [
       { label: 'Operations Center', href: '/admin/reports/operations', icon: ClipboardList },
+      { label: 'LR / GC',    href: '/admin/lrs',       icon: FileText  },
       { label: 'Reports',    href: '/admin/reports',   icon: BarChart3 },
       { label: 'Settings',   href: '/admin/settings',  icon: Settings  },
     ],

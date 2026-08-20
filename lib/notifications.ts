@@ -228,11 +228,24 @@ export async function sendWhatsAppTemplateFast2SMS(
   // or the header renders empty ("No Preview Available") on WhatsApp even
   // though the rest of the template body sends fine. Only added when the
   // caller passes one; harmless (and omitted) for plain text-header templates.
+  // Fast2SMS's variables_values format is pipe-delimited ("val1|val2|...")
+  // — it splits on "|" server-side to know how many {{}} slots were
+  // supplied. Found via a real bug: the Confirmed & Ongoing Inquiry Summary
+  // report's single {{1}} variable renders "Date: 20 Aug 2026 | Report:
+  // 9:00 AM\n\nSUMMARY\n..." — the literal " | " inside that ONE variable's
+  // own text was silently splitting it into two values for a template that
+  // only declares one placeholder, so Fast2SMS kept just the first segment
+  // ("Date: 20 Aug 2026") and dropped everything after it, including the
+  // entire summary + booking list. Stripping "|" out of every variable's
+  // text here (not just that one caller) protects every current and future
+  // template from the same silent-truncation failure mode.
+  const sanitizedVariables = variables.map(v => v.replace(/\|/g, '·'))
+
   const params = new URLSearchParams({
     message_id:       messageId,
     phone_number_id:  phoneNumberId,
     numbers:          tenDigit,
-    variables_values: variables.join('|'),
+    variables_values: sanitizedVariables.join('|'),
     ...(mediaUrl ? { media_url: mediaUrl } : {}),
   })
 

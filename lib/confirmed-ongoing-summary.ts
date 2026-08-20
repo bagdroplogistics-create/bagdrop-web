@@ -217,7 +217,7 @@ function buildReportChunks(
   ].join('\n')
 
   if (bookings.length === 0) {
-    return [`Date: ${dateLabel} | Report: ${timeLabel}\n\n${summaryBlock}\nNo confirmed or ongoing inquiries at this time.`]
+    return [`Date: ${dateLabel} · Report: ${timeLabel}\n\n${summaryBlock}\nNo confirmed or ongoing inquiries at this time.`]
   }
 
   const entries: ReportEntry[] = bookings.map((b, i) => ({ n: i + 1, text: buildEntry(i + 1, b, inquiryIds[b.id]) }))
@@ -243,7 +243,7 @@ function buildReportChunks(
   return chunkEntryGroups.map((group, idx) => {
     const partSuffix = totalParts > 1 ? ` (Part ${idx + 1}/${totalParts})` : ''
     const rangeLabel = group.length > 1 ? `Inquiries ${group[0].n}–${group[group.length - 1].n}` : `Inquiry ${group[0].n}`
-    const lines: string[] = [`Date: ${dateLabel} | Report: ${timeLabel}${partSuffix}`, '']
+    const lines: string[] = [`Date: ${dateLabel} · Report: ${timeLabel}${partSuffix}`, '']
     if (idx === 0) lines.push(summaryBlock)
     if (totalParts > 1) lines.push(rangeLabel + '\n━━━━━━━━━━━━━━')
     lines.push(...group.map(e => e.text))
