@@ -382,7 +382,19 @@ function BookingForm() {
 
             {errors.form && <p style={{ ...fieldErr, textAlign:'center', marginTop:16 }}>{errors.form}</p>}
 
-            <button type="submit" disabled={busy} style={{ marginTop:28, width:'100%', height:58, border:'none', borderRadius:14, background: busy ? '#7C8A79' : Y.darkGreen, color:Y.cream, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', cursor: busy ? 'not-allowed' : 'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease' }}
+            {/* Delivery item restriction — informational only, no new field/
+                validation. Placed after the form fields and before Submit so
+                the guest sees it before booking, styled with the same gold
+                accent, border-radius (13, matches the inputs above) and
+                FONT_BODY already used throughout this form. */}
+            <div style={{ marginTop:20, background:'rgba(200,169,110,0.08)', border:'1px solid rgba(200,169,110,0.35)', borderRadius:13, padding:'14px 18px', display:'flex', gap:10, alignItems:'flex-start' }}>
+              <span style={{ fontSize:15, lineHeight:'1.65', color:Y.eyebrow, flexShrink:0 }}>ⓘ</span>
+              <p style={{ fontFamily:FONT_BODY, fontSize:13, lineHeight:1.65, color:Y.textBody, margin:0 }}>
+                <strong style={{ color:Y.goldMuted }}>Important:</strong> We provide delivery services only for Bridal &amp; Groom Outfits, Wedding Gifts &amp; Hampers, Décor Materials, Return Gift Boxes, and Family Luggage. We do not accept jewellery or other valuable items for delivery.
+              </p>
+            </div>
+
+            <button type="submit" disabled={busy} style={{ marginTop:24, width:'100%', height:58, border:'none', borderRadius:14, background: busy ? '#7C8A79' : Y.darkGreen, color:Y.cream, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', cursor: busy ? 'not-allowed' : 'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease' }}
               onMouseEnter={e=>{ if(!busy){ e.currentTarget.style.background='#333F31'; e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 32px rgba(42,51,41,0.32)' } }}
               onMouseLeave={e=>{ if(!busy){ e.currentTarget.style.background=Y.darkGreen; e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' } }}>
               {busy ? 'Submitting…' : 'Confirm pickup'}
