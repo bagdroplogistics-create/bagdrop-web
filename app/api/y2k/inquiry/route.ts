@@ -84,6 +84,11 @@ export async function POST(req: NextRequest) {
         // Was hardcoded to the wedding date ('2026-12-17') — now uses the
         // guest's validated pickup date (10/11/12 Dec) instead.
         pickup_date:    arrivalDate,
+        // Y2K has no separate delivery-date field (bags go Mumbai →
+        // Taj Aravali the same operating day as pickup) — was omitted
+        // entirely before, which is also why the WhatsApp ops ping
+        // below showed "Delivery Date: —".
+        delivery_date:  arrivalDate,
         time_slot:      pickupTime || null,
         total_bags:     parseInt(bags) || 1,
         total_amount:   0,
@@ -174,6 +179,15 @@ export async function POST(req: NextRequest) {
               pickupAddress:   pickupAddress || null,
               deliveryAddress: deliveryAddress || null,
               pickupDate:      arrivalDate,
+              // Both were previously omitted from this call entirely,
+              // which is why the WhatsApp template showed "Bags: —" and
+              // "Delivery Date: —" — the approved template requires all
+              // 10 variables filled or WhatsApp rejects the send outright
+              // (see the template-variable-order note at the top of
+              // lib/new-inquiry-notification.ts), so this was silently
+              // sending blanks rather than failing loudly.
+              bagsCount:       parseInt(bags) || 1,
+              deliveryDate:    arrivalDate,
               notes:           `#Y2K wedding inquiry ${trackingId}`,
               submittedAt:     new Date().toISOString(),
             })

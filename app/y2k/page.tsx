@@ -157,27 +157,14 @@ function Countdown({ target }: { target: Date }) {
   )
 }
 
-function FloatSVG({ dur, del, r, style, stroke, opacity, big }: { dur: string; del: string; r: string; style: React.CSSProperties; stroke: string; opacity: number; big?: boolean }) {
-  return (
-    <svg
-      className="wd-float"
-      style={{ ['--dur' as string]: dur, ['--del' as string]: del, ['--r' as string]: r, position: 'absolute', opacity, ...style }}
-      viewBox={big ? '0 0 60 60' : '0 0 40 80'} fill="none" stroke={stroke} strokeWidth={1}
-    >
-      {big
-        ? <path d="M30 54 C14 54 8 40 12 26 C26 24 34 34 34 48 M30 40 C40 34 52 38 52 52 C40 54 32 50 30 40"/>
-        : <path d="M20 78 C20 50 20 22 20 4 M20 20 C10 16 6 24 6 34 C16 34 20 28 20 20 M20 32 C30 28 34 36 34 46 C24 46 20 40 20 32 M20 44 C12 42 8 50 9 58 C18 56 20 52 20 44"/>}
-    </svg>
-  )
-}
-
-// ─────────────────────────────────────────────────────────────
-// PAGE
-// ─────────────────────────────────────────────────────────────
-export default function Y2KPage() {
-  const [scrolled, setScrolled] = useState(false)
-  const [menuOpen, setMenuOpen] = useState(false)
-
+// The booking form is isolated in its own component for the same reason
+// Countdown is: every keystroke in any field called setForm() on state
+// that used to live in Y2KPage itself, which re-rendered the ENTIRE page
+// (nav, hero, every section) on every single character typed — visible as
+// text flickering across the whole page while filling the form. Now a
+// keystroke only re-renders this form subtree; the rest of the page (built
+// once) stays completely still while you type.
+function BookingForm() {
   const [form, setForm] = useState({
     name: '', phone: '', email: '',
     bags: 2,
@@ -191,13 +178,6 @@ export default function Y2KPage() {
   const [submitted, setSubmitted] = useState(false)
   const [code, setCode]     = useState('')
   const [confirmName, setConfirmName] = useState('')
-
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 40)
-    onScroll()
-    window.addEventListener('scroll', onScroll, { passive: true })
-    return () => window.removeEventListener('scroll', onScroll)
-  }, [])
 
   function field(key: keyof typeof form) {
     return (v: string) => {
@@ -272,6 +252,178 @@ export default function Y2KPage() {
   ]
 
   return (
+    <>
+      <div style={{ maxWidth:760, margin:'0 auto', textAlign:'center' }}>
+        <Eyebrow>04 — Reserve Your Pickup</Eyebrow>
+        <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'18px 0 12px' }}>Book your luggage pickup</h2>
+        {/* "Pickups run 10–12 Dec" — the real date window (matches the
+            date-picker's min/max below), not the mockup's placeholder text. */}
+        <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.75, color:Y.textBody, maxWidth:'44ch', margin:'0 auto' }}>A minute now, a weightless journey later. Pickups run 10–12 December 2026.</p>
+      </div>
+
+      {submitted ? (
+        <Reveal>
+          <div style={{ maxWidth:620, margin:'44px auto 0', background:'#fff', border:`1px solid ${Y.borderCard}`, borderRadius:26, padding:'clamp(36px,6vw,56px)', textAlign:'center', boxShadow:'0 30px 70px rgba(45,32,18,0.1)' }}>
+            <div style={{ width:68, height:68, borderRadius:'50%', background:Y.darkGreen, color:Y.goldLight, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px', fontSize:32 }}>✓</div>
+            <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:'clamp(28px,4vw,40px)', margin:'0 0 12px', color:Y.textDark }}>Your pickup is booked</h3>
+            <p style={{ fontFamily:FONT_BODY, fontSize:16, lineHeight:1.7, color:Y.textBody, margin:'0 0 24px' }}>We&apos;ve saved your details, {confirmName}. Your tracking code is below — we&apos;ll confirm on WhatsApp shortly.</p>
+            <div style={{ display:'inline-block', fontFamily:"'Geist Mono', monospace", fontSize:22, letterSpacing:'0.14em', color:Y.eyebrow, background:'#F9F3E8', border:'1px dashed #D9C08A', borderRadius:14, padding:'16px 32px' }}>{code}</div>
+            <div style={{ marginTop:28 }}>
+              <button type="button" onClick={resetForm} style={{ background:'none', border:'none', fontFamily:FONT_BODY, fontSize:13, letterSpacing:'0.14em', textTransform:'uppercase', color:Y.goldMuted, cursor:'pointer', borderBottom:`1px solid ${Y.gold}`, padding:'4px 0' }}>
+                Book another pickup
+              </button>
+            </div>
+          </div>
+        </Reveal>
+      ) : (
+        <Reveal>
+          <form onSubmit={submit} style={{ maxWidth:720, margin:'44px auto 0', background:'#fff', border:`1px solid ${Y.borderCard}`, borderRadius:26, padding:'clamp(26px,5vw,48px)', boxShadow:'0 30px 70px rgba(45,32,18,0.08)' }}>
+            <div className="wd-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Guest name</label>
+                <input value={form.name} onChange={e=>field('name')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Full name" style={fi}/>
+                {errors.name && <span style={fieldErr}>{errors.name}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Phone / WhatsApp</label>
+                <input value={form.phone} onChange={e=>field('phone')(e.target.value.replace(/\D/g,'').slice(0,10))} onFocus={fiFocus} onBlur={fiBlur} inputMode="tel" placeholder="10-digit number" style={fi}/>
+                {errors.phone && <span style={fieldErr}>{errors.phone}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Email <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
+                <input type="email" value={form.email} onChange={e=>field('email')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="your@email.com" style={fi}/>
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Number of bags</label>
+                <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between' }}>
+                  <button type="button" onClick={decBags} aria-label="Fewer bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>−</button>
+                  <span style={{ fontFamily:FONT_DISPLAY, fontSize:24, color:Y.textDark, minWidth:32, textAlign:'center' }}>{form.bags}</span>
+                  <button type="button" onClick={incBags} aria-label="More bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>+</button>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Pickup date <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(10–12 Dec only)</span></label>
+                <input type="date" value={form.pickupDate} onChange={e=>field('pickupDate')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} min={Y2K_PICKUP_DATE_MIN} max={Y2K_PICKUP_DATE_MAX} style={fi}/>
+                {errors.pickupDate && <span style={fieldErr}>{errors.pickupDate}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Pickup location</label>
+                <div style={{ position:'relative' }}>
+                  <select value={form.pickupCity} onChange={e=>field('pickupCity')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
+                    <option value="" disabled>Where do we collect?</option>
+                    <option value="Mumbai">Mumbai</option>
+                    <option value="Mumbai Airport">Mumbai Airport</option>
+                    <option value="Other">Other</option>
+                  </select>
+                  <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
+                </div>
+                {errors.pickupCity && <span style={fieldErr}>{errors.pickupCity}</span>}
+                {form.pickupCity === 'Other' && (
+                  <>
+                    <input value={form.pickupCityOther} onChange={e=>field('pickupCityOther')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Enter pickup city" style={{ ...fi, marginTop:8 }}/>
+                    {errors.pickupCityOther && <span style={fieldErr}>{errors.pickupCityOther}</span>}
+                  </>
+                )}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
+                <label style={label}>Pickup address</label>
+                <input value={form.pickupAddress} onChange={e=>field('pickupAddress')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="House / Flat no., Street, Area" style={fi}/>
+                {errors.pickupAddress && <span style={fieldErr}>{errors.pickupAddress}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Pickup time</label>
+                <div style={{ position:'relative' }}>
+                  <select value={form.pickupTime} onChange={e=>field('pickupTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
+                    <option value="" disabled>Select a slot</option>
+                    {TIME_SLOTS.map(t=><option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
+                  </select>
+                  <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
+                </div>
+                {errors.pickupTime && <span style={fieldErr}>{errors.pickupTime}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Delivery location</label>
+                <div style={{ position:'relative' }}>
+                  {/* Fixed — every Y2K delivery goes to Taj Aravali, Udaipur
+                      (unchanged from before this redesign). */}
+                  <select disabled value={WEDDING_VENUE} style={{ ...fi, padding:'0 40px 0 16px', color:Y.statLabel, cursor:'not-allowed', opacity:0.85 }}>
+                    <option value={WEDDING_VENUE}>{WEDDING_VENUE}</option>
+                  </select>
+                  <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
+                </div>
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                <label style={label}>Delivery time</label>
+                <div style={{ position:'relative' }}>
+                  <select value={form.deliveryTime} onChange={e=>field('deliveryTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
+                    <option value="" disabled>Select a slot</option>
+                    {TIME_SLOTS.map(t=><option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
+                  </select>
+                  <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
+                </div>
+                {errors.deliveryTime && <span style={fieldErr}>{errors.deliveryTime}</span>}
+              </div>
+
+              <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
+                <label style={label}>Special notes <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
+                <textarea value={form.notes} onChange={e=>field('notes')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} rows={3} placeholder="Fragile items, extra bags, hotel name, gate codes…" style={{ ...fi, height:'auto', padding:'14px 16px', resize:'vertical', lineHeight:1.6 }}/>
+              </div>
+            </div>
+
+            {errors.form && <p style={{ ...fieldErr, textAlign:'center', marginTop:16 }}>{errors.form}</p>}
+
+            <button type="submit" disabled={busy} style={{ marginTop:28, width:'100%', height:58, border:'none', borderRadius:14, background: busy ? '#7C8A79' : Y.darkGreen, color:Y.cream, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', cursor: busy ? 'not-allowed' : 'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease' }}
+              onMouseEnter={e=>{ if(!busy){ e.currentTarget.style.background='#333F31'; e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 32px rgba(42,51,41,0.32)' } }}
+              onMouseLeave={e=>{ if(!busy){ e.currentTarget.style.background=Y.darkGreen; e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' } }}>
+              {busy ? 'Submitting…' : 'Confirm pickup'}
+            </button>
+            <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Flight-synced &amp; Fully Wrapped — powered by Bagdrop</p>
+          </form>
+        </Reveal>
+      )}
+    </>
+  )
+}
+
+function FloatSVG({ dur, del, r, style, stroke, opacity, big }: { dur: string; del: string; r: string; style: React.CSSProperties; stroke: string; opacity: number; big?: boolean }) {
+  return (
+    <svg
+      className="wd-float"
+      style={{ ['--dur' as string]: dur, ['--del' as string]: del, ['--r' as string]: r, position: 'absolute', opacity, ...style }}
+      viewBox={big ? '0 0 60 60' : '0 0 40 80'} fill="none" stroke={stroke} strokeWidth={1}
+    >
+      {big
+        ? <path d="M30 54 C14 54 8 40 12 26 C26 24 34 34 34 48 M30 40 C40 34 52 38 52 52 C40 54 32 50 30 40"/>
+        : <path d="M20 78 C20 50 20 22 20 4 M20 20 C10 16 6 24 6 34 C16 34 20 28 20 20 M20 32 C30 28 34 36 34 46 C24 46 20 40 20 32 M20 44 C12 42 8 50 9 58 C18 56 20 52 20 44"/>}
+    </svg>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────
+// PAGE
+// ─────────────────────────────────────────────────────────────
+export default function Y2KPage() {
+  const [scrolled, setScrolled] = useState(false)
+  const [menuOpen, setMenuOpen] = useState(false)
+
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 40)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+
+  return (
     <div style={{ fontFamily:FONT_BODY, background:Y.cream, color:Y.textDark, overflowX:'hidden' }}>
 
       {/* ══ GLOBAL CSS ════════════════════════════════════════ */}
@@ -310,7 +462,11 @@ export default function Y2KPage() {
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:92, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(20px,5vw,56px)', background: scrolled ? 'rgba(244,238,228,0.92)' : 'transparent', color: scrolled ? Y.textDark : Y.cream, boxShadow: scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none', backdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', transition:'background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease' }}>
         <a href="#top" style={{ display:'flex', alignItems:'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:'clamp(48px, 8vw, 80px)', width:'auto', display:'block', filter: scrolled ? 'none' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
+          {/* Source PNG is pure white pixels, so scrolled needed its own
+              filter (was 'none', which just showed white-on-cream — nearly
+              invisible). brightness(0) crushes it to a black silhouette;
+              brightness(0) invert(1) flips that to white for the dark hero. */}
+          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:'clamp(48px, 8vw, 80px)', width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
         </a>
         <div className="wd-desktop-nav" style={{ display:'flex', alignItems:'center', gap:34, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:500, letterSpacing:'0.13em', textTransform:'uppercase' }}>
           <a href="#celebration">Celebration</a>
@@ -501,144 +657,7 @@ export default function Y2KPage() {
       {/* 04 BOOKING FORM                                     */}
       {/* ════════════════════════════════════════════════════ */}
       <section id="book" style={{ background:Y.cream, padding:'clamp(88px,12vw,148px) clamp(20px,5vw,56px)', scrollMarginTop:92 }}>
-        <div style={{ maxWidth:760, margin:'0 auto', textAlign:'center' }}>
-          <Eyebrow>04 — Reserve Your Pickup</Eyebrow>
-          <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'18px 0 12px' }}>Book your luggage pickup</h2>
-          {/* "Pickups run 10–12 Dec" — the real date window (matches the
-              date-picker's min/max below), not the mockup's placeholder text. */}
-          <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.75, color:Y.textBody, maxWidth:'44ch', margin:'0 auto' }}>A minute now, a weightless journey later. Pickups run 10–12 December 2026.</p>
-        </div>
-
-        {submitted ? (
-          <Reveal>
-            <div style={{ maxWidth:620, margin:'44px auto 0', background:'#fff', border:`1px solid ${Y.borderCard}`, borderRadius:26, padding:'clamp(36px,6vw,56px)', textAlign:'center', boxShadow:'0 30px 70px rgba(45,32,18,0.1)' }}>
-              <div style={{ width:68, height:68, borderRadius:'50%', background:Y.darkGreen, color:Y.goldLight, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px', fontSize:32 }}>✓</div>
-              <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:'clamp(28px,4vw,40px)', margin:'0 0 12px', color:Y.textDark }}>Your pickup is booked</h3>
-              <p style={{ fontFamily:FONT_BODY, fontSize:16, lineHeight:1.7, color:Y.textBody, margin:'0 0 24px' }}>We&apos;ve saved your details, {confirmName}. Your tracking code is below — we&apos;ll confirm on WhatsApp shortly.</p>
-              <div style={{ display:'inline-block', fontFamily:"'Geist Mono', monospace", fontSize:22, letterSpacing:'0.14em', color:Y.eyebrow, background:'#F9F3E8', border:'1px dashed #D9C08A', borderRadius:14, padding:'16px 32px' }}>{code}</div>
-              <div style={{ marginTop:28 }}>
-                <button type="button" onClick={resetForm} style={{ background:'none', border:'none', fontFamily:FONT_BODY, fontSize:13, letterSpacing:'0.14em', textTransform:'uppercase', color:Y.goldMuted, cursor:'pointer', borderBottom:`1px solid ${Y.gold}`, padding:'4px 0' }}>
-                  Book another pickup
-                </button>
-              </div>
-            </div>
-          </Reveal>
-        ) : (
-          <Reveal>
-            <form onSubmit={submit} style={{ maxWidth:720, margin:'44px auto 0', background:'#fff', border:`1px solid ${Y.borderCard}`, borderRadius:26, padding:'clamp(26px,5vw,48px)', boxShadow:'0 30px 70px rgba(45,32,18,0.08)' }}>
-              <div className="wd-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Guest name</label>
-                  <input value={form.name} onChange={e=>field('name')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Full name" style={fi}/>
-                  {errors.name && <span style={fieldErr}>{errors.name}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Phone / WhatsApp</label>
-                  <input value={form.phone} onChange={e=>field('phone')(e.target.value.replace(/\D/g,'').slice(0,10))} onFocus={fiFocus} onBlur={fiBlur} inputMode="tel" placeholder="10-digit number" style={fi}/>
-                  {errors.phone && <span style={fieldErr}>{errors.phone}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Email <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
-                  <input type="email" value={form.email} onChange={e=>field('email')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="your@email.com" style={fi}/>
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Number of bags</label>
-                  <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between' }}>
-                    <button type="button" onClick={decBags} aria-label="Fewer bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>−</button>
-                    <span style={{ fontFamily:FONT_DISPLAY, fontSize:24, color:Y.textDark, minWidth:32, textAlign:'center' }}>{form.bags}</span>
-                    <button type="button" onClick={incBags} aria-label="More bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>+</button>
-                  </div>
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Pickup date <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(10–12 Dec only)</span></label>
-                  <input type="date" value={form.pickupDate} onChange={e=>field('pickupDate')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} min={Y2K_PICKUP_DATE_MIN} max={Y2K_PICKUP_DATE_MAX} style={fi}/>
-                  {errors.pickupDate && <span style={fieldErr}>{errors.pickupDate}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Pickup location</label>
-                  <div style={{ position:'relative' }}>
-                    <select value={form.pickupCity} onChange={e=>field('pickupCity')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
-                      <option value="" disabled>Where do we collect?</option>
-                      <option value="Mumbai">Mumbai</option>
-                      <option value="Mumbai Airport">Mumbai Airport</option>
-                      <option value="Other">Other</option>
-                    </select>
-                    <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
-                  </div>
-                  {errors.pickupCity && <span style={fieldErr}>{errors.pickupCity}</span>}
-                  {form.pickupCity === 'Other' && (
-                    <>
-                      <input value={form.pickupCityOther} onChange={e=>field('pickupCityOther')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Enter pickup city" style={{ ...fi, marginTop:8 }}/>
-                      {errors.pickupCityOther && <span style={fieldErr}>{errors.pickupCityOther}</span>}
-                    </>
-                  )}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
-                  <label style={label}>Pickup address</label>
-                  <input value={form.pickupAddress} onChange={e=>field('pickupAddress')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="House / Flat no., Street, Area" style={fi}/>
-                  {errors.pickupAddress && <span style={fieldErr}>{errors.pickupAddress}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Pickup time</label>
-                  <div style={{ position:'relative' }}>
-                    <select value={form.pickupTime} onChange={e=>field('pickupTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
-                      <option value="" disabled>Select a slot</option>
-                      {TIME_SLOTS.map(t=><option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
-                    </select>
-                    <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
-                  </div>
-                  {errors.pickupTime && <span style={fieldErr}>{errors.pickupTime}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Delivery location</label>
-                  <div style={{ position:'relative' }}>
-                    {/* Fixed — every Y2K delivery goes to Taj Aravali, Udaipur
-                        (unchanged from before this redesign). */}
-                    <select disabled value={WEDDING_VENUE} style={{ ...fi, padding:'0 40px 0 16px', color:Y.statLabel, cursor:'not-allowed', opacity:0.85 }}>
-                      <option value={WEDDING_VENUE}>{WEDDING_VENUE}</option>
-                    </select>
-                    <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
-                  </div>
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                  <label style={label}>Delivery time</label>
-                  <div style={{ position:'relative' }}>
-                    <select value={form.deliveryTime} onChange={e=>field('deliveryTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
-                      <option value="" disabled>Select a slot</option>
-                      {TIME_SLOTS.map(t=><option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
-                    </select>
-                    <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
-                  </div>
-                  {errors.deliveryTime && <span style={fieldErr}>{errors.deliveryTime}</span>}
-                </div>
-
-                <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
-                  <label style={label}>Special notes <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
-                  <textarea value={form.notes} onChange={e=>field('notes')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} rows={3} placeholder="Fragile items, extra bags, hotel name, gate codes…" style={{ ...fi, height:'auto', padding:'14px 16px', resize:'vertical', lineHeight:1.6 }}/>
-                </div>
-              </div>
-
-              {errors.form && <p style={{ ...fieldErr, textAlign:'center', marginTop:16 }}>{errors.form}</p>}
-
-              <button type="submit" disabled={busy} style={{ marginTop:28, width:'100%', height:58, border:'none', borderRadius:14, background: busy ? '#7C8A79' : Y.darkGreen, color:Y.cream, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', cursor: busy ? 'not-allowed' : 'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease' }}
-                onMouseEnter={e=>{ if(!busy){ e.currentTarget.style.background='#333F31'; e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 32px rgba(42,51,41,0.32)' } }}
-                onMouseLeave={e=>{ if(!busy){ e.currentTarget.style.background=Y.darkGreen; e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' } }}>
-                {busy ? 'Submitting…' : 'Confirm pickup'}
-              </button>
-              <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Flight-synced &amp; Fully Wrapped — powered by Bagdrop</p>
-            </form>
-          </Reveal>
-        )}
+        <BookingForm />
       </section>
 
       {/* ════════════════════════════════════════════════════ */}

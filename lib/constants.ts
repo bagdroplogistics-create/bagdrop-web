@@ -318,6 +318,85 @@ export type TitleId = (typeof TITLE_OPTIONS)[number]
 
 export const DEFAULT_TITLE: TitleId = 'Mr.'
 
+// Same curated first-name list as supabase/migrations/
+// 20260801_customer_title_gender_backfill.sql's `female_first_names` temp
+// table, kept in sync by hand — that migration was a one-time SQL pass to
+// correct legacy rows already defaulted to 'Mr.'; this is the same
+// heuristic applied live, at display time, for any lead/booking that never
+// collected an explicit Title (e.g. the Y2K wedding form, the marketing
+// contact form) so it's not misgendering the customer as "Mr." by default
+// on day one. It's still just a guess — always overridable via the
+// Title dropdown on the Lead/Quote/Booking edit forms.
+const FEMALE_FIRST_NAMES = new Set([
+  'priya','neha','pooja','anjali','kavita','sunita','meera','sneha',
+  'divya','ritu','anita','nisha','swati','deepa','rekha','usha',
+  'geeta','seema','shweta','vandana','aarti','arti','aparna','bhavna',
+  'bhavana','chitra','darshana','falguni','hetal','ila','jyoti','kajal',
+  'lata','madhuri','nalini','payal','radha','sangeeta','trupti','urvashi',
+  'vaishali','yamini','mansi','nikita','pallavi','ragini','sonal','trisha',
+  'varsha','aisha','fatima','sana','ayesha','zara','amita','rupali',
+  'purnima','poornima','kiran','preeti','priti','shilpa','sonia','sunanda',
+  'sudha','vidya','yogita','reema','rima','simran','sarika','sarita',
+  'shobha','shobhna','smita','vaidehi','vibha','vinita','roshni','ruchi',
+  'ruchika','rutuja','sakshi','samiksha','sejal','shefali','sheetal','shital',
+  'shraddha','sindhu','sonam','sujata','surbhi','tanvi','tanya','tejal',
+  'urmila','vidhi','zeenat','alka','anagha','anisha','archana',
+  'asha','bina','binita','bhumika','charu','daksha','damini','dimple',
+  'dipika','deepika','drashti','foram','gauri','gayatri','hansa','harshita',
+  'heena','hina','indu','ishita','jagruti','jaya','jigisha','juhi',
+  'kalpana','kamini','kanchan','karishma','karuna','khushbu','khushi','komal',
+  'krupa','kruti','kusum','leena','lina','mala','mamta',
+  'manisha','manju','meena','minal','mital','mitali','monika','mrunal',
+  'mrunali','namrata','nandini','nayana','neelam','neeta','niti','nupur',
+  'padma','pankti','parul','pinky','poonam','pratiksha','pratima',
+  'priyal','priyanka','rachana','rachna','rachita','rajni','rashi',
+  'rashmi','renu','reshma','richa','rina','riddhi','rohini','roopa',
+  'rupa','sadhna','sadhana','sameera','sanjana','sarla','savita','shalini',
+  'shama','shanta','sharda','sharmila','shilpi','shivani',
+  'shreya','shruti','shubhangi','shubhi','sonali','sulekha',
+  'supriya','sushma','tanuja','tara','tasneem','tina',
+  'tripti','twinkle','uma','urvi','vaishnavi',
+  'vasudha','veena','vineeta','yashvi','yesha','yuvika',
+  'zainab','aditi','akansha','akanksha','alisha','alpa','amisha','ami',
+  'amrita','anushka','apeksha','apoorva','avni','bansi','bela','bhairavi',
+  'bindi','chandni','charmi','chhaya','devika','disha','diti','drishti',
+  'ekta','gargi','garima','gunjan','harleen','harsha','hemal','hemangi',
+  'hetvi','ishani','janki','janvi','jhanvi','jinal','kajol','kanika',
+  'kavya','keerti','khyati','kimaya','krisha','krishna','kriti','kritika',
+  'kshama','lavanya','maitri','malti','maya','megha','mehak',
+  'milan','mili','mona','naina','naisha','nandita','naomi','nayantara',
+  'nazia','neelima','neerja','nehal','nidhi','nikki','nimisha','niral',
+  'nishtha','nita','palak','pari','parineeta','parisha',
+  'pragya','prakriti','prapti','prisha','purvi',
+  'rajvi','rakhi','rani','rasika','raveena','reet','reeva','renuka',
+  'riya','roshan','ruhi','sagarika','saloni','samta',
+  'sanya','sapna','sarah','shaina','shivangi','shrishti',
+  'siddhi','simar','snigdha','sonakshi','sonu','sristi','suhani',
+  'sushila','svara','taniya','tanisha','tanushree','tejaswini','trishala',
+  'urja','urshila','vaani','vandita','vanshika','varda',
+  'vidisha','vrinda','yachna','yashika','zoya',
+  // Also cover the wedding-guest scenario that prompted this fix.
+  'monali','yashna',
+])
+
+// Same business/organization exclusion as the SQL migration — a company
+// name shouldn't get a personal title guessed onto it either way.
+const ORG_NAME_PATTERN = /\b(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORATION|ENTERPRISE|ENTERPRISES|INDUSTR(Y|IES)|COMPANY|CO\.|GROUP|TRADERS?|EXPORTS?|IMPORTS?|SOLUTIONS?|SERVICES?|LOGISTICS|ASSOCIATES|PARTNERS|FOODS?|HOMEMADE|HOSPITAL|SCHOOL|COLLEGE|TRUST|FOUNDATION|SOCIETY|BANK|HOTEL|RESORT|TRAVELS?|TOURS?|CARGO|FREIGHT|SHIPPING|BUILDERS?|CONSTRUCTIONS?|REALTY|PROPERTIES|CONSULTANC(Y|IES)|TECHNOLOG(Y|IES)|SYSTEMS?|STUDIO|WORKS|MART|STORES?)\b/i
+
+/**
+ * Best-effort title guess from a first name alone, for the moment a
+ * lead/booking is created and no Title was explicitly collected (no
+ * dropdown on that form). Returns null — not a default — when it can't
+ * tell, so callers decide whether "no guess" means omitting the title
+ * entirely or falling back to DEFAULT_TITLE.
+ */
+function guessTitleFromName(name: string): TitleId | null {
+  if (ORG_NAME_PATTERN.test(name)) return null
+  const firstName = name.trim().split(/\s+/)[0]?.toLowerCase()
+  if (firstName && FEMALE_FIRST_NAMES.has(firstName)) return 'Ms.'
+  return null
+}
+
 /**
  * Formats a customer's title + name for display, e.g. "Mr. Rahul Patel".
  * Use this everywhere a customer's name is shown — dashboards, tables,
@@ -325,12 +404,18 @@ export const DEFAULT_TITLE: TitleId = 'Mr.'
  * activity logs, reports, and both mobile apps.
  *
  * Falls back gracefully if title is missing/invalid (older records,
- * partial data) so display code never has to null-check separately.
+ * partial data, or a form — like the Y2K wedding page — that never asks
+ * for one) so display code never has to null-check separately. Before
+ * falling all the way back to DEFAULT_TITLE ('Mr.'), it tries the same
+ * name-based heuristic as the one-time SQL backfill
+ * (20260801_customer_title_gender_backfill.sql), so a customer named e.g.
+ * "Monali" or "Neha" isn't shown as "Mr." just because no title was ever
+ * collected for that particular form.
  */
 export function formatCustomerName(title: string | null | undefined, name: string | null | undefined): string {
   const safeName = (name ?? '').trim()
   if (!safeName) return ''
-  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : DEFAULT_TITLE
+  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : (guessTitleFromName(safeName) ?? DEFAULT_TITLE)
   return `${safeTitle} ${safeName}`
 }
 
