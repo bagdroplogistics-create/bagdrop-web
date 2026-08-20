@@ -148,13 +148,17 @@ const s = StyleSheet.create({
   tripSummary:  { margin: '10 28 0', backgroundColor: LIGHT, borderRadius: 6, padding: '10 14' },
 
   // Footer
-  // Full-bleed dark navy band (was a thin top-border-only white strip) —
-  // now uses its own padding instead of the page's side margin so the
-  // color runs edge-to-edge like the header does.
-  footer:    { backgroundColor: '#0A1628', padding: '12 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
+  // Was a full-bleed dark navy band (#0A1628) — reverted to a plain white
+  // footer with just a light top border for separation, because the
+  // signature-stamp.png (dark navy ink on a transparent background) was
+  // nearly invisible against that dark band. Text/border colors below were
+  // dark-on-dark (white/rgba-white) for that old background and are now
+  // swapped to the same DARK/GREY tones used on every other white surface
+  // in this doc, so the footer still reads clearly on white.
+  footer:    { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '12 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
   ftLeft:    { flex: 1 },
-  ftCo:      { color: '#fff', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
-  ftLine:    { color: 'rgba(255,255,255,0.75)', fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
+  ftCo:      { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
+  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
   // Widened 120->170 — narrower than this clipped "For Bagdrop Logistics
   // Solutions Pvt. Ltd." (sigSub, below) onto two lines / made it overflow
   // sigLine's width. alignItems:'center' centers every child (image, the
@@ -172,9 +176,9 @@ const s = StyleSheet.create({
   // Widened 110->150 to actually span the width of "For Bagdrop Logistics
   // Solutions Pvt. Ltd." (sigSub) beneath it, instead of reading narrower
   // than the text it's meant to underline.
-  sigLine:   { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)', paddingTop: 4, width: 150, textAlign: 'center' },
-  sigText:   { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-  sigSub:    { color: 'rgba(255,255,255,0.75)', fontSize: 7, marginTop: 1 },
+  sigLine:   { borderTopWidth: 1, borderTopColor: '#d1d5db', paddingTop: 4, width: 150, textAlign: 'center' },
+  sigText:   { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  sigSub:    { color: GREY, fontSize: 7, marginTop: 1 },
 })
 
 function fmtRs(n: number | null | undefined) {

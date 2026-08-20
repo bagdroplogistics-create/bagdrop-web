@@ -146,7 +146,14 @@ export function PhoneInput({
           onChange={e => onNumberChange(e.target.value.replace(/[^\d]/g, ''))}
           placeholder={placeholder ?? 'Phone number'}
           className={cn(
-            isPublic ? 'flex-1 h-12 rounded-lg border px-4 text-base focus:outline-none focus:ring-2' : 'flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1',
+            // min-w-0 is required here — a flex child's default min-width
+            // is 'auto' (its content's intrinsic width), so without this,
+            // flex-1 alone doesn't let the input shrink below the width of
+            // whatever's typed into it. That's what was pushing the field
+            // outside the white card on the public booking form once the
+            // phone number got long enough (screenshot: 'US +1' + a 10-digit
+            // number overflowing the "Your details" card on step 4/Review).
+            isPublic ? 'min-w-0 flex-1 h-12 rounded-lg border px-4 text-base focus:outline-none focus:ring-2' : 'min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1',
             invalid
               ? (isPublic ? 'border-red-300 focus:border-red-400 focus:ring-red-400/20' : 'border-red-300 focus:border-red-400 focus:ring-red-400')
               : (isPublic ? 'border-border-strong bg-white text-text-primary placeholder:text-text-muted focus:border-brand focus:ring-brand/20' : 'border-gray-200 focus:border-orange-400 focus:ring-orange-400')
