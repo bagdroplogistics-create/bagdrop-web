@@ -15,16 +15,16 @@ const NAV = [
     group: 'Operations',
     items: [
       { label: 'Dashboard & Bookings', href: '/admin',             icon: LayoutDashboard },
-      { label: 'Trip Sheets',          href: '/admin/trip-sheets', icon: Truck           },
     ],
   },
   {
     group: 'CRM',
     items: [
       { label: 'Leads',      href: '/admin/leads',     icon: Users       },
-      { label: 'Customers',  href: '/admin/customers', icon: UserCheck   },
       { label: 'Invoices',   href: '/admin/invoices',  icon: Receipt     },
       { label: 'Payments',   href: '/admin/payments',  icon: CreditCard  },
+      { label: 'Trip Sheets', href: '/admin/trip-sheets', icon: Truck    },
+      { label: 'Customers',  href: '/admin/customers', icon: UserCheck   },
     ],
   },
   {
