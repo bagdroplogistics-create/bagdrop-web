@@ -479,6 +479,14 @@ function QuotePageInner() {
             description: li.description ?? '',
             qty:         li.quantity ?? 1,
             rate:        li.rate ?? 0,
+            // Was dropped here entirely, so every edit-mode row fell back
+            // to the qty*rate calc below (subtotal uses r.amount ?? r.qty
+            // * r.rate) instead of the flat amount actually saved on this
+            // quote — e.g. Vadodara→Delhi "Upto 2 Bags" (qty 2, rate
+            // 10000) showed Amount 20,000 on re-open instead of the real
+            // flat 10,000. This mirrors the same amount-override fix
+            // already applied to populateItemsFromRoute (create mode).
+            amount:      li.amount ?? undefined,
             taxId:       TAX_GST5,
           })))
           // Mark items as already resolved so the route-pricing effect below

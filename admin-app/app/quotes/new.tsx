@@ -181,6 +181,12 @@ export default function NewQuote() {
             description: li.description ?? '',
             qty: String(li.quantity ?? 1),
             rate: String(li.rate ?? 0),
+            // Was dropped here, so subtotal (line 282: r.amount ?? qty*rate)
+            // and the row's own Amount label (line 673) fell back to
+            // qty*rate on every re-open instead of the saved flat amount —
+            // same bug as the website's edit-load mapping in
+            // app/(admin)/admin/quotes/new/page.tsx.
+            amount: li.amount ?? undefined,
           })))
           itemsFromPricing.current = true // don't let route-pricing overwrite saved items
         }
