@@ -32,7 +32,7 @@ const WEDDING_DATE = new Date('2026-12-17T00:00:00+05:30')
 const Y2K_PICKUP_DATE_MIN = '2026-12-10'
 const Y2K_PICKUP_DATE_MAX = '2026-12-12'
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2', 'Others']
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport', 'Other']
 const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 const WEDDING_VENUE = 'Taj Aravali, Udaipur'
 
@@ -70,7 +70,12 @@ const IMG_CELEBRATION = '/images/y2k-couple.jpeg'             // "editorial coup
 const IMG_DESTINATION = '/images/y2k-taj-aravali-dusk.webp'   // "wide Udaipur / Taj Aravali landscape" — the actual resort at dusk
 const IMG_TRAVEL      = '/images/y2k-bagdrop-luggage.webp'    // "Bagdrop luggage-delivery image" — bellman with tagged bags
 const IMG_INFO_BG     = '/images/y2k-mountains-mist.webp'     // "soft Aravalli mountain image, misty ridgelines"
-const IMG_LOGO        = '/images/bagdrop-logo.png'
+// bagdrop-logo.png is the square icon-only mark (was showing as a tiny "B"
+// badge in the nav, not a proper logo lockup). logo-horizontal.png is the
+// real icon+wordmark lockup — inverted to white via CSS filter for use on
+// dark backgrounds (nav when not scrolled, footer), same technique as
+// before, just pointed at the correct asset.
+const IMG_LOGO        = '/images/logo-horizontal.png'
 
 const NOISE_BG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"
@@ -190,7 +195,7 @@ export default function Y2KPage() {
     if (!f.pickupDate) er.pickupDate = 'Select a pickup date.'
     else if (!Y2K_PICKUP_DATES.includes(f.pickupDate)) er.pickupDate = 'Pickup is only available on 10, 11 or 12 December 2026.'
     if (!f.pickupCity) er.pickupCity = 'Select a pickup location.'
-    if (f.pickupCity === 'Others' && !f.pickupCityOther.trim()) er.pickupCityOther = 'Enter the pickup address.'
+    if (f.pickupCity === 'Other' && !f.pickupCityOther.trim()) er.pickupCityOther = 'Enter the pickup address.'
     if (!f.pickupAddress.trim()) er.pickupAddress = 'Enter the pickup address.'
     if (!f.pickupTime) er.pickupTime = 'Select a pickup time.'
     if (!f.deliveryTime) er.deliveryTime = 'Select a delivery time.'
@@ -198,7 +203,7 @@ export default function Y2KPage() {
 
     setBusy(true)
     try {
-      const resolvedPickupCity = f.pickupCity === 'Others' ? f.pickupCityOther.trim() : f.pickupCity
+      const resolvedPickupCity = f.pickupCity === 'Other' ? f.pickupCityOther.trim() : f.pickupCity
       const res = await fetch('/api/y2k/inquiry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -239,8 +244,8 @@ export default function Y2KPage() {
 
   const TIME_SLOTS = [
     { id:'morning',   label:'Morning',   range:'10 AM – 1 PM' },
-    { id:'afternoon', label:'Midday',    range:'1 PM – 3:30 PM' },
-    { id:'evening',   label:'Afternoon', range:'3:30 PM – 6 PM' },
+    { id:'afternoon', label:'Midday',    range:'1 PM – 3 PM' },
+    { id:'evening',   label:'Afternoon', range:'3 PM – 6 PM' },
   ]
 
   return (
@@ -282,7 +287,7 @@ export default function Y2KPage() {
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:92, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(20px,5vw,56px)', background: scrolled ? 'rgba(244,238,228,0.92)' : 'transparent', color: scrolled ? Y.textDark : Y.cream, boxShadow: scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none', backdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', transition:'background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease' }}>
         <a href="#top" style={{ display:'flex', alignItems:'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:74, width:'auto', display:'block', filter: scrolled ? 'none' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
+          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:'clamp(36px, 6vw, 60px)', width:'auto', display:'block', filter: scrolled ? 'none' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
         </a>
         <div className="wd-desktop-nav" style={{ display:'flex', alignItems:'center', gap:34, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:500, letterSpacing:'0.13em', textTransform:'uppercase' }}>
           <a href="#celebration">Celebration</a>
@@ -334,7 +339,7 @@ export default function Y2KPage() {
 
         <div style={{ position:'relative', zIndex:2, color:Y.cream, display:'flex', flexDirection:'column', alignItems:'center' }}>
           <span style={{ fontFamily:FONT_BODY, fontSize:12, fontWeight:500, letterSpacing:'0.42em', textTransform:'uppercase', opacity:0.9, marginBottom:28, paddingLeft:'0.42em' }}>Taj Aravali · Udaipur</span>
-          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(52px,13vw,152px)', lineHeight:0.94, letterSpacing:'-0.01em', margin:0, display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'center', gap:'clamp(14px,4vw,44px)', textShadow:'0 2px 30px rgba(0,0,0,0.55), 0 1px 4px rgba(0,0,0,0.4)' }}>
+          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.cream, fontSize:'clamp(52px,13vw,152px)', lineHeight:0.94, letterSpacing:'-0.01em', margin:0, display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'center', gap:'clamp(14px,4vw,44px)', textShadow:'0 2px 30px rgba(0,0,0,0.55), 0 1px 4px rgba(0,0,0,0.4)' }}>
             <span style={{ fontStyle:'italic' }}>Yashna</span>
             <svg viewBox="0 0 24 24" style={{ width:'clamp(28px,7vw,62px)', height:'auto', flexShrink:0 }} aria-label="and">
               <path d="M12 21.2s-8.2-5.1-10.4-10C-0.2 6.6 2.6 3.4 6.2 4c2 .3 3.2 1.7 3.8 3 .6-1.3 1.8-2.7 3.8-3 3.6-.6 6.4 2.6 4.6 7.2-2.2 4.9-10.4 10-10.4 10Z" fill="none" stroke="#E8CE9A" strokeWidth={1}/>
@@ -371,8 +376,8 @@ export default function Y2KPage() {
             </div>
             <div style={{ flex:'0 0 auto', display:'flex', flexDirection:'column', gap:14, minWidth:'min(220px,100%)' }}>
               <div style={{ display:'flex', gap:22, fontFamily:FONT_BODY }}>
-                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>RFID</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Tagged &amp; sealed</div></div>
-                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>100%</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Insured</div></div>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>Flight</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Synced</div></div>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>100%</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Fully wrapped</div></div>
               </div>
               <a href="#book" style={{ textAlign:'center', background:Y.goldLight, color:Y.textOnGold, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', padding:'16px 28px', borderRadius:999, transition:'transform 0.25s ease, box-shadow 0.25s ease' }}
                 onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 10px 26px rgba(232,206,154,0.4)' }}
@@ -392,7 +397,7 @@ export default function Y2KPage() {
           <Reveal>
             <div>
               <Eyebrow>01 — The Celebration</Eyebrow>
-              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(38px,6vw,68px)', lineHeight:1.06, margin:'20px 0 0', letterSpacing:'-0.01em' }}>Two days in the <span style={{ fontStyle:'italic', color:Y.goldMuted }}>Aravallis</span>, one forever.</h2>
+              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(38px,6vw,68px)', lineHeight:1.06, margin:'20px 0 0', letterSpacing:'-0.01em' }}>Two days in the <span style={{ fontStyle:'italic', color:Y.goldMuted }}>Aravallis</span>, one forever.</h2>
               <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.85, color:Y.textBody, maxWidth:'46ch', margin:'26px 0 0' }}>We&apos;re gathering the people we love most in the folds of the oldest mountains in India — for slow mornings, long evenings, and a wedding under an open Udaipur sky. No rush, no noise. Just us, and you.</p>
               <div style={{ display:'flex', gap:40, marginTop:38, fontFamily:FONT_BODY }}>
                 <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(30px,4vw,42px)', color:Y.darkGreen }}>2</div><div style={{ fontSize:11, letterSpacing:'0.16em', textTransform:'uppercase', color:Y.statLabel }}>Days</div></div>
@@ -425,7 +430,7 @@ export default function Y2KPage() {
           <Reveal>
             <div>
               <Eyebrow color={Y.goldLight}>02 — The Destination</Eyebrow>
-              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(42px,8vw,96px)', lineHeight:1, margin:'18px 0 0', letterSpacing:'-0.01em' }}>Taj Aravali,<br/><span style={{ fontStyle:'italic' }}>Udaipur</span></h2>
+              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.cream, fontSize:'clamp(42px,8vw,96px)', lineHeight:1, margin:'18px 0 0', letterSpacing:'-0.01em' }}>Taj Aravali,<br/><span style={{ fontStyle:'italic' }}>Udaipur</span></h2>
               <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.8vw,18px)', lineHeight:1.8, maxWidth:'52ch', margin:'24px 0 0', color:'rgba(244,238,228,0.9)' }}>Tucked into the Aravalli range above the City of Lakes — terraced gardens, still water, and mountain light that turns gold at dusk. A 30-minute drive from Maharana Pratap Airport.</p>
             </div>
           </Reveal>
@@ -444,8 +449,8 @@ export default function Y2KPage() {
             <Reveal>
               <div>
                 <Eyebrow color={Y.goldLight}>03 — Travel Light</Eyebrow>
-                <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.06, margin:'20px 0 0' }}>Your bags, handled.<br/>So the mountains are all you carry.</h2>
-                <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.8, color:'rgba(244,238,228,0.78)', margin:'22px 0 0', maxWidth:'48ch' }}>Powered by Bagdrop. We collect your luggage in Mumbai and deliver it straight to your room at Taj Aravali — flight-synced, RFID-tagged, tamper-sealed and fully insured.</p>
+                <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.cream, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.06, margin:'20px 0 0' }}>Your bags, handled.<br/>So the mountains are all you carry.</h2>
+                <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.8, color:'rgba(244,238,228,0.78)', margin:'22px 0 0', maxWidth:'48ch' }}>Powered by Bagdrop. We collect your luggage in Mumbai and deliver it straight to your room at Taj Aravali — flight-synced &amp; fully wrapped.</p>
               </div>
             </Reveal>
             <Reveal>
@@ -467,7 +472,7 @@ export default function Y2KPage() {
               <Reveal key={s.n}>
                 <div style={{ background:'rgba(244,238,228,0.05)', border:'1px solid rgba(244,238,228,0.12)', borderRadius:20, padding:30, height:'100%' }}>
                   <div style={{ fontFamily:FONT_DISPLAY, fontSize:42, color:Y.goldLight, lineHeight:1 }}>{s.n}</div>
-                  <h3 style={{ fontFamily:FONT_BODY, fontSize:16, fontWeight:600, letterSpacing:'0.02em', margin:'18px 0 8px' }}>{s.title}</h3>
+                  <h3 style={{ fontFamily:FONT_BODY, fontSize:16, fontWeight:600, color:Y.cream, letterSpacing:'0.02em', margin:'18px 0 8px' }}>{s.title}</h3>
                   <p style={{ fontFamily:FONT_BODY, fontSize:14, lineHeight:1.7, color:'rgba(244,238,228,0.7)', margin:0 }}>{s.desc}</p>
                 </div>
               </Reveal>
@@ -482,7 +487,7 @@ export default function Y2KPage() {
       <section id="book" style={{ background:Y.cream, padding:'clamp(88px,12vw,148px) clamp(20px,5vw,56px)', scrollMarginTop:92 }}>
         <div style={{ maxWidth:760, margin:'0 auto', textAlign:'center' }}>
           <Eyebrow>04 — Reserve Your Pickup</Eyebrow>
-          <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'18px 0 12px' }}>Book your luggage pickup</h2>
+          <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'18px 0 12px' }}>Book your luggage pickup</h2>
           {/* "Pickups run 10–12 Dec" — the real date window (matches the
               date-picker's min/max below), not the mockup's placeholder text. */}
           <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.75, color:Y.textBody, maxWidth:'44ch', margin:'0 auto' }}>A minute now, a weightless journey later. Pickups run 10–12 December 2026.</p>
@@ -544,14 +549,14 @@ export default function Y2KPage() {
                   <div style={{ position:'relative' }}>
                     <select value={form.pickupCity} onChange={e=>field('pickupCity')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
                       <option value="" disabled>Where do we collect?</option>
-                      <option value="Mumbai">Mumbai (home / hotel)</option>
-                      <option value="Mumbai Airport T2">Mumbai Airport T2 (CSMIA)</option>
-                      <option value="Others">Other</option>
+                      <option value="Mumbai">Mumbai</option>
+                      <option value="Mumbai Airport">Mumbai Airport</option>
+                      <option value="Other">Other</option>
                     </select>
                     <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
                   </div>
                   {errors.pickupCity && <span style={fieldErr}>{errors.pickupCity}</span>}
-                  {form.pickupCity === 'Others' && (
+                  {form.pickupCity === 'Other' && (
                     <>
                       <input value={form.pickupCityOther} onChange={e=>field('pickupCityOther')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Enter pickup city" style={{ ...fi, marginTop:8 }}/>
                       {errors.pickupCityOther && <span style={fieldErr}>{errors.pickupCityOther}</span>}
@@ -614,7 +619,7 @@ export default function Y2KPage() {
                 onMouseLeave={e=>{ if(!busy){ e.currentTarget.style.background=Y.darkGreen; e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' } }}>
                 {busy ? 'Submitting…' : 'Confirm pickup'}
               </button>
-              <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Flight-synced · RFID-tagged · Fully insured — powered by Bagdrop</p>
+              <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Flight-synced &amp; Fully Wrapped — powered by Bagdrop</p>
             </form>
           </Reveal>
         )}
@@ -635,7 +640,7 @@ export default function Y2KPage() {
         <div style={{ maxWidth:1120, margin:'0 auto', position:'relative', zIndex:1 }}>
           <div style={{ textAlign:'center', marginBottom:56 }}>
             <Eyebrow>05 — The Details</Eyebrow>
-            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'16px 0 0' }}>Everything you&apos;ll need</h2>
+            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'16px 0 0' }}>Everything you&apos;ll need</h2>
           </div>
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px,1fr))', gap:20 }}>
             {[
@@ -661,7 +666,7 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       <footer style={{ background:Y.darkerGreen, color:Y.beige, padding:'clamp(72px,10vw,110px) clamp(20px,5vw,56px) 40px', textAlign:'center' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={IMG_LOGO} alt="Bagdrop" style={{ display:'block', margin:'0 auto 36px', height:'clamp(72px,12vw,104px)', width:'auto', opacity:0.95, filter:'brightness(0) invert(1)' }}/>
+        <img src={IMG_LOGO} alt="Bagdrop" style={{ display:'block', margin:'0 auto 36px', height:'clamp(40px,9vw,64px)', width:'auto', opacity:0.95, filter:'brightness(0) invert(1)' }}/>
         <div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(40px,8vw,76px)', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center', gap:20, flexWrap:'wrap' }}>
           <span style={{ fontStyle:'italic' }}>Yashna</span>
           <span style={{ width:8, height:8, borderRadius:'50%', background:Y.gold }}/>

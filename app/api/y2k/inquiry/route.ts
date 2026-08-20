@@ -11,12 +11,12 @@ import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
 // location dropdown, so a request built by hand (devtools, curl, editing
 // the form's values directly) can't submit an out-of-window pickup.
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
-// Preset dropdown options on the frontend. 'Others' isn't a real location —
+// Preset dropdown options on the frontend. 'Other' isn't a real location —
 // picking it reveals a free-text field, and *that* text is what's actually
-// sent as pickupCity, so this route never sees the literal word "Others".
+// sent as pickupCity, so this route never sees the literal word "Other".
 // Any non-empty pickupCity is accepted below (capped at a sane length) so
-// guests outside Mumbai/Mumbai Airport T2 can still submit a pickup.
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2', 'Others']
+// guests outside Mumbai/Mumbai Airport can still submit a pickup.
+const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport', 'Other']
 const Y2K_PICKUP_CITY_MAX_LEN = 200
 // Slot ids shared by Preferred Pickup Time and Preferred Delivery Time,
 // must match app/y2k/page.tsx's TIME_SLOTS. 'night' was removed entirely
