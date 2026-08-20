@@ -310,7 +310,7 @@ export default function Y2KPage() {
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:92, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(20px,5vw,56px)', background: scrolled ? 'rgba(244,238,228,0.92)' : 'transparent', color: scrolled ? Y.textDark : Y.cream, boxShadow: scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none', backdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', transition:'background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease' }}>
         <a href="#top" style={{ display:'flex', alignItems:'center' }}>
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:'clamp(36px, 6vw, 60px)', width:'auto', display:'block', filter: scrolled ? 'none' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
+          <img src={IMG_LOGO} alt="Bagdrop" style={{ height:'clamp(48px, 8vw, 80px)', width:'auto', display:'block', filter: scrolled ? 'none' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }}/>
         </a>
         <div className="wd-desktop-nav" style={{ display:'flex', alignItems:'center', gap:34, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:500, letterSpacing:'0.13em', textTransform:'uppercase' }}>
           <a href="#celebration">Celebration</a>
@@ -682,7 +682,7 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       <footer style={{ background:Y.darkerGreen, color:Y.beige, padding:'clamp(72px,10vw,110px) clamp(20px,5vw,56px) 40px', textAlign:'center' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={IMG_LOGO} alt="Bagdrop" style={{ display:'block', margin:'0 auto 36px', height:'clamp(40px,9vw,64px)', width:'auto', opacity:0.95, filter:'brightness(0) invert(1)' }}/>
+        <img src={IMG_LOGO} alt="Bagdrop" style={{ display:'block', margin:'0 auto 36px', height:'clamp(64px,14vw,120px)', width:'auto', opacity:0.95, filter:'brightness(0) invert(1)' }}/>
         <div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(40px,8vw,76px)', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center', gap:20, flexWrap:'wrap' }}>
           <span style={{ fontStyle:'italic' }}>Yashna</span>
           <span style={{ width:8, height:8, borderRadius:'50%', background:Y.gold }}/>
