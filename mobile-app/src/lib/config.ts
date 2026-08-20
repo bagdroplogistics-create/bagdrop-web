@@ -9,7 +9,7 @@ const extra = (Constants.expoConfig?.extra ?? {}) as {
   razorpayKeyId?: string
 }
 
-export const API_BASE_URL = extra.apiBaseUrl || 'https://bagdrop.co'
+export const API_BASE_URL = extra.apiBaseUrl || 'https://www.bagdrop.co'
 export const SUPABASE_URL = extra.supabaseUrl || ''
 export const SUPABASE_ANON_KEY = extra.supabaseAnonKey || ''
 export const RAZORPAY_KEY_ID = extra.razorpayKeyId || ''

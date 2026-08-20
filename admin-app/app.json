@@ -44,7 +44,7 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://bagdrop.co",
+      "apiBaseUrl": "https://www.bagdrop.co",
       "router": {
         "origin": false
       }

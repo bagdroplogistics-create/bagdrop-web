@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Excess Baggage Delivery Service in Vadodara — Bagdrop',
   description: 'Bagdrop offers door-to-door excess baggage delivery in Vadodara. Pick up from your home or office — delivered to Vadodara Airport (VDR) or any city in India. Save 40–60% vs airline fees.',
   alternates: {
-    canonical: 'https://bagdrop.co/vadodara',
+    canonical: 'https://www.bagdrop.co/vadodara',
   },
   keywords: [
     'excess baggage delivery service vadodara',
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Excess Baggage Delivery Service in Vadodara — Bagdrop',
     description: 'Door-to-door baggage pickup & delivery in Vadodara. Home to airport, airport to home, or intercity. Fully insured. Book in 2 minutes.',
-    url: 'https://bagdrop.co/vadodara',
+    url: 'https://www.bagdrop.co/vadodara',
   },
 }
 
@@ -34,13 +34,13 @@ const jsonLd = {
   '@graph': [
     {
       '@type': 'Service',
-      '@id': 'https://bagdrop.co/vadodara#service',
+      '@id': 'https://www.bagdrop.co/vadodara#service',
       name: 'Excess Baggage Delivery Service in Vadodara',
       description: 'Door-to-door baggage pickup and delivery in Vadodara. We collect from your home or hotel and deliver to Vadodara Airport (VDR) — or from the airport directly to your doorstep.',
       provider: {
         '@type': 'LocalBusiness',
         name: 'Bagdrop',
-        url: 'https://bagdrop.co',
+        url: 'https://www.bagdrop.co',
         telephone: '+916357115711',
         email: 'info@bagdrop.co',
         areaServed: {
@@ -100,8 +100,8 @@ const jsonLd = {
     {
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://bagdrop.co' },
-        { '@type': 'ListItem', position: 2, name: 'Vadodara Baggage Delivery', item: 'https://bagdrop.co/vadodara' },
+        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.bagdrop.co' },
+        { '@type': 'ListItem', position: 2, name: 'Vadodara Baggage Delivery', item: 'https://www.bagdrop.co/vadodara' },
       ],
     },
   ],

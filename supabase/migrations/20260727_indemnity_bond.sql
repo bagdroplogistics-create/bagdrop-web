@@ -17,7 +17,7 @@ CREATE TABLE IF NOT EXISTS indemnity_bonds (
   id                     UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
   booking_id             UUID        NOT NULL UNIQUE REFERENCES bookings(id) ON DELETE CASCADE,
 
-  -- Secure link (Step 2) — https://bagdrop.co/indemnity/{secure_token}
+  -- Secure link (Step 2) — https://www.bagdrop.co/indemnity/{secure_token}
   secure_token           TEXT        UNIQUE NOT NULL,
   token_expires_at       TIMESTAMPTZ NOT NULL,
 

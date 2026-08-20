@@ -9,7 +9,7 @@
 // app/api/cron/send-ops-reminders/route.ts): Vercel Hobby only allows
 // daily-frequency native cron, so this is polled by an external scheduler
 // instead. Point cron-job.org (or EasyCron) at this URL every 10 minutes:
-//   https://bagdrop.co/api/cron/send-confirmed-ongoing-summary
+//   https://www.bagdrop.co/api/cron/send-confirmed-ongoing-summary
 // with header  Authorization: Bearer <CRON_SECRET>
 //
 // The route itself decides whether a report is actually due right now

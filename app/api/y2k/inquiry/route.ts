@@ -291,7 +291,7 @@ export async function POST(req: NextRequest) {
     <p style="margin:0;font-size:14px;color:#6B4C3B;line-height:1.7">For any queries, reach us at <a href="mailto:info@bagdrop.co" style="color:#C9A84C">info@bagdrop.co</a></p>
   </td></tr>
   <tr><td style="background:#1A0A12;padding:16px 40px;text-align:center">
-    <p style="margin:0;font-size:11px;color:rgba(232,212,154,0.4)">Bagdrop — India's Premium Luggage Concierge · bagdrop.co</p>
+    <p style="margin:0;font-size:11px;color:rgba(232,212,154,0.4)">Bagdrop — India's Premium Luggage Concierge · www.bagdrop.co</p>
   </td></tr>
 </table></td></tr></table>
 </body></html>`

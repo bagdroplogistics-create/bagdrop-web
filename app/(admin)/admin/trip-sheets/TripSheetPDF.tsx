@@ -383,7 +383,7 @@ export default function TripSheetPDF(p: TripSheetPDFProps) {
                 has no emoji glyphs, so it rendered as a garbled character in
                 the downloaded PDF (same root cause as the ₹ symbol bug fixed
                 elsewhere in this file's fmtRs()). */}
-            <Text style={s.ftLine}>Tel: 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
+            <Text style={s.ftLine}>Tel: 63 5711 5711  ·  info@bagdrop.co  ·  www.bagdrop.co</Text>
           </View>
           <View style={s.ftRight}>
             <View style={s.sigLine}>

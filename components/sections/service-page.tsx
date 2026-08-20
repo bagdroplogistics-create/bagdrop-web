@@ -28,13 +28,13 @@ export function ServicePage({
   badge, headline, subheadline, heroImage, heroImagePos = 'center',
   benefits, steps, faqs, ctaHeadline, ctaBody, bookHref = '/book', slug,
 }: ServicePageProps) {
-  const pageUrl = slug ? `https://bagdrop.co/${slug}` : null
+  const pageUrl = slug ? `https://www.bagdrop.co/${slug}` : null
 
   const breadcrumbSchema = pageUrl ? {
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
     'itemListElement': [
-      { '@type': 'ListItem', 'position': 1, 'name': 'Home',     'item': 'https://bagdrop.co' },
+      { '@type': 'ListItem', 'position': 1, 'name': 'Home',     'item': 'https://www.bagdrop.co' },
       { '@type': 'ListItem', 'position': 2, 'name': badge,      'item': pageUrl },
     ],
   } : null

@@ -5,7 +5,7 @@
 // resolution than that to land near "1 day before" / "a few hours before
 // pickup". Point a free external scheduler (cron-job.org, EasyCron) at
 // this URL every 10–15 minutes:
-//   https://bagdrop.co/api/cron/send-ops-reminders
+//   https://www.bagdrop.co/api/cron/send-ops-reminders
 // with header  Authorization: Bearer <CRON_SECRET>
 // (same CRON_SECRET already used for send-driver-details, if one is set).
 // If you upgrade to Vercel Pro later this can move into vercel.json's

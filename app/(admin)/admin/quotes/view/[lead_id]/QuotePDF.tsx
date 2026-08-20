@@ -156,6 +156,13 @@ const s = StyleSheet.create({
   ftCo:      { color: '#fff', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
   ftLine:    { color: 'rgba(255,255,255,0.75)', fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
   ftRight:   { alignItems: 'center', width: 120 },
+  // Signature/stamp image sits above the sigLine's border-top rule, same
+  // spot a wet-ink signature would go on a printed copy. Square source
+  // (1024x1024) scaled down to fit the 110pt-wide signature block without
+  // overflowing the dark footer band's fixed height — object-fit-style
+  // 'contain' isn't a react-pdf Image prop, so width+height are set
+  // explicitly and the aspect ratio (1:1) is preserved by construction.
+  sigImage:  { width: 46, height: 46, marginBottom: 2 },
   sigLine:   { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)', paddingTop: 4, width: 110, textAlign: 'center' },
   sigText:   { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
   sigSub:    { color: 'rgba(255,255,255,0.75)', fontSize: 7, marginTop: 1 },
@@ -285,7 +292,13 @@ export default function QuotePDF(p: QuotePDFProps) {
           <View>
             <Text style={s.qnLabel}>Estimate</Text>
             <Text style={s.qnValue}>{p.quoteNumber}</Text>
-            <Text style={s.qnDate}>{fmtDate(p.quoteDate)}</Text>
+            {/* Header date — Pickup Date, not the quote's own created/issue
+                date (founder spec, 2026-08-20): every inquiry's PDF should
+                show when the bags actually get picked up, not when the
+                quote happened to be generated. p.quoteDate is still a real
+                field (used nowhere else in this doc) — left as-is rather
+                than removed, in case a future "Quoted on" line needs it. */}
+            <Text style={s.qnDate}>{fmtDate(p.pickupDate)}</Text>
             {p.expiryDate ? <Text style={s.qnValidTill}>Valid till {fmtDate(p.expiryDate)}</Text> : null}
           </View>
         </View>
@@ -574,9 +587,10 @@ export default function QuotePDF(p: QuotePDFProps) {
                 has no emoji glyphs either, so it rendered as a garbled
                 character in the downloaded PDF (same root cause as the
                 ₹ symbol bug fixed elsewhere in this file's fmtRs()). */}
-            <Text style={s.ftLine}>Tel: 63 5711 5711  ·  info@bagdrop.co  ·  bagdrop.co</Text>
+            <Text style={s.ftLine}>Tel: 63 5711 5711 / 63 5733 5733  ·  info@bagdrop.co  ·  www.bagdrop.co</Text>
           </View>
           <View style={s.ftRight}>
+            <Image style={s.sigImage} src="/signature-stamp.png" />
             <View style={s.sigLine}>
               <Text style={s.sigText}>Authorized Signatory</Text>
               <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>

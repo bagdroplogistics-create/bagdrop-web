@@ -15,7 +15,7 @@
 // land sends near the 4-hour-before-flight mark. Instead, point a free
 // external scheduler (e.g. cron-job.org, EasyCron) at this URL every
 // 10 minutes:
-//   https://bagdrop.co/api/cron/send-driver-details
+//   https://www.bagdrop.co/api/cron/send-driver-details
 // with header  Authorization: Bearer <CRON_SECRET>  (see below).
 // If you later upgrade to Vercel Pro, this can move back into
 // vercel.json's `crons` array instead.

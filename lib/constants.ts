@@ -5,7 +5,7 @@
 
 export const SITE = {
   name: 'Bagdrop',
-  url: 'https://bagdrop.co',
+  url: 'https://www.bagdrop.co',
   tagline: 'Travel Light. Arrive Stress-Free.',
   description:
     'Premium luggage delivery for airports, weddings, relocations, and intercity travel across India.',

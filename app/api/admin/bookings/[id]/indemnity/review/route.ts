@@ -122,7 +122,7 @@ export async function POST(
   const expiryDays = await getIndemnityExpiryDays()
   const secureToken = generateSecureToken()
   const tokenExpiresAt = new Date(Date.now() + expiryDays * 24 * 60 * 60 * 1000).toISOString()
-  const secureLink = `https://bagdrop.co/indemnity/${secureToken}`
+  const secureLink = `https://www.bagdrop.co/indemnity/${secureToken}`
 
   const { error } = await supabaseAdmin
     .from('indemnity_bonds')

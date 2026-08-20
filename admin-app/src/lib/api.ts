@@ -1,4 +1,4 @@
-// Thin client for bagdrop.co's existing admin API routes. No separate
+// Thin client for www.bagdrop.co's existing admin API routes. No separate
 // backend for the admin app — every call here hits the exact same
 // /api/admin/* endpoints the website admin dashboard already uses, with
 // the same x-admin-key header the website sends as a query param.

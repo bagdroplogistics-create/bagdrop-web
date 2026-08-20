@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Excess Baggage Delivery Service in Goa — Bagdrop',
   description: 'Bagdrop offers door-to-door excess baggage delivery in Goa. Pick up from your villa or hotel — delivered to Goa Airport (GOI/Dabolim or Mopa) or any city in India. Perfect for weddings, holidays & NRI travel.',
   alternates: {
-    canonical: 'https://bagdrop.co/goa',
+    canonical: 'https://www.bagdrop.co/goa',
   },
   keywords: [
     'excess baggage delivery service goa',
@@ -27,7 +27,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Excess Baggage Delivery Service in Goa — Bagdrop',
     description: 'Door-to-door baggage pickup & delivery in Goa. Villa to airport, airport to hotel, or intercity. Ideal for weddings, holidays & NRI travel. Book in 2 minutes.',
-    url: 'https://bagdrop.co/goa',
+    url: 'https://www.bagdrop.co/goa',
   },
 }
 
@@ -36,13 +36,13 @@ const jsonLd = {
   '@graph': [
     {
       '@type': 'Service',
-      '@id': 'https://bagdrop.co/goa#service',
+      '@id': 'https://www.bagdrop.co/goa#service',
       name: 'Excess Baggage Delivery Service in Goa',
       description: 'Door-to-door baggage pickup and delivery in Goa. We collect from your villa, hotel, or home and deliver to Goa Airport (GOI/Dabolim or Mopa) — or from the airport directly to your accommodation.',
       provider: {
         '@type': 'LocalBusiness',
         name: 'Bagdrop',
-        url: 'https://bagdrop.co',
+        url: 'https://www.bagdrop.co',
         telephone: '+916357115711',
         email: 'info@bagdrop.co',
         areaServed: {
@@ -102,8 +102,8 @@ const jsonLd = {
     {
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://bagdrop.co' },
-        { '@type': 'ListItem', position: 2, name: 'Goa Baggage Delivery', item: 'https://bagdrop.co/goa' },
+        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.bagdrop.co' },
+        { '@type': 'ListItem', position: 2, name: 'Goa Baggage Delivery', item: 'https://www.bagdrop.co/goa' },
       ],
     },
   ],

@@ -1,6 +1,6 @@
 # Bagdrop Mobile
 
-React Native (Expo + Expo Router) app for Bagdrop, built to reuse the exact same backend as [bagdrop.co](https://bagdrop.co) — no separate API, no separate database. Same booking IDs, same pricing engine, same admin dashboard, same Supabase project.
+React Native (Expo + Expo Router) app for Bagdrop, built to reuse the exact same backend as [www.bagdrop.co](https://www.bagdrop.co) — no separate API, no separate database. Same booking IDs, same pricing engine, same admin dashboard, same Supabase project.
 
 ## What's built (MVP core)
 
@@ -42,7 +42,7 @@ Open `app.json` and fill in `expo.extra`:
 
 ```json
 "extra": {
-  "apiBaseUrl": "https://bagdrop.co",
+  "apiBaseUrl": "https://www.bagdrop.co",
   "supabaseUrl": "<same as NEXT_PUBLIC_SUPABASE_URL in ../.env.local>",
   "supabaseAnonKey": "<same as NEXT_PUBLIC_SUPABASE_ANON_KEY in ../.env.local>",
   "razorpayKeyId": "<same as NEXT_PUBLIC_RAZORPAY_KEY_ID in ../.env.local>"

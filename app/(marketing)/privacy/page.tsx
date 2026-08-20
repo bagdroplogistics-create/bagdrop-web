@@ -87,7 +87,7 @@ export default function PrivacyPage() {
         <div className="mx-auto max-w-3xl">
           <div className="mb-10 rounded-2xl border border-brand/20 bg-brand/5 p-6">
             <p className="text-base text-text-primary leading-relaxed">
-              Bagdrop ("we", "us", "our") is committed to protecting your privacy. This policy explains what information we collect, how we use it, and the choices you have. By using bagdrop.co or booking our services, you agree to this policy.
+              Bagdrop ("we", "us", "our") is committed to protecting your privacy. This policy explains what information we collect, how we use it, and the choices you have. By using www.bagdrop.co or booking our services, you agree to this policy.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export default function PrivacyPage() {
           </div>
 
           <p className="mt-10 text-sm text-text-muted text-center">
-            This policy may be updated periodically. The latest version will always be available at bagdrop.co/privacy.
+            This policy may be updated periodically. The latest version will always be available at www.bagdrop.co/privacy.
           </p>
         </div>
       </div>

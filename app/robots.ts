@@ -9,7 +9,7 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/admin/', '/api/'],
       },
     ],
-    sitemap: 'https://bagdrop.co/sitemap.xml',
-    host: 'https://bagdrop.co',
+    sitemap: 'https://www.bagdrop.co/sitemap.xml',
+    host: 'https://www.bagdrop.co',
   }
 }

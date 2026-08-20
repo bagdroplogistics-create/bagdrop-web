@@ -50,7 +50,7 @@ export async function GET(req: NextRequest) {
     api_key_prefix: apiKey.slice(0, 12) + '...',
     results,
     common_fixes: allOk ? null : [
-      '1. Domain not verified: Go to resend.com/domains and verify bagdrop.co — add the required DNS records',
+      '1. Domain not verified: Go to resend.com/domains and verify www.bagdrop.co — add the required DNS records',
       '2. Wrong API key: Check resend.com/api-keys — make sure RESEND_API_KEY in Vercel matches an active key',
       '3. Free plan restriction: Resend free tier only allows sending to your own account email unless domain is verified',
     ],

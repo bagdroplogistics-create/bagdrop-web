@@ -8,7 +8,7 @@ export const metadata: Metadata = {
 const SECTIONS = [
   {
     title: '1. Acceptance of Terms',
-    text: 'By booking a service with Bagdrop or using our website (bagdrop.co), you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our services. These terms apply to all customers, visitors, and users of Bagdrop services.',
+    text: 'By booking a service with Bagdrop or using our website (www.bagdrop.co), you agree to be bound by these Terms & Conditions. If you do not agree, please do not use our services. These terms apply to all customers, visitors, and users of Bagdrop services.',
   },
   {
     title: '2. Services',
@@ -48,7 +48,7 @@ const SECTIONS = [
   },
   {
     title: '11. Changes to Terms',
-    text: 'Bagdrop reserves the right to modify these Terms & Conditions at any time. Changes will be effective immediately upon posting to bagdrop.co/terms. Continued use of our services after changes constitutes acceptance of the new terms.',
+    text: 'Bagdrop reserves the right to modify these Terms & Conditions at any time. Changes will be effective immediately upon posting to www.bagdrop.co/terms. Continued use of our services after changes constitutes acceptance of the new terms.',
   },
   {
     title: '12. Contact',
@@ -91,7 +91,7 @@ export default function TermsPage() {
           </div>
 
           <p className="mt-10 text-sm text-text-muted text-center">
-            These terms were last updated in June 2025. Always refer to bagdrop.co/terms for the current version.
+            These terms were last updated in June 2025. Always refer to www.bagdrop.co/terms for the current version.
           </p>
         </div>
       </div>

@@ -346,7 +346,7 @@ function QuotePDF({ q }: { q: Quote }) {
             React.createElement(Text, { style: s.footerCo }, 'BAGDROP LOGISTICS SOLUTIONS PVT. LTD.'),
             React.createElement(Text, { style: s.footerText }, 'TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara - 391101'),
             React.createElement(Text, { style: s.footerText }, 'GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601'),
-            React.createElement(Text, { style: s.footerText }, '+91 63 5711 5711 · info@bagdrop.co.in · bagdrop.co.in')
+            React.createElement(Text, { style: s.footerText }, '+91 63 5711 5711 · info@bagdrop.co · www.bagdrop.co')
           ),
           React.createElement(View, { style: s.sig },
             React.createElement(Text, { style: s.sigLine }, 'Authorized Signatory'),

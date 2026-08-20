@@ -24,7 +24,7 @@ export const metadata: Metadata = {
   description:
     'Bagdrop offers fast, secure, and affordable excess baggage delivery across India. Door-to-door luggage pickup, airport transfers, and nationwide baggage shipping.',
   alternates: {
-    canonical: 'https://bagdrop.co',
+    canonical: 'https://www.bagdrop.co',
   },
   keywords: [
     'excess baggage delivery service India',

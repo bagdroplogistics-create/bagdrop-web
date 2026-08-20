@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'Bag Tracking — Coming Soon | Bagdrop',
   description: 'Bagdrop live bag tracking is coming soon. In the meantime, get real-time WhatsApp and email updates at every stage of your delivery.',
   alternates: {
-    canonical: 'https://bagdrop.co/track',
+    canonical: 'https://www.bagdrop.co/track',
   },
 }
 

@@ -292,7 +292,7 @@ export default function QuotePrintPage() {
               <div style={{fontWeight:700,color:'#374151',fontSize:'11px',marginBottom:'2px'}}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
               <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
-              <div>📞 63 5711 5711 · ✉ info@bagdrop.co.in · 🌐 bagdrop.co.in</div>
+              <div>📞 63 5711 5711 · ✉ info@bagdrop.co · 🌐 www.bagdrop.co</div>
             </div>
             <div style={{textAlign:'center'}}>
               <div style={{width:'140px',borderTop:'1px solid #374151',paddingTop:'6px',fontSize:'10px',color:'#374151',fontWeight:600}}>Authorized Signatory</div>

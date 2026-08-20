@@ -95,7 +95,7 @@ function baseTemplate(body: string) {
     '</td></tr>' +
     '<tr><td style="padding:18px 32px;text-align:center;">' +
     '<p style="margin:0;font-size:11px;color:#aaa;">Bagdrop &middot; Premium Baggage Infrastructure &middot; India<br/>' +
-    '<a href="https://bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">bagdrop.co</a>' +
+    '<a href="https://www.bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">www.bagdrop.co</a>' +
     ' &middot; ' +
     '<a href="mailto:info@bagdrop.co" style="color:' + BRAND + ';text-decoration:none;">info@bagdrop.co</a>' +
     '</p></td></tr>' +
@@ -235,7 +235,7 @@ export async function sendInquiryNotification(data: InquiryEmailData) {
 
     // CTA
     '<div style="text-align:center;margin-bottom:8px;">' +
-    '<a href="https://bagdrop.co/admin/leads" style="display:inline-block;background:' + BRAND + ';color:#fff;' +
+    '<a href="https://www.bagdrop.co/admin/leads" style="display:inline-block;background:' + BRAND + ';color:#fff;' +
     'font-size:13px;font-weight:700;padding:12px 28px;border-radius:8px;text-decoration:none;">View in Admin Panel</a>' +
     '</div>'
 
@@ -655,8 +655,8 @@ export async function sendIndemnityBondAdminNotification(
   attachments?: EmailAttachment[],
 ) {
   const adminLink = data.leadId
-    ? 'https://bagdrop.co/admin/quotes/view/' + data.leadId
-    : 'https://bagdrop.co/admin/leads'
+    ? 'https://www.bagdrop.co/admin/quotes/view/' + data.leadId
+    : 'https://www.bagdrop.co/admin/leads'
   const displayName = data.customerName
     ? (formatCustomerName(data.customerTitle, data.customerName) || data.customerName)
     : null

@@ -85,7 +85,7 @@ export default function RefundPolicyPage() {
           </div>
 
           <div className="mt-10 text-sm text-text-muted text-center">
-            This policy is subject to change. The latest version will always be available at bagdrop.co/refund-policy.
+            This policy is subject to change. The latest version will always be available at www.bagdrop.co/refund-policy.
           </div>
         </div>
       </div>

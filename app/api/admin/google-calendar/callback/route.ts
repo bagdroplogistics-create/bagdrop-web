@@ -4,7 +4,7 @@ import { exchangeCodeForTokens } from '@/lib/google-calendar'
 
 export const runtime = 'nodejs'
 
-const RETURN_URL = 'https://bagdrop.co/admin/reports/operations'
+const RETURN_URL = 'https://www.bagdrop.co/admin/reports/operations'
 
 // ── GET /api/admin/google-calendar/callback ─────────────────────────────────
 // Google redirects here after the admin approves the consent screen, with

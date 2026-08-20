@@ -95,7 +95,7 @@ function fmtDate(iso: string): string {
 // approval time. This QR is static (encodes only the fixed UPI ID, no
 // amount), so one hosted image works for every booking; must live under
 // /public so Vercel serves it at this exact path.
-const PAYMENT_QR_MEDIA_URL = 'https://bagdrop.co/bagdrop_upi_qr.png'
+const PAYMENT_QR_MEDIA_URL = 'https://www.bagdrop.co/bagdrop_upi_qr.png'
 
 /**
  * Fires the lifecycle WhatsApp template for this status, if one is mapped

@@ -5,7 +5,7 @@ import { ServicePage } from '@/components/sections/service-page'
 export const metadata: Metadata = {
   title: 'Corporate Baggage & Luggage Delivery Service India | Bagdrop',
   description: 'Corporate baggage delivery service across India. Volume rates, GST invoicing, monthly billing, and dedicated account management for business travel teams.',
-  alternates: { canonical: 'https://bagdrop.co/corporate-travel' },
+  alternates: { canonical: 'https://www.bagdrop.co/corporate-travel' },
   keywords: [
     'corporate baggage delivery service India',
     'corporate luggage logistics India',

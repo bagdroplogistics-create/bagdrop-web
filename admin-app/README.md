@@ -25,7 +25,7 @@ npm install
 npx expo start
 ```
 
-Points at `https://bagdrop.co` by default (see `app.json` → `expo.extra.apiBaseUrl`).
+Points at `https://www.bagdrop.co` by default (see `app.json` → `expo.extra.apiBaseUrl`).
 
 ## Auth model — please read
 

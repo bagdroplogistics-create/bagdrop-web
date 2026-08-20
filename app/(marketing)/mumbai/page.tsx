@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Excess Baggage Delivery Service in Mumbai — Bagdrop',
   description: 'Bagdrop offers door-to-door excess baggage delivery in Mumbai. Pick up from your home or office — delivered to Mumbai Airport (BOM/CSIA) or any city in India. Save 40–60% vs airline fees.',
   alternates: {
-    canonical: 'https://bagdrop.co/mumbai',
+    canonical: 'https://www.bagdrop.co/mumbai',
   },
   keywords: [
     'excess baggage delivery service mumbai',
@@ -26,7 +26,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Excess Baggage Delivery Service in Mumbai — Bagdrop',
     description: 'Door-to-door baggage pickup & delivery in Mumbai. Home to airport, airport to home, or intercity. Fully insured. Book in 2 minutes.',
-    url: 'https://bagdrop.co/mumbai',
+    url: 'https://www.bagdrop.co/mumbai',
   },
 }
 
@@ -35,13 +35,13 @@ const jsonLd = {
   '@graph': [
     {
       '@type': 'Service',
-      '@id': 'https://bagdrop.co/mumbai#service',
+      '@id': 'https://www.bagdrop.co/mumbai#service',
       name: 'Excess Baggage Delivery Service in Mumbai',
       description: 'Door-to-door baggage pickup and delivery in Mumbai. We collect from your home or hotel and deliver to Mumbai Airport (BOM/CSIA) — or from the airport directly to your doorstep anywhere in Mumbai.',
       provider: {
         '@type': 'LocalBusiness',
         name: 'Bagdrop',
-        url: 'https://bagdrop.co',
+        url: 'https://www.bagdrop.co',
         telephone: '+916357115711',
         email: 'info@bagdrop.co',
         areaServed: {
@@ -101,8 +101,8 @@ const jsonLd = {
     {
       '@type': 'BreadcrumbList',
       itemListElement: [
-        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://bagdrop.co' },
-        { '@type': 'ListItem', position: 2, name: 'Mumbai Baggage Delivery', item: 'https://bagdrop.co/mumbai' },
+        { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.bagdrop.co' },
+        { '@type': 'ListItem', position: 2, name: 'Mumbai Baggage Delivery', item: 'https://www.bagdrop.co/mumbai' },
       ],
     },
   ],

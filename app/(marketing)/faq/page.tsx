@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'FAQ — Excess Baggage Delivery Service Questions Answered | Bagdrop',
   description: 'Common questions about Bagdrop\'s excess baggage & luggage delivery service — pricing, pickup, coverage, and how much you save vs airline fees.',
   alternates: {
-    canonical: 'https://bagdrop.co/faq',
+    canonical: 'https://www.bagdrop.co/faq',
   },
 }
 

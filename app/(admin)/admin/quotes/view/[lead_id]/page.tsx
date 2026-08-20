@@ -1230,7 +1230,10 @@ export default function QuoteViewPage() {
   const subtotal    = lead.quote_subtotal   ?? lineItems.reduce((s, i) => s + i.amount, 0)
   const taxTotal    = lead.quote_tax        ?? Math.round(subtotal * 5) / 100
   const grandTotal  = lead.quote_total      ?? (subtotal + taxTotal)
-  const quoteDate   = lead.quote_date       ?? lead.created_at
+  // Header date — Pickup Date, not the quote's own created/issue date
+  // (founder spec, 2026-08-20): matches the same change in QuotePDF.tsx so
+  // the live preview and the downloaded PDF always agree.
+  const quoteDate   = lead.pickup_date
 
   // Back button computed values
   const prevStatus = booking ? getPreviousStatus(booking.status, statusOrder) : null
@@ -1751,9 +1754,11 @@ export default function QuoteViewPage() {
               <div style={{ fontWeight: 700, color: '#374151', fontSize: '11.5px', marginBottom: '2px' }}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</div>
               <div>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</div>
               <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
-              <div>📞 63 5711 5711 · ✉ info@bagdrop.co · 🌐 bagdrop.co</div>
+              <div>📞 63 5711 5711 / 63 5733 5733 · ✉ info@bagdrop.co · 🌐 www.bagdrop.co</div>
             </div>
             <div style={{ textAlign: 'center' }}>
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/signature-stamp.png" alt="Authorized Signatory" style={{ width: '54px', height: '54px', margin: '0 auto', display: 'block' }} />
               <div style={{ width: '140px', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10.5px', color: '#374151', fontWeight: 600 }}>
                 Authorized Signatory
               </div>
@@ -2142,7 +2147,7 @@ export default function QuoteViewPage() {
                 {/* ── Step 7b: Send Indemnity Bond ──
                      Reuses the existing signed indemnity-bond PDF (never
                      redesigned) — the customer completes it on a secure,
-                     OTP-verified link at bagdrop.co/indemnity/[token]. ── */}
+                     OTP-verified link at www.bagdrop.co/indemnity/[token]. ── */}
                 {atStatus('confirmed') && (
                   <div className="rounded-xl border border-amber-100 bg-amber-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-amber-600">📝 Step 7b — Send Indemnity Bond</p>

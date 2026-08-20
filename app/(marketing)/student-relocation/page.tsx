@@ -5,7 +5,7 @@ import { ServicePage } from '@/components/sections/service-page'
 export const metadata: Metadata = {
   title: 'Student Luggage & Baggage Delivery Service India — Save on Excess Fees',
   description: 'Baggage delivery service for students going abroad or relocating for college in India. Save ₹8,000+ on airline excess fees. Door-to-door pickup & delivery across India.',
-  alternates: { canonical: 'https://bagdrop.co/student-relocation' },
+  alternates: { canonical: 'https://www.bagdrop.co/student-relocation' },
   keywords: [
     'student luggage delivery service India',
     'student baggage shipping India',

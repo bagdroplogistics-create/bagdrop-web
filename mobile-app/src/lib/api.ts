@@ -1,4 +1,4 @@
-// Thin client for bagdrop.co's existing Next.js API routes. No separate
+// Thin client for www.bagdrop.co's existing Next.js API routes. No separate
 // backend — every call here hits the same endpoints the website uses.
 
 import { API_BASE_URL } from './config'

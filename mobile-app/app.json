@@ -44,7 +44,7 @@
       ]
     ],
     "extra": {
-      "apiBaseUrl": "https://bagdrop.co",
+      "apiBaseUrl": "https://www.bagdrop.co",
       "supabaseUrl": "https://lfxvyleqzddunbplmruv.supabase.co",
       "supabaseAnonKey": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxmeHZ5bGVxemRkdW5icGxtcnV2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0OTc3MTksImV4cCI6MjA5NzA3MzcxOX0.uKglBaMNM5Nj0bGwzqkFOXWjix-MfQ5kGyvgAiQBDUA",
       "razorpayKeyId": "YOUR_RAZORPAY_KEY_ID_HERE",

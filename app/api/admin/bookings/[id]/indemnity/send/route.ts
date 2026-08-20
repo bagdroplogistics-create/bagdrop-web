@@ -97,7 +97,7 @@ export async function POST(
     )
   }
 
-  const secureLink = `https://bagdrop.co/indemnity/${secureToken}`
+  const secureLink = `https://www.bagdrop.co/indemnity/${secureToken}`
 
   // Email — works today (Resend already configured)
   if (booking.customer_email) {

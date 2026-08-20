@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'Airport to Doorstep Baggage Delivery Service India | Bagdrop',
   description: 'Airport baggage delivery service across Mumbai, Delhi & Ahmedabad. We collect bags at arrivals & deliver to your home, hotel or office — or pick up from your door before your flight.',
   alternates: {
-    canonical: 'https://bagdrop.co/airport-delivery',
+    canonical: 'https://www.bagdrop.co/airport-delivery',
   },
   keywords: [
     'airport baggage delivery service India',
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Airport to Doorstep Baggage Delivery Service India | Bagdrop',
     description: 'Airport baggage delivery across Mumbai, Delhi & Ahmedabad. Bags collected at arrivals, delivered to your door. Or we pick up before your flight.',
-    url: 'https://bagdrop.co/airport-delivery',
+    url: 'https://www.bagdrop.co/airport-delivery',
   },
 }
 

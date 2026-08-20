@@ -106,6 +106,11 @@ export function numberToWordsIndian(amount: number): string {
   return parts.join(' ')
 }
 
+// Header date (in the orange band) shows d.pickupDate, not d.quoteDate —
+// founder spec, 2026-08-20: every quote PDF should show when the bags
+// actually get picked up, not when the quote was generated. Matches the
+// same change in QuotePDF.tsx / quotes/view/[lead_id]/page.tsx on the web
+// admin. d.quoteDate is still a real field, just unused in this header now.
 export function buildQuoteHtml(d: QuotePrintData): string {
   const cgst = d.tax / 2
   const sgst = d.tax / 2
@@ -202,7 +207,7 @@ export function buildQuoteHtml(d: QuotePrintData): string {
     <div class="headerRight">
       <div class="estLabel">Service Estimate</div>
       <div class="quoteNo">${escapeHtml(d.quoteNumber)}</div>
-      <div class="quoteMeta">${d.quoteDate ? `Date: ${escapeHtml(d.quoteDate)}` : ''}${d.expiryDate ? `  ·  Valid till: ${escapeHtml(d.expiryDate)}` : ''}</div>
+      <div class="quoteMeta">${d.pickupDate ? `Date: ${escapeHtml(d.pickupDate)}` : ''}${d.expiryDate ? `  ·  Valid till: ${escapeHtml(d.expiryDate)}` : ''}</div>
     </div>
   </div>
 
@@ -281,9 +286,10 @@ export function buildQuoteHtml(d: QuotePrintData): string {
         <b>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</b><br/>
         TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara &ndash; 391101<br/>
         GSTIN: ${GSTIN} &middot; CIN: U63090GJ2023PTC142601<br/>
-        📞 63 5711 5711 &middot; ✉ info@bagdrop.co &middot; 🌐 bagdrop.co
+        📞 63 5711 5711 / 63 5733 5733 &middot; ✉ info@bagdrop.co &middot; 🌐 www.bagdrop.co
       </div>
       <div class="signature">
+        <img src="https://www.bagdrop.co/signature-stamp.png" width="54" height="54" alt="Authorized Signatory" style="display:block;margin:0 auto 2px" />
         <div class="signatureLine"></div>
         Authorized Signatory<br/>
         For Bagdrop Logistics Solutions Pvt. Ltd.

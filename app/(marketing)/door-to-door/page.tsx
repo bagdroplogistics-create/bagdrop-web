@@ -5,7 +5,7 @@ import { ServicePage } from '@/components/sections/service-page'
 export const metadata: Metadata = {
   title: 'Door-to-Door Luggage Delivery Service India — Gujarat · Maharashtra · Goa',
   description: 'Door-to-door luggage & baggage delivery service across India. Pickup from any address, delivered to any address. Gujarat, Maharashtra, Goa & major cities.',
-  alternates: { canonical: 'https://bagdrop.co/door-to-door' },
+  alternates: { canonical: 'https://www.bagdrop.co/door-to-door' },
   keywords: [
     'door to door luggage delivery India',
     'door to door baggage delivery service',

@@ -6,7 +6,7 @@ export const metadata: Metadata = {
   title: 'Excess Baggage Delivery Service India — Save 60% vs Airline Fees',
   description: 'India\'s trusted excess baggage delivery service. Door-to-door pickup & delivery across Mumbai, Delhi, Ahmedabad, Vadodara. Save 40–60% vs airline excess fees. Book in 2 minutes.',
   alternates: {
-    canonical: 'https://bagdrop.co/excess-baggage',
+    canonical: 'https://www.bagdrop.co/excess-baggage',
   },
   keywords: [
     'excess baggage delivery service India',
@@ -21,7 +21,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: 'Excess Baggage Delivery Service India — Save 60% vs Airline Fees | Bagdrop',
     description: 'Door-to-door excess baggage pickup & delivery across India. Save 40–60% vs airline excess fees. Mumbai · Delhi · Ahmedabad · Vadodara.',
-    url: 'https://bagdrop.co/excess-baggage',
+    url: 'https://www.bagdrop.co/excess-baggage',
   },
 }
 

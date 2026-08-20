@@ -26,7 +26,7 @@ import { supabaseAdmin } from './supabase'
 const TOKEN_URL      = 'https://oauth2.googleapis.com/token'
 const AUTH_URL       = 'https://accounts.google.com/o/oauth2/v2/auth'
 const CALENDAR_SCOPE = 'https://www.googleapis.com/auth/calendar.events'
-export const REDIRECT_URI = 'https://bagdrop.co/api/admin/google-calendar/callback'
+export const REDIRECT_URI = 'https://www.bagdrop.co/api/admin/google-calendar/callback'
 
 interface ConnectionRow {
   id: string
@@ -164,7 +164,7 @@ function buildEventPayload(b: BookingForCalendar) {
     b.time_slot ? `Time Slot: ${b.time_slot}` : null,
     b.notes ? `Notes: ${b.notes}` : null,
     '',
-    `Open booking: https://bagdrop.co/admin?highlight=${b.id}`,
+    `Open booking: https://www.bagdrop.co/admin?highlight=${b.id}`,
   ].filter((l): l is string => l !== null)
 
   return {
