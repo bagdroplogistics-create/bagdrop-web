@@ -1756,13 +1756,19 @@ export default function QuoteViewPage() {
               <div>GSTIN: 24AAACC9320N2ZL · CIN: U63090GJ2023PTC142601</div>
               <div>📞 63 5711 5711 / 63 5733 5733 · ✉ info@bagdrop.co · 🌐 www.bagdrop.co</div>
             </div>
-            <div style={{ textAlign: 'center' }}>
+            {/* width: 'max-content' — sizes this column to its widest line
+                ("For Bagdrop Logistics Solutions Pvt. Ltd."), so the
+                signature image (centered via margin auto) and the
+                border-top rule (width 100%) both line up against that same
+                width instead of a guessed fixed px value that used to be
+                narrower than the text beneath it. */}
+            <div style={{ textAlign: 'center', width: 'max-content' }}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/signature-stamp.png" alt="Authorized Signatory" style={{ width: '54px', height: '54px', margin: '0 auto', display: 'block' }} />
-              <div style={{ width: '140px', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10.5px', color: '#374151', fontWeight: 600 }}>
+              <div style={{ width: '100%', borderTop: '1px solid #374151', paddingTop: '6px', fontSize: '10.5px', color: '#374151', fontWeight: 600, whiteSpace: 'nowrap' }}>
                 Authorized Signatory
               </div>
-              <div style={{ fontSize: '9.5px', color: '#4b5563', marginTop: '2px' }}>
+              <div style={{ fontSize: '9.5px', color: '#4b5563', marginTop: '2px', whiteSpace: 'nowrap' }}>
                 For Bagdrop Logistics Solutions Pvt. Ltd.
               </div>
             </div>

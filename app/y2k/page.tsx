@@ -29,195 +29,118 @@ const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport T2', 'Others']
 const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 
 // ─────────────────────────────────────────────────────────────
-// DESIGN TOKENS
+// DESIGN TOKENS — "Aravalli Gold" palette, matched to the approved
+// Y2K design reference (warm cream / deep forest green / muted gold).
+// Replaces the previous pink/black theme. Fonts: Cormorant Garamond
+// (display — already loaded globally via app/y2k/layout.tsx's
+// next/font/google as --font-cormorant) for headings/numbers, Inter
+// for body/UI copy.
 // ─────────────────────────────────────────────────────────────
-const J = {
-  pink:      '#ec9dab',
-  pinkDark:  '#d4798a',
-  pinkLight: '#f5d5dc',
-  black:     '#111111',
-  body:      '#555555',
-  muted:     '#888888',
-  border:    'rgba(17,17,17,0.1)',
-  bg:        '#ffffff',
-  bgLight:   '#f8f8fa',
-  dark:      '#0e0608',
+const Y = {
+  cream:       '#F4EEE4',   // page background
+  creamCard:   '#FBF8F2',   // input / card fill
+  beige:       '#EDE5D6',   // alt section background
+  darkGreen:   '#2A3329',   // dark section bg, primary CTA fill
+  darkerGreen: '#24291F',   // footer bg
+  gold:        '#C8A96E',   // accent — borders, focus rings
+  goldLight:   '#E8CE9A',   // accent on dark bg — numbers, buttons
+  goldPale:    '#F1DFB6',   // hero date text
+  goldMuted:   '#6B5A3E',   // muted italic accents
+  eyebrow:     '#B08D57',   // section eyebrow labels
+  textDark:    '#2B2620',   // headings / primary text
+  textBody:    '#5A5145',   // body copy
+  textOnGold:  '#3A2E1C',   // text on light-gold buttons
+  border:      '#E0D5C2',   // input borders
+  borderCard:  '#E7DDCC',   // card borders
+  statLabel:   '#8A8172',   // muted stat labels
+  error:       '#C0392B',
 }
 
+const FONT_DISPLAY = "'Cormorant Garamond', var(--font-cormorant), serif"
+const FONT_BODY    = "'Inter', sans-serif"
+
 // ─────────────────────────────────────────────────────────────
-// HERO SLIDES
+// CONTENT — kept factual: only venue/date/service details already
+// confirmed elsewhere on this page. No invented ceremony schedule.
 // ─────────────────────────────────────────────────────────────
-const HERO_SLIDES = [
-  {
-    bg:   '/images/wedding-slide1.jpg',
-    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Aravali · Udaipur · December 2026',
-    h1a:  'Arrive Stress-Free.',
-    h1b:  'Celebrate Fully.',
-    sub:  "Exclusive luggage delivery service for Yashna & Yash's destination wedding. We collect from your city — your bags arrive at the palace before you do.",
-  },
-  {
-    bg:   '/images/wedding-slide2.jpg',
-    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Aravali · Udaipur · December 2026',
-    h1a:  'Premium Concierge for',
-    h1b:  'Weddings & Events.',
-    sub:  'We pick up from your doorstep across India and deliver directly to the venue — before you arrive.',
-  },
-  {
-    bg:   '/images/wedding-slide.jpg',
-    label:'OFFICIAL WEDDING LUGGAGE PARTNER',
-    loc:  'Taj Aravali · Udaipur · December 2026',
-    h1a:  'We Handle the Bags.',
-    h1b:  'You Make Memories.',
-    sub:  'White-glove baggage handling for every guest joining Yashna & Yash at Taj Aravali, Udaipur.',
-  },
+const HERO_BG        = '/images/wedding-slide.jpg'
+const CELEBRATION_IMG = '/images/wedding-slide1.jpg'
+const DESTINATION_BG  = '/images/y2k-palace.jpg'
+const TRAVEL_IMG      = '/images/wedding-slide2.jpg'
+
+const PROCESS_STEPS = [
+  { n: '01', title: 'Door pickup, anywhere in India',  desc: 'From home or the airport — one call and we\'re there.' },
+  { n: '02', title: 'Flight-synced transit',            desc: 'Tracked end-to-end, timed to land when you do.' },
+  { n: '03', title: 'Delivered to your room',           desc: 'Waiting at Taj Aravali before you check in.' },
 ]
 
-const FEATURES = [
-  { icon:'🧳', title:'Door-to-Door',     desc:'Picked up and delivered right to your hotel or venue.' },
-  { icon:'🔒', title:'Safe & Secured',   desc:'Photographed, sealed, and insured at pickup.' },
-  { icon:'📲', title:'WhatsApp Updates', desc:'Real-time updates from pickup to palace delivery.' },
-  { icon:'📞', title:'We Call You Back',  desc:'Our team will call you shortly to confirm your booking.' },
+const INFO_CARDS = [
+  { label: 'Wedding Weekend', title: 'Yashna & Yash · #Y2K', body: '17th & 18th December 2026\nTaj Aravali, Udaipur' },
+  { label: 'Getting there',   title: 'Reach Udaipur',        body: 'Fly into Maharana Pratap Airport (UDR).\n~30 min drive from the airport.' },
+  { label: 'Luggage service', title: 'Door-to-door by Bagdrop', body: 'RFID-tagged, tracked pickup to delivery.\nFully insured, no rush at the airport.' },
+  { label: 'Questions?',      title: 'We\'re on call',        body: '+91 63571 15711\ninfo@bagdrop.co' },
 ]
 
 // ─────────────────────────────────────────────────────────────
-// SVG ICON
+// SMALL UI HELPERS
 // ─────────────────────────────────────────────────────────────
-function CirclesIcon({ size = 20 }: { size?: number }) {
+function Eyebrow({ children, dark=false }: { children: React.ReactNode; dark?: boolean }) {
   return (
-    <span style={{ display:'inline-block', width:size, height:size, margin:'0 8px', verticalAlign:'middle' }}>
-      <svg viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg" width={size} height={size}>
-        <circle cx="15" cy="15" r="13" stroke="#ec9dab" strokeWidth="1.4"/>
-        <circle cx="15" cy="15" r="7"  stroke="#ec9dab" strokeWidth="1.4"/>
-        <circle cx="15" cy="15" r="2"  fill="#ec9dab"/>
-        <circle cx="15" cy="1"  r="1.5" fill="#ec9dab"/>
-        <circle cx="15" cy="29" r="1.5" fill="#ec9dab"/>
-        <circle cx="1"  cy="15" r="1.5" fill="#ec9dab"/>
-        <circle cx="29" cy="15" r="1.5" fill="#ec9dab"/>
-      </svg>
+    <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:600, letterSpacing:'0.28em', textTransform:'uppercase', color: dark ? Y.goldLight : Y.eyebrow }}>
+      {children}
     </span>
   )
 }
 
-function Suptitle({ children, center=false, light=false }: { children: string; center?: boolean; light?: boolean }) {
-  return (
-    <p style={{
-      fontFamily:'Montserrat,sans-serif',
-      fontWeight:600, fontSize:14, lineHeight:'170%',
-      textTransform:'uppercase',
-      color: light ? 'rgba(236,157,171,0.85)' : J.pink,
-      margin:'0 0 16px',
-      textAlign: center ? 'center' : 'left',
-    }}>
-      {children}<CirclesIcon size={18}/>
-    </p>
-  )
-}
-
-function BtnDefault({ children, href, onClick, light=false }: { children: React.ReactNode; href?: string; onClick?: () => void; light?: boolean }) {
-  const style: React.CSSProperties = {
-    display:'inline-block',
-    fontFamily:'Montserrat,sans-serif',
-    fontWeight:500, fontSize:12,
-    textTransform:'uppercase',
-    color: light ? '#fff' : J.black,
-    padding:'0.9em 2.8em',
-    borderTop: `2px solid ${light ? '#fff' : J.black}`,
-    borderBottom: `2px solid ${light ? '#fff' : J.black}`,
-    borderLeft:'2px solid transparent',
-    borderRight:'2px solid transparent',
-    textDecoration:'none',
-    cursor:'pointer',
-    background:'transparent',
-    transition:'all 0.25s ease',
-    letterSpacing:'0.5px',
+function PillButton({ children, href, onClick, variant='dark' }: { children: React.ReactNode; href?: string; onClick?: () => void; variant?: 'dark'|'gold'|'outline' }) {
+  const base: React.CSSProperties = {
+    display:'inline-block', textAlign:'center', fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600,
+    letterSpacing:'0.16em', textTransform:'uppercase', padding:'15px 28px', borderRadius:999,
+    textDecoration:'none', cursor:'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease',
   }
-  if (href) return <a href={href} style={style}
-    onMouseEnter={e=>{(e.currentTarget as HTMLAnchorElement).style.borderColor=light?'rgba(255,255,255,0.5)':J.pink;(e.currentTarget as HTMLAnchorElement).style.color=light?'rgba(255,255,255,0.7)':J.pink}}
-    onMouseLeave={e=>{(e.currentTarget as HTMLAnchorElement).style.borderColor=light?'#fff':J.black;(e.currentTarget as HTMLAnchorElement).style.color=light?'#fff':J.black}}>{children}</a>
-  return <button onClick={onClick} style={style}
-    onMouseEnter={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=J.pink;(e.currentTarget as HTMLButtonElement).style.color=J.pink}}
-    onMouseLeave={e=>{(e.currentTarget as HTMLButtonElement).style.borderColor=J.black;(e.currentTarget as HTMLButtonElement).style.color=J.black}}>{children}</button>
-}
-
-function BtnSubmit({ children, onClick, disabled=false, type='button' }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; type?: 'button'|'submit' }) {
+  const styles: Record<string, React.CSSProperties> = {
+    dark:    { ...base, background:Y.darkGreen, color:Y.cream, border:'none' },
+    gold:    { ...base, background:Y.goldLight, color:Y.textOnGold, border:'none' },
+    outline: { ...base, background:'transparent', color:'currentColor', border:'1px solid currentColor' },
+  }
+  const style = styles[variant]
+  const hover = () => {
+    if (variant === 'dark') return { background:'#333F31', transform:'translateY(-2px)', boxShadow:'0 14px 32px rgba(42,51,41,0.32)' }
+    if (variant === 'gold') return { transform:'translateY(-2px)', boxShadow:'0 10px 26px rgba(232,206,154,0.4)' }
+    return { background:Y.gold, borderColor:Y.gold, color:'#fff' }
+  }
+  if (href) return (
+    <a href={href} style={style}
+      onMouseEnter={e=>Object.assign((e.currentTarget as HTMLAnchorElement).style, hover())}
+      onMouseLeave={e=>Object.assign((e.currentTarget as HTMLAnchorElement).style, style)}>
+      {children}
+    </a>
+  )
   return (
-    <button type={type} onClick={onClick} disabled={disabled} style={{
-      display:'inline-flex', alignItems:'center', justifyContent:'center',
-      minHeight:50, padding:'10px 40px',
-      background: disabled ? '#d4b0b8' : J.pink,
-      fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12,
-      textTransform:'uppercase', color:'#fff',
-      border:'none', cursor: disabled ? 'not-allowed' : 'pointer',
-      transition:'background 0.2s ease', letterSpacing:'0.5px',
-      width:'100%',
-    }}
-    onMouseEnter={e=>{ if (!disabled) (e.currentTarget as HTMLButtonElement).style.background=J.pinkDark }}
-    onMouseLeave={e=>{ if (!disabled) (e.currentTarget as HTMLButtonElement).style.background=J.pink }}>
+    <button type="button" onClick={onClick} style={{ ...style, width:'100%', border: style.border ?? 'none' }}
+      onMouseEnter={e=>Object.assign((e.currentTarget as HTMLButtonElement).style, hover())}
+      onMouseLeave={e=>Object.assign((e.currentTarget as HTMLButtonElement).style, style)}>
       {children}
     </button>
   )
 }
 
-// ─────────────────────────────────────────────────────────────
-// FALLING PETALS
-// ─────────────────────────────────────────────────────────────
-function FallingPetals() {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
-  const rafRef    = useRef<number>(0)
-
-  useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const cvs = canvas as HTMLCanvasElement
-    const ctx = cvs.getContext('2d')!
-
-    const resize = () => { cvs.width = cvs.offsetWidth; cvs.height = cvs.offsetHeight }
-    resize()
-    window.addEventListener('resize', resize)
-
-    const COLORS = [
-      'rgba(236,157,171,0.85)','rgba(220,130,148,0.75)',
-      'rgba(245,185,198,0.8)','rgba(210,110,135,0.7)','rgba(255,210,220,0.9)',
-    ]
-
-    type Petal = { x:number; y:number; w:number; h:number; rot:number; rotSpeed:number; xSpeed:number; ySpeed:number; swayAmp:number; swayFreq:number; tick:number; color:string; opacity:number }
-
-    function makePetal(fromTop=false): Petal {
-      return { x:Math.random()*cvs.width, y:fromTop?-20-Math.random()*cvs.height*0.4:Math.random()*cvs.height,
-        w:8+Math.random()*10, h:4+Math.random()*5, rot:Math.random()*Math.PI*2,
-        rotSpeed:(Math.random()-0.5)*0.04, xSpeed:(Math.random()-0.5)*0.6,
-        ySpeed:0.8+Math.random()*1.4, swayAmp:20+Math.random()*30,
-        swayFreq:0.012+Math.random()*0.018, tick:Math.random()*200,
-        color:COLORS[Math.floor(Math.random()*COLORS.length)], opacity:0.55+Math.random()*0.45 }
-    }
-
-    const petals: Petal[] = []
-    for (let i=0;i<28;i++) petals.push(makePetal(false))
-
-    function drawPetal(p: Petal) {
-      ctx.save(); ctx.translate(p.x,p.y); ctx.rotate(p.rot); ctx.globalAlpha=p.opacity
-      ctx.beginPath(); ctx.ellipse(0,0,p.w,p.h,0,0,Math.PI*2); ctx.fillStyle=p.color; ctx.fill()
-      ctx.beginPath(); ctx.ellipse(p.w*0.15,-p.h*0.1,p.w*0.45,p.h*0.38,-0.3,0,Math.PI*2); ctx.fillStyle='rgba(255,255,255,0.25)'; ctx.fill()
-      ctx.restore()
-    }
-
-    function frame() {
-      ctx.clearRect(0,0,cvs.width,cvs.height)
-      for (const p of petals) {
-        p.tick++; p.rot+=p.rotSpeed; p.y+=p.ySpeed; p.x+=p.xSpeed+Math.sin(p.tick*p.swayFreq)*0.9
-        drawPetal(p)
-        if (p.y>cvs.height+20) Object.assign(p,makePetal(true))
-      }
-      rafRef.current=requestAnimationFrame(frame)
-    }
-
-    rafRef.current=requestAnimationFrame(frame)
-    return () => { cancelAnimationFrame(rafRef.current); window.removeEventListener('resize',resize) }
-  }, [])
-
-  return <canvas ref={canvasRef} aria-hidden="true" style={{ position:'absolute',inset:0,width:'100%',height:'100%',zIndex:5,pointerEvents:'none' }}/>
+function BtnSubmit({ children, onClick, disabled=false, type='button' }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean; type?: 'button'|'submit' }) {
+  return (
+    <button type={type} onClick={onClick} disabled={disabled} style={{
+      display:'flex', alignItems:'center', justifyContent:'center',
+      minHeight:56, padding:'10px 40px', width:'100%',
+      background: disabled ? '#A9A18C' : Y.darkGreen,
+      fontFamily:FONT_BODY, fontWeight:600, fontSize:13,
+      textTransform:'uppercase', letterSpacing:'0.14em', color:Y.cream,
+      border:'none', borderRadius:14, cursor: disabled ? 'not-allowed' : 'pointer',
+      transition:'background 0.2s ease, transform 0.2s ease',
+    }}
+    onMouseEnter={e=>{ if (!disabled) (e.currentTarget as HTMLButtonElement).style.background='#333F31' }}
+    onMouseLeave={e=>{ if (!disabled) (e.currentTarget as HTMLButtonElement).style.background=Y.darkGreen }}>
+      {children}
+    </button>
+  )
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -272,12 +195,21 @@ function CountUp({ to, suffix='', duration=1800 }: { to: number; suffix?: string
   return <span ref={ref}>{val}{suffix}</span>
 }
 
+function CountdownBlock({ v, l, light=false }: { v: number; l: string; light?: boolean }) {
+  return (
+    <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8, minWidth:56 }}>
+      <span style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(30px,6vw,52px)', lineHeight:1, color: light ? Y.goldLight : Y.darkGreen }}>{String(v).padStart(2,'0')}</span>
+      <span style={{ fontFamily:FONT_BODY, fontSize:10, letterSpacing:'0.24em', textTransform:'uppercase', color: light ? 'rgba(244,238,228,0.75)' : Y.statLabel }}>{l}</span>
+    </div>
+  )
+}
+
 // ─────────────────────────────────────────────────────────────
 // PAGE
 // ─────────────────────────────────────────────────────────────
 export default function Y2KPage() {
   const cd = useCountdown(WEDDING_DATE)
-  const [slide, setSlide] = useState(0)
+  const [scrolled, setScrolled] = useState(false)
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [step, setStep]   = useState(1)
   const [form, setForm]   = useState({ name:'', phone:'', email:'', pickupCity:'', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', weddingVenue:'Taj Aravali, Udaipur', bags:'1', bagSize:'', specialInstructions:'', hotelName:'', deliveryTime:'' })
@@ -286,10 +218,15 @@ export default function Y2KPage() {
   const [trackId, setTrackId] = useState('')
   const [err, setErr]     = useState('')
 
+  // Nav background/shadow only switches once the hero has scrolled past —
+  // purely visual (mirrors the approved Y2K design reference's nav), no
+  // effect on booking functionality below.
   useEffect(() => {
-    const id=setInterval(()=>setSlide(s=>(s+1)%HERO_SLIDES.length),5000)
-    return()=>clearInterval(id)
-  },[])
+    const onScroll = () => setScrolled(window.scrollY > 40)
+    onScroll()
+    window.addEventListener('scroll', onScroll, { passive:true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
 
   function patch(k: keyof typeof form, v: string) { setForm(p=>({...p,[k]:v})); setErr('') }
 
@@ -364,30 +301,31 @@ export default function Y2KPage() {
   // set of slots (10 AM – 6 PM window); Night was removed entirely rather
   // than just hidden, per the Y2K booking form spec.
   const TIME_SLOTS = [
-    {id:'morning',  label:'Morning',   range:'10:00 AM – 12:00 PM', icon:'🌅'},
-    {id:'afternoon',label:'Afternoon', range:'12:00 PM – 3:00 PM',  icon:'☀️'},
-    {id:'evening',  label:'Evening',   range:'3:00 PM – 6:00 PM',   icon:'🌆'},
+    {id:'morning',  label:'Morning',   range:'10:00 AM – 12:00 PM'},
+    {id:'afternoon',label:'Afternoon', range:'12:00 PM – 3:00 PM'},
+    {id:'evening',  label:'Evening',   range:'3:00 PM – 6:00 PM'},
   ]
 
-  const fi: React.CSSProperties = { fontFamily:'Montserrat,sans-serif', fontSize:14, color:J.black, background:'#fff', border:`1px solid ${J.border}`, padding:'12px 16px', width:'100%', outline:'none', borderBottom:`1px solid rgba(85,85,85,0.3)`, borderTop:'none', borderLeft:'none', borderRight:'none', borderRadius:0, transition:'border-color 0.2s' }
+  const fi: React.CSSProperties = { fontFamily:FONT_BODY, fontSize:15, color:Y.textDark, background:Y.creamCard, border:`1px solid ${Y.border}`, borderRadius:13, padding:'0 16px', height:52, width:'100%', outline:'none', transition:'border-color 0.2s, box-shadow 0.2s, background 0.2s' }
+  const fiFocus = (e: React.FocusEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.borderColor=Y.gold; (e.currentTarget as HTMLElement).style.boxShadow='0 0 0 3px rgba(200,169,110,0.18)'; (e.currentTarget as HTMLElement).style.background='#fff' }
+  const fiBlur  = (e: React.FocusEvent<HTMLElement>) => { (e.currentTarget as HTMLElement).style.borderColor=Y.border; (e.currentTarget as HTMLElement).style.boxShadow='none'; (e.currentTarget as HTMLElement).style.background=Y.creamCard }
 
   // ── Thank-you ──────────────────────────────────────────────
   if (done) return (
-    <div style={{ minHeight:'100vh', background:'#1a0a12', display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 24px', textAlign:'center', fontFamily:'Montserrat,sans-serif' }}>
-      <style dangerouslySetInnerHTML={{__html:`@import url('https://fonts.googleapis.com/css2?family=Sulphur+Point:wght@300;400;700&family=Montserrat:wght@300;400;500;600;700&display=swap'); @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} .ty{animation:fadeUp 0.8s ease forwards}`}}/>
+    <div style={{ minHeight:'100vh', background:Y.darkerGreen, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', padding:'48px 24px', textAlign:'center', fontFamily:FONT_BODY }}>
+      <style dangerouslySetInnerHTML={{__html:`@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400&family=Inter:wght@400;500;600;700&display=swap'); @keyframes fadeUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}} .ty{animation:fadeUp 0.8s ease forwards}`}}/>
       <div className="ty" style={{ maxWidth:520 }}>
-        <p style={{ fontSize:64, marginBottom:16 }}>💍</p>
-        <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:'clamp(48px,10vw,72px)', color:J.pink, margin:'0 0 12px', lineHeight:1 }}>Thank You!</p>
-        <p style={{ fontSize:16, color:'rgba(255,255,255,0.65)', lineHeight:1.8, marginBottom:20 }}>Your Wedding Luggage Concierge request for <strong style={{color:'#fff'}}>Yashna & Yash · #Y2K</strong> has been received. Our team will call you shortly to confirm your slot.</p>
-        {trackId&&<div style={{ border:`1px solid ${J.pink}`, padding:'16px 32px', display:'inline-block', marginBottom:20 }}><p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pink, margin:0 }}>{trackId}</p><p style={{ fontSize:11, color:'rgba(255,255,255,0.4)', margin:'4px 0 0', textTransform:'uppercase', letterSpacing:'0.2em' }}>Your Reference</p></div>}
-        <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:48, color:J.pink, margin:'8px 0 4px' }}>#Y2K</p>
-        <p style={{ fontSize:11, color:'rgba(255,255,255,0.3)', textTransform:'uppercase', letterSpacing:'0.2em' }}>Tag your wedding journey</p>
+        <div style={{ width:68, height:68, borderRadius:'50%', background:Y.darkGreen, color:Y.goldLight, display:'flex', alignItems:'center', justifyContent:'center', margin:'0 auto 24px', fontSize:32 }}>✓</div>
+        <p style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(40px,8vw,64px)', color:Y.goldLight, margin:'0 0 12px', lineHeight:1 }}>Your pickup is booked</p>
+        <p style={{ fontSize:16, color:'rgba(244,238,228,0.75)', lineHeight:1.8, marginBottom:20 }}>Your Wedding Luggage Concierge request for <strong style={{color:'#fff'}}>Yashna &amp; Yash · #Y2K</strong> has been received. Our team will call you shortly to confirm your slot.</p>
+        {trackId&&<div style={{ display:'inline-block', fontFamily:FONT_BODY, fontSize:20, letterSpacing:'0.12em', color:Y.goldLight, background:'rgba(200,169,110,0.12)', border:`1px dashed ${Y.gold}`, borderRadius:14, padding:'16px 32px', marginBottom:20 }}>{trackId}<p style={{ fontSize:11, color:'rgba(244,238,228,0.4)', margin:'6px 0 0', textTransform:'uppercase', letterSpacing:'0.2em' }}>Your Reference</p></div>}
+        <p style={{ fontFamily:FONT_DISPLAY, fontStyle:'italic', fontSize:32, color:Y.goldLight, margin:'8px 0 4px' }}>#Y2K</p>
         <div style={{ marginTop:40, display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
           <button onClick={()=>{ setDone(false);setStep(1);setForm({name:'',phone:'',email:'',pickupCity:'',pickupCityOther:'',pickupAddress:'',pickupDate:'',pickupTime:'',weddingVenue:'Taj Aravali, Udaipur',bags:'1',bagSize:'',specialInstructions:'',hotelName:'',deliveryTime:''});setTrackId('') }}
-            style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:J.pink, color:'#fff', border:'none', padding:'14px 32px', cursor:'pointer' }}>
-            Book Another Guest
+            style={{ fontFamily:FONT_BODY, fontWeight:600, fontSize:12.5, textTransform:'uppercase', letterSpacing:'0.14em', background:Y.goldLight, color:Y.textOnGold, border:'none', borderRadius:999, padding:'14px 32px', cursor:'pointer' }}>
+            Book Another Pickup
           </button>
-          <a href="/y2k" style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.5px', background:'transparent', color:'rgba(255,255,255,0.55)', borderTop:'2px solid rgba(255,255,255,0.3)', borderBottom:'2px solid rgba(255,255,255,0.3)', borderLeft:'2px solid transparent', borderRight:'2px solid transparent', padding:'12px 32px', textDecoration:'none', display:'inline-block' }}>
+          <a href="/y2k" style={{ fontFamily:FONT_BODY, fontWeight:600, fontSize:12.5, textTransform:'uppercase', letterSpacing:'0.14em', background:'transparent', color:'rgba(244,238,228,0.65)', border:'1px solid rgba(244,238,228,0.3)', borderRadius:999, padding:'13px 32px', textDecoration:'none', display:'inline-block' }}>
             ← Back to Landing Page
           </a>
         </div>
@@ -396,240 +334,91 @@ export default function Y2KPage() {
   )
 
   return (
-    <div style={{ fontFamily:'Montserrat,sans-serif', background:J.bg, color:J.black, overflowX:'hidden' }}>
+    <div style={{ fontFamily:FONT_BODY, background:Y.cream, color:Y.textDark, overflowX:'hidden' }}>
 
       {/* ══ GLOBAL CSS ════════════════════════════════════════ */}
       <style dangerouslySetInnerHTML={{__html:`
-        @import url('https://fonts.googleapis.com/css2?family=Sulphur+Point:wght@300;400;700&family=Montserrat:wght@300;400;500;600;700&display=swap');
-        *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-        @keyframes heroSlide { from{opacity:0;transform:translateY(14px)} to{opacity:1;transform:translateY(0)} }
+        @import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,400;1,500&family=Inter:wght@400;500;600;700&display=swap');
+        *, *::before, *::after { box-sizing:border-box; }
+        html { scroll-behavior:smooth; }
+        body { margin:0; }
+        a { color:inherit; }
+        ::selection { background:${Y.gold}; color:#fff; }
+        input, select, textarea { font-family:${FONT_BODY}; }
+        select { -webkit-appearance:none; appearance:none; }
+        input::placeholder, textarea::placeholder { color:#A99C87; }
+
+        @keyframes wdReveal { from { opacity:0; transform:translateY(20px); } to { opacity:1; transform:none; } }
         @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.25} }
-        .hero-slide-in { animation:heroSlide 0.9s ease forwards; display:flex; flex-direction:column; align-items:center; text-align:center; width:100%; }
 
-        .header-top { background:#111111; padding:9px 15px; display:flex; align-items:center; justify-content:center; }
-        .header-main { border-bottom:1px solid rgba(17,17,17,0.1); padding:0 15px; }
-        .header-inner { max-width:1170px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:104px; gap:24px; }
-        .header-nav { display:flex; gap:36px; list-style:none; }
-        .header-nav a { font-size:15px; font-weight:600; color:#111; text-decoration:none; text-transform:uppercase; letter-spacing:0.6px; transition:color 0.2s; }
-        .header-nav a:hover { color:${J.pink}; }
-        .header-logo { display:flex; align-items:center; align-self:center; text-decoration:none; }
-        .header-logo img { height:138px; width:auto; display:inline-block; }
+        .header-top { background:${Y.darkerGreen}; padding:9px 15px; display:flex; align-items:center; justify-content:center; }
+        .header-main { background: ${scrolled ? 'rgba(244,238,228,0.94)' : 'transparent'}; backdrop-filter: ${scrolled ? 'saturate(180%) blur(12px)' : 'none'}; box-shadow: ${scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none'}; transition:background 0.35s ease, box-shadow 0.35s ease; }
+        .header-inner { max-width:1240px; margin:0 auto; display:flex; align-items:center; justify-content:space-between; height:88px; gap:24px; padding:0 20px; }
+        .header-nav { display:flex; align-items:center; gap:32px; list-style:none; margin:0; padding:0; }
+        .header-nav a { font-family:${FONT_BODY}; font-size:12.5px; font-weight:500; color:inherit; text-decoration:none; text-transform:uppercase; letter-spacing:0.12em; transition:opacity 0.2s; }
+        .header-nav a:hover { opacity:0.6; }
+        .header-logo { display:flex; align-items:center; }
+        .header-logo img { height:56px; width:auto; display:block; filter: ${scrolled ? 'none' : 'brightness(0) invert(1)'}; transition:filter 0.35s ease; }
 
-        /* Hamburger — hidden on desktop by default; @media below reveals it
-           and hides .header-nav / .header-phone / .header-book-btn instead,
-           so desktop is completely unaffected. */
         .header-burger { display:none; flex-direction:column; justify-content:center; gap:5px; width:34px; height:34px; padding:0; background:none; border:none; cursor:pointer; }
-        .burger-line { display:block; width:100%; height:2px; background:${J.black}; transition:transform 0.25s ease, opacity 0.25s ease; }
-        .burger-line.open:nth-child(1) { transform:translateY(7px) rotate(45deg); }
+        .burger-line { display:block; width:100%; height:1.5px; background:currentColor; transition:transform 0.25s ease, opacity 0.25s ease; }
+        .burger-line.open:nth-child(1) { transform:translateY(6.5px) rotate(45deg); }
         .burger-line.open:nth-child(2) { opacity:0; }
-        .burger-line.open:nth-child(3) { transform:translateY(-7px) rotate(-45deg); }
-
+        .burger-line.open:nth-child(3) { transform:translateY(-6.5px) rotate(-45deg); }
         .header-mobile-nav { display:none; }
 
-        .container { max-width:1170px; margin:0 auto; padding:0 15px; }
+        .wd-float-card:hover { transform:translateY(-6px); box-shadow:0 22px 44px rgba(45,32,18,0.14); }
+        .wd-float-card { transition:transform 0.4s ease, box-shadow 0.4s ease; }
 
-        .promo-slider { position:relative; height:78vh; min-height:560px; overflow:hidden; }
-        .promo-slide  { position:absolute; inset:0; transition:opacity 0.9s ease; }
-        .promo-slide.active { opacity:1; z-index:1; }
-        .promo-slide.inactive { opacity:0; z-index:0; }
-        .promo-slide__bg { position:absolute; inset:0; background-size:cover; background-position:center; }
-        .promo-slide__overlay { position:absolute; inset:0; background:rgba(14,6,8,0.62); }
-        .promo-slide__content { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:0 15px; height:100%; display:flex; flex-direction:column; justify-content:center; align-items:center; text-align:center; }
-        .promo-slide__badge { display:inline-flex; align-items:center; gap:6px; border:1.5px solid #d4a843; border-radius:30px; padding:5px 16px; font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:1.5px; color:#d4a843; margin-bottom:14px; }
-        .promo-slide__loc { font-family:'Montserrat',sans-serif; font-size:14px; color:rgba(255,255,255,0.6); letter-spacing:0.5px; margin-bottom:18px; }
-        .promo-slide__h1 { font-family:'Georgia',serif; font-size:clamp(40px,6.5vw,80px); line-height:107%; color:#fff; font-weight:400; margin-bottom:20px; text-align:center; }
-        .promo-slide__h1 em { font-style:italic; font-weight:400; display:block; }
-        .promo-slide__h1 em.em-gold { color:#d4a843; }
-        .promo-slide__sub { font-size:17px; line-height:170%; color:rgba(255,255,255,0.8); margin-bottom:22px; max-width:560px; }
-        .hero-couple-card { display:inline-flex; flex-direction:column; gap:18px; background:rgba(14,6,8,0.72); border:1px solid rgba(212,168,67,0.35); border-radius:16px; padding:30px 56px; margin-bottom:26px; align-items:center; min-width:420px; }
-        .hero-couple-name { font-family:'Sulphur Point',sans-serif; font-size:46px; line-height:1.15; color:#fff; font-weight:700; letter-spacing:0.4px; }
-        .hero-couple-name .nc-hashtag { color:#d4a843; }
-        .hero-couple-info { display:flex; flex-direction:column; align-items:center; gap:7px; }
-        .hero-couple-venue { font-size:16px; color:rgba(255,255,255,0.62); letter-spacing:0.2px; }
-        .hero-date-highlight { background:rgba(212,168,67,0.18); border:1px solid rgba(212,168,67,0.5); border-radius:6px; padding:5px 14px; color:#d4a843; font-weight:700; font-size:16px; letter-spacing:0.3px; }
-        .hero-cta-row { display:flex; gap:14px; align-items:center; justify-content:center; flex-wrap:wrap; }
+        @media (min-width:861px) { .wd-two-col { grid-template-columns:1fr 1fr !important; } }
+        @media (max-width:860px) {
+          .header-nav { display:none !important; }
+          .header-cta { display:none !important; }
+          .header-burger { display:flex !important; }
+          .header-logo img { filter:none !important; }
+          .header-top span { font-size:10.5px !important; }
 
-        .logos-bar { border-top:1px solid rgba(17,17,17,0.08); border-bottom:1px solid rgba(17,17,17,0.08); padding:18px 0; }
-        .logos-inner { max-width:1170px; margin:0 auto; padding:0 15px; display:flex; align-items:center; justify-content:space-around; flex-wrap:wrap; gap:16px; }
-        .logo-badge { font-family:'Sulphur Point',sans-serif; font-size:16px; font-weight:900; color:rgba(17,17,17,0.88); letter-spacing:0.5px; text-transform:uppercase; }
-
-        /* ── BOOKING SECTION ── */
-        .book-section { background:#f2eff0; padding:80px 15px; }
-        .book-grid { max-width:1100px; margin:0 auto; display:grid; grid-template-columns:1fr 1fr; box-shadow:0 24px 80px rgba(14,6,8,0.13); overflow:hidden; border-radius:6px; }
-        .book-left { background:${J.dark}; padding:56px 48px; display:flex; flex-direction:column; justify-content:center; position:relative; overflow:hidden; }
-        .book-right { background:#faf7f8; padding:56px 48px; display:flex; flex-direction:column; justify-content:center; }
-        .book-form-card { background:#fff; padding:40px; border:1px solid rgba(17,17,17,0.08); box-shadow:0 8px 40px rgba(17,17,17,0.06); }
-
-        .step-indicator { display:flex; align-items:center; gap:0; margin-bottom:32px; }
-        .step-pip { display:flex; flex-direction:column; align-items:center; gap:6px; }
-        .step-pip-num { width:30px; height:30px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:700; transition:all 0.3s; }
-        .step-pip-label { font-size:9px; text-transform:uppercase; letter-spacing:0.8px; font-weight:600; white-space:nowrap; transition:color 0.3s; }
-        .step-line { flex:1; height:1px; margin:0 4px 18px; transition:background 0.3s; min-width:16px; }
-
-        .fld { display:flex; flex-direction:column; gap:8px; margin-bottom:18px; }
-        .fld label { font-size:10px; font-weight:700; text-transform:uppercase; letter-spacing:0.8px; color:${J.muted}; }
-        .form-grid-2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
-        .bag-pill { padding:8px 14px; border:1px solid ${J.border}; font-size:11px; cursor:pointer; background:#fff; transition:all 0.2s; margin:0; font-family:'Montserrat',sans-serif; }
-        .bag-pill.active { border-color:${J.pink}; color:${J.pink}; }
-        .dt-slot { display:flex; align-items:center; gap:10px; padding:11px 14px; border:1px solid ${J.border}; cursor:pointer; transition:border-color 0.2s; background:#fff; text-align:left; }
-        .dt-slot.active { border-color:${J.pink}; }
-        .form-error { background:rgba(220,38,38,0.05); border:1px solid rgba(220,38,38,0.2); padding:10px 14px; margin-top:12px; font-size:12px; color:#DC2626; }
-        .form-actions { display:flex; align-items:center; gap:12px; margin-top:16px; }
-
-        .countdown { display:flex; gap:12px; align-items:flex-start; flex-wrap:wrap; }
-        .countdown-unit { text-align:center; min-width:56px; }
-        .countdown-num { font-family:'Sulphur Point',sans-serif; font-size:clamp(32px,4vw,52px); line-height:1; color:#fff; display:block; }
-        .countdown-label { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:1.5px; color:rgba(255,255,255,0.4); margin-top:6px; }
-        .countdown-sep { font-family:'Sulphur Point',sans-serif; font-size:36px; color:rgba(255,255,255,0.25); line-height:1; margin-top:8px; animation:blink 1s step-end infinite; }
-
-        .gift-banner { position:relative; padding:80px 0; overflow:hidden; }
-        .gift-banner__bg { position:absolute; inset:0; background-size:cover; background-position:center; background-attachment:fixed; }
-        .gift-banner__overlay { position:absolute; inset:0; background:rgba(17,17,17,0.72); }
-        .gift-banner__content { position:relative; z-index:2; max-width:700px; margin:0 auto; text-align:center; }
-        .gift-banner__h2 { font-family:'Georgia',serif; font-size:clamp(36px,5.5vw,60px); line-height:110%; color:#fff; font-weight:400; margin:16px 0 32px; }
-        .gift-banner__h2 em { font-style:italic; font-weight:400; }
-        .countdown { justify-content:center; }
-
-        .footer { background:${J.pinkLight}; }
-        .footer__bg { display:none; }
-        .footer__overlay { display:none; }
-        .footer__inner { position:relative; z-index:2; max-width:1170px; margin:0 auto; padding:72px 15px 40px; display:grid; grid-template-columns:1.4fr 1fr 1fr; gap:60px; }
-        .footer__logo { display:block; margin-bottom:20px; }
-        .footer__logo img { height:110px; width:auto; display:block; }
-        .footer__label { font-size:13px; font-weight:700; text-transform:uppercase; letter-spacing:1px; color:${J.dark}; margin-bottom:14px; }
-        .footer__text { font-size:14px; font-weight:500; color:rgba(14,6,8,0.72); line-height:1.85; }
-        .footer__link { font-size:14px; font-weight:600; color:rgba(14,6,8,0.7); text-decoration:none; display:block; margin-bottom:8px; transition:color 0.2s; }
-        .footer__link:hover { color:${J.pinkDark}; }
-        .footer__newsletter { display:flex; border-bottom:1px solid rgba(14,6,8,0.2); margin-top:8px; }
-        .footer__bottom { position:relative; z-index:2; border-top:1px solid rgba(14,6,8,0.1); text-align:center; padding:20px 15px; }
-        .footer__copy { font-size:13px; font-weight:500; color:rgba(14,6,8,0.55); }
-        .footer__copy a { color:rgba(14,6,8,0.55); text-decoration:none; }
-        .footer__copy a:hover { color:${J.pinkDark}; }
-
-        @media (max-width:900px) {
-          .book-section { padding:48px 12px; }
-          .book-grid { grid-template-columns:1fr !important; }
-          .book-left { padding:48px 28px !important; order:2; }
-          .book-right { padding:40px 20px !important; order:1; }
-          .footer__inner { grid-template-columns:1fr !important; gap:40px; }
-
-          /* ── Header: swap the full desktop nav/phone/CTA row for a
-             hamburger + slide-down panel. Nothing here touches desktop —
-             every rule is inside this media query. ── */
-          .header-inner { height:96px; gap:12px; }
-          .header-logo img { height:76px; }
-          .header-nav { display:none; }
-          /* .header-phone has an inline display:'flex' (JSX style prop) —
-             inline styles beat plain class rules regardless of specificity,
-             so this needs !important to actually hide it on mobile. */
-          .header-phone { display:none !important; }
-          .header-book-btn { display:none; }
-          .header-burger { display:flex; }
-          .header-mobile-nav.open { display:block; }
-          .header-mobile-nav { border-top:1px solid rgba(17,17,17,0.08); background:#fff; padding:8px 20px 20px; }
-          .header-mobile-nav ul { list-style:none; display:flex; flex-direction:column; }
-          .header-mobile-nav ul a { display:block; padding:14px 4px; font-size:15px; font-weight:600; color:#111; text-decoration:none; text-transform:uppercase; letter-spacing:0.6px; border-bottom:1px solid rgba(17,17,17,0.06); }
-          .header-mobile-phone { display:flex; align-items:center; gap:8px; padding:16px 4px; font-family:'Montserrat',sans-serif; font-size:15px; font-weight:600; color:#111; text-decoration:none; }
-          .header-mobile-book-btn { display:block; text-align:center; margin-top:8px; font-family:'Montserrat',sans-serif; font-weight:700; font-size:13px; text-transform:uppercase; letter-spacing:0.8px; background:${J.pink}; color:#fff; padding:14px; text-decoration:none; border-radius:4px; }
-
-          /* ── Hero slider ── */
-          /* .promo-slide is position:absolute; inset:0 inside .promo-slider,
-             so padding on .promo-slider itself would be ignored by it —
-             top spacing below the (now shorter) header is handled via
-             .promo-slide__content's own padding-top instead. */
-          .promo-slider { height:auto; min-height:100vh; }
-          .promo-slide__content { padding:0 20px; justify-content:flex-start; padding-top:48px; padding-bottom:40px; }
-          .promo-slide__h1 { font-size:clamp(30px,8vw,40px); margin-bottom:14px; }
-          .promo-slide__sub { font-size:15px; margin-bottom:18px; }
-          .promo-slide__badge { font-size:10px; padding:4px 12px; }
-          .promo-slide__loc { font-size:12px; }
-          .hero-couple-card { min-width:0; width:100%; max-width:400px; padding:22px 28px; gap:13px; }
-          .hero-couple-name { font-size:32px; }
-          .hero-couple-info { gap:6px; }
-          .hero-couple-venue { font-size:14px; }
-          .hero-date-highlight { font-size:14px; padding:4px 12px; }
-
-          .logos-inner { gap:12px 20px; }
-          .logo-badge { font-size:13px; }
-
-          /* background-attachment:fixed is unreliable/glitchy on mobile
-             browsers (especially iOS Safari) — falls back to normal
-             scrolling background there. */
-          .gift-banner__bg { background-attachment:scroll; }
-
-          /* ── "Find Your Ease" venue/about block — both the grid and the
-             image height are set via inline style props in the JSX, so
-             !important is required here too (same reason as .header-phone
-             above) to actually override them. Text and image stack into
-             one column, text first, image below. ── */
           .venue-grid { grid-template-columns:1fr !important; gap:36px !important; }
           .venue-img { height:260px !important; }
-
-          /* ── Stats banner — repeat(4,1fr) (also an inline style prop)
-             was cramming 4 columns into a mobile-width row with no wrap,
-             clipping the last stat's label off the edge. 2x2 fits every
-             stat's label without cutting anything off. ── */
-          .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:36px 16px !important; }
+          .stats-grid { grid-template-columns:repeat(2,1fr) !important; gap:32px 16px !important; }
+          .book-grid { grid-template-columns:1fr !important; }
+          .book-left { padding:44px 26px !important; order:2; }
+          .book-right { padding:32px 18px !important; order:1; }
+          .footer-grid { grid-template-columns:1fr !important; gap:32px !important; text-align:center; }
+          .footer-social { justify-content:center !important; }
         }
-        @media (max-width:640px) {
-          .book-section { padding:32px 10px; }
-          .book-form-card { padding:24px 18px !important; }
+        @media (max-width:560px) {
           .form-grid-2 { grid-template-columns:1fr !important; }
           .dt-slot-grid { grid-template-columns:1fr !important; }
-          .book-left { padding:36px 20px !important; }
-
-          .header-top span { font-size:10px !important; line-height:1.5; }
-          .promo-slide__h1 { font-size:clamp(26px,9vw,34px); }
-          .hero-couple-card { padding:18px 20px; max-width:300px; gap:10px; }
-          .hero-couple-name { font-size:26px; line-height:1.2; }
-          .hero-couple-info { gap:5px; }
-          .hero-couple-venue { font-size:13px; }
-          .hero-date-highlight { font-size:12px; padding:4px 10px; }
         }
       `}}/>
 
       {/* ════════════════════════════════════════════════════ */}
-      {/* HEADER                                              */}
+      {/* NAVIGATION                                          */}
       {/* ════════════════════════════════════════════════════ */}
-      <header style={{ position:'sticky', top:0, zIndex:200, background:'#fff' }}>
+      <header style={{ position:'sticky', top:0, zIndex:200 }}>
         <div className="header-top">
-          <span style={{ fontFamily:'Montserrat,sans-serif', fontSize:12, color:'rgba(255,255,255,0.7)' }}>
-            <strong style={{ color:J.pink }}>Official</strong> Wedding Luggage Concierge for <strong style={{ color:'#fff' }}>#Y2K</strong> · <strong style={{ color:J.pink, background:'rgba(236,157,171,0.12)', padding:'1px 6px', borderRadius:2 }}>Taj Aravali, Udaipur</strong>
+          <span style={{ fontFamily:FONT_BODY, fontSize:12, color:'rgba(244,238,228,0.75)' }}>
+            <strong style={{ color:Y.goldLight }}>Official</strong> Wedding Luggage Concierge for <strong style={{ color:'#fff' }}>#Y2K</strong> · <strong style={{ color:Y.goldLight }}>Taj Aravali, Udaipur</strong>
           </span>
         </div>
-        <div className="header-main">
+        <div className="header-main" style={{ color: scrolled ? Y.textDark : '#F4EEE4' }}>
           <div className="header-inner">
-            <ul className="header-nav">
-              <li><a href="#book">Book Now</a></li>
-              <li><a href="#venue">About</a></li>
-              <li><a href="#book">Contact</a></li>
-            </ul>
-            <a href="/" className="header-logo">
+            <a href="#top" className="header-logo">
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/images/bagdrop-logo.png" alt="Bagdrop" />
             </a>
-            <div className="header-actions" style={{ display:'flex', alignItems:'center', gap:22 }}>
-              <a href="tel:+916357115711" className="header-phone" style={{ fontFamily:'Montserrat,sans-serif', fontSize:14, fontWeight:600, color:J.black, textDecoration:'none', letterSpacing:'0.3px', display:'flex', alignItems:'center', gap:7 }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.42 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.07 6.07l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-                </svg>
-                +91 63571 15711
+            <ul className="header-nav">
+              <li><a href="#celebration">Celebration</a></li>
+              <li><a href="#destination">Destination</a></li>
+              <li><a href="#travel">Travel</a></li>
+              <li><a href="#info">Details</a></li>
+            </ul>
+            <div style={{ display:'flex', alignItems:'center', gap:18 }}>
+              <a href="#book" className="header-cta" style={{ fontFamily:FONT_BODY, fontSize:12.5, fontWeight:500, letterSpacing:'0.12em', textTransform:'uppercase', border:'1px solid currentColor', padding:'10px 22px', borderRadius:999, textDecoration:'none' }}>
+                Book Bags
               </a>
-              <a href="#book" className="header-book-btn" style={{ fontFamily:'Montserrat,sans-serif', fontWeight:700, fontSize:13, textTransform:'uppercase', letterSpacing:'0.8px', background:J.pink, color:'#fff', padding:'13px 30px', textDecoration:'none', transition:'background 0.2s' }}
-                onMouseEnter={e=>(e.currentTarget.style.background=J.pinkDark)}
-                onMouseLeave={e=>(e.currentTarget.style.background=J.pink)}>
-                Book Now
-              </a>
-              {/* Hamburger — mobile only (hidden on desktop via CSS). Toggles
-                  the slide-down panel below, which duplicates the same nav
-                  links + phone + Book Now CTA so nothing is unreachable on
-                  small screens. */}
-              <button
-                type="button"
-                className="header-burger"
-                aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'}
-                aria-expanded={mobileNavOpen}
-                onClick={() => setMobileNavOpen(v => !v)}>
+              <button type="button" className="header-burger" aria-label={mobileNavOpen ? 'Close menu' : 'Open menu'} aria-expanded={mobileNavOpen} onClick={() => setMobileNavOpen(v => !v)} style={{ color:'inherit' }}>
                 <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
                 <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
                 <span className={`burger-line ${mobileNavOpen ? 'open' : ''}`}/>
@@ -637,198 +426,226 @@ export default function Y2KPage() {
             </div>
           </div>
         </div>
-
-        {/* Mobile slide-down nav panel — CSS-hidden above 900px, so it
-            never affects desktop regardless of mobileNavOpen state. */}
-        <div className={`header-mobile-nav ${mobileNavOpen ? 'open' : ''}`}>
-          <ul>
-            <li><a href="#book" onClick={()=>setMobileNavOpen(false)}>Book Now</a></li>
-            <li><a href="#venue" onClick={()=>setMobileNavOpen(false)}>About</a></li>
-            <li><a href="#book" onClick={()=>setMobileNavOpen(false)}>Contact</a></li>
+        <div className={`header-mobile-nav ${mobileNavOpen ? 'open' : ''}`} style={mobileNavOpen ? { display:'block', background:Y.darkGreen, color:Y.cream, padding:'8px 22px 26px' } : undefined}>
+          <ul style={{ listStyle:'none', display:'flex', flexDirection:'column', margin:0, padding:0 }}>
+            {[['#celebration','Celebration'],['#destination','Destination'],['#travel','Travel'],['#info','Details']].map(([href,label])=>(
+              <li key={href}><a href={href} onClick={()=>setMobileNavOpen(false)} style={{ display:'block', padding:'14px 4px', fontFamily:FONT_DISPLAY, fontSize:24, color:'inherit', textDecoration:'none', borderBottom:'1px solid rgba(244,238,228,0.12)' }}>{label}</a></li>
+            ))}
           </ul>
-          <a href="tel:+916357115711" className="header-mobile-phone" onClick={()=>setMobileNavOpen(false)}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.65 3.42 2 2 0 0 1 3.62 1h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.6a16 16 0 0 0 6.07 6.07l.96-.96a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
-            </svg>
-            +91 63571 15711
+          <a href="#book" onClick={()=>setMobileNavOpen(false)} style={{ display:'block', textAlign:'center', marginTop:20, background:Y.goldLight, color:Y.textOnGold, fontFamily:FONT_BODY, fontWeight:600, fontSize:13, letterSpacing:'0.14em', textTransform:'uppercase', padding:16, borderRadius:999, textDecoration:'none' }}>
+            Book Luggage Pickup
           </a>
-          <a href="#book" className="header-mobile-book-btn" onClick={()=>setMobileNavOpen(false)}>Book Now</a>
         </div>
       </header>
 
       {/* ════════════════════════════════════════════════════ */}
-      {/* HERO SLIDER                                         */}
+      {/* HERO                                                */}
       {/* ════════════════════════════════════════════════════ */}
-      <section className="promo-slider">
-        <FallingPetals/>
-        {HERO_SLIDES.map((s, i) => (
-          <div key={i} className={`promo-slide ${i===slide?'active':'inactive'}`}>
-            <div className="promo-slide__bg" style={{ backgroundImage:`url(${s.bg})` }}/>
-            <div className="promo-slide__overlay"/>
-            <div className="promo-slide__content">
-              {i===slide&&(
-                <div className="hero-slide-in">
-                  <p className="promo-slide__badge">• {s.label}</p>
-                  <p className="promo-slide__loc">{s.loc}</p>
-                  <h1 className="promo-slide__h1">{s.h1a}<br/><em className="em-gold">{s.h1b}</em></h1>
-                  <p className="promo-slide__sub">{s.sub}</p>
-                  <div className="hero-couple-card">
-                    <span className="hero-couple-name">Yashna ❤ Yash &nbsp;<span className="nc-hashtag">#Y2K</span></span>
-                    <div className="hero-couple-info">
-                      <span className="hero-date-highlight">📅 17th &amp; 18th December 2026</span>
-                      <span className="hero-couple-venue">🏛 Taj Aravali, Udaipur</span>
-                    </div>
-                  </div>
-                </div>
-              )}
+      <header id="top" style={{ position:'relative', minHeight:'100svh', marginTop:-88, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', textAlign:'center', padding:'140px 20px 64px', overflow:'hidden' }}>
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${HERO_BG})`, backgroundSize:'cover', backgroundPosition:'center' }}/>
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'linear-gradient(180deg, rgba(20,16,10,0.55) 0%, rgba(20,16,10,0.32) 30%, rgba(20,16,10,0.42) 58%, rgba(20,16,10,0.82) 100%)' }}/>
+
+        <div style={{ position:'relative', zIndex:2, color:'#F4EEE4', display:'flex', flexDirection:'column', alignItems:'center' }}>
+          <span style={{ fontFamily:FONT_BODY, fontSize:12, fontWeight:500, letterSpacing:'0.42em', textTransform:'uppercase', opacity:0.9, marginBottom:28 }}>Taj Aravali · Udaipur</span>
+          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(48px,12vw,140px)', lineHeight:0.94, margin:0, display:'flex', flexWrap:'wrap', alignItems:'center', justifyContent:'center', gap:'clamp(12px,4vw,40px)', textShadow:'0 2px 30px rgba(0,0,0,0.55), 0 1px 4px rgba(0,0,0,0.4)' }}>
+            <span style={{ fontStyle:'italic' }}>Yashna</span>
+            <span style={{ color:Y.goldLight, fontSize:'0.5em' }}>❤</span>
+            <span style={{ fontStyle:'italic' }}>Yash</span>
+          </h1>
+          <div style={{ display:'flex', alignItems:'center', gap:16, marginTop:34, background:'rgba(20,16,10,0.32)', border:'1px solid rgba(232,206,154,0.4)', backdropFilter:'blur(2px)', padding:'12px 24px', borderRadius:999 }}>
+            <span style={{ width:28, height:1, background:'rgba(232,206,154,0.6)' }}/>
+            <span style={{ fontFamily:FONT_BODY, fontSize:'clamp(12px,1.6vw,15px)', letterSpacing:'0.28em', textTransform:'uppercase', fontWeight:600, color:Y.goldPale }}>17 &amp; 18 December 2026</span>
+            <span style={{ width:28, height:1, background:'rgba(232,206,154,0.6)' }}/>
+          </div>
+
+          <div style={{ display:'flex', gap:'clamp(18px,6vw,48px)', marginTop:48 }}>
+            <CountdownBlock v={cd.d} l="Days" light/>
+            <CountdownBlock v={cd.h} l="Hours" light/>
+            <CountdownBlock v={cd.m} l="Minutes" light/>
+            <CountdownBlock v={cd.s} l="Seconds" light/>
+          </div>
+        </div>
+      </header>
+
+      {/* ── TRAVEL LIGHT INFO CARD (overlaps hero) ── */}
+      <section style={{ background:Y.cream, padding:'clamp(36px,7vw,72px) clamp(20px,5vw,56px) clamp(16px,4vw,40px)', position:'relative', zIndex:3 }}>
+        <Reveal>
+          <div style={{ maxWidth:1120, margin:'0 auto', background:'#4A3B29', color:'#F4EEE4', borderRadius:26, padding:'clamp(28px,5vw,48px)', display:'flex', flexWrap:'wrap', alignItems:'center', gap:'clamp(20px,4vw,44px)', boxShadow:'0 30px 70px rgba(45,32,18,0.28)' }}>
+            <div style={{ flex:'1 1 340px', minWidth:'min(260px, 100%)' }}>
+              <Eyebrow dark>Travel light to the mountains</Eyebrow>
+              <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(22px,3.2vw,34px)', lineHeight:1.24, margin:'16px 0 0', fontWeight:400 }}>Arrive with only your best self. We&apos;ll carry your bags door-to-destination, timed to your flight.</p>
+            </div>
+            <div style={{ flex:'0 0 auto', display:'flex', flexDirection:'column', gap:14, minWidth:'min(220px, 100%)' }}>
+              <div style={{ display:'flex', gap:22 }}>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:28, color:Y.goldLight }}>RFID</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Tagged &amp; sealed</div></div>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:28, color:Y.goldLight }}>100%</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Insured</div></div>
+              </div>
+              <PillButton href="#book" variant="gold">Book Luggage Pickup</PillButton>
             </div>
           </div>
-        ))}
-        <div style={{ position:'absolute', bottom:40, left:0, right:0, zIndex:3 }}>
-          <div className="container">
-            <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between' }}>
-              <div style={{ display:'flex', gap:20 }}>
-                {HERO_SLIDES.map((_,i)=>(
-                  <button key={i} onClick={()=>setSlide(i)}
-                    style={{ background:'none', border:'none', cursor:'pointer', fontFamily:'Sulphur Point,sans-serif', fontSize:13, color:i===slide?'#fff':'rgba(255,255,255,0.35)', transition:'color 0.2s', padding:0 }}>
-                    {String(i+1).padStart(2,'0')}.
-                  </button>
-                ))}
-              </div>
-              <div style={{ display:'flex', gap:24 }}>
-                <button onClick={()=>setSlide(s=>(s-1+HERO_SLIDES.length)%HERO_SLIDES.length)}
-                  style={{ background:'none', border:'none', cursor:'pointer', fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:600, textTransform:'uppercase', color:'rgba(255,255,255,0.55)', letterSpacing:'1px', display:'flex', alignItems:'center', gap:6 }}>← prev</button>
-                <button onClick={()=>setSlide(s=>(s+1)%HERO_SLIDES.length)}
-                  style={{ background:'none', border:'none', cursor:'pointer', fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:600, textTransform:'uppercase', color:'rgba(255,255,255,0.55)', letterSpacing:'1px', display:'flex', alignItems:'center', gap:6 }}>next →</button>
+        </Reveal>
+      </section>
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* 01 THE CELEBRATION                                  */}
+      {/* ════════════════════════════════════════════════════ */}
+      <section id="celebration" style={{ background:Y.cream, padding:'clamp(72px,12vw,140px) clamp(20px,5vw,56px) clamp(48px,8vw,96px)', scrollMarginTop:88 }}>
+        <div className="wd-two-col" style={{ maxWidth:1120, margin:'0 auto', display:'grid', gridTemplateColumns:'1fr', gap:'clamp(36px,6vw,64px)', alignItems:'center' }}>
+          <Reveal>
+            <div>
+              <Eyebrow>01 — The Celebration</Eyebrow>
+              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(34px,5.5vw,60px)', lineHeight:1.06, margin:'18px 0 0' }}>Two days in the <span style={{ fontStyle:'italic', color:Y.goldMuted }}>Aravallis</span>, one forever.</h2>
+              <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.85, color:Y.textBody, maxWidth:'46ch', margin:'24px 0 0' }}>We&apos;re gathering the people we love most in the folds of the oldest mountains in India — for slow mornings, long evenings, and a wedding under an open Udaipur sky.</p>
+              <div style={{ display:'flex', gap:36, marginTop:34 }}>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,4vw,40px)', color:Y.darkGreen }}>2</div><div style={{ fontSize:11, letterSpacing:'0.16em', textTransform:'uppercase', color:Y.statLabel }}>Days</div></div>
+                <div style={{ width:1, background:'#D9CFBE' }}/>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,4vw,40px)', color:Y.darkGreen }}>1</div><div style={{ fontSize:11, letterSpacing:'0.16em', textTransform:'uppercase', color:Y.statLabel }}>Palace</div></div>
+                <div style={{ width:1, background:'#D9CFBE' }}/>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,4vw,40px)', color:Y.darkGreen }}>∞</div><div style={{ fontSize:11, letterSpacing:'0.16em', textTransform:'uppercase', color:Y.statLabel }}>Memories</div></div>
               </div>
             </div>
+          </Reveal>
+          <Reveal delay={120}>
+            <div style={{ position:'relative' }}>
+              <div style={{ position:'relative', width:'100%', aspectRatio:'4 / 5', borderRadius:22, overflow:'hidden', boxShadow:'0 30px 60px rgba(45,32,18,0.16)' }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img src={CELEBRATION_IMG} alt="Yashna &amp; Yash" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+              </div>
+              <div style={{ position:'absolute', bottom:-20, left:-16, background:Y.cream, padding:'16px 22px', borderRadius:16, boxShadow:'0 14px 34px rgba(45,32,18,0.12)', fontFamily:FONT_DISPLAY, fontStyle:'italic', fontSize:19, color:Y.goldMuted }}>#Y2K</div>
+            </div>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* 02 THE DESTINATION                                  */}
+      {/* ════════════════════════════════════════════════════ */}
+      <section id="destination" style={{ position:'relative', minHeight:'80vh', display:'flex', alignItems:'flex-end', padding:'clamp(36px,8vw,84px) clamp(20px,5vw,56px)', overflow:'hidden', scrollMarginTop:88 }}>
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${DESTINATION_BG})`, backgroundSize:'cover', backgroundPosition:'center' }}/>
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'linear-gradient(180deg, rgba(20,16,10,0.34) 0%, rgba(20,16,10,0.05) 40%, rgba(20,16,10,0.8) 100%)' }}/>
+        <div style={{ position:'relative', zIndex:2, color:'#F4EEE4', maxWidth:1120, margin:'0 auto', width:'100%' }}>
+          <Reveal>
+            <Eyebrow dark>02 — The Destination</Eyebrow>
+            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(40px,7.5vw,88px)', lineHeight:1, margin:'18px 0 0' }}>Taj Aravali,<br/><span style={{ fontStyle:'italic' }}>Udaipur</span></h2>
+            <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.8vw,18px)', lineHeight:1.8, maxWidth:'52ch', margin:'24px 0 0', color:'rgba(244,238,228,0.9)' }}>Tucked into the Aravalli range above the City of Lakes — terraced gardens, still water, and mountain light that turns gold at dusk. About a 30-minute drive from Maharana Pratap Airport (UDR).</p>
+          </Reveal>
+        </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* 03 TRAVEL LIGHT / BAGGAGE                           */}
+      {/* ════════════════════════════════════════════════════ */}
+      <section id="travel" style={{ background:Y.darkGreen, color:Y.cream, padding:'clamp(72px,12vw,140px) clamp(20px,5vw,56px)', scrollMarginTop:88 }}>
+        <div style={{ maxWidth:1120, margin:'0 auto' }}>
+          <div className="wd-two-col" style={{ display:'grid', gridTemplateColumns:'1fr', gap:'clamp(28px,5vw,56px)', alignItems:'center' }}>
+            <Reveal>
+              <div>
+                <Eyebrow dark>03 — Travel Light</Eyebrow>
+                <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(32px,5.5vw,58px)', lineHeight:1.06, margin:'18px 0 0' }}>Your bags, handled.<br/>So the mountains are all you carry.</h2>
+                <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.8, color:'rgba(244,238,228,0.78)', margin:'20px 0 0', maxWidth:'48ch' }}>Powered by Bagdrop. We collect your luggage across India and deliver it straight to your room at Taj Aravali — flight-synced, RFID-tagged, and fully insured.</p>
+              </div>
+            </Reveal>
+            <Reveal delay={120}>
+              <div style={{ position:'relative' }}>
+                <div style={{ position:'relative', width:'100%', aspectRatio:'4 / 3', borderRadius:22, overflow:'hidden', boxShadow:'0 30px 60px rgba(0,0,0,0.28)' }}>
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={TRAVEL_IMG} alt="Bagdrop luggage delivery" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }}/>
+                </div>
+                <div style={{ position:'absolute', bottom:-16, left:-16, background:Y.goldLight, color:Y.darkGreen, padding:'12px 20px', borderRadius:14, boxShadow:'0 14px 34px rgba(0,0,0,0.22)', fontFamily:FONT_BODY, fontSize:11, fontWeight:600, letterSpacing:'0.14em', textTransform:'uppercase' }}>Door-to-Door · Pan India</div>
+              </div>
+            </Reveal>
+          </div>
+
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:18, marginTop:52 }}>
+            {PROCESS_STEPS.map(s=>(
+              <Reveal key={s.n}>
+                <div style={{ background:'rgba(244,238,228,0.05)', border:'1px solid rgba(244,238,228,0.12)', borderRadius:20, padding:30, height:'100%' }}>
+                  <div style={{ fontFamily:FONT_DISPLAY, fontSize:40, color:Y.goldLight, lineHeight:1 }}>{s.n}</div>
+                  <h3 style={{ fontFamily:FONT_BODY, fontSize:16, fontWeight:600, margin:'16px 0 8px' }}>{s.title}</h3>
+                  <p style={{ fontFamily:FONT_BODY, fontSize:14, lineHeight:1.7, color:'rgba(244,238,228,0.7)', margin:0 }}>{s.desc}</p>
+                </div>
+              </Reveal>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* ── Trust logos bar ── */}
-      <div className="logos-bar">
-        <div className="logos-inner">
-          {['Mumbai','Delhi','Ahmedabad','Udaipur','Goa','Bangalore'].map(city=>(
-            <span key={city} className="logo-badge">{city}</span>
-          ))}
-        </div>
-      </div>
-
       {/* ════════════════════════════════════════════════════ */}
-      {/* BOOKING SECTION — SPLIT PANEL                       */}
+      {/* 04 BOOKING FORM                                     */}
       {/* ════════════════════════════════════════════════════ */}
-      <section id="book" className="book-section">
-      <div className="book-grid">
+      <section id="book" className="book-section" style={{ background:Y.beige, padding:'clamp(64px,10vw,110px) clamp(16px,4vw,40px)', scrollMarginTop:88 }}>
+        <Reveal>
+          <div style={{ maxWidth:640, margin:'0 auto', textAlign:'center' }}>
+            <Eyebrow>04 — Reserve Your Pickup</Eyebrow>
+            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(32px,5.5vw,56px)', lineHeight:1.06, margin:'16px 0 10px' }}>Book your luggage pickup</h2>
+            <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.75, color:Y.textBody, maxWidth:'44ch', margin:'0 auto' }}>A minute now, a weightless journey later. Pickups run 10–12 December 2026.</p>
+          </div>
+        </Reveal>
 
-        {/* ── LEFT: Branding + Details ── */}
-        <div className="book-left">
-          {/* Decorative pink glow */}
-          <div style={{ position:'absolute', top:-100, right:-100, width:400, height:400, borderRadius:'50%', background:`radial-gradient(circle, rgba(236,157,171,0.12) 0%, transparent 70%)`, pointerEvents:'none' }}/>
-          <div style={{ position:'absolute', bottom:-60, left:-60, width:300, height:300, borderRadius:'50%', background:`radial-gradient(circle, rgba(236,157,171,0.08) 0%, transparent 70%)`, pointerEvents:'none' }}/>
+        <div className="book-grid" style={{ maxWidth:1080, margin:'40px auto 0', display:'grid', gridTemplateColumns:'0.85fr 1.15fr', borderRadius:26, overflow:'hidden', boxShadow:'0 30px 70px rgba(45,32,18,0.14)' }}>
 
-          <Reveal>
-            {/* Wedding badge */}
-            <div style={{ display:'inline-flex', alignItems:'center', gap:8, border:`1px solid rgba(236,157,171,0.3)`, padding:'6px 16px', marginBottom:32 }}>
-              <span style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', color:J.pink }}>Official Service · #Y2K</span>
-            </div>
+          {/* LEFT: countdown + trust */}
+          <div className="book-left" style={{ background:Y.darkGreen, color:Y.cream, padding:'52px 44px', display:'flex', flexDirection:'column', justifyContent:'center' }}>
+            <Reveal>
+              <Eyebrow dark>wedding concierge</Eyebrow>
+              <h3 style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,3.6vw,42px)', lineHeight:1.1, fontWeight:400, margin:'18px 0 16px' }}>Reserve your<br/><span style={{ fontStyle:'italic', color:Y.goldLight }}>Luggage Concierge</span></h3>
+              <p style={{ fontSize:14.5, color:'rgba(244,238,228,0.6)', lineHeight:1.75, marginBottom:32 }}>Exclusive baggage handling for guests attending <strong style={{ color:'rgba(244,238,228,0.9)' }}>Yashna &amp; Yash&apos;s</strong> wedding at Taj Aravali · 17th–18th Dec 2026.</p>
 
-            <Suptitle light>wedding concierge</Suptitle>
-
-            <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(36px,4.5vw,58px)', lineHeight:'108%', color:'#fff', fontWeight:400, marginBottom:20 }}>
-              Reserve Your<br/><em style={{ fontStyle:'italic', color:J.pink }}>Luggage Concierge</em>
-            </h2>
-
-            <p style={{ fontSize:15, color:'rgba(255,255,255,0.55)', lineHeight:'170%', marginBottom:36 }}>
-              Exclusive baggage handling for guests attending<br/>
-              <strong style={{ color:'rgba(255,255,255,0.9)' }}>Yashna & Yash&apos;s</strong> wedding at Taj Aravali · 17th–18th Dec 2026.
-            </p>
-
-            {/* Destination confirmed card */}
-            <div style={{ border:`1px solid rgba(236,157,171,0.25)`, padding:'18px 22px', marginBottom:40, display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap', background:'rgba(236,157,171,0.06)' }}>
-              <div>
-                <p style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', color:J.pink, margin:'0 0 4px' }}>All deliveries to</p>
-                <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:20, color:'#fff', margin:0 }}>Taj Aravali, Udaipur</p>
-                <p style={{ fontSize:12, color:'rgba(255,255,255,0.35)', marginTop:2 }}>17th–18th December 2026 · #Y2K</p>
+              <div style={{ border:'1px solid rgba(232,206,154,0.25)', borderRadius:14, padding:'16px 20px', marginBottom:32, background:'rgba(232,206,154,0.06)' }}>
+                <p style={{ fontSize:9, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.18em', color:Y.goldLight, margin:'0 0 4px' }}>All deliveries to</p>
+                <p style={{ fontFamily:FONT_DISPLAY, fontSize:19, margin:0 }}>Taj Aravali, Udaipur</p>
+                <p style={{ fontSize:12, color:'rgba(244,238,228,0.4)', marginTop:2 }}>17th–18th December 2026 · #Y2K</p>
               </div>
-              <div style={{ background:J.pink, color:'#fff', padding:'7px 14px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'1px', whiteSpace:'nowrap' }}>
-                Pre-Confirmed ✓
+
+              <p style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.18em', color:'rgba(244,238,228,0.3)', marginBottom:14 }}>Wedding day countdown</p>
+              <div style={{ display:'flex', gap:16 }}>
+                <CountdownBlock v={cd.d} l="Days" light/>
+                <CountdownBlock v={cd.h} l="Hrs" light/>
+                <CountdownBlock v={cd.m} l="Min" light/>
+                <CountdownBlock v={cd.s} l="Sec" light/>
               </div>
-            </div>
+            </Reveal>
+          </div>
 
-            {/* 4 feature rows */}
-            <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:'20px 28px', marginBottom:44 }}>
-              {FEATURES.map(f=>(
-                <div key={f.title} style={{ display:'flex', gap:12, alignItems:'flex-start' }}>
-                  <span style={{ fontSize:20, lineHeight:1, marginTop:2 }}>{f.icon}</span>
-                  <div>
-                    <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:15, color:'#fff', margin:'0 0 3px' }}>{f.title}</p>
-                    <p style={{ fontSize:12, color:'rgba(255,255,255,0.4)', lineHeight:'160%' }}>{f.desc}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            {/* Countdown */}
-            {cd.ready && (
-              <div>
-                <p style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'2px', color:'rgba(255,255,255,0.3)', marginBottom:14 }}>Wedding day countdown</p>
-                <div className="countdown">
-                  {[{v:cd.d,l:'Days'},{v:cd.h,l:'Hrs'},{v:cd.m,l:'Min'},{v:cd.s,l:'Sec'}].map(({v,l},i)=>(
-                    <div key={l} style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
-                      <div className="countdown-unit">
-                        <span className="countdown-num">{String(v).padStart(2,'0')}</span>
-                        <span className="countdown-label">{l}</span>
+          {/* RIGHT: form */}
+          <div className="book-right" style={{ background:'#fff', padding:'44px 40px' }}>
+            <Reveal>
+              {/* Step indicator */}
+              <div style={{ display:'flex', alignItems:'center', marginBottom:28 }}>
+                {['Guest','Travel','Luggage','Delivery'].map((label,i)=>{
+                  const s=i+1, active=step===s, doneStep=step>s
+                  return (
+                    <div key={label} style={{ display:'flex', alignItems:'center', flex:1 }}>
+                      <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6 }}>
+                        <div style={{ width:30, height:30, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', fontSize:11, fontWeight:700, transition:'all 0.3s', background:doneStep?Y.gold:active?Y.darkGreen:'transparent', color:doneStep||active?'#fff':Y.statLabel, border:`2px solid ${doneStep||active?'transparent':Y.border}` }}>
+                          {doneStep?'✓':s}
+                        </div>
+                        <span style={{ fontSize:9, textTransform:'uppercase', letterSpacing:'0.08em', fontWeight:600, whiteSpace:'nowrap', color:active?Y.textDark:doneStep?Y.goldMuted:Y.statLabel }}>{label}</span>
                       </div>
-                      {i<3&&<span className="countdown-sep">:</span>}
+                      {i<3&&<div style={{ flex:1, height:1, margin:'0 4px 18px', minWidth:12, background:step>s?Y.gold:Y.border }}/>}
                     </div>
-                  ))}
-                </div>
+                  )
+                })}
               </div>
-            )}
-          </Reveal>
-        </div>
 
-        {/* ── RIGHT: The Form ── */}
-        <div className="book-right">
-          <Reveal>
-            {/* Step indicator */}
-            <div className="step-indicator" style={{ marginBottom:28 }}>
-              {['Guest','Travel','Luggage','Delivery'].map((label,i)=>{
-                const s=i+1, active=step===s, done2=step>s
-                return (
-                  <div key={label} style={{ display:'flex', alignItems:'center', flex:1 }}>
-                    <div className="step-pip">
-                      <div className="step-pip-num" style={{ background:done2?J.pink:active?J.black:'transparent', color:done2||active?'#fff':J.muted, border:`2px solid ${done2||active?'transparent':J.border}` }}>
-                        {done2?'✓':s}
-                      </div>
-                      <span className="step-pip-label" style={{ color:active?J.black:done2?J.pink:J.muted }}>{label}</span>
-                    </div>
-                    {i<3&&<div className="step-line" style={{ background:step>s?J.pink:J.border }}/>}
-                  </div>
-                )
-              })}
-            </div>
-
-            <div className="book-form-card">
               <form onSubmit={submit}>
 
                 {/* ── Step 1: Guest Info ── */}
                 {step===1&&(
                   <>
-                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Guest Information</h3>
-                    <div className="fld">
-                      <label>Full Name *</label>
-                      <input required type="text" placeholder="e.g. Priya Sharma" value={form.name} onChange={e=>patch('name',e.target.value)} style={fi}/>
+                    <h3 style={{ fontFamily:FONT_DISPLAY, fontSize:26, color:Y.textDark, fontWeight:400, marginBottom:22 }}>Guest Information</h3>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Full Name *</label>
+                      <input required type="text" placeholder="e.g. Priya Sharma" value={form.name} onChange={e=>patch('name',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                     </div>
-                    <div className="form-grid-2">
-                      <div className="fld">
-                        <label>Mobile Number *</label>
-                        <input required type="tel" placeholder="10-digit number" value={form.phone} onChange={e=>patch('phone',e.target.value.replace(/\D/g,'').slice(0,10))} style={fi}/>
+                    <div className="form-grid-2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Mobile Number *</label>
+                        <input required type="tel" placeholder="10-digit number" value={form.phone} onChange={e=>patch('phone',e.target.value.replace(/\D/g,'').slice(0,10))} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                       </div>
-                      <div className="fld">
-                        <label>Email (optional)</label>
-                        <input type="email" placeholder="your@email.com" value={form.email} onChange={e=>patch('email',e.target.value)} style={fi}/>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Email (optional)</label>
+                        <input type="email" placeholder="your@email.com" value={form.email} onChange={e=>patch('email',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                       </div>
                     </div>
                   </>
@@ -837,10 +654,10 @@ export default function Y2KPage() {
                 {/* ── Step 2: Pickup Info ── */}
                 {step===2&&(
                   <>
-                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Pickup Information</h3>
-                    <div className="form-grid-2">
-                      <div className="fld">
-                        <label>Pickup Date *</label>
+                    <h3 style={{ fontFamily:FONT_DISPLAY, fontSize:26, color:Y.textDark, fontWeight:400, marginBottom:22 }}>Pickup Information</h3>
+                    <div className="form-grid-2" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Pickup Date *</label>
                         {/* Pickup is only offered 10–12 Dec 2026 (3 days
                             before the 17 Dec wedding) — min/max restrict the
                             native date picker to exactly that window, so no
@@ -850,37 +667,37 @@ export default function Y2KPage() {
                             editing the form's DOM/value directly. */}
                         <input required type="date" value={form.pickupDate}
                           min={Y2K_PICKUP_DATE_MIN} max={Y2K_PICKUP_DATE_MAX}
-                          onChange={e=>patch('pickupDate',e.target.value)} style={fi}/>
+                          onChange={e=>patch('pickupDate',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                       </div>
-                      <div className="fld">
-                        <label>Pickup Location *</label>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Pickup Location *</label>
                         {/* Dropdown of preset serviced locations, plus an
                             'Others' escape hatch — picking it reveals a
                             free-text input below so guests outside
                             Mumbai/Mumbai Airport T2 can still submit a
                             pickup location manually. */}
-                        <select required value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} style={fi}>
+                        <select required value={form.pickupCity} onChange={e=>patch('pickupCity',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}>
                           <option value="">Select pickup location…</option>
                           {Y2K_PICKUP_LOCATIONS.map(loc => <option key={loc} value={loc}>{loc}</option>)}
                         </select>
                       </div>
                     </div>
                     {form.pickupCity==='Others'&&(
-                      <div className="fld">
-                        <label>Enter Pickup Location *</label>
-                        <input required type="text" placeholder="e.g. Pune, Nashik…" value={form.pickupCityOther} onChange={e=>patch('pickupCityOther',e.target.value)} style={fi}/>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:18 }}>
+                        <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Enter Pickup Location *</label>
+                        <input required type="text" placeholder="e.g. Pune, Nashik…" value={form.pickupCityOther} onChange={e=>patch('pickupCityOther',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                       </div>
                     )}
-                    <div className="fld">
-                      <label>Pickup Address *</label>
-                      <input required type="text" placeholder="House / Flat no., Street, Area" value={form.pickupAddress} onChange={e=>patch('pickupAddress',e.target.value)} style={fi}/>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Pickup Address *</label>
+                      <input required type="text" placeholder="House / Flat no., Street, Area" value={form.pickupAddress} onChange={e=>patch('pickupAddress',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                     </div>
-                    <div className="fld">
-                      <label>Wedding Venue</label>
-                      <input type="text" value={form.weddingVenue} readOnly style={{ ...fi, background:'rgba(17,17,17,0.04)', color:J.body, cursor:'default' }}/>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Wedding Venue</label>
+                      <input type="text" value={form.weddingVenue} readOnly style={{ ...fi, background:'#F1EBDD', color:Y.textBody, cursor:'default' }}/>
                     </div>
-                    <div className="fld" style={{ marginBottom:0 }}>
-                      <label>Preferred Pickup Time *</label>
+                    <div style={{ marginTop:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Preferred Pickup Time *</label>
                       {/* Same Morning/Afternoon/Evening slot picker as
                           Preferred Delivery Time (see TIME_SLOTS) instead
                           of a raw clock time — re-checked in nextStep()
@@ -888,13 +705,9 @@ export default function Y2KPage() {
                       <div className="dt-slot-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:8 }}>
                         {TIME_SLOTS.map(slot=>(
                           <button key={slot.id} type="button" onClick={()=>patch('pickupTime',slot.id)}
-                            className={`dt-slot${form.pickupTime===slot.id?' active':''}`}
-                            style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', border:`1px solid ${form.pickupTime===slot.id?J.pink:J.border}`, cursor:'pointer', transition:'border-color 0.2s', background:'#fff', textAlign:'left' }}>
-                            <span style={{ fontSize:16 }}>{slot.icon}</span>
-                            <div>
-                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, color:form.pickupTime===slot.id?J.pink:J.black, margin:0 }}>{slot.label}</p>
-                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:10, color:J.muted, margin:0 }}>{slot.range}</p>
-                            </div>
+                            style={{ display:'flex', flexDirection:'column', gap:2, padding:'11px 12px', borderRadius:10, border:`1px solid ${form.pickupTime===slot.id?Y.gold:Y.border}`, cursor:'pointer', transition:'border-color 0.2s', background:form.pickupTime===slot.id?'#FBF3E4':'#fff', textAlign:'left' }}>
+                            <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, color:form.pickupTime===slot.id?Y.goldMuted:Y.textDark }}>{slot.label}</span>
+                            <span style={{ fontFamily:FONT_BODY, fontSize:10, color:Y.statLabel }}>{slot.range}</span>
                           </button>
                         ))}
                       </div>
@@ -905,26 +718,25 @@ export default function Y2KPage() {
                 {/* ── Step 3: Luggage ── */}
                 {step===3&&(
                   <>
-                    <h3 style={{ fontFamily:'Georgia,serif', fontSize:26, color:J.black, fontWeight:400, marginBottom:24 }}>Luggage Information</h3>
-                    <div className="fld">
-                      <label>Number of Bags *</label>
-                      <input required type="number" min={1} max={50} value={form.bags} onChange={e=>patch('bags',e.target.value)} style={fi}/>
+                    <h3 style={{ fontFamily:FONT_DISPLAY, fontSize:26, color:Y.textDark, fontWeight:400, marginBottom:22 }}>Luggage Information</h3>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Number of Bags *</label>
+                      <input required type="number" min={1} max={50} value={form.bags} onChange={e=>patch('bags',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                     </div>
-                    <div className="fld">
-                      <label>Bag Type</label>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Bag Type</label>
                       <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginTop:4 }}>
                         {['Cabin (Small)','Check-in (Medium)','Large Suitcase','Wedding Trunk','Sports Bag','Mixed Sizes'].map(size=>(
                           <button key={size} type="button" onClick={()=>patch('bagSize',size)}
-                            className={`bag-pill${form.bagSize===size?' active':''}`}
-                            style={{ padding:'8px 14px', border:`1px solid ${form.bagSize===size?J.pink:J.border}`, fontSize:11, cursor:'pointer', background:'#fff', transition:'all 0.2s', color:form.bagSize===size?J.pink:J.body, fontWeight:form.bagSize===size?700:400, fontFamily:'Montserrat,sans-serif' }}>
+                            style={{ padding:'8px 14px', borderRadius:999, border:`1px solid ${form.bagSize===size?Y.gold:Y.border}`, fontSize:11, cursor:'pointer', background:form.bagSize===size?'#FBF3E4':'#fff', transition:'all 0.2s', color:form.bagSize===size?Y.goldMuted:Y.textBody, fontWeight:form.bagSize===size?700:400, fontFamily:FONT_BODY }}>
                             {size}
                           </button>
                         ))}
                       </div>
                     </div>
-                    <div className="fld" style={{ marginBottom:0 }}>
-                      <label>Special Instructions</label>
-                      <textarea rows={3} placeholder="Fragile items, bridal wear, gifts…" value={form.specialInstructions} onChange={e=>patch('specialInstructions',e.target.value)} style={{ ...fi, resize:'none' }}/>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginTop:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Special Instructions</label>
+                      <textarea rows={3} placeholder="Fragile items, bridal wear, gifts…" value={form.specialInstructions} onChange={e=>patch('specialInstructions',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, height:'auto', padding:'14px 16px', resize:'vertical', lineHeight:1.6 }}/>
                     </div>
                   </>
                 )}
@@ -932,28 +744,24 @@ export default function Y2KPage() {
                 {/* ── Step 4: Delivery ── */}
                 {step===4&&(
                   <>
-                    <h3 style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:26, color:J.black, marginBottom:6 }}>Delivery Details</h3>
-                    <p style={{ fontSize:13, color:J.muted, marginBottom:20 }}>Your luggage will be delivered to <strong style={{ color:J.black }}>Taj Aravali, Udaipur</strong> or your accommodation.</p>
-                    <div className="fld">
-                      <label>Wedding Venue (Pre-Confirmed)</label>
-                      <input type="text" readOnly value="Taj Aravali, Udaipur" style={{ ...fi, background:'#f8f8fa', color:J.muted, cursor:'default' }}/>
+                    <h3 style={{ fontFamily:FONT_DISPLAY, fontSize:26, color:Y.textDark, fontWeight:400, marginBottom:6 }}>Delivery Details</h3>
+                    <p style={{ fontSize:13, color:Y.statLabel, marginBottom:20 }}>Your luggage will be delivered to <strong style={{ color:Y.textDark }}>Taj Aravali, Udaipur</strong> or your accommodation.</p>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Wedding Venue (Pre-Confirmed)</label>
+                      <input type="text" readOnly value="Taj Aravali, Udaipur" style={{ ...fi, background:'#F1EBDD', color:Y.statLabel, cursor:'default' }}/>
                     </div>
-                    <div className="fld">
-                      <label>Hotel (if different)</label>
-                      <input type="text" placeholder="e.g. Trident Udaipur" value={form.hotelName} onChange={e=>patch('hotelName',e.target.value)} style={fi}/>
+                    <div style={{ display:'flex', flexDirection:'column', gap:8, marginBottom:18 }}>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Hotel (if different)</label>
+                      <input type="text" placeholder="e.g. Trident Udaipur" value={form.hotelName} onChange={e=>patch('hotelName',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={fi}/>
                     </div>
-                    <div className="fld" style={{ marginBottom:0 }}>
-                      <label>Preferred Delivery Time *</label>
+                    <div>
+                      <label style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', color:Y.goldMuted }}>Preferred Delivery Time *</label>
                       <div className="dt-slot-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:8, marginTop:8 }}>
                         {TIME_SLOTS.map(slot=>(
                           <button key={slot.id} type="button" onClick={()=>patch('deliveryTime',slot.id)}
-                            className={`dt-slot${form.deliveryTime===slot.id?' active':''}`}
-                            style={{ display:'flex', alignItems:'center', gap:10, padding:'11px 14px', border:`1px solid ${form.deliveryTime===slot.id?J.pink:J.border}`, cursor:'pointer', transition:'border-color 0.2s', background:'#fff', textAlign:'left' }}>
-                            <span style={{ fontSize:16 }}>{slot.icon}</span>
-                            <div>
-                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, color:form.deliveryTime===slot.id?J.pink:J.black, margin:0 }}>{slot.label}</p>
-                              <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:10, color:J.muted, margin:0 }}>{slot.range}</p>
-                            </div>
+                            style={{ display:'flex', flexDirection:'column', gap:2, padding:'11px 12px', borderRadius:10, border:`1px solid ${form.deliveryTime===slot.id?Y.gold:Y.border}`, cursor:'pointer', transition:'border-color 0.2s', background:form.deliveryTime===slot.id?'#FBF3E4':'#fff', textAlign:'left' }}>
+                            <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, color:form.deliveryTime===slot.id?Y.goldMuted:Y.textDark }}>{slot.label}</span>
+                            <span style={{ fontFamily:FONT_BODY, fontSize:10, color:Y.statLabel }}>{slot.range}</span>
                           </button>
                         ))}
                       </div>
@@ -961,54 +769,68 @@ export default function Y2KPage() {
                   </>
                 )}
 
-                {err&&<div className="form-error">{err}</div>}
+                {err&&<div style={{ background:'rgba(192,57,43,0.06)', border:'1px solid rgba(192,57,43,0.2)', borderRadius:10, padding:'10px 14px', marginTop:16, fontSize:12.5, color:Y.error }}>{err}</div>}
 
                 {/* Navigation */}
-                <div className="form-actions" style={{ marginTop:20 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:12, marginTop:22 }}>
                   {step>1
-                    ? <button type="button" onClick={()=>setStep(s=>s-1)} style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.5px', background:'transparent', border:`2px solid ${J.border}`, color:J.body, padding:'12px 20px', cursor:'pointer', transition:'border-color 0.2s' }}
-                        onMouseEnter={e=>(e.currentTarget.style.borderColor=J.pink)}
-                        onMouseLeave={e=>(e.currentTarget.style.borderColor=J.border)}>← Back</button>
+                    ? <button type="button" onClick={()=>setStep(s=>s-1)} style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'0.08em', background:'transparent', border:`2px solid ${Y.border}`, borderRadius:12, color:Y.textBody, padding:'12px 20px', cursor:'pointer', transition:'border-color 0.2s' }}
+                        onMouseEnter={e=>(e.currentTarget.style.borderColor=Y.gold)}
+                        onMouseLeave={e=>(e.currentTarget.style.borderColor=Y.border)}>← Back</button>
                     : <span/>
                   }
                   <div style={{ flex:1 }}>
                     {step<4
                       ? <BtnSubmit onClick={nextStep}>Continue →</BtnSubmit>
-                      : <BtnSubmit type="submit" disabled={busy}>{busy?'Submitting…':'✦ Confirm Concierge · #Y2K'}</BtnSubmit>
+                      : <BtnSubmit type="submit" disabled={busy}>{busy?'Submitting…':'Confirm Pickup · #Y2K'}</BtnSubmit>
                     }
                   </div>
                 </div>
 
-                <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, color:J.muted, textAlign:'center', marginTop:14, lineHeight:'170%' }}>
+                <p style={{ fontFamily:FONT_BODY, fontSize:11.5, color:Y.statLabel, textAlign:'center', marginTop:16, lineHeight:1.7 }}>
                   No payment now · We&apos;ll call you to confirm ·{' '}
-                  <a href="mailto:info@bagdrop.co" style={{ color:J.pink, textDecoration:'none' }}>info@bagdrop.co</a>
+                  <a href="mailto:info@bagdrop.co" style={{ color:Y.goldMuted }}>info@bagdrop.co</a>
                 </p>
               </form>
-            </div>
-          </Reveal>
+            </Reveal>
+          </div>
         </div>
-      </div>
+      </section>
+
+      {/* ════════════════════════════════════════════════════ */}
+      {/* 05 EVENT INFORMATION                                */}
+      {/* ════════════════════════════════════════════════════ */}
+      <section id="info" style={{ background:Y.beige, padding:'clamp(64px,10vw,120px) clamp(20px,5vw,56px)', scrollMarginTop:88 }}>
+        <Reveal>
+          <div style={{ textAlign:'center', marginBottom:48 }}>
+            <Eyebrow>05 — The Details</Eyebrow>
+            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, fontSize:'clamp(32px,5.5vw,56px)', lineHeight:1.06, margin:'14px 0 0' }}>Everything you&apos;ll need</h2>
+          </div>
+        </Reveal>
+        <div style={{ maxWidth:1120, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(230px,1fr))', gap:20 }}>
+          {INFO_CARDS.map(c=>(
+            <Reveal key={c.label}>
+              <div className="wd-float-card" style={{ background:Y.creamCard, borderRadius:20, padding:30, border:`1px solid ${Y.borderCard}`, height:'100%' }}>
+                <Eyebrow>{c.label}</Eyebrow>
+                <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:24, margin:'12px 0 6px', color:Y.textDark }}>{c.title}</h3>
+                <p style={{ fontFamily:FONT_BODY, fontSize:14, lineHeight:1.7, color:Y.textBody, margin:0, whiteSpace:'pre-line' }}>{c.body}</p>
+              </div>
+            </Reveal>
+          ))}
+        </div>
       </section>
 
       {/* ════════════════════════════════════════════════════ */}
       {/* STATS BANNER                                        */}
       {/* ════════════════════════════════════════════════════ */}
       <section style={{ position:'relative', padding:'80px 0', overflow:'hidden' }}>
-        {/* Background wedding photo */}
         <div style={{ position:'absolute', inset:0, backgroundImage:'url(https://images.unsplash.com/photo-1583939003579-730e3918a45a?w=1920&q=80&auto=format&fit=crop)', backgroundSize:'cover', backgroundPosition:'center' }}/>
-        <div style={{ position:'absolute', inset:0, background:'rgba(10,6,4,0.68)' }}/>
-        <div className="container" style={{ position:'relative', zIndex:2, textAlign:'center' }}>
+        <div style={{ position:'absolute', inset:0, background:'rgba(20,16,10,0.7)' }}/>
+        <div style={{ position:'relative', zIndex:2, textAlign:'center', maxWidth:1170, margin:'0 auto', padding:'0 15px' }}>
           <Reveal>
-            {/* Eyebrow */}
-            <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'2.5px', color:'rgba(255,255,255,0.55)', marginBottom:18 }}>Trusted by Couples Across India</p>
-            {/* Headline */}
-            <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(32px,4.5vw,52px)', color:'#fff', fontWeight:400, lineHeight:'118%', margin:'0 0 6px' }}>
-              Stress-free destination
-            </h2>
-            <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,48px)', fontStyle:'italic', color:'#d4a843', fontWeight:400, margin:'0 0 52px', lineHeight:'120%' }}>
-              weddings, delivered
-            </p>
-            {/* Stats row */}
+            <p style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.2em', color:'rgba(244,238,228,0.55)', marginBottom:18 }}>Trusted by Couples Across India</p>
+            <h2 style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(30px,4.5vw,50px)', color:'#fff', fontWeight:400, lineHeight:1.15, margin:'0 0 6px' }}>Stress-free destination</h2>
+            <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(26px,4vw,46px)', fontStyle:'italic', color:Y.goldLight, fontWeight:400, margin:'0 0 48px', lineHeight:1.15 }}>weddings, delivered</p>
             <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:'32px 20px', maxWidth:900, margin:'0 auto' }}>
               {([
                 { to:150,  suffix:'+',   label:'Guests Managed This Wedding' },
@@ -1017,10 +839,10 @@ export default function Y2KPage() {
                 { to:null, text:'24/7',      label:'Dedicated Wedding Support' },
               ] as { to:number|null; suffix?:string; text?:string; label:string }[]).map(({ to, suffix, text, label }) => (
                 <div key={label}>
-                  <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(30px,3.5vw,46px)', color:'#d4a843', fontWeight:400, margin:'0 0 10px', lineHeight:1 }}>
+                  <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,3.5vw,44px)', color:Y.goldLight, fontWeight:400, margin:'0 0 10px', lineHeight:1 }}>
                     {to !== null ? <CountUp to={to} suffix={suffix??''} /> : text}
                   </p>
-                  <p style={{ fontFamily:'Montserrat,sans-serif', fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'1.5px', color:'rgba(255,255,255,0.65)', lineHeight:'155%' }}>{label}</p>
+                  <p style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.1em', color:'rgba(244,238,228,0.65)', lineHeight:1.55 }}>{label}</p>
                 </div>
               ))}
             </div>
@@ -1031,14 +853,14 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       {/* ABOUT / VENUE BLOCK                                 */}
       {/* ════════════════════════════════════════════════════ */}
-      <section style={{ padding:'80px 0' }} id="venue">
-        <div className="container">
+      <section style={{ padding:'80px 0', background:Y.cream }}>
+        <div style={{ maxWidth:1170, margin:'0 auto', padding:'0 15px' }}>
           <Reveal>
             <div className="venue-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:72, alignItems:'center' }}>
               <div>
-                <Suptitle>find your ease</Suptitle>
-                <h2 style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,46px)', lineHeight:'110%', color:J.black, fontWeight:400, marginBottom:32 }}>
-                  We Handle Everything<br/><em style={{ fontStyle:'italic' }}>For Your Happy Journey</em>
+                <Eyebrow>Find your ease</Eyebrow>
+                <h2 style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(28px,4vw,44px)', lineHeight:1.1, color:Y.textDark, fontWeight:400, margin:'16px 0 30px' }}>
+                  We Handle Everything<br/><span style={{ fontStyle:'italic' }}>For Your Happy Journey</span>
                 </h2>
                 {[
                   { title:'Airport Delivery',      desc:'Pickup from airport, delivered to your door.' },
@@ -1049,8 +871,8 @@ export default function Y2KPage() {
                   { title:'Student Relocation',    desc:'Skip the airline fees when you move.' },
                 ].map(({ title, desc }) => (
                   <div key={title} style={{ display:'flex', alignItems:'flex-start', gap:14, marginBottom:20 }}>
-                    <div style={{ flexShrink:0, width:40, height:40, borderRadius:'50%', background:`rgba(236,157,171,0.15)`, display:'flex', alignItems:'center', justifyContent:'center', marginTop:2 }}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke={J.pink} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <div style={{ flexShrink:0, width:38, height:38, borderRadius:'50%', background:'rgba(200,169,110,0.14)', display:'flex', alignItems:'center', justifyContent:'center', marginTop:2 }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={Y.goldMuted} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <rect x="2" y="7" width="20" height="14" rx="2"/>
                         <path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>
                         <line x1="12" y1="12" x2="12" y2="16"/>
@@ -1058,13 +880,14 @@ export default function Y2KPage() {
                       </svg>
                     </div>
                     <div>
-                      <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:17, fontWeight:700, color:J.black, margin:'0 0 2px' }}>{title}</p>
-                      <p style={{ fontSize:13, color:J.body, margin:0, lineHeight:'160%' }}>{desc}</p>
+                      <p style={{ fontFamily:FONT_BODY, fontSize:15, fontWeight:700, color:Y.textDark, margin:'0 0 2px' }}>{title}</p>
+                      <p style={{ fontSize:13, color:Y.textBody, margin:0, lineHeight:1.6 }}>{desc}</p>
                     </div>
                   </div>
                 ))}
               </div>
-              <div style={{ overflow:'hidden' }}>
+              <div style={{ overflow:'hidden', borderRadius:20 }}>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src="/images/y2k-palace.jpg"
                   alt="Taj Aravali, Udaipur"
                   className="venue-img"
@@ -1080,35 +903,27 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       {/* COUNTDOWN BANNER                                    */}
       {/* ════════════════════════════════════════════════════ */}
-      <section className="gift-banner">
-        <div className="gift-banner__bg" style={{ backgroundImage:'url(/images/y2k-palace.jpg)' }}/>
-        <div className="gift-banner__overlay"/>
-        <div className="container" style={{ position:'relative', zIndex:2 }}>
-          <div className="gift-banner__content">
+      <section style={{ position:'relative', padding:'80px 0', overflow:'hidden' }}>
+        <div style={{ position:'absolute', inset:0, backgroundImage:'url(/images/y2k-palace.jpg)', backgroundSize:'cover', backgroundPosition:'center' }}/>
+        <div style={{ position:'absolute', inset:0, background:'rgba(17,17,17,0.72)' }}/>
+        <div style={{ maxWidth:1170, margin:'0 auto', padding:'0 15px', position:'relative', zIndex:2 }}>
+          <div style={{ maxWidth:700, margin:'0 auto', textAlign:'center' }}>
             <Reveal>
-              <p style={{ fontFamily:'Georgia,serif', fontSize:'clamp(28px,4vw,42px)', fontStyle:'italic', color:J.pink, textAlign:'center', margin:'0 0 18px', letterSpacing:'0.5px' }}>17th–18th December 2026</p>
-              <h2 className="gift-banner__h2">
-                Hurry Up To<br/><em>Book Your Concierge</em>
+              <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(24px,3.5vw,36px)', fontStyle:'italic', color:Y.goldLight, textAlign:'center', margin:'0 0 16px' }}>17th–18th December 2026</p>
+              <h2 style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(32px,5vw,52px)', lineHeight:1.1, color:'#fff', fontWeight:400, margin:'16px 0 32px' }}>
+                Hurry Up To<br/><span style={{ fontStyle:'italic' }}>Book Your Concierge</span>
               </h2>
               {cd.ready&&(
-                <div className="countdown" style={{ marginBottom:36 }}>
-                  {[{v:cd.d,l:'Days'},{v:cd.h,l:'Hours'},{v:cd.m,l:'Mins'},{v:cd.s,l:'Secs'}].map(({v,l},i)=>(
-                    <div key={l} style={{ display:'flex', alignItems:'flex-start', gap:16 }}>
-                      <div className="countdown-unit">
-                        <span className="countdown-num">{String(v).padStart(2,'0')}</span>
-                        <span className="countdown-label">{l}</span>
-                      </div>
-                      {i<3&&<span className="countdown-sep">:</span>}
-                    </div>
-                  ))}
+                <div style={{ display:'flex', gap:20, justifyContent:'center', marginBottom:36, flexWrap:'wrap' }}>
+                  <CountdownBlock v={cd.d} l="Days" light/>
+                  <CountdownBlock v={cd.h} l="Hours" light/>
+                  <CountdownBlock v={cd.m} l="Mins" light/>
+                  <CountdownBlock v={cd.s} l="Secs" light/>
                 </div>
               )}
-              <button onClick={()=>document.getElementById('book')?.scrollIntoView({behavior:'smooth'})}
-                style={{ fontFamily:'Montserrat,sans-serif', fontWeight:600, fontSize:12, textTransform:'uppercase', letterSpacing:'0.8px', background:J.pink, color:'#fff', border:'none', padding:'16px 40px', cursor:'pointer', transition:'background 0.2s' }}
-                onMouseEnter={e=>(e.currentTarget.style.background=J.pinkDark)}
-                onMouseLeave={e=>(e.currentTarget.style.background=J.pink)}>
+              <PillButton onClick={()=>document.getElementById('book')?.scrollIntoView({behavior:'smooth'})} variant="gold">
                 Book Your Concierge
-              </button>
+              </PillButton>
             </Reveal>
           </div>
         </div>
@@ -1117,41 +932,39 @@ export default function Y2KPage() {
       {/* ════════════════════════════════════════════════════ */}
       {/* FOOTER                                              */}
       {/* ════════════════════════════════════════════════════ */}
-      <footer className="footer">
-        <div className="footer__bg" style={{ backgroundImage:'url(https://images.unsplash.com/photo-1587271339318-2e78e2466a09?w=1920&q=80&auto=format&fit=crop)' }}/>
-        <div className="footer__overlay"/>
-        <div className="footer__inner">
+      <footer style={{ background:Y.darkerGreen, color:Y.beige, padding:'clamp(64px,10vw,100px) clamp(20px,5vw,56px) 40px', textAlign:'center' }}>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/images/bagdrop-logo.png" alt="Bagdrop" style={{ display:'block', margin:'0 auto 32px', height:'clamp(48px,8vw,64px)', width:'auto', filter:'brightness(0) invert(1)', opacity:0.92 }}/>
+        <div style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(36px,7vw,68px)', lineHeight:1, display:'flex', alignItems:'center', justifyContent:'center', gap:18, flexWrap:'wrap' }}>
+          <span style={{ fontStyle:'italic' }}>Yashna</span>
+          <span style={{ width:8, height:8, borderRadius:'50%', background:Y.gold }}/>
+          <span style={{ fontStyle:'italic' }}>Yash</span>
+        </div>
+        <p style={{ fontFamily:FONT_BODY, fontSize:12, letterSpacing:'0.3em', textTransform:'uppercase', margin:'22px 0 0', color:'rgba(237,229,214,0.7)' }}>17 &amp; 18 December 2026 · Udaipur</p>
+        <p style={{ fontFamily:FONT_BODY, fontSize:14, letterSpacing:'0.2em', textTransform:'uppercase', margin:'8px 0 0', color:Y.gold }}>#Y2K</p>
+
+        <div className="footer-grid" style={{ marginTop:56, paddingTop:36, borderTop:'1px solid rgba(237,229,214,0.12)', display:'grid', gridTemplateColumns:'1fr 1fr 1fr', gap:32, textAlign:'left', maxWidth:1000, marginLeft:'auto', marginRight:'auto' }}>
           <div>
-            <span className="footer__logo">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src="/images/bagdrop-logo.png" alt="Bagdrop" />
-            </span>
-            <p className="footer__text" style={{ marginBottom:24 }}>India&apos;s Premium Wedding Luggage Concierge. Serving guests at destination weddings across India.</p>
-            <p className="footer__label">Write To Us</p>
-            <a href="mailto:info@bagdrop.co" className="footer__link" style={{ fontSize:15, fontWeight:700, color:J.pinkDark }}>info@bagdrop.co</a>
+            <p style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.14em', color:Y.gold, margin:'0 0 12px' }}>Reach Us</p>
+            <a href="tel:+916357115711" style={{ display:'block', fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.8)', textDecoration:'none', marginBottom:6 }}>+91 63571 15711</a>
+            <a href="mailto:info@bagdrop.co" style={{ display:'block', fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.8)', textDecoration:'none' }}>info@bagdrop.co</a>
           </div>
           <div>
-            <p className="footer__label">Reach Us</p>
-            <a href="tel:+916357115711" className="footer__link">+91 63571 15711</a>
-            <a href="mailto:info@bagdrop.co" className="footer__link">info@bagdrop.co</a>
-            <p className="footer__text" style={{ marginBottom:24 }}>Mumbai · Delhi · Ahmedabad · Udaipur · Goa · Bangalore</p>
-            <p className="footer__label">Follow Us</p>
-            <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-              <a href="https://www.instagram.com/bagdropofficial" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>Instagram</a>
-              <a href="https://wa.me/916357115711" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>WhatsApp</a>
-              <a href="https://www.facebook.com/profile.php?id=61579334791456" target="_blank" rel="noopener noreferrer" className="footer__link" style={{ marginBottom:0 }}>Facebook</a>
+            <p style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.14em', color:Y.gold, margin:'0 0 12px' }}>Coverage</p>
+            <p style={{ fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.65)', lineHeight:1.8, margin:0 }}>Mumbai · Delhi · Ahmedabad<br/>Udaipur · Goa · Bangalore</p>
+          </div>
+          <div>
+            <p style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.14em', color:Y.gold, margin:'0 0 12px' }}>Follow Us</p>
+            <div className="footer-social" style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
+              <a href="https://www.instagram.com/bagdropofficial" target="_blank" rel="noopener noreferrer" style={{ fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.8)', textDecoration:'none' }}>Instagram</a>
+              <a href="https://wa.me/916357115711" target="_blank" rel="noopener noreferrer" style={{ fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.8)', textDecoration:'none' }}>WhatsApp</a>
+              <a href="https://www.facebook.com/profile.php?id=61579334791456" target="_blank" rel="noopener noreferrer" style={{ fontFamily:FONT_BODY, fontSize:14, color:'rgba(237,229,214,0.8)', textDecoration:'none' }}>Facebook</a>
             </div>
           </div>
-          <div>
-            <p className="footer__label">#Y2K Wedding</p>
-            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:36, color:J.pinkDark, margin:'0 0 8px', lineHeight:1 }}>Yashna &amp; Yash</p>
-            <p className="footer__text" style={{ marginBottom:16 }}>17th–18th December 2026<br/>Taj Aravali, Udaipur</p>
-            <p style={{ fontFamily:'Sulphur Point,sans-serif', fontSize:28, color:J.pinkDark, margin:'0 0 4px' }}>#Y2K</p>
-            <p style={{ fontSize:11, fontWeight:600, color:'rgba(14,6,8,0.45)', textTransform:'uppercase', letterSpacing:'1px' }}>Official Wedding Hashtag</p>
-          </div>
         </div>
-        <div className="footer__bottom">
-          <p className="footer__copy">© 2026 <a href="/">Bagdrop</a> · India&apos;s Premium Wedding Luggage Concierge · <a href="/privacy">Privacy Policy</a></p>
+
+        <div style={{ marginTop:36, paddingTop:24, borderTop:'1px solid rgba(237,229,214,0.1)', fontFamily:FONT_BODY, fontSize:12, color:'rgba(237,229,214,0.45)' }}>
+          © 2026 <a href="/" style={{ color:'inherit' }}>Bagdrop</a> · India&apos;s Premium Wedding Luggage Concierge · <a href="/privacy" style={{ color:'inherit' }}>Privacy Policy</a>
         </div>
       </footer>
 

@@ -155,15 +155,24 @@ const s = StyleSheet.create({
   ftLeft:    { flex: 1 },
   ftCo:      { color: '#fff', fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
   ftLine:    { color: 'rgba(255,255,255,0.75)', fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
-  ftRight:   { alignItems: 'center', width: 120 },
+  // Widened 120->170 — narrower than this clipped "For Bagdrop Logistics
+  // Solutions Pvt. Ltd." (sigSub, below) onto two lines / made it overflow
+  // sigLine's width. alignItems:'center' centers every child (image, the
+  // bordered line, both text lines) on the same vertical axis regardless of
+  // each child's own width, so widening this is enough on its own to keep
+  // everything centered together — no per-child margin math needed.
+  ftRight:   { alignItems: 'center', width: 170 },
   // Signature/stamp image sits above the sigLine's border-top rule, same
   // spot a wet-ink signature would go on a printed copy. Square source
-  // (1024x1024) scaled down to fit the 110pt-wide signature block without
-  // overflowing the dark footer band's fixed height — object-fit-style
-  // 'contain' isn't a react-pdf Image prop, so width+height are set
-  // explicitly and the aspect ratio (1:1) is preserved by construction.
+  // (1024x1024) scaled down to fit the signature block without overflowing
+  // the dark footer band's fixed height — object-fit-style 'contain' isn't
+  // a react-pdf Image prop, so width+height are set explicitly and the
+  // aspect ratio (1:1) is preserved by construction.
   sigImage:  { width: 46, height: 46, marginBottom: 2 },
-  sigLine:   { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)', paddingTop: 4, width: 110, textAlign: 'center' },
+  // Widened 110->150 to actually span the width of "For Bagdrop Logistics
+  // Solutions Pvt. Ltd." (sigSub) beneath it, instead of reading narrower
+  // than the text it's meant to underline.
+  sigLine:   { borderTopWidth: 1, borderTopColor: 'rgba(255,255,255,0.5)', paddingTop: 4, width: 150, textAlign: 'center' },
   sigText:   { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
   sigSub:    { color: 'rgba(255,255,255,0.75)', fontSize: 7, marginTop: 1 },
 })

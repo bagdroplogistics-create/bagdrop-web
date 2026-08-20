@@ -192,8 +192,12 @@ export function buildQuoteHtml(d: QuotePrintData): string {
   .footer { display: flex; justify-content: space-between; align-items: flex-end; border-top: 1px solid #e5e7eb; margin-top: 20px; padding-top: 14px; }
   .footerCompany { font-size: 10px; color: #4b5563; line-height: 1.6; }
   .footerCompany b { color: #111827; font-size: 11px; }
-  .signature { text-align: center; font-size: 10px; color: #4b5563; }
-  .signatureLine { border-top: 1px solid #9ca3af; width: 160px; margin-bottom: 4px; padding-top: 4px; }
+  /* width: max-content sizes this column to its widest line ("For Bagdrop
+     Logistics Solutions Pvt. Ltd."), so the signature image (centered via
+     margin auto) and .signatureLine (width 100%) both line up against that
+     same width instead of a fixed px guess narrower than the text. */
+  .signature { text-align: center; font-size: 10px; color: #4b5563; width: max-content; white-space: nowrap; }
+  .signatureLine { border-top: 1px solid #9ca3af; width: 100%; margin-bottom: 4px; padding-top: 4px; }
 
   @media print { body { padding: 0; } }
 </style>
