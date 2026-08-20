@@ -73,6 +73,14 @@ interface ExplicitItem {
   rate:         number
   tax_id?:      string
   hsn_or_sac?:  string
+  // Optional flat-amount override, sent only for the auto-populated "Upto
+  // 2 Bags" route-pricing row — the founder wants Qty to show the real bag
+  // count (1 or 2) without that quantity multiplying the flat "up to 2
+  // bags" price (founder instruction, 2026-08-20). When present, this
+  // exact value is used as the line's amount instead of quantity × rate;
+  // every other item (manual rows, per-extra-bag rows) omits it and prices
+  // exactly as before.
+  amount?:      number
 }
 
 interface LineItem {
@@ -131,7 +139,10 @@ function fromExplicit(items: ExplicitItem[]): LineItem[] {
     rate:        i.rate,
     tax_pct:     GST_PCT,
     hsn_or_sac:  i.hsn_or_sac ?? SAC_TRANSPORT,
-    amount:      i.quantity * i.rate,
+    // Respect an explicit flat-amount override when the frontend sends one
+    // (the "Upto 2 Bags" route-pricing row) — otherwise price exactly as
+    // before: quantity × rate. See ExplicitItem.amount doc comment above.
+    amount:      i.amount ?? i.quantity * i.rate,
   }))
 }
 

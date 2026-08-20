@@ -88,6 +88,19 @@ interface ExistingCustomer {
 interface LineItemRow {
   id: string; name: string; description: string
   qty: number; rate: number; taxId: string
+  // Optional flat-amount override. When set, this exact amount is used as
+  // the row's Amount (both on-screen and when saved/sent to the quote API)
+  // INSTEAD of qty × rate. Exists solely for the auto-populated "Upto 2
+  // Bags" route-pricing row: the founder wants Qty to visually reflect the
+  // real bag count (1 or 2) while the flat "up to 2 bags" price itself
+  // never gets multiplied by that quantity (founder instruction,
+  // 2026-08-20 — fixes a regression from the 2026-08-19 Qty-display
+  // change, which had started doubling the price for 2-bag quotes because
+  // Amount was always computed as qty × rate). Cleared automatically the
+  // moment the admin manually edits that row's Qty/Rate or picks a
+  // different catalog item, so manual edits behave like any normal line
+  // item (Amount = qty × rate) — this override is never user-facing.
+  amount?: number
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -356,18 +369,25 @@ function QuotePageInner() {
       // covered. `rate` (p.base_price!) is deliberately untouched per
       // founder instruction (2026-08-19) — the flat "up to 2 bags" price
       // itself is not being recalculated, only the displayed quantity.
-      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5,
+      // `amount` is pinned to the flat p.base_price! (not qty × rate) —
+      // see the LineItemRow.amount doc comment for why this exists.
+      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5, amount: p.base_price!,
     }]
     if (bags > 2) items.push({
       id: uid(), name: `Additional Bag(s) — ${from} → ${to}`,
       description: '',
+      // Per-extra-bag row — no amount override; multiplies normally.
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setReturnLineItems(items); returnItemsFromPricing.current = true
   }
 
   function updateReturnRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
-    setReturnLineItems(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+    setReturnLineItems(prev => prev.map(r => r.id === id
+      // Same override-clearing behavior as updateRow() above.
+      ? { ...r, [field]: value, ...(field === 'qty' || field === 'rate' ? { amount: undefined } : {}) }
+      : r
+    ))
     returnItemsFromPricing.current = false
   }
   function addReturnRow() { setReturnLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
@@ -601,11 +621,15 @@ function QuotePageInner() {
       // covered. `rate` (p.base_price!) is deliberately untouched per
       // founder instruction (2026-08-19) — the flat "up to 2 bags" price
       // itself is not being recalculated, only the displayed quantity.
-      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5,
+      // `amount` is pinned to the flat p.base_price! (not qty × rate) —
+      // see the LineItemRow.amount doc comment above for why this exists.
+      qty: Math.min(bags, 2), rate: p.base_price!, taxId: TAX_GST5, amount: p.base_price!,
     }]
     if (bags > 2) items.push({
       id: uid(), name: `Additional Bag(s) — ${from} → ${to}`,
       description: '',
+      // Per-extra-bag row — no amount override; each additional bag really
+      // does cost qty × per_bag_rate, so it multiplies normally.
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setLineItems(items); itemsFromPricing.current = true
@@ -637,7 +661,13 @@ function QuotePageInner() {
   function addRow() { setLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
   function removeRow(id: string) { setLineItems(prev => prev.filter(r => r.id !== id)) }
   function updateRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
-    setLineItems(prev => prev.map(r => r.id === id ? { ...r, [field]: value } : r))
+    setLineItems(prev => prev.map(r => r.id === id
+      // Manually touching Qty or Rate takes the row out of "flat amount"
+      // mode — clear the override so Amount goes back to the normal
+      // qty × rate (matches every other, non-auto-populated row).
+      ? { ...r, [field]: value, ...(field === 'qty' || field === 'rate' ? { amount: undefined } : {}) }
+      : r
+    ))
     itemsFromPricing.current = false
   }
   function resetItems() {
@@ -650,7 +680,10 @@ function QuotePageInner() {
   function selectItem(rowId: string, item: BagdropItem) {
     setLineItems(prev => prev.map(r =>
       r.id === rowId
-        ? { ...r, name: item.name, description: item.description ?? '', rate: item.rate }
+        // Picking a catalog item replaces the rate entirely, so any flat
+        // "up to 2 bags" amount override no longer applies — clear it,
+        // same as a manual Qty/Rate edit (see updateRow above).
+        ? { ...r, name: item.name, description: item.description ?? '', rate: item.rate, amount: undefined }
         : r
     ))
     itemsFromPricing.current = false
@@ -661,7 +694,7 @@ function QuotePageInner() {
   const [discountFixed,  setDiscountFixed]  = useState(0)
   const [paymentStatus,  setPaymentStatus]  = useState<'pending' | 'received'>('pending')
 
-  const subtotal    = lineItems.reduce((s, r) => s + r.qty * r.rate, 0)
+  const subtotal    = lineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
   const discountAmt = discountType === 'fixed'
     ? Math.min(Math.max(0, discountFixed), subtotal)
     : parseFloat((subtotal * discountPct / 100).toFixed(2))
@@ -670,7 +703,7 @@ function QuotePageInner() {
   const total       = taxableAmt + taxAmt
 
   // Return journey totals — no discount in this phase, kept simple
-  const returnSubtotal = returnLineItems.reduce((s, r) => s + r.qty * r.rate, 0)
+  const returnSubtotal = returnLineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
   const returnTaxAmt   = returnSubtotal * 0.05
   const returnTotal    = returnSubtotal + returnTaxAmt
 
@@ -687,7 +720,7 @@ function QuotePageInner() {
     const quotePayload = hasQuote ? {
       quote_line_items: validItems.map(r => ({
         name: r.name, description: r.description, quantity: r.qty, rate: r.rate,
-        tax_pct: 5, hsn_or_sac: SAC_CODE, amount: r.qty * r.rate,
+        tax_pct: 5, hsn_or_sac: SAC_CODE, amount: r.amount ?? r.qty * r.rate,
       })),
       quote_subtotal:     subtotal,
       quote_discount_pct: (discountType === 'pct'   && discountPct   > 0) ? discountPct   : null,
@@ -808,7 +841,11 @@ function QuotePageInner() {
       bags_count:          Number(bagsCount) || undefined,
       pickup_address:      pickupAddr.trim(),
       salesperson_name:    salesperson || undefined,
-      explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
+      // amount: only included when this row has a flat-amount override
+      // (the "Upto 2 Bags" route-pricing row) — the server respects it
+      // instead of recomputing quantity × rate. Every other row omits it
+      // and prices exactly as before.
+      explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
       send_email: sendEmail,
       // Never true here — is_return_quote: true is only ever sent from the
       // dedicated returnPayload block below, for the return leg itself.
@@ -885,7 +922,8 @@ function QuotePageInner() {
         bags_count:          Number(returnBagsCount) || undefined,
         pickup_address:      returnPickupAddr.trim() || undefined,
         drop_address:        returnDropAddr.trim()   || undefined,
-        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE })),
+        // See onward explicit_line_items above for why `amount` is included.
+        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
         // Don't re-send the quote email for the return leg — if sendEmail
         // was on, the customer already got the onward quote email above.
         send_email: false,
@@ -1484,7 +1522,7 @@ function QuotePageInner() {
                           <option value={TAX_GST5}>GST 5%</option>
                         </select>
                       </td>
-                      <td className="py-1.5 px-2 text-right text-sm font-medium text-gray-800">{(row.qty * row.rate).toLocaleString('en-IN')}</td>
+                      <td className="py-1.5 px-2 text-right text-sm font-medium text-gray-800">{(row.amount ?? row.qty * row.rate).toLocaleString('en-IN')}</td>
                       <td className="py-1.5 pl-2">
                         <button onClick={() => removeRow(row.id)} className="mt-1.5 text-gray-300 opacity-0 group-hover:opacity-100 hover:text-red-500 transition-all">
                           <Trash2 className="h-3.5 w-3.5" />
@@ -1667,7 +1705,7 @@ function QuotePageInner() {
                           <input type="number" min="0" value={row.rate} onChange={e => updateReturnRow(row.id, 'rate', Number(e.target.value))}
                             className="w-full rounded border border-gray-200 px-2 py-1 text-right text-sm focus:border-purple-300 focus:outline-none" />
                         </td>
-                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{(row.qty * row.rate).toLocaleString('en-IN')}</td>
+                        <td className="py-1.5 px-2 text-right font-semibold text-gray-700">{(row.amount ?? row.qty * row.rate).toLocaleString('en-IN')}</td>
                         <td className="py-1.5 pl-2">
                           <button type="button" onClick={() => removeReturnRow(row.id)} className="text-gray-300 hover:text-red-500">
                             <Trash2 className="h-3.5 w-3.5" />

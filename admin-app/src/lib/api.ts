@@ -327,6 +327,11 @@ export interface QuoteLineItemInput {
   quantity: number
   rate: number
   hsn_or_sac?: string
+  // Optional flat-amount override — only sent for the auto-populated
+  // "Upto 2 Bags" route-pricing row, so the server uses this exact amount
+  // instead of quantity × rate. See app/api/admin/zoho/generate-quote's
+  // ExplicitItem.amount doc comment for the full rationale.
+  amount?: number
 }
 
 export interface SavedQuoteLineItem {

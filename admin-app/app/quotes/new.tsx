@@ -31,7 +31,16 @@ import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/shared/forma
 let _rowId = 0
 const uid = () => `row_${++_rowId}_${Date.now()}`
 
-interface Row { id: string; name: string; description: string; qty: string; rate: string }
+interface Row {
+  id: string; name: string; description: string; qty: string; rate: string
+  // Optional flat-amount override — mirrors the website's quote form.
+  // Set only on the auto-populated "Upto 2 Bags" route-pricing row so Qty
+  // can show the real bag count (1 or 2) without that quantity
+  // multiplying the flat "up to 2 bags" price (founder instruction,
+  // 2026-08-20). Cleared the moment the admin manually edits that row's
+  // Qty/Rate, same as on the web admin panel.
+  amount?: number
+}
 
 function emptyRow(): Row {
   return { id: uid(), name: '', description: '', qty: '1', rate: '0' }
@@ -226,6 +235,9 @@ export default function NewQuote() {
           description: '',
           qty: String(Math.min(bags, 2)),
           rate: String(p.base_price),
+          // Amount pinned to the flat p.base_price (not qty × rate) —
+          // see the Row.amount doc comment above for why this exists.
+          amount: p.base_price,
         }]
         if (bags > 2) {
           items.push({
@@ -253,7 +265,13 @@ export default function NewQuote() {
   }, [adminKey, fromCity, toCity, bagsCount, applyRoutePricing])
 
   function updateRow(id: string, field: keyof Omit<Row, 'id'>, value: string) {
-    setRows(prev => prev.map(r => (r.id === id ? { ...r, [field]: value } : r)))
+    setRows(prev => prev.map(r => r.id === id
+      // Manually touching Qty or Rate takes the row out of "flat amount"
+      // mode — clear the override so Amount goes back to normal qty ×
+      // rate (matches every other, non-auto-populated row).
+      ? { ...r, [field]: value, ...(field === 'qty' || field === 'rate' ? { amount: undefined } : {}) }
+      : r
+    ))
     // Once the admin touches a row, lock the item table so future route
     // (location/bags) changes never silently overwrite their edits.
     itemsFromPricing.current = true
@@ -261,7 +279,7 @@ export default function NewQuote() {
   function addRow() { setRows(prev => [...prev, emptyRow()]); itemsFromPricing.current = true }
   function removeRow(id: string) { setRows(prev => prev.filter(r => r.id !== id)); itemsFromPricing.current = true }
 
-  const subtotal = rows.reduce((s, r) => s + (Number(r.qty) || 0) * (Number(r.rate) || 0), 0)
+  const subtotal = rows.reduce((s, r) => s + (r.amount ?? (Number(r.qty) || 0) * (Number(r.rate) || 0)), 0)
   const discountAmt = discountType === 'fixed'
     ? Math.min(Math.max(0, Number(discountFixed) || 0), subtotal)
     : parseFloat((subtotal * (Number(discountPct) || 0) / 100).toFixed(2))
@@ -335,6 +353,10 @@ export default function NewQuote() {
         quantity: Number(r.qty) || 1,
         rate: Number(r.rate) || 0,
         hsn_or_sac: SAC_CODE,
+        // Only set for the "Upto 2 Bags" route-pricing row — the server
+        // respects it instead of recomputing quantity × rate. Every other
+        // row omits it and prices exactly as before.
+        amount: r.amount,
       }))
 
       const payload = {
@@ -435,7 +457,7 @@ export default function NewQuote() {
         rate: Number(r.rate) || 0,
         tax_pct: 5,
         hsn_or_sac: SAC_CODE,
-        amount: (Number(r.qty) || 1) * (Number(r.rate) || 0),
+        amount: r.amount ?? (Number(r.qty) || 1) * (Number(r.rate) || 0),
       }))
       await updateLeadQuote(adminKey, lead.id, {
         quote_line_items: savedItems,
@@ -648,7 +670,7 @@ export default function NewQuote() {
                   <TextField label="Rate (₹)" value={row.rate} onChangeText={v => updateRow(row.id, 'rate', v)} keyboardType="decimal-pad" />
                 </View>
               </View>
-              <Text style={styles.rowAmount}>Amount: {rupees((Number(row.qty) || 0) * (Number(row.rate) || 0))}</Text>
+              <Text style={styles.rowAmount}>Amount: {rupees(row.amount ?? (Number(row.qty) || 0) * (Number(row.rate) || 0))}</Text>
             </View>
             <Pressable onPress={() => removeRow(row.id)} style={{ padding: 6 }}>
               <Ionicons name="trash-outline" size={18} color={colors.textMuted} />
