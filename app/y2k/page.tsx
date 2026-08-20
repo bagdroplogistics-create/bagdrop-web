@@ -70,12 +70,14 @@ const IMG_CELEBRATION = '/images/y2k-couple.jpeg'             // "editorial coup
 const IMG_DESTINATION = '/images/y2k-taj-aravali-dusk.webp'   // "wide Udaipur / Taj Aravali landscape" — the actual resort at dusk
 const IMG_TRAVEL      = '/images/y2k-bagdrop-luggage.webp'    // "Bagdrop luggage-delivery image" — bellman with tagged bags
 const IMG_INFO_BG     = '/images/y2k-mountains-mist.webp'     // "soft Aravalli mountain image, misty ridgelines"
-// bagdrop-logo.png is the square icon-only mark (was showing as a tiny "B"
-// badge in the nav, not a proper logo lockup). logo-horizontal.png is the
-// real icon+wordmark lockup — inverted to white via CSS filter for use on
-// dark backgrounds (nav when not scrolled, footer), same technique as
-// before, just pointed at the correct asset.
-const IMG_LOGO        = '/images/logo-horizontal.png'
+// Stacked/vertical lockup (icon on top, BAGDROP wordmark + tagline below)
+// — this is the mark used in the approved HTML design reference, not the
+// side-by-side horizontal lockup. Same file already in the repo as
+// public/logo-white.png. Inverted to white via CSS filter for use on dark
+// backgrounds (nav when not scrolled, footer) — brightness(0) invert(1)
+// forces a white silhouette regardless of source color, so this works the
+// same way regardless of which logo file is used here.
+const IMG_LOGO        = '/logo-white.png'
 
 const NOISE_BG =
   "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"
@@ -127,8 +129,30 @@ function useReveal() {
 function Reveal({ children }: { children: React.ReactNode }) {
   const { ref, vis } = useReveal()
   return (
-    <div ref={ref} style={{ opacity: vis ? 1 : 0, transform: vis ? 'translateY(0)' : 'translateY(28px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
+    <div ref={ref} style={{ height:'100%', opacity: vis ? 1 : 0, transform: vis ? 'translateY(0)' : 'translateY(28px)', transition: 'opacity 0.6s ease, transform 0.6s ease' }}>
       {children}
+    </div>
+  )
+}
+
+// Countdown is isolated in its own component, with its own 1-second
+// setInterval tick living here instead of in the page component. If the
+// ticking state lived in Y2KPage itself, every field on the entire
+// ~700-line page (every heading, button, card) would get a brand-new
+// inline style object and re-render once per second — on the live site
+// this showed up as a continuous, page-wide flicker/jitter in the text.
+// Keeping the tick local means only these 4 numbers re-render each
+// second; the rest of the page renders once and stays still.
+function Countdown({ target }: { target: Date }) {
+  const cd = useCountdown(target)
+  return (
+    <div style={{ display:'flex', gap:'clamp(20px,6vw,52px)', marginTop:48 }}>
+      {[['Days',cd.d],['Hours',cd.h],['Minutes',cd.m],['Seconds',cd.s]].map(([l,v])=>(
+        <div key={l} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
+          <span style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(34px,7vw,56px)', lineHeight:1, color:Y.goldLight }}>{v}</span>
+          <span style={{ fontFamily:FONT_BODY, fontSize:10, letterSpacing:'0.24em', textTransform:'uppercase', opacity:0.8 }}>{l}</span>
+        </div>
+      ))}
     </div>
   )
 }
@@ -151,7 +175,6 @@ function FloatSVG({ dur, del, r, style, stroke, opacity, big }: { dur: string; d
 // PAGE
 // ─────────────────────────────────────────────────────────────
 export default function Y2KPage() {
-  const cd = useCountdown(WEDDING_DATE)
   const [scrolled, setScrolled] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -352,14 +375,7 @@ export default function Y2KPage() {
             <span style={{ width:28, height:1, background:'rgba(232,206,154,0.6)' }}/>
           </div>
 
-          <div style={{ display:'flex', gap:'clamp(20px,6vw,52px)', marginTop:48 }}>
-            {[['Days',cd.d],['Hours',cd.h],['Minutes',cd.m],['Seconds',cd.s]].map(([l,v])=>(
-              <div key={l} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:8 }}>
-                <span style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(34px,7vw,56px)', lineHeight:1, color:Y.goldLight }}>{v}</span>
-                <span style={{ fontFamily:FONT_BODY, fontSize:10, letterSpacing:'0.24em', textTransform:'uppercase', opacity:0.8 }}>{l}</span>
-              </div>
-            ))}
-          </div>
+          <Countdown target={WEDDING_DATE} />
         </div>
       </header>
 
@@ -650,7 +666,7 @@ export default function Y2KPage() {
               { label:'Good to know',  title:'Dress & weather',   body:'Mountain evenings, ~12°C.\nElegant, warm, and comfortable shoes.' },
             ].map(c=>(
               <Reveal key={c.label}>
-                <div className="wd-float-card" style={{ background:Y.creamCard, borderRadius:20, padding:34, border:`1px solid ${Y.border}` }}>
+                <div className="wd-float-card" style={{ height:'100%', boxSizing:'border-box', display:'flex', flexDirection:'column', background:Y.creamCard, borderRadius:20, padding:34, border:`1px solid ${Y.border}` }}>
                   <Eyebrow>{c.label}</Eyebrow>
                   <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:28, margin:'12px 0 6px', color:Y.textDark }}>{c.title}</h3>
                   <p style={{ fontFamily:FONT_BODY, fontSize:14.5, lineHeight:1.7, color:Y.textBody, margin:0, whiteSpace:'pre-line' }}>{c.body}</p>
