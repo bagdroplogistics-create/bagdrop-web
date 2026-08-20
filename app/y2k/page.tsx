@@ -63,13 +63,13 @@ const FONT_DISPLAY = "'Cormorant Garamond', var(--font-cormorant), serif"
 const FONT_BODY    = "'Inter', sans-serif"
 
 // ── Imagery — the design reference used blank "drop an image here"
-// placeholders; these map each placeholder to the closest existing
-// Y2K asset already in /public/images. ────────────────────────────
-const IMG_HERO        = '/images/wedding-slide.jpg'      // "misty Aravalli mountains at golden hour"
-const IMG_CELEBRATION = '/images/wedding-slide1.jpg'     // "editorial couple / candid moment"
-const IMG_DESTINATION = '/images/y2k-palace.jpg'          // "wide Udaipur / Taj Aravali landscape"
-const IMG_TRAVEL      = '/images/wedding-slide2.jpg'      // "Bagdrop luggage-delivery image"
-const IMG_INFO_BG     = '/images/y2k-palace.jpg'          // "soft Aravalli mountain image"
+// placeholders; these are the real photos supplied by the founder for
+// each section (2026-08-20). ────────────────────────────────────────
+const IMG_HERO        = '/images/y2k-hero-mountains.webp'    // "misty Aravalli mountains at golden hour"
+const IMG_CELEBRATION = '/images/y2k-couple.jpeg'             // "editorial couple / candid moment" — Yashna & Yash
+const IMG_DESTINATION = '/images/y2k-taj-aravali-dusk.webp'   // "wide Udaipur / Taj Aravali landscape" — the actual resort at dusk
+const IMG_TRAVEL      = '/images/y2k-bagdrop-luggage.webp'    // "Bagdrop luggage-delivery image" — bellman with tagged bags
+const IMG_INFO_BG     = '/images/y2k-mountains-mist.webp'     // "soft Aravalli mountain image, misty ridgelines"
 const IMG_LOGO        = '/images/bagdrop-logo.png'
 
 const NOISE_BG =
