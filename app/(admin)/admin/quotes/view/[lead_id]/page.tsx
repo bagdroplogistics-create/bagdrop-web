@@ -13,6 +13,7 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
 import { fmtTimeLabel } from '@/lib/time-options'
+import PaymentFollowUpPanel from '@/components/admin/PaymentFollowUpPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -871,7 +872,10 @@ export default function QuoteViewPage() {
         `Ref: ${booking.tracking_id}`,
         `Reply with screenshot once paid. — Bagdrop`,
       ].join('\n')
-      window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+      // web.whatsapp.com/send goes straight to the WhatsApp Web chat with
+      // the message drafted — wa.me bounces through an api.whatsapp.com
+      // landing page on desktop browsers first.
+      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
     }
   }
 
@@ -1913,9 +1917,12 @@ export default function QuoteViewPage() {
                             '',
                             '— Team Bagdrop',
                           ].join('\n')
-                          // Mark as sent, then open WhatsApp
+                          // Mark as sent, then open WhatsApp Web directly
+                          // (web.whatsapp.com/send skips the
+                          // api.whatsapp.com landing page that wa.me shows
+                          // on desktop browsers).
                           patchBooking('send_quote', { status: 'quote_sent' }).then(() => {
-                            window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+                            window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
                           })
                         }}
                         disabled={!!acting}
@@ -2580,6 +2587,37 @@ export default function QuoteViewPage() {
                   )}
                   {!!booking.total_amount && (
                     <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
+                  )}
+                  {/* Payment Follow Up — manual outstanding-payment reminder,
+                      separate from the booking workflow. Availability is
+                      driven purely by outstandingAmount > 0 — deliberately
+                      NOT gated on booking.status, so it stays available for
+                      Completed/Delivered bookings with a balance still due
+                      (reference/partner clients especially). Disappears the
+                      moment the balance reaches ₹0 (see the outstandingAmount
+                      gate here and the defensive re-check inside the
+                      component itself). */}
+                  {outstandingAmount > 0 && (
+                    <span className="inline-flex items-center">
+                      <PaymentFollowUpPanel
+                        adminKey={key}
+                        compact
+                        target={{
+                          bookingId: booking.id,
+                          refLabel: booking.tracking_id,
+                          title: lead.title,
+                          name: lead.name,
+                          phone: booking.customer_phone,
+                          email: booking.customer_email,
+                          pickupLocation: lead.pickup_address || lead.from_city,
+                          deliveryLocation: lead.drop_address || lead.to_city,
+                          invoiceNumber: invoice?.invoice_number ?? null,
+                          totalAmount: Number(booking.total_amount) || 0,
+                          paidAmount: paidTotal,
+                          outstandingAmount,
+                        }}
+                      />
+                    </span>
                   )}
                   {booking.payment_status && !editingPaymentStatus && (() => {
                     const pm = PAYMENT_STATUS_LABELS[booking.payment_status] ?? { label: booking.payment_status, color: 'text-gray-700' }

@@ -45,3 +45,11 @@ export const INVOICE_BANK = {
   branch:      'Gotri Road, Vadodara',
   upi:         'BAGDROP1717@IOB',
 } as const
+
+// The one approved company payment QR (same static asset already used by
+// lib/lifecycle-notifications.ts's WhatsApp payment-reminder template).
+// Deliberately a single shared, fixed image — NOT regenerated per booking
+// or per reminder — per the Payment Follow Up feature spec ("Do not create
+// a new QR code for every reminder"). Encodes INVOICE_BANK.upi with no
+// amount, so it's valid to reuse across every outstanding-payment amount.
+export const PAYMENT_QR_IMAGE_URL = 'https://www.bagdrop.co/bagdrop_upi_qr.png'

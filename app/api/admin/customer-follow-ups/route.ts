@@ -23,6 +23,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendEmail } from '@/lib/email'
+import { PAYMENT_QR_IMAGE_URL } from '@/lib/company-info'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -61,13 +62,20 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid request body' }, { status: 400 })
   }
 
-  const { booking_id, method, message, subject, initiated_by } = body as {
+  const { booking_id, method, message, subject, initiated_by, follow_up_type, outstanding_amount } = body as {
     booking_id?: string
     method?: 'whatsapp' | 'email'
     message?: string
     subject?: string
     initiated_by?: string | null
+    // Payment Follow Up (separate from the general "quote not responded"
+    // follow-up) — see supabase/migrations/20260821_customer_follow_ups_payment_type.sql.
+    // Defaults to 'general' so the existing FollowUpPanel call sites don't
+    // need to change.
+    follow_up_type?: 'general' | 'payment'
+    outstanding_amount?: number | null
   }
+  const followUpType = follow_up_type === 'payment' ? 'payment' : 'general'
 
   if (!booking_id || (method !== 'whatsapp' && method !== 'email')) {
     return NextResponse.json({ error: 'booking_id and a valid method (whatsapp/email) are required' }, { status: 400 })
@@ -105,7 +113,14 @@ export async function POST(req: NextRequest) {
     // personal-sounding nudge (not one of the branded transactional
     // templates in lib/email.ts), so it deliberately stays simple rather
     // than reusing the branded header/footer templates those use.
-    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;max-width:560px">${escapeHtml(message)}</div>`
+    // Payment Follow Up emails additionally embed the one approved,
+    // fixed company payment QR image inline — same asset for every send,
+    // never regenerated per reminder or per amount (the QR only encodes
+    // the UPI ID, not an amount).
+    const qrBlock = followUpType === 'payment'
+      ? `<div style="margin-top:16px"><img src="${PAYMENT_QR_IMAGE_URL}" alt="Bagdrop Payment QR Code" width="180" height="180" style="display:block;border:1px solid #e5e7eb;border-radius:8px" /></div>`
+      : ''
+    const html = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#1f2937;white-space:pre-wrap;max-width:560px">${escapeHtml(message)}</div>${qrBlock}`
     const result = await sendEmail(booking.customer_email, subject.trim(), html, `follow-up:${booking.tracking_id}`)
     status = result.success ? 'sent' : 'failed'
     sendError = result.error ?? null
@@ -117,18 +132,29 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // follow_up_type/outstanding_amount only exist after
+  // 20260821_customer_follow_ups_payment_type.sql has been run. Only
+  // include them for a payment-type follow-up (the new feature) so the
+  // already-shipped general Follow Up keeps working unchanged even if
+  // that migration hasn't been applied yet.
+  const insertRow: Record<string, unknown> = {
+    booking_id: booking.id,
+    lead_id:    booking.lead_id ?? null,
+    method,
+    status,
+    subject:    method === 'email' ? subject!.trim() : null,
+    message,
+    initiated_by: initiated_by?.trim() || null,
+    error:      sendError,
+  }
+  if (followUpType === 'payment') {
+    insertRow.follow_up_type     = followUpType
+    insertRow.outstanding_amount = outstanding_amount ?? null
+  }
+
   const { data: row, error: insertErr } = await supabaseAdmin
     .from('customer_follow_ups')
-    .insert({
-      booking_id: booking.id,
-      lead_id:    booking.lead_id ?? null,
-      method,
-      status,
-      subject:    method === 'email' ? subject!.trim() : null,
-      message,
-      initiated_by: initiated_by?.trim() || null,
-      error:      sendError,
-    })
+    .insert(insertRow)
     .select()
     .single()
 

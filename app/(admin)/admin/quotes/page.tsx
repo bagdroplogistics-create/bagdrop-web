@@ -308,7 +308,10 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
         `📄 *Download your quote PDF:*\n${pdfUrl}\n\n` +
         `To confirm your booking, reply here or call +91 63571 15711.\n\n` +
         `_Bagdrop — Baggage Delivered. Journey Simplified._`
-      window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+      // web.whatsapp.com/send goes straight to the WhatsApp Web chat with
+      // the message drafted — wa.me bounces through an api.whatsapp.com
+      // landing page on desktop browsers first.
+      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
       setSending(null)
       setActionMsg('✓ WhatsApp opened — send the pre-filled message with PDF link to the customer.')
       onUpdated()
@@ -366,7 +369,10 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
       `Reference: ${quote.quote_number}\n\n` +
       `Once payment is done, reply with a screenshot and we will confirm your booking.\n\n` +
       `_Bagdrop — Baggage Delivered. Journey Simplified._`
-    window.open(`https://wa.me/${e164}?text=${encodeURIComponent(msg)}`, '_blank')
+    // web.whatsapp.com/send goes straight to the WhatsApp Web chat with
+    // the message drafted — wa.me bounces through an api.whatsapp.com
+    // landing page on desktop browsers first.
+    window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
     setSending(null)
     setActionMsg('✓ Payment request opened in WhatsApp — send to customer.')
   }

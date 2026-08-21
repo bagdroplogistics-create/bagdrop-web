@@ -777,7 +777,10 @@ function _QuotePaymentPanelLEGACY({ booking, adminKey, onUpdate }: {
       `Once payment is done, reply with a screenshot and we will confirm your booking.`, ``,
       `_Bagdrop — Baggage Delivered. Journey Simplified._`,
     ].join('\n')
-    window.open(`https://wa.me/${e164}?text=${encodeURIComponent(message)}`, '_blank')
+    // web.whatsapp.com/send (not wa.me) goes straight to the WhatsApp Web
+    // chat with the message drafted — wa.me bounces through an
+    // api.whatsapp.com landing page on desktop browsers first.
+    window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(message)}`, '_blank')
   }
 
   async function sendPaymentViaWhatsApp() {
