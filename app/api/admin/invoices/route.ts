@@ -362,7 +362,7 @@ export async function POST(req: NextRequest) {
 
   const { data: existingInv } = await supabaseAdmin
     .from('invoices')
-    .select('id, total_amount, invoice_number')
+    .select('id, total_amount, invoice_number, notes')
     .eq('booking_id', bookingId)
     .maybeSingle()
 
@@ -388,6 +388,24 @@ export async function POST(req: NextRequest) {
   // an already-saved invoice's stored po_number is untouched until that
   // invoice is regenerated.
   const poNumber = 'Aditya Shah'
+
+  // Mandatory rule (founder spec, 2026-08-21): Invoice Date = booking's
+  // Delivery Date — never the booking creation date, payment date, pickup
+  // date, or today's system date. Falls back to pickup_date, then today,
+  // ONLY if delivery_date is genuinely missing on this booking (some
+  // older/manually-created bookings never had one populated) — hard-
+  // blocking invoice generation entirely for those would be a bigger
+  // regression than a clearly-logged fallback. due_date always equals
+  // whatever invoice_date resolves to, matching this app's existing
+  // "Due on Receipt" terms (see InvoicePDF.tsx).
+  const invoiceDate = booking.delivery_date || booking.pickup_date || new Date().toISOString().split('T')[0]
+  if (!booking.delivery_date) {
+    console.warn(
+      `[invoices POST] booking ${bookingId} has no delivery_date — invoice_date fell back to ${
+        booking.pickup_date ? 'pickup_date' : "today's date"
+      }. Per spec, Invoice Date should equal Delivery Date.`
+    )
+  }
 
   const total = Number(booking.total_amount ?? 0)
   const gstin = booking.gst_number ?? lead?.gst_number ?? null
@@ -481,19 +499,24 @@ export async function POST(req: NextRequest) {
     payment_status:    booking.payment_status ?? 'pending',
     payment_method:    booking.payment_method ?? null,
     payment_reference: booking.payment_reference ?? null,
-    invoice_date:      new Date().toISOString().split('T')[0],
+    invoice_date:      invoiceDate,
     // Terms are always "Due on Receipt" (see InvoicePDF.tsx / buildPdfProps)
-    // — due date is the invoice date itself. Was previously omitted from
-    // this payload entirely, so every invoice's Due Date came back null;
-    // fixed here for new/re-generated invoices, and via a read-only
-    // fallback in GET /api/admin/invoices/[id] for already-existing rows.
-    due_date:          new Date().toISOString().split('T')[0],
+    // — due date is the invoice date itself, whatever that resolved to
+    // above (was previously always today's date, independently of
+    // invoice_date).
+    due_date:          invoiceDate,
     place_of_supply:   placeOfSupply,
     pickup_date:       booking.pickup_date ?? null,
     delivery_date:     booking.delivery_date ?? null,
     consignment_no:    consignmentNo,
     line_items:        lineItemsSnapshot,
     po_number:         poNumber,
+    // Optional admin remark — Booking Workflow's "Generate Invoice" step
+    // now has a Remark field (founder spec, 2026-08-21). Falls back to
+    // whatever was already saved on this invoice (existingInv.notes) when
+    // not explicitly re-provided, so re-generating/resending an invoice
+    // never silently wipes out a previously-entered remark.
+    notes:             body.notes?.trim() || body.remark?.trim() || existingInv?.notes || null,
   }
 
   if (existingInv) {

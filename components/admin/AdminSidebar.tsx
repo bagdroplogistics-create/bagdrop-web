@@ -10,6 +10,16 @@ import {
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
+// Founder spec, 2026-08-21: the CRM workflow group must appear in the
+// EXACT order Lead → Payment Received → LR → Tripsheet → Invoice, matching
+// the real booking pipeline (Lead → Payment Received → auto-create LR →
+// Tripsheet → Invoice → Completed). Hrefs are unchanged — this is a
+// reorder + relabel only, no functionality moved:
+//   Leads      (/admin/leads)      → "Lead"
+//   Payments   (/admin/payments)   → "Payment Received"
+//   LR / GC    (/admin/lrs)        → "LR"
+//   Trip Sheets(/admin/trip-sheets)→ "Tripsheet"
+//   Invoices   (/admin/invoices)   → "Invoice"
 const NAV = [
   {
     group: 'Operations',
@@ -18,20 +28,20 @@ const NAV = [
     ],
   },
   {
-    group: 'CRM',
+    group: 'Workflow',
     items: [
-      { label: 'Leads',      href: '/admin/leads',     icon: Users       },
-      { label: 'Invoices',   href: '/admin/invoices',  icon: Receipt     },
-      { label: 'Payments',   href: '/admin/payments',  icon: CreditCard  },
-      { label: 'Trip Sheets', href: '/admin/trip-sheets', icon: Truck    },
-      { label: 'Customers',  href: '/admin/customers', icon: UserCheck   },
+      { label: 'Lead',            href: '/admin/leads',      icon: Users      },
+      { label: 'Payment Received', href: '/admin/payments',  icon: CreditCard },
+      { label: 'LR',               href: '/admin/lrs',       icon: FileText   },
+      { label: 'Tripsheet',        href: '/admin/trip-sheets', icon: Truck    },
+      { label: 'Invoice',          href: '/admin/invoices',  icon: Receipt    },
     ],
   },
   {
     group: 'Analytics',
     items: [
+      { label: 'Customers',  href: '/admin/customers', icon: UserCheck   },
       { label: 'Operations Center', href: '/admin/reports/operations', icon: ClipboardList },
-      { label: 'LR / GC',    href: '/admin/lrs',       icon: FileText  },
       { label: 'Reports',    href: '/admin/reports',   icon: BarChart3 },
       { label: 'Settings',   href: '/admin/settings',  icon: Settings  },
     ],

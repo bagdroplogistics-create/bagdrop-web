@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   Receipt, Search, RefreshCw, ChevronDown, Eye,
   Download, Mail, MessageCircle, CheckCircle, Clock, FileText, Loader2,
-  X, ExternalLink, Plus,
+  X, ExternalLink, Plus, Pencil,
 } from 'lucide-react'
 import { formatCustomerName } from '@/lib/constants'
 import type { InvoicePDFLineItem, InvoicePDFProps } from './[id]/InvoicePDF'
@@ -146,6 +146,39 @@ function InvoiceDetailPanel({ invoiceId, adminKey, onClose }: { invoiceId: strin
   const [paymentsCount, setPaymentsCount] = useState<number | null>(null)
   const [pdfMods, setPdfMods]         = useState<PdfModules | null>(null)
 
+  // Remark (invoices.notes) — editable here since the PATCH API already
+  // supports a `notes` field (founder spec, 2026-08-21: Invoice Remark).
+  const [editingRemark, setEditingRemark] = useState(false)
+  const [remarkDraft,   setRemarkDraft]   = useState('')
+  const [savingRemark,  setSavingRemark]  = useState(false)
+
+  function startEditRemark() {
+    setRemarkDraft(invoice?.notes ?? '')
+    setEditingRemark(true)
+  }
+
+  async function saveRemark() {
+    if (!invoice) return
+    setSavingRemark(true)
+    try {
+      const res = await fetch(`/api/admin/invoices/${invoice.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ notes: remarkDraft.trim() || null }),
+      })
+      if (res.ok) {
+        setInvoice(prev => prev ? { ...prev, notes: remarkDraft.trim() || null } : prev)
+        setEditingRemark(false)
+      } else {
+        alert('Failed to save remark')
+      }
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setSavingRemark(false)
+    }
+  }
+
   useEffect(() => {
     Promise.all([import('@react-pdf/renderer'), import('./[id]/InvoicePDF')]).then(
       ([{ PDFViewer }, mod]) => setPdfMods({ PDFViewer, InvoicePDF: mod.default })
@@ -235,6 +268,44 @@ function InvoiceDetailPanel({ invoiceId, adminKey, onClose }: { invoiceId: strin
                   <p><span className="text-gray-500">Pickup Date: </span><span className="font-medium text-gray-800">{fmtDate(invoice.pickup_date ?? null)}</span></p>
                   <p><span className="text-gray-500">Delivery Date: </span><span className="font-medium text-gray-800">{fmtDate(invoice.delivery_date ?? null)}</span></p>
                 </div>
+              </div>
+
+              {/* Remark — invoices.notes. Optional, admin-editable field
+                  (founder spec, 2026-08-21). Also shows on the printed
+                  invoice PDF (InvoicePDF.tsx already renders `notes`). */}
+              <div className="rounded-lg border border-gray-200 bg-white p-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-sm font-bold text-gray-800">Remark</p>
+                  {!editingRemark && (
+                    <button onClick={startEditRemark}
+                      className="flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline">
+                      <Pencil className="h-3 w-3" /> {invoice.notes ? 'Edit' : 'Add remark'}
+                    </button>
+                  )}
+                </div>
+                {editingRemark ? (
+                  <div className="space-y-2">
+                    <textarea
+                      value={remarkDraft}
+                      onChange={e => setRemarkDraft(e.target.value)}
+                      rows={3}
+                      placeholder="Optional note shown on this invoice…"
+                      className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                    />
+                    <div className="flex items-center gap-2">
+                      <button onClick={saveRemark} disabled={savingRemark}
+                        className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                        {savingRemark ? 'Saving…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingRemark(false)} disabled={savingRemark}
+                        className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-700">{invoice.notes || <span className="text-gray-300">No remark added.</span>}</p>
+                )}
               </div>
 
               {/* Journal — the deterministic double-entry every invoice

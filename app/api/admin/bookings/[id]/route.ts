@@ -7,6 +7,7 @@ import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecy
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import { syncBookingReminders } from '@/lib/ops-reminders'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
+import { createOrGetLrForBooking } from '@/lib/lr-auto-create'
 import type { BookingStatus } from '@/lib/supabase'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 
@@ -404,6 +405,25 @@ export async function PATCH(
         autoCreateDraftQuote(id, existing).catch(err =>
           console.error('[booking patch] draft quote auto-create error:', err)
         )
+      }
+
+      // Auto-create an LR the moment a booking reaches Payment Received —
+      // founder spec 2026-08-21 (Lead → Payment Received → LR → Tripsheet
+      // → Invoice → Completed). Also fires on 'payment_approved', the
+      // VIP/Admin-Approve-Pay-Later bypass (adminApprovePayLater() /
+      // doAdminApprove() set this status DIRECTLY, never passing through
+      // literal 'payment_received' — skipping it here would silently
+      // leave every VIP booking without an LR). Idempotent by
+      // construction: createOrGetLrForBooking() returns the existing LR
+      // untouched if one already exists for this booking_id, so
+      // re-triggering either status (e.g. an admin correction) can never
+      // create a duplicate. LR date is always the booking's own
+      // pickup_date — never today's date — see lib/lr-auto-create.ts.
+      if ((status === 'payment_received' || status === 'payment_approved') && existing) {
+        createOrGetLrForBooking(id).then(result => {
+          if (result.error) console.error('[booking patch] auto-create LR error:', result.error)
+          else if (result.created) console.log(`[booking patch] auto-created LR for booking ${id}`)
+        }).catch(err => console.error('[booking patch] auto-create LR error:', err))
       }
 
       if (existing && shouldNotifyCustomer) {

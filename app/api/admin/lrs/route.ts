@@ -3,30 +3,9 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { findRouteMatch } from '@/lib/city-normalize'
 import { computeLrCharges } from '@/lib/lr-constants'
-import { formatCustomerName } from '@/lib/constants'
+import { nextLrNumber, createOrGetLrForBooking } from '@/lib/lr-auto-create'
 
 export const runtime = 'nodejs'
-
-// ── LR number generator: BDLR-YYYY-NNNN ─────────────────────
-async function nextLrNumber(): Promise<string> {
-  const year   = new Date().getFullYear()
-  const prefix = `BDLR-${year}-`
-
-  const { data } = await supabaseAdmin
-    .from('lrs')
-    .select('lr_number')
-    .like('lr_number', `${prefix}%`)
-    .order('lr_number', { ascending: false })
-    .limit(1)
-    .maybeSingle()
-
-  let nextSeq = 1
-  if (data?.lr_number) {
-    const last = parseInt(data.lr_number.split('-').pop() ?? '0', 10)
-    if (!isNaN(last)) nextSeq = last + 1
-  }
-  return `${prefix}${String(nextSeq).padStart(4, '0')}`
-}
 
 // ── GET /api/admin/lrs ────────────────────────────────────────
 export async function GET(req: NextRequest) {
@@ -62,7 +41,12 @@ export async function GET(req: NextRequest) {
 // Two entry points, same convention as trip_sheets:
 //  (a) booking_id provided — auto-fills consignor/consignee/route/package
 //      fields from the linked booking (the primary flow, used by the
-//      "Generate LR" button on the Booking Workflow).
+//      "Generate LR" button on the Booking Workflow, and now also fired
+//      automatically the moment a booking reaches Payment Received — see
+//      lib/lr-auto-create.ts, which this delegates to so the manual and
+//      automatic paths can never drift apart). Idempotent — if an LR
+//      already exists for this booking_id, that one is returned instead
+//      of creating a second (created: false in the response).
 //  (b) manual: true — no booking exists yet; all fields come from the body.
 export async function POST(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -72,25 +56,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'booking_id is required (or set manual: true for a manual LR)' }, { status: 400 })
   }
 
-  let booking: Record<string, unknown> | null = null
-
   if (body.booking_id) {
-    const { data: bk, error: bookingErr } = await supabaseAdmin
-      .from('bookings')
-      .select('*')
-      .eq('id', body.booking_id)
-      .single()
-
-    if (bookingErr || !bk) {
-      return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    const result = await createOrGetLrForBooking(body.booking_id, body)
+    if (result.error) {
+      const status = result.error === 'Booking not found' ? 404 : 400
+      return NextResponse.json({ error: result.error }, { status })
     }
-    booking = bk
-  } else if (!body.consignor_name?.trim() || !body.consignee_name?.trim()) {
+    return NextResponse.json(
+      { lr: result.lr, lr_number: (result.lr as { lr_number?: string } | null)?.lr_number, created: result.created },
+      { status: result.created ? 201 : 200 }
+    )
+  }
+
+  // ── Manual LR — no linked booking ──────────────────────────────────
+  if (!body.consignor_name?.trim() || !body.consignee_name?.trim()) {
     return NextResponse.json({ error: 'Consignor and consignee name are required for a manual LR' }, { status: 400 })
   }
 
-  const fromCity = booking ? (booking.from_city as string) : (body.from_city || null)
-  const toCity   = booking ? (booking.to_city   as string) : (body.to_city   || null)
+  const fromCity = body.from_city || null
+  const toCity   = body.to_city   || null
 
   // Match against Route Master to pick up booking office + GST treatment.
   let route: { id: string; from_branch_code: string | null; to_branch_code: string | null; gst_type: string } | null = null
@@ -121,29 +105,18 @@ export async function POST(req: NextRequest) {
 
   const lrNumber = await nextLrNumber()
 
-  const bookingDisplayName = booking
-    ? (formatCustomerName(booking.title as string | null, booking.customer_name as string) || (booking.customer_name as string))
-    : null
-
-  // Body values always win when present — the "New LR" admin screen
-  // pre-fills these from the booking (see selectBooking() client-side)
-  // but lets the admin correct them before generating, so an override
-  // must actually take effect instead of being silently discarded in
-  // favor of the raw booking record.
-  const consignorName    = body.consignor_name?.trim()    || bookingDisplayName || ''
-  const consignorMobile  = body.consignor_mobile?.trim()  || (booking ? ((booking.customer_phone as string) ?? null) : null)
-  const consignorEmail   = body.consignor_email?.trim()   || (booking ? ((booking.customer_email as string) ?? null) : null)
-  const consignorAddress = body.consignor_address?.trim() || (booking ? ((booking.pickup_address as string) ?? null) : null)
-
-  const consigneeName    = body.consignee_name?.trim()    || bookingDisplayName || ''
-  const consigneeMobile  = body.consignee_mobile?.trim()  || (booking ? ((booking.customer_phone as string) ?? null) : null)
-  const consigneeAddress = body.consignee_address?.trim() || (booking ? ((booking.drop_address as string) ?? null) : null)
+  const consignorName    = body.consignor_name.trim()
+  const consigneeName    = body.consignee_name.trim()
 
   const insertPayload = {
     lr_number:      lrNumber,
-    booking_id:     booking?.id ?? null,
-    route_id:       route?.id   ?? null,
+    booking_id:     null,
+    route_id:       route?.id ?? null,
 
+    // No booking — no pickup_date to inherit, so a manual LR's date comes
+    // from the admin's own input (or today, as a last resort). The
+    // "LR Date = Pickup Date" mandatory rule only applies when an LR is
+    // linked to a real booking (see lib/lr-auto-create.ts).
     lr_date:        body.lr_date || new Date().toISOString().split('T')[0],
     booking_office: body.booking_office || route?.from_branch_code || null,
     vehicle_number: body.vehicle_number || null,
@@ -152,25 +125,25 @@ export async function POST(req: NextRequest) {
     mode:           body.mode || 'Air',
 
     consignor_name:    consignorName,
-    consignor_address: consignorAddress,
-    consignor_mobile:  consignorMobile,
-    consignor_email:   consignorEmail,
-    consignor_gstin:   body.consignor_gstin?.trim() || null,
+    consignor_address: body.consignor_address?.trim() || null,
+    consignor_mobile:  body.consignor_mobile?.trim()  || null,
+    consignor_email:   body.consignor_email?.trim()   || null,
+    consignor_gstin:   body.consignor_gstin?.trim()   || null,
 
     consignee_name:    consigneeName,
-    consignee_address: consigneeAddress,
-    consignee_mobile:  consigneeMobile,
-    consignee_gstin:   body.consignee_gstin?.trim() || null,
+    consignee_address: body.consignee_address?.trim() || null,
+    consignee_mobile:  body.consignee_mobile?.trim()  || null,
+    consignee_gstin:   body.consignee_gstin?.trim()   || null,
 
     billed_to_name:    body.billed_to_name?.trim()  || consignorName,
     billed_to_gstin:   body.billed_to_gstin?.trim() || null,
-    delivery_address:  body.delivery_address?.trim() || consigneeAddress,
+    delivery_address:  body.delivery_address?.trim() || body.consignee_address?.trim() || null,
 
     invoice_number: body.invoice_number?.trim() || null,
     invoice_value:  body.invoice_value != null ? Number(body.invoice_value) : null,
     eway_bill_number: body.eway_bill_number?.trim() || null,
 
-    total_bags:          booking ? Number(booking.total_bags ?? 1) : (Number(body.total_bags) || 1),
+    total_bags:          Number(body.total_bags) || 1,
     content_description: body.content_description?.trim() || 'HOUSEHOLD BAGGAGE',
     actual_weight:       body.actual_weight     != null ? Number(body.actual_weight)     : null,
     chargeable_weight:   body.chargeable_weight != null ? Number(body.chargeable_weight) : null,
@@ -195,18 +168,16 @@ export async function POST(req: NextRequest) {
     arrival_date:  body.arrival_date          || null,
     arrival_time:  body.arrival_time          || null,
 
-    driver_name:   body.driver_name?.trim()   || (booking ? ((booking.driver_name as string) ?? null) : null),
-    driver_mobile: body.driver_mobile?.trim() || (booking ? ((booking.driver_phone as string) ?? null) : null),
-    vehicle_type:  body.vehicle_type?.trim()  || (booking ? ((booking.vehicle_type as string) ?? null) : null),
+    driver_name:   body.driver_name?.trim()   || null,
+    driver_mobile: body.driver_mobile?.trim() || null,
+    vehicle_type:  body.vehicle_type?.trim()  || null,
 
     status: 'generated',
     status_history: [{
       from: null, to: 'generated',
       timestamp: new Date().toISOString(),
       changed_by: 'admin',
-      note: booking
-        ? `LR generated for booking ${(booking as { tracking_id?: string }).tracking_id ?? body.booking_id}`
-        : 'LR created manually (no linked booking)',
+      note: 'LR created manually (no linked booking)',
     }],
     created_by: 'admin',
   }
@@ -218,5 +189,5 @@ export async function POST(req: NextRequest) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ lr, lr_number: lrNumber }, { status: 201 })
+  return NextResponse.json({ lr, lr_number: lrNumber, created: true }, { status: 201 })
 }

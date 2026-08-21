@@ -7,7 +7,7 @@ import {
   CheckCircle, Clock, AlertCircle, Send,
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
-  RotateCcw, Save, ShieldCheck, Trash2,
+  RotateCcw, Save, ShieldCheck, Trash2, Pencil,
 } from 'lucide-react'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
@@ -139,6 +139,7 @@ interface Invoice {
   invoice_date:      string
   sent_email:        boolean | null
   created_at:        string
+  notes?:            string | null
 }
 
 interface IndemnityDocsResponse {
@@ -367,6 +368,13 @@ export default function QuoteViewPage() {
   const [invoice,         setInvoice]         = useState<Invoice | null>(null)
   const [genInvoice,      setGenInvoice]      = useState(false)
   const [resendingEmail,  setResendingEmail]  = useState(false)
+  // Optional admin remark for the invoice — Booking Workflow's
+  // "Generate Invoice" step (founder spec, 2026-08-21). Also editable
+  // after the fact via the small pencil on the Invoice Card below.
+  const [invoiceRemark,      setInvoiceRemark]      = useState('')
+  const [editingInvoiceNote, setEditingInvoiceNote] = useState(false)
+  const [invoiceNoteDraft,   setInvoiceNoteDraft]   = useState('')
+  const [savingInvoiceNote,  setSavingInvoiceNote]  = useState(false)
 
   // Workflow action states
   const [acting, setActing]                     = useState<string | null>(null)
@@ -670,14 +678,22 @@ export default function QuoteViewPage() {
 
   // ── Invoice generation + email ────────────────────────────────────
 
-  async function generateAndSendInvoice(bookingId: string, sendEmail = true) {
+  async function generateAndSendInvoice(bookingId: string, sendEmail = true, notes?: string) {
     if (!key) return
     setGenInvoice(true)
     try {
       const r = await fetch('/api/admin/invoices', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
-        body: JSON.stringify({ booking_id: bookingId, send_email: sendEmail }),
+        body: JSON.stringify({
+          booking_id: bookingId,
+          send_email: sendEmail,
+          // Optional admin remark — Booking Workflow's "Generate Invoice"
+          // step (founder spec, 2026-08-21). Only sent when non-empty so an
+          // already-saved remark on a re-generate isn't accidentally wiped
+          // (the backend also falls back to the existing value either way).
+          ...(notes?.trim() ? { notes: notes.trim() } : {}),
+        }),
       })
       const d = await r.json().catch(() => ({}))
       if (r.ok && d.invoice) setInvoice(d.invoice as Invoice)
@@ -1110,12 +1126,42 @@ export default function QuoteViewPage() {
   // status-advancing behavior is preserved so it isn't stranded.
   async function doGenerateInvoice() {
     if (!booking?.id) return
-    await generateAndSendInvoice(booking.id, false)
+    await generateAndSendInvoice(booking.id, false, invoiceRemark)
     if (booking.status === 'completed') {
       setActionSuccess('gen_invoice')
       setTimeout(() => setActionSuccess(null), 4000)
     } else {
       await patchBooking('gen_invoice', { status: 'invoice_generated' })
+    }
+  }
+
+  // Edit the remark on an already-generated invoice — hits the same
+  // PATCH /api/admin/invoices/[id] endpoint the Invoices list's detail
+  // panel uses (see app/(admin)/admin/invoices/page.tsx), so a remark can
+  // be added/changed here even after the invoice already exists.
+  function startEditInvoiceNote() {
+    setInvoiceNoteDraft(invoice?.notes ?? '')
+    setEditingInvoiceNote(true)
+  }
+  async function saveInvoiceNote() {
+    if (!invoice || !key) return
+    setSavingInvoiceNote(true)
+    try {
+      const r = await fetch(`/api/admin/invoices/${invoice.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ notes: invoiceNoteDraft.trim() || null }),
+      })
+      if (r.ok) {
+        setInvoice(prev => prev ? { ...prev, notes: invoiceNoteDraft.trim() || null } : prev)
+        setEditingInvoiceNote(false)
+      } else {
+        alert('Failed to save remark')
+      }
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setSavingInvoiceNote(false)
     }
   }
 
@@ -2532,6 +2578,16 @@ export default function QuoteViewPage() {
                 {atStatus('completed') && !invoice && (
                   <div className="rounded-xl border border-violet-100 bg-violet-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-violet-600">🧾 Step 17 — Generate Invoice</p>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-violet-700">Remark (optional)</label>
+                      <textarea
+                        value={invoiceRemark}
+                        onChange={e => setInvoiceRemark(e.target.value)}
+                        rows={2}
+                        placeholder="Optional note to show on this invoice…"
+                        className="w-full rounded-lg border border-violet-200 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-violet-400 focus:outline-none focus:ring-1 focus:ring-violet-400"
+                      />
+                    </div>
                     <button onClick={doGenerateInvoice} disabled={!!acting || genInvoice}
                       className="flex items-center gap-2 rounded-lg bg-violet-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-violet-700 disabled:opacity-40 transition-colors">
                       {(acting === 'gen_invoice' || genInvoice) ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
@@ -2723,6 +2779,44 @@ export default function QuoteViewPage() {
                       <div className="flex justify-between font-bold text-gray-800 border-t border-gray-200 pt-2">
                         <span>Total</span><span className="text-green-700">{fmtRs(invoice.total_amount)}</span>
                       </div>
+                    </div>
+
+                    {/* Remark — invoices.notes. Optional, admin-editable
+                        (founder spec, 2026-08-21). Also shown on the
+                        printed invoice PDF (InvoicePDF.tsx renders `notes`). */}
+                    <div className="mb-4 rounded-lg border border-gray-100 bg-gray-50 px-4 py-3">
+                      <div className="mb-1 flex items-center justify-between">
+                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Remark</p>
+                        {!editingInvoiceNote && (
+                          <button onClick={startEditInvoiceNote}
+                            className="flex items-center gap-1 text-xs font-medium text-orange-600 hover:underline">
+                            <Pencil className="h-3 w-3" /> {invoice.notes ? 'Edit' : 'Add remark'}
+                          </button>
+                        )}
+                      </div>
+                      {editingInvoiceNote ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={invoiceNoteDraft}
+                            onChange={e => setInvoiceNoteDraft(e.target.value)}
+                            rows={2}
+                            placeholder="Optional note shown on this invoice…"
+                            className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                          />
+                          <div className="flex items-center gap-2">
+                            <button onClick={saveInvoiceNote} disabled={savingInvoiceNote}
+                              className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                              {savingInvoiceNote ? 'Saving…' : 'Save'}
+                            </button>
+                            <button onClick={() => setEditingInvoiceNote(false)} disabled={savingInvoiceNote}
+                              className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50">
+                              Cancel
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-sm text-gray-700">{invoice.notes || <span className="text-gray-300">No remark added.</span>}</p>
+                      )}
                     </div>
 
                     {/* Action buttons */}
