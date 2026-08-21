@@ -259,20 +259,14 @@ export async function POST(req: NextRequest) {
     // behaves identically regardless of which button was clicked.
     if (linkedBookingId) {
       try {
-        const leadYear = new Date().getFullYear()
-        const { data: lastLead } = await supabaseAdmin
-          .from('leads')
-          .select('lead_number')
-          .like('lead_number', `BDL-${leadYear}-%`)
-          .order('lead_number', { ascending: false })
-          .limit(1)
-          .maybeSingle()
-        let leadSeq = 1
-        if (lastLead?.lead_number) {
-          const last = parseInt(lastLead.lead_number.split('-').pop() ?? '0', 10)
-          if (!isNaN(last)) leadSeq = last + 1
-        }
-        const leadNumber = `BDL-${leadYear}-${String(leadSeq).padStart(4, '0')}`
+        // Derive from the tracking ID already minted for this booking
+        // above — was a locally-computed "SELECT MAX(lead_number) ... +1"
+        // (race-prone, and independent of the BDA counter besides), fixed
+        // here too for consistency even though this branch has no live
+        // caller today. See nextInquiryNumberPair's comment in
+        // lib/number-series.ts for why deriving from the already-minted
+        // number is the only way to guarantee the two match.
+        const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
         const { data: newLead, error: leadInsertErr } = await supabaseAdmin
           .from('leads')

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
-import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
+import { nextTrackingId } from '@/lib/number-series'
 
 // Y2K booking form restrictions — mirrors the constants of the same name in
 // app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
@@ -131,9 +131,16 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          // Same shared, atomic BDL-YYYY-NNNN sequence as every other
-          // inquiry source — see lib/number-series.ts.
-          const leadNumber = await nextLeadNumber()
+          // Derive the lead number from the tracking ID already minted for
+          // this same booking above — NOT a fresh, independent
+          // nextLeadNumber() call. The two must carry the same NNNN
+          // suffix, and the only way to guarantee that is to reuse the
+          // number that's already sitting in `trackingId` rather than
+          // drawing a second number from the separate BDL counter (which
+          // can drift out of sync with BDA from unrelated activity
+          // elsewhere — see nextInquiryNumberPair's comment in
+          // lib/number-series.ts).
+          const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
           const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,

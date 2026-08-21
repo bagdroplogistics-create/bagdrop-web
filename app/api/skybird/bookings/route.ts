@@ -7,7 +7,7 @@ import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITL
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
-import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
+import { nextTrackingId } from '@/lib/number-series'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped bookings API
@@ -151,7 +151,11 @@ export async function POST(req: NextRequest) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          const leadNumber = await nextLeadNumber()
+          // Derive from the tracking ID already minted for this booking
+          // above — not an independent nextLeadNumber() call, which can
+          // drift out of sync with the BDA counter (see
+          // nextInquiryNumberPair's comment in lib/number-series.ts).
+          const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
           const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,

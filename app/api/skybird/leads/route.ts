@@ -6,7 +6,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
-import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
+import { nextInquiryNumberPair } from '@/lib/number-series'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped leads API
@@ -196,12 +196,6 @@ export async function POST(req: NextRequest) {
   const phoneCountryCode = body.phone_country_code || phoneParsed.iso2
   const phoneNational    = body.phone_national     || phoneParsed.nationalNumber
 
-  // Lead number generation — same shared, atomic BDL-YYYY-NNNN sequence
-  // used by /api/admin/leads/route.ts (lib/number-series.ts). Was a
-  // "SELECT MAX ... +1" query, not safe against two near-simultaneous
-  // submissions (same class of bug already fixed in admin/leads/route.ts).
-  const leadNumber = await nextLeadNumber()
-
   const serviceLabelMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',
     'airport-to-door':      'Airport → Doorstep',
@@ -213,7 +207,15 @@ export async function POST(req: NextRequest) {
 
   // Duplicate phone guard (same as admin route) — force_duplicate not
   // exposed to Skybird agents; if it's a genuine repeat customer, BagDrop
-  // admin can merge/review manually.
+  // admin can merge/review manually. MUST run BEFORE any number is
+  // minted below — this used to mint the lead number first and check for
+  // a duplicate second, so every rejected duplicate submission
+  // permanently burned a BDL slot with no paired booking ever created,
+  // widening the BDL/BDA gap a little more each time (root-caused
+  // 2026-08-21, the same day the leads/lead-number pairing bug it was
+  // silently causing kept recurring even after the "same request" fix
+  // was applied everywhere else — see nextInquiryNumberPair's comment in
+  // lib/number-series.ts for why "same request" alone isn't sufficient).
   const { data: dupeLead } = await supabaseAdmin
     .from('leads')
     .select('id, lead_number, name, status')
@@ -236,12 +238,11 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // Independently-sequenced atomic BDA- tracking ID (was derived from the
-  // lead number by string substitution — the exact bug already root-
-  // caused and fixed in /api/admin/leads/route.ts, since a booking is
-  // conceptually a different record from its lead and deserves its own
-  // number, not a borrowed one).
-  const trackingId = await nextTrackingId()
+  // Mint ONE shared number and derive both prefixes from it — see
+  // nextInquiryNumberPair's comment in lib/number-series.ts. Only past
+  // this point (after the duplicate check above) do we consume any
+  // number at all.
+  const { trackingId, leadNumber } = await nextInquiryNumberPair()
 
   const bookingPayload = {
     tracking_id:    trackingId,

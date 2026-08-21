@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
-import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
+import { nextInquiryNumberPair } from '@/lib/number-series'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -109,10 +109,14 @@ export async function POST(req: Request) {
     // safe against two near-simultaneous submissions) and then derive the
     // tracking ID as "BDC-" + that same numeric suffix, which broke the
     // continuous numbering every other source uses (e.g. "BDC-2026-0104"
-    // sitting next to unrelated "BDA-2026-0102" bookings). Both numbers now
-    // come from the same shared sequences as every other inquiry source.
-    const leadNumber = await nextLeadNumber()
-    const trackingId = await nextTrackingId()
+    // sitting next to unrelated "BDA-2026-0102" bookings). Later changed to
+    // pull both from the shared BDA/BDL sequences independently — but that
+    // doesn't actually guarantee they match either (see
+    // nextInquiryNumberPair's comment in lib/number-series.ts for why two
+    // independent counters drift apart from unrelated activity elsewhere in
+    // the system). Mint ONE number and derive the other prefix from it
+    // instead — the only way to guarantee equality.
+    const { trackingId, leadNumber } = await nextInquiryNumberPair()
 
     const { data: newBooking, error: bookingErr } = await supabaseAdmin
       .from('bookings')

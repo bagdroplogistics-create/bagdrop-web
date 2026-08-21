@@ -6,7 +6,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
-import { nextLeadNumber, nextTrackingId } from '@/lib/number-series'
+import { nextInquiryNumberPair } from '@/lib/number-series'
 import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
 
 export async function GET(req: NextRequest) {
@@ -326,8 +326,13 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
   // getting reassigned to a different inquiry). Every inquiry is now its
   // own independent, permanent record; nothing here ever updates a
   // pre-existing lead or booking row.
-  const leadNumber = await nextLeadNumber()
-  const trackingId = await nextTrackingId()
+  // Mint ONE shared number and derive both prefixes from it (see
+  // lib/number-series.ts's nextInquiryNumberPair comment) — calling
+  // nextLeadNumber()/nextTrackingId() separately, even back-to-back like
+  // this, does NOT guarantee they end up equal if the two underlying
+  // counters have ever drifted apart from anything else in the system
+  // (which they repeatedly did — 2026-08-21).
+  const { trackingId, leadNumber } = await nextInquiryNumberPair()
 
   const serviceLabelMap: Record<string, string> = {
     'airport-to-doorstep':  'Airport → Doorstep',

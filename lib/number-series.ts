@@ -43,3 +43,46 @@ export function nextLeadNumber(): Promise<string> {
 export function nextQuoteNumber(): Promise<string> {
   return nextSeriesNumber('BDQ')
 }
+
+// ── Paired inquiry numbering ─────────────────────────────────────────────
+//
+// PROBLEM (recurring, 2026-08-21): a lead's BDL-YYYY-NNNN and its linked
+// booking's BDA-YYYY-NNNN are supposed to always carry the SAME NNNN
+// suffix. Calling nextTrackingId() and nextLeadNumber() separately — even
+// back-to-back in the very same request, which every creation path
+// already did — does NOT guarantee this, because 'BDA' and 'BDL' are TWO
+// INDEPENDENT counters (separate rows in bagdrop_number_counters). If
+// ANYTHING ever advances one series without the other even once —
+// a booking insert that fails after its tracking ID was already minted
+// (permanently burning a BDA number with no lead attached), a
+// duplicate-phone lead rejected after its lead number was already minted
+// (permanently burning a BDL number with no booking attached), etc. — the
+// two counters permanently drift apart RELATIVE TO EACH OTHER. Every
+// subsequent "paired, same-request" mint after that inherits the drift:
+// nextLeadNumber() and nextTrackingId() each faithfully return the next
+// value of their OWN series, which are simply no longer equal to each
+// other, through no fault of that particular request. This is exactly
+// what kept happening even after every individual rogue call site (booking
+// created for a pre-existing lead, Skybird duplicate-phone early return,
+// etc.) was fixed one at a time.
+//
+// FIX: for any new record that needs BOTH a tracking ID and a lead
+// number, mint exactly ONE number (from the 'BDA' series) and derive the
+// other prefix from it by string substitution. This makes the two values
+// equal BY CONSTRUCTION — there is no second counter involved at all, so
+// there is nothing left to drift. Every creation path that inserts a lead
+// and its booking together (or mints a tracking ID first and only later
+// decides it also needs a lead number for the same record) should use
+// this instead of calling nextTrackingId()/nextLeadNumber() separately.
+// (The 'BDL' series itself is kept only for genuinely lead-only or
+// legacy/repair uses — e.g. re-pairing an orphaned lead to a fresh number
+// when its derived slot turns out to already be taken by something else.)
+export interface InquiryNumberPair {
+  trackingId: string
+  leadNumber: string
+}
+
+export async function nextInquiryNumberPair(): Promise<InquiryNumberPair> {
+  const trackingId = await nextSeriesNumber('BDA')
+  return { trackingId, leadNumber: trackingId.replace(/^BDA-/, 'BDL-') }
+}

@@ -6,7 +6,7 @@ import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
-import { nextTrackingId, nextLeadNumber } from '@/lib/number-series'
+import { nextTrackingId } from '@/lib/number-series'
 
 // Best-effort mapping from the old '+91'/'+1'/'+44'/'+1CA' dial-code-string
 // convention to an ISO2 country — only hit if a client sends the pre-
@@ -150,10 +150,11 @@ export async function POST(req: Request) {
           .maybeSingle()
 
         if (!existingLeadForBooking) {
-          // Atomic, race-safe BDL-YYYY-NNNN lead number — was a
-          // "SELECT MAX ... +1" query, which can hand the same number to
-          // two near-simultaneous submissions. See lib/number-series.ts.
-          const leadNumber = await nextLeadNumber()
+          // Derive from the tracking ID already minted for this booking
+          // above — not an independent nextLeadNumber() call, which can
+          // drift out of sync with the BDA counter (see
+          // nextInquiryNumberPair's comment in lib/number-series.ts).
+          const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
           const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,
