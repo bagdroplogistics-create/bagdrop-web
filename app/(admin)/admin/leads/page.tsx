@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
+import FollowUpPanel from '@/components/admin/FollowUpPanel'
 
 // ── Types ────────────────────────────────────────────────────────
 interface Lead {
@@ -1219,6 +1220,36 @@ function LeadsPageInner() {
                                   managed through the Booking Workflow / payment
                                   verification flow, not as an inline Leads action.
                                   l.payment_status itself is untouched. */}
+
+                              {/* Follow Up — same manual WhatsApp/email nudge as the
+                                  Booking Workflow page (see FollowUpPanel), shown once
+                                  this lead actually has a quote and hasn't reached
+                                  Confirmed yet. The Leads table has no per-row
+                                  visibility into the linked booking's exact
+                                  quote_created vs quote_sent status (that map is only
+                                  built server-side for Confirmed-or-later bookings —
+                                  see app/api/admin/leads/route.ts's
+                                  bookingStatusMap), so "has a quote, not yet
+                                  Confirmed" is the closest equivalent available here.
+                                  Requires booking_id since customer_follow_ups.
+                                  booking_id is NOT NULL. */}
+                              {!showDeleted && l.booking_id &&
+                                !BOOKING_STATUS_CONFIG[l.effective_status ?? l.status] && (
+                                <FollowUpPanel
+                                  compact
+                                  adminKey={adminKey}
+                                  target={{
+                                    bookingId: l.booking_id,
+                                    refLabel: l.lead_number ?? l.zoho_estimate_number,
+                                    title: l.title,
+                                    name: l.name,
+                                    phone: l.phone || null,
+                                    email: l.email || null,
+                                    pickupLocation: l.pickup_address || l.from_city,
+                                    deliveryLocation: l.drop_address || l.to_city,
+                                  }}
+                                />
+                              )}
                             </div>
                           ) : (
                             <Link href={`/admin/quotes/new?lead_id=${l.id}`}

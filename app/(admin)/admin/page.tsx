@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, Fragment } from 'react'
+import { useEffect, useState, useCallback, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Package, Clock, CheckCircle, Truck,
@@ -8,12 +8,12 @@ import {
   MapPin, Calendar, Phone, Mail, Hash, Pencil, X, Save,
   Users, FileText, IndianRupee, Lock, AlertCircle,
   FileCheck, CreditCard, Receipt, Download, ArrowUpDown, ArrowRight,
-  MessageCircle, History,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
+import FollowUpPanel from '@/components/admin/FollowUpPanel'
 
 interface Booking {
   id: string
@@ -298,263 +298,10 @@ function DetailRow({ icon, label, val }: { icon: React.ReactNode; label: string;
   )
 }
 
-// ── Follow Up (manual, customer-facing) ──────────────────────────────
-// Booking Workflow action for Quote Created / Quote Sent bookings whose
-// customer hasn't responded — lets an admin send one WhatsApp or email
-// nudge, with the message fully editable before it goes out, and logs it
-// to customer_follow_ups (see the migration's comment for how this is
-// different from the existing automated lead_followups reminder system).
-// Deliberately does NOT touch booking status, payment status, or trigger
-// any other notification — this is purely an additional, optional,
-// manually-triggered communication.
-interface FollowUp {
-  id: string
-  method: 'whatsapp' | 'email'
-  status: 'sent' | 'failed'
-  subject: string | null
-  message: string | null
-  initiated_by: string | null
-  created_at: string
-}
-
-function FollowUpPanel({ booking, adminKey }: { booking: Booking; adminKey: string }) {
-  const [menuOpen, setMenuOpen]   = useState(false)
-  const [mode, setMode]           = useState<'whatsapp' | 'email' | null>(null)
-  const [text, setText]           = useState('')
-  const [subject, setSubject]     = useState('')
-  const [initiatedBy, setInitiatedBy] = useState('')
-  const [sending, setSending]     = useState(false)
-  const [err, setErr]             = useState('')
-  const [okMsg, setOkMsg]         = useState('')
-  const [history, setHistory]     = useState<FollowUp[] | null>(null)
-  const [showHistory, setShowHistory] = useState(false)
-  const [loadingHistory, setLoadingHistory] = useState(false)
-  const menuRef = useRef<HTMLDivElement>(null)
-
-  // Remember the admin's name across follow-ups on this device — there's
-  // no per-user login system in this dashboard (just shared admin/staff
-  // keys), so this is the only practical way to record "who initiated it".
-  useEffect(() => {
-    setInitiatedBy(typeof window !== 'undefined' ? (localStorage.getItem('bagdrop_admin_name') ?? '') : '')
-  }, [])
-
-  useEffect(() => {
-    if (!menuOpen) return
-    function onDocClick(e: MouseEvent) {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false)
-    }
-    document.addEventListener('mousedown', onDocClick)
-    return () => document.removeEventListener('mousedown', onDocClick)
-  }, [menuOpen])
-
-  const displayName    = formatCustomerName(booking.title, booking.customer_name) || booking.customer_name
-  // Prefer the actual door address when it's on file; falls back to the
-  // city pair for bookings that only have from_city/to_city set.
-  const pickupLocation  = booking.pickup_address || booking.from_city
-  const deliveryLocation = booking.drop_address || booking.to_city
-
-  // Shared wording for both channels — founder-specified template
-  // (2026-08-21), same message content sent whether the admin picks
-  // WhatsApp or Email.
-  function defaultFollowUpMessage() {
-    return `Hi ${displayName},\nJust following up regarding the quotation we shared for your baggage delivery from ${pickupLocation} to ${deliveryLocation}.\nPlease let us know if you have any questions or would like to proceed with the booking. We'll be happy to assist you.`
-  }
-  function defaultWhatsAppText() {
-    return defaultFollowUpMessage()
-  }
-  function defaultEmailSubject() {
-    return `Following up on your Bagdrop quote (${booking.tracking_id})`
-  }
-  function defaultEmailBody() {
-    return defaultFollowUpMessage()
-  }
-
-  function openMode(m: 'whatsapp' | 'email') {
-    setMenuOpen(false); setErr(''); setOkMsg('')
-    setMode(m)
-    if (m === 'whatsapp') setText(defaultWhatsAppText())
-    else { setSubject(defaultEmailSubject()); setText(defaultEmailBody()) }
-  }
-
-  async function loadHistory() {
-    setLoadingHistory(true)
-    try {
-      const res = await fetch(`/api/admin/customer-follow-ups?booking_id=${booking.id}&key=${adminKey}`)
-      const d = await res.json()
-      setHistory(d.followUps ?? [])
-    } catch { setHistory([]) }
-    setLoadingHistory(false)
-  }
-
-  function toggleHistory() {
-    const next = !showHistory
-    setShowHistory(next)
-    if (next && history === null) loadHistory()
-  }
-
-  async function recordFollowUp(method: 'whatsapp' | 'email', extra: Record<string, unknown>) {
-    if (typeof window !== 'undefined' && initiatedBy.trim()) {
-      localStorage.setItem('bagdrop_admin_name', initiatedBy.trim())
-    }
-    const res = await fetch('/api/admin/customer-follow-ups', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify({ booking_id: booking.id, method, initiated_by: initiatedBy.trim() || null, ...extra }),
-    })
-    const d = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(d.error ?? 'Failed to record follow-up')
-    return d as { success: boolean; status: 'sent' | 'failed'; error?: string | null }
-  }
-
-  // WhatsApp is never sent from the server — this opens a wa.me deep link
-  // on the ADMIN'S OWN device with the message pre-filled; the admin still
-  // has to press Send inside WhatsApp themselves. The API call right after
-  // is only to log that this happened, not to send anything.
-  async function sendWhatsApp() {
-    if (!booking.customer_phone) { setErr('No phone number on file.'); return }
-    if (!text.trim()) { setErr('Message cannot be empty.'); return }
-    setSending(true); setErr('')
-    try {
-      const digits = booking.customer_phone.replace(/\D/g, '')
-      const e164   = digits.length > 10 ? digits : '91' + digits
-      window.open(`https://wa.me/${e164}?text=${encodeURIComponent(text)}`, '_blank')
-      await recordFollowUp('whatsapp', { message: text })
-      setOkMsg('WhatsApp opened with the message — follow-up logged.')
-      setMode(null)
-      if (showHistory) loadHistory()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to log follow-up')
-    }
-    setSending(false)
-  }
-
-  async function sendEmailFollowUp() {
-    if (!booking.customer_email) { setErr('No email address on file.'); return }
-    if (!subject.trim() || !text.trim()) { setErr('Subject and message are required.'); return }
-    setSending(true); setErr('')
-    try {
-      const d = await recordFollowUp('email', { subject: subject.trim(), message: text })
-      if (d.status === 'failed') setErr(d.error || 'Email failed to send.')
-      else { setOkMsg(`Follow-up email sent to ${booking.customer_email} ✓`); setMode(null) }
-      if (showHistory) loadHistory()
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : 'Failed to send email')
-    }
-    setSending(false)
-  }
-
-  return (
-    <div className="relative" ref={menuRef}>
-      <button
-        onClick={e => { e.stopPropagation(); setMenuOpen(o => !o); setErr(''); setOkMsg('') }}
-        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-purple-200 bg-white px-3 py-2 text-xs font-semibold text-purple-600 shadow-sm hover:bg-purple-50 hover:border-purple-400 transition-colors">
-        <MessageCircle className="h-3.5 w-3.5" />
-        Follow Up
-        <ChevronDown className="h-3 w-3" />
-      </button>
-
-      {menuOpen && (
-        <div onClick={e => e.stopPropagation()} className="absolute right-0 z-20 mt-1 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
-          <button onClick={() => openMode('whatsapp')} disabled={!booking.customer_phone}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-            <MessageCircle className="h-3.5 w-3.5 text-green-600" /> WhatsApp
-          </button>
-          <button onClick={() => openMode('email')} disabled={!booking.customer_email}
-            className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
-            <Mail className="h-3.5 w-3.5 text-blue-600" /> Email
-          </button>
-        </div>
-      )}
-
-      <button onClick={e => { e.stopPropagation(); toggleHistory() }}
-        className="mt-1 flex w-full items-center justify-center gap-1 text-[10px] font-medium text-gray-400 hover:text-gray-600">
-        <History className="h-3 w-3" /> {showHistory ? 'Hide history' : 'Follow-up history'}
-      </button>
-
-      {showHistory && (
-        <div onClick={e => e.stopPropagation()} className="mt-1.5 max-h-40 w-full overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 p-2 space-y-2">
-          {loadingHistory ? (
-            <p className="text-[10px] text-gray-400">Loading…</p>
-          ) : !history || history.length === 0 ? (
-            <p className="text-[10px] text-gray-400">No follow-ups yet.</p>
-          ) : (
-            history.map(h => (
-              <div key={h.id} className="text-[10px] leading-tight">
-                <div className="flex items-center gap-1 font-semibold text-gray-700">
-                  {h.method === 'whatsapp' ? <MessageCircle className="h-2.5 w-2.5 text-green-600" /> : <Mail className="h-2.5 w-2.5 text-blue-600" />}
-                  {h.method === 'whatsapp' ? 'WhatsApp' : 'Email'}
-                  <span className={h.status === 'failed' ? 'text-red-500' : 'text-green-600'}>· {h.status === 'failed' ? 'Failed' : 'Sent'}</span>
-                </div>
-                <p className="text-gray-400">
-                  {new Date(h.created_at).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  {h.initiated_by ? ` · ${h.initiated_by}` : ''}
-                </p>
-              </div>
-            ))
-          )}
-        </div>
-      )}
-
-      {(okMsg || err) && !mode && (
-        <p className={`mt-1 text-[10px] ${err ? 'text-red-500' : 'text-green-600'}`}>{err || okMsg}</p>
-      )}
-
-      {mode && (
-        <div onClick={e => e.stopPropagation()} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="w-full max-w-md rounded-xl bg-white p-5 shadow-xl">
-            <div className="mb-3 flex items-center justify-between">
-              <h3 className="text-sm font-bold text-gray-900">
-                {mode === 'whatsapp' ? 'WhatsApp Follow-Up' : 'Email Follow-Up'}
-              </h3>
-              <button onClick={() => setMode(null)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
-            </div>
-
-            <p className="mb-3 text-xs text-gray-500">
-              To: <span className="font-semibold text-gray-700">
-                {mode === 'whatsapp' ? booking.customer_phone : booking.customer_email}
-              </span>
-            </p>
-
-            {mode === 'email' && (
-              <div className="mb-3 space-y-1">
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Subject</label>
-                <input value={subject} onChange={e => setSubject(e.target.value)}
-                  className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-              </div>
-            )}
-
-            <div className="mb-3 space-y-1">
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Message</label>
-              <textarea rows={mode === 'whatsapp' ? 5 : 7} value={text} onChange={e => setText(e.target.value)}
-                className="w-full resize-none rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            </div>
-
-            <div className="mb-4 space-y-1">
-              <label className="block text-[10px] font-semibold uppercase tracking-wide text-gray-500">Your name (for the follow-up log)</label>
-              <input value={initiatedBy} onChange={e => setInitiatedBy(e.target.value)} placeholder="e.g. Aditya"
-                className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-            </div>
-
-            {err && <p className="mb-2 text-xs text-red-500">{err}</p>}
-
-            <div className="flex flex-col gap-2 sm:flex-row">
-              <button
-                onClick={mode === 'whatsapp' ? sendWhatsApp : sendEmailFollowUp}
-                disabled={sending}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 disabled:opacity-50 transition-colors">
-                {sending ? 'Sending…' : mode === 'whatsapp' ? 'Open WhatsApp' : 'Send Email'}
-              </button>
-              <button onClick={() => setMode(null)}
-                className="rounded-lg border border-gray-200 bg-white px-4 py-2.5 text-sm text-gray-600 hover:bg-gray-50 transition-colors">
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  )
-}
+// FollowUpPanel — extracted to components/admin/FollowUpPanel.tsx so this
+// exact same implementation (and default message template) is shared
+// with the Leads table (app/(admin)/admin/leads/page.tsx) instead of two
+// copies drifting apart.
 
 
 interface EditForm {
@@ -2184,7 +1931,19 @@ export default function AdminDashboard() {
                                     notification. See FollowUpPanel above. */}
                                 {(b.status === 'quote_created' || b.status === 'quote_sent') && (
                                   <div onClick={e => e.stopPropagation()}>
-                                    <FollowUpPanel booking={b} adminKey={adminKey} />
+                                    <FollowUpPanel
+                                      adminKey={adminKey}
+                                      target={{
+                                        bookingId: b.id,
+                                        refLabel: b.tracking_id,
+                                        title: b.title,
+                                        name: b.customer_name,
+                                        phone: b.customer_phone || null,
+                                        email: b.customer_email || null,
+                                        pickupLocation: b.pickup_address || b.from_city,
+                                        deliveryLocation: b.drop_address || b.to_city,
+                                      }}
+                                    />
                                   </div>
                                 )}
                               </div>
