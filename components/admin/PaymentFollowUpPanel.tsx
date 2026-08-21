@@ -239,12 +239,21 @@ export default function PaymentFollowUpPanel({ target, adminKey, compact }: { ta
       </button>
 
       {menuOpen && (
-        <div onClick={e => e.stopPropagation()} className="absolute z-20 mt-1 left-0 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
+        // Opens UPWARD (bottom-full, not mt-1/top-full) — this button
+        // usually sits in the Quick Info footer at the very bottom of a
+        // card with `overflow-hidden` (for its rounded corners). A
+        // downward dropdown there gets its lower rows (Email) clipped by
+        // that ancestor since position:absolute content doesn't expand
+        // the card's own height. Opening upward keeps the whole menu
+        // safely inside the card.
+        <div onClick={e => e.stopPropagation()} className="absolute z-20 bottom-full mb-1 left-0 w-44 rounded-lg border border-gray-200 bg-white py-1 shadow-lg">
           <button onClick={() => openMode('whatsapp')} disabled={!target.phone}
+            title={target.phone ? undefined : 'No phone number on file for this customer'}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
             <MessageCircle className="h-3.5 w-3.5 text-green-600" /> WhatsApp
           </button>
           <button onClick={() => openMode('email')} disabled={!target.email}
+            title={target.email ? undefined : 'No email address on file for this customer'}
             className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed">
             <Mail className="h-3.5 w-3.5 text-blue-600" /> Email
           </button>

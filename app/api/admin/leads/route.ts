@@ -7,10 +7,22 @@ import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { nextLeadNumber, nextTrackingId } from '@/lib/number-series'
+import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
+  // Self-heal: flip any lead whose requested pickup_date has already
+  // passed with no real booking progress to 'lost', on every load — so
+  // this works immediately even before the external cron
+  // (app/api/cron/mark-lost-inquiries) is registered. Best-effort; a
+  // failure here must never break the Leads tab itself.
+  try {
+    await autoMarkLostInquiries()
+  } catch (e) {
+    console.warn('[leads GET] autoMarkLostInquiries failed:', e)
   }
 
   const { searchParams } = req.nextUrl
