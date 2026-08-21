@@ -391,19 +391,29 @@ export async function POST(req: NextRequest) {
   if (!isReturnQuote) {
   // ── Ensure linked booking exists (PRIMARY / ONWARD quote) ──────────
   if (!bookingId) {
-    // No booking yet — create one. Tracking ID comes from its own atomic
-    // sequence (lib/number-series.ts) — it used to be derived by swapping
-    // the lead number's "BDL-" prefix for "BDA-", which meant a booking's
-    // number was never actually independent of its lead. That's fine as
-    // long as every lead is genuinely a new inquiry (now true — see
-    // app/api/admin/leads/route.ts), but deriving it was never necessary
-    // and isn't race-safe, so it's generated fresh here regardless.
-    const trackingId = await nextTrackingId()
+    // No booking yet — create one. PREFER the number PAIRED with this
+    // lead's own lead_number (BDL-YYYY-NNNN → BDA-YYYY-NNNN swap) so the
+    // two always match. This used to always mint an independent, freshly-
+    // sequenced tracking ID instead (reasoning: deriving "isn't race-
+    // safe" since a direct/public booking with no lead — see
+    // app/api/bookings/route.ts — can independently consume BDA numbers
+    // out from under a derived guess). That reasoning was right about the
+    // race but wrong about the fix: it meant EVERY booking created here
+    // for a pre-existing lead drifted its BDA number away from that
+    // lead's BDL number, which is exactly the bug reported 2026-08-21
+    // (booking BDA-2026-0112 paired with lead BDL-2026-0115). Handled
+    // properly below instead: try the derived/paired number first (the
+    // common, correct case), and only fall back to a fresh number — re-
+    // pairing the lead's own lead_number to match it — if that exact
+    // number turns out to already belong to a genuinely different
+    // booking (verified by phone match, not just "some row exists").
+    const derivedTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
+    let trackingId = derivedTrackingId
 
-    const { data: newBooking, error: createErr } = await supabaseAdmin
+    const insertBookingRow = (tid: string) => supabaseAdmin
       .from('bookings')
       .insert({
-        tracking_id:    trackingId,
+        tracking_id:    tid,
         // lead_id intentionally omitted — column may not exist in all DB schemas.
         // The link is maintained via leads.booking_id (updated below).
         customer_name:  lead.name,
@@ -432,16 +442,25 @@ export async function POST(req: NextRequest) {
       .select('id, tracking_id')
       .single()
 
+    let { data: newBooking, error: createErr } = await insertBookingRow(trackingId)
+
     if (createErr) {
-      // Could happen if tracking_id already exists (race condition or stale lead.booking_id).
-      // Find the existing booking, re-link it, and un-cancel it if necessary.
+      // Could happen if tracking_id already exists — either (a) this
+      // exact lead's own stale row from a prior attempt (safe to
+      // recover/re-link), or (b) a genuinely different booking that
+      // independently claimed this number (real collision — see comment
+      // above). Phone match distinguishes the two; blindly re-linking
+      // whatever row has this tracking_id (the old behavior) would
+      // silently attach an unrelated customer's booking to this lead in
+      // case (b).
       console.warn('[generate-quote] auto-create booking failed:', createErr.message)
       const { data: existing } = await supabaseAdmin
         .from('bookings')
-        .select('id, status')
+        .select('id, status, customer_phone')
         .eq('tracking_id', trackingId)
         .maybeSingle()
-      if (existing?.id) {
+
+      if (existing?.id && existing.customer_phone === lead.phone) {
         bookingId = existing.id
         // Re-link booking → lead
         await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
@@ -456,6 +475,23 @@ export async function POST(req: NextRequest) {
             : {}),
         }).eq('id', bookingId)
         console.log(`[generate-quote] Recovered booking ${trackingId} (was: ${existing.status ?? 'unknown'}) for lead ${lead.lead_number}`)
+      } else {
+        // Genuine collision with an unrelated booking — mint a fresh,
+        // independently-sequenced number, re-pair this lead's
+        // lead_number to match it, and retry the insert under that
+        // number instead.
+        trackingId = await nextTrackingId()
+        await supabaseAdmin.from('leads').update({ lead_number: trackingId.replace(/^BDA-/, 'BDL-') }).eq('id', lead.id)
+        const retry = await insertBookingRow(trackingId)
+        newBooking = retry.data
+        createErr  = retry.error
+        if (createErr) {
+          console.error('[generate-quote] retry auto-create booking failed:', createErr.message)
+        } else if (newBooking) {
+          bookingId = newBooking.id
+          await supabaseAdmin.from('leads').update({ booking_id: bookingId }).eq('id', lead.id)
+          console.log(`[generate-quote] Auto-created booking ${trackingId} (after collision) for lead ${lead.id}`)
+        }
       }
     } else if (newBooking) {
       bookingId = newBooking.id

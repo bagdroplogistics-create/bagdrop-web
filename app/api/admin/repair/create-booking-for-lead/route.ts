@@ -41,12 +41,19 @@ export async function POST(req: NextRequest) {
     if (existing) return NextResponse.json({ booking: existing, created: false })
   }
 
-  // Also check by the OLD derived BDA- tracking_id scheme (lead_number with
-  // its BDL- prefix swapped for BDA-) in case this repair tool was run
-  // against this lead before that scheme was replaced — kept purely for
-  // idempotency against pre-existing rows, not used for new bookings below.
-  // (lead_id column does not exist on bookings — relationship is via
-  // leads.booking_id only.)
+  // ── 3. Pick the new booking's tracking ID ────────────────────────────────────
+  // PREFER the number PAIRED with this lead's own lead_number (BDL-YYYY-NNNN
+  // → BDA-YYYY-NNNN swap) so the two always match — founder requirement,
+  // 2026-08-21 (this repair route used to always mint a brand-new,
+  // independently-sequenced number instead, which meant a repaired
+  // booking's BDA number silently drifted away from its own lead's BDL
+  // number every time it ran — e.g. booking BDA-2026-0112 ending up paired
+  // with lead BDL-2026-0115). Only fall back to a fresh number — re-pairing
+  // this lead's lead_number to match it — if the derived number turns out
+  // to already belong to a genuinely different booking (verified by phone
+  // match, not just "some row exists" — a live direct/public booking with
+  // no lead, e.g. app/api/bookings/route.ts, can independently consume BDA
+  // numbers, so a real collision is possible, just uncommon).
   const derivedTrackingId = lead.lead_number.replace(/^BDL-/, 'BDA-')
   const { data: existingByTracking } = await supabaseAdmin
     .from('bookings')
@@ -54,21 +61,29 @@ export async function POST(req: NextRequest) {
     .eq('tracking_id', derivedTrackingId)
     .maybeSingle()
 
-  if (existingByTracking) {
-    // Link it back to lead
+  let trackingId: string
+  if (!existingByTracking) {
+    trackingId = derivedTrackingId
+  } else if (existingByTracking.customer_phone === lead.phone) {
+    // This repair tool already ran for this exact lead before — idempotent,
+    // just re-link and return it. (lead_id column does not exist on
+    // bookings — relationship is via leads.booking_id only.)
     await supabaseAdmin
       .from('leads')
       .update({ booking_id: existingByTracking.id })
       .eq('id', leadId)
     return NextResponse.json({ booking: existingByTracking, created: false })
+  } else {
+    // Genuine collision with an unrelated booking — mint a fresh,
+    // independently-sequenced number and re-pair this lead's lead_number
+    // to match it, so pairing still holds under whichever number is
+    // actually used.
+    trackingId = await nextTrackingId()
+    await supabaseAdmin
+      .from('leads')
+      .update({ lead_number: trackingId.replace(/^BDA-/, 'BDL-') })
+      .eq('id', leadId)
   }
-
-  // ── 3. Independently-sequenced atomic BDA- tracking ID ───────────────────────
-  // Was derived from the lead number by string substitution — that could
-  // collide with a genuinely different booking that already claimed that
-  // exact number via the atomic sequence in the meantime. Same shared
-  // sequence as every other inquiry source (lib/number-series.ts).
-  const trackingId = await nextTrackingId()
 
   // ── 4. Service label map ─────────────────────────────────────────────────────
   const serviceLabelMap: Record<string, string> = {
