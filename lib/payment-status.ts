@@ -73,5 +73,29 @@ export async function recomputeBookingPaymentStatus(bookingId: string): Promise<
 
   await supabaseAdmin.from('bookings').update({ payment_status: status }).eq('id', bookingId)
 
+  // Keep any already-generated invoice for this booking in sync too.
+  // invoices.payment_status is its OWN column (supabase/migrations/
+  // 20260618_payments_invoices_settings.sql) — set once, as a snapshot of
+  // bookings.payment_status, at the moment the invoice is generated
+  // (app/api/admin/invoices/route.ts) and never touched again after that.
+  // Before this, if a payment was approved AFTER the invoice already
+  // existed, the invoice row stayed frozen at whatever status it had at
+  // creation — the Invoices tab kept showing "Pending" / a nonzero Balance
+  // Due forever, even though the booking and Payments tab both correctly
+  // showed Paid (the bug reported 2026-08-21 for invoice BLS2600068).
+  //
+  // The Invoices list's own status model is deliberately binary (paid vs.
+  // everything else = full balance still due — see balanceDue() in
+  // app/(admin)/admin/invoices/page.tsx, which has no partial-payment
+  // display), so this collapses the richer booking-level status the same
+  // way: only an exact 'paid' booking flips the invoice to 'paid';
+  // anything else (partially_paid/pending_verification/approved_pending/
+  // pending) maps to invoice 'pending'. No-op if no invoice exists yet for
+  // this booking.
+  await supabaseAdmin
+    .from('invoices')
+    .update({ payment_status: status === 'paid' ? 'paid' : 'pending' })
+    .eq('booking_id', bookingId)
+
   return { status, totalPaid, balanceDue }
 }
