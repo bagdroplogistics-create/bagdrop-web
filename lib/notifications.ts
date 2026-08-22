@@ -239,7 +239,39 @@ export async function sendWhatsAppTemplateFast2SMS(
   // entire summary + booking list. Stripping "|" out of every variable's
   // text here (not just that one caller) protects every current and future
   // template from the same silent-truncation failure mode.
-  const sanitizedVariables = variables.map(v => v.replace(/\|/g, '·'))
+  //
+  // Second real bug (2026-08-21), same Confirmed & Ongoing report: WhatsApp
+  // rejects the whole send with error (#132018) "There's an issue with the
+  // parameters in your template" whenever a template parameter's VALUE
+  // contains a literal newline, carriage return, or tab character — this is
+  // a hard Meta/WhatsApp Business API restriction on parameter text, not
+  // something Fast2SMS can relax. It's unrelated to (and stricter than) the
+  // per-character formatting allowed in the template body itself. This
+  // report's {{1}} variable is a multi-line rendered block (one booking per
+  // several \n-joined lines), so every send was failing outright — the
+  // Fast2SMS dashboard's own delivery-details preview still renders the
+  // literal text fine, which made this look like a delivery problem rather
+  // than a rejected-at-submission one.
+  // There is no way to send a real line break inside a single WhatsApp
+  // template parameter — this is a documented platform limitation, not
+  // something a character substitution can trick around. Fix: replace
+  // \r\n/\n/\r with " • " (a plain separator, not a line break) so the
+  // report still reads as distinct fields/entries rather than becoming one
+  // unbroken run of words, and tabs / runs of 5+ spaces (also disallowed)
+  // collapse to a single space / 4 spaces. Applied to every variable/every
+  // caller, not just this one report, for the same "protect every current
+  // and future template" reason as the pipe fix above. Net effect: the
+  // Confirmed & Ongoing report now sends as one continuous line per message
+  // instead of the intended multi-line layout — a real, visible trade-off,
+  // not a full fix; flagged in case the founder would rather restructure
+  // that report (e.g. one WhatsApp message per booking) to get real line
+  // breaks back.
+  const sanitizedVariables = variables.map(v =>
+    v.replace(/\|/g, '·')
+     .replace(/\r\n|\r|\n/g, ' • ')
+     .replace(/\t/g, ' ')
+     .replace(/ {5,}/g, '    ')
+  )
 
   const params = new URLSearchParams({
     message_id:       messageId,
