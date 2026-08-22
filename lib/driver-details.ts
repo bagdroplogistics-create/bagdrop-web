@@ -1,7 +1,10 @@
 // BAGDROP — lib/driver-details.ts
 //
-// Sends the "Driver Details Shared" customer message — Airport Delivery
-// bookings only. Called from two places:
+// Sends the "Driver Details Shared" customer message — destination-airport
+// bookings only (Doorstep→Airport, Airport→Airport; see
+// lib/service-type.ts's shouldShowDriverDetailsStep() for the exact gate —
+// enforced in app/api/admin/bookings/[id]/route.ts before this ever runs).
+// Called from two places:
 //   1. app/api/admin/bookings/[id]/route.ts — when the admin clicks Share
 //      Driver Details (sends immediately, no scheduling window).
 //   2. app/api/cron/send-driver-details/route.ts — legacy scheduled-send

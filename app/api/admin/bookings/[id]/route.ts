@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
+import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import { syncBookingReminders } from '@/lib/ops-reminders'
@@ -156,7 +157,12 @@ export async function PATCH(
   if (pickup_instructions  !== undefined) updates.pickup_instructions  = pickup_instructions?.trim() || null
   if (flight_datetime      !== undefined) updates.flight_datetime      = flight_datetime || null
 
-  // ── Driver Details Shared — Airport Delivery only ──────────────────
+  // ── Driver Details Shared — destination-airport service types only ──
+  // (Doorstep→Airport, Airport→Airport — founder spec 2026-08-22; see
+  // lib/service-type.ts's shouldShowDriverDetailsStep() for the exact
+  // service_type values this checks, shared with the client-side gating in
+  // app/(admin)/admin/quotes/view/[lead_id]/page.tsx so the UI and this
+  // server-side validation can never drift apart).
   // Simplified: only driver name + phone are required. No flight-time
   // scheduling window — sending happens immediately when the admin clicks
   // Share. The generic status-change block below still handles the
@@ -173,12 +179,8 @@ export async function PATCH(
     if (!bk) {
       return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
     }
-    // Matches every airport-involving service_type value used across the
-    // codebase: the public booking form uses 'airport-delivery', while
-    // admin-created quotes use 'airport-to-doorstep' / 'airport-to-door' /
-    // 'doorstep-to-airport' / 'door-to-airport'. All contain "airport".
-    if (!/airport/i.test(bk.service_type ?? '')) {
-      return NextResponse.json({ error: '"Driver Details Shared" is only available for Airport Delivery bookings' }, { status: 400 })
+    if (!shouldShowDriverDetailsStep(bk.service_type)) {
+      return NextResponse.json({ error: '"Driver Details Shared" is only available for Doorstep→Airport and Airport→Airport bookings' }, { status: 400 })
     }
     if (bk.driver_details_sent_at) {
       return NextResponse.json({ error: `Driver details were already sent for this booking at ${bk.driver_details_sent_at}` }, { status: 409 })

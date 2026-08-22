@@ -53,3 +53,9 @@ export const INVOICE_BANK = {
 // a new QR code for every reminder"). Encodes INVOICE_BANK.upi with no
 // amount, so it's valid to reuse across every outstanding-payment amount.
 export const PAYMENT_QR_IMAGE_URL = 'https://www.bagdrop.co/bagdrop_upi_qr.png'
+
+// Bagdrop's Google Business review page — used by the "Review" action on
+// Completed bookings (founder spec, 2026-08-22). Single shared constant so
+// the link can never drift between the "open review page" button and the
+// WhatsApp/Email review-request message, which both need the exact same URL.
+export const GOOGLE_REVIEW_LINK = 'https://g.page/r/CbN8qgu-fMB-EBM/review'

@@ -14,6 +14,7 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
+import ReviewPanel from '@/components/admin/ReviewPanel'
 
 interface Booking {
   id: string
@@ -1945,6 +1946,28 @@ export default function AdminDashboard() {
                                         email: b.customer_email || null,
                                         pickupLocation: b.pickup_address || b.from_city,
                                         deliveryLocation: b.drop_address || b.to_city,
+                                      }}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Review — Completed bookings only, per founder spec
+                                    (2026-08-22). Purely an extra manual action: never
+                                    changes b.status, payment status, or triggers any
+                                    existing workflow, and never interferes with the
+                                    Follow Up action above (mutually exclusive statuses
+                                    anyway). See components/admin/ReviewPanel.tsx. */}
+                                {b.status === 'completed' && (
+                                  <div onClick={e => e.stopPropagation()}>
+                                    <ReviewPanel
+                                      adminKey={adminKey}
+                                      target={{
+                                        bookingId: b.id,
+                                        bookingStatus: b.status,
+                                        title: b.title,
+                                        name: b.customer_name,
+                                        phone: b.customer_phone || null,
+                                        email: b.customer_email || null,
                                       }}
                                     />
                                   </div>

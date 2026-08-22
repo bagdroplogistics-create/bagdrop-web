@@ -70,12 +70,14 @@ export async function POST(req: NextRequest) {
     initiated_by?: string | null
     // Payment Follow Up (separate from the general "quote not responded"
     // follow-up) — see supabase/migrations/20260821_customer_follow_ups_payment_type.sql.
+    // Review request (Completed bookings only) — see
+    // supabase/migrations/20260822_customer_follow_ups_review_type.sql.
     // Defaults to 'general' so the existing FollowUpPanel call sites don't
     // need to change.
-    follow_up_type?: 'general' | 'payment'
+    follow_up_type?: 'general' | 'payment' | 'review'
     outstanding_amount?: number | null
   }
-  const followUpType = follow_up_type === 'payment' ? 'payment' : 'general'
+  const followUpType = follow_up_type === 'payment' ? 'payment' : follow_up_type === 'review' ? 'review' : 'general'
 
   if (!booking_id || (method !== 'whatsapp' && method !== 'email')) {
     return NextResponse.json({ error: 'booking_id and a valid method (whatsapp/email) are required' }, { status: 400 })
@@ -150,6 +152,8 @@ export async function POST(req: NextRequest) {
   if (followUpType === 'payment') {
     insertRow.follow_up_type     = followUpType
     insertRow.outstanding_amount = outstanding_amount ?? null
+  } else if (followUpType === 'review') {
+    insertRow.follow_up_type = followUpType
   }
 
   const { data: row, error: insertErr } = await supabaseAdmin

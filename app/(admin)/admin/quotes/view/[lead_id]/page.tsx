@@ -13,7 +13,9 @@ import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
 import { fmtTimeLabel } from '@/lib/time-options'
+import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 import PaymentFollowUpPanel from '@/components/admin/PaymentFollowUpPanel'
+import ReviewPanel from '@/components/admin/ReviewPanel'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -221,8 +223,11 @@ function toWords(n: number): string {
 // ── Booking Workflow ──────────────────────────────────────────────────────────
 
 // Full 17-step sequential workflow — each step only enables when booking is at the correct preceding status.
-// Airport Delivery bookings get an 18th step ("Driver Details Shared") inserted between Out for Delivery
-// and Delivered — see buildStatusSteps() below, which is what components should actually use.
+// Bookings whose destination leg is an airport (Doorstep→Airport, Airport→Airport)
+// get an 18th step ("Driver Details Shared") inserted between Out for Delivery
+// and Delivered — see shouldShowDriverDetailsStep() in lib/service-type.ts for
+// exactly which service types this applies to, and buildStatusSteps() below,
+// which is what components should actually use.
 const STATUS_STEPS_BASE = [
   { key: 'inquiry',          label: 'New Inquiry' },
   { key: 'quote_created',    label: 'Quote Created' },
@@ -253,12 +258,13 @@ const STATUS_STEPS_BASE = [
 
 const DRIVER_DETAILS_STEP = { key: 'driver_details_shared', label: 'Driver Details Shared' }
 
-// Builds the step list + status order for a specific booking — Airport
-// Delivery only gets the extra "Driver Details Shared" step between Out
-// for Delivery and Delivered. Every other service type keeps the exact
+// Builds the step list + status order for a specific booking — only
+// destination-airport service types (see shouldShowDriverDetailsStep in
+// lib/service-type.ts) get the extra "Driver Details Shared" step between
+// Out for Delivery and Delivered. Every other service type keeps the exact
 // original 16-step list/order untouched.
-function buildStatusSteps(isAirportDelivery: boolean) {
-  if (!isAirportDelivery) return STATUS_STEPS_BASE
+function buildStatusSteps(showDriverDetailsStep: boolean) {
+  if (!showDriverDetailsStep) return STATUS_STEPS_BASE
   const idx = STATUS_STEPS_BASE.findIndex(s => s.key === 'delivered')
   return [...STATUS_STEPS_BASE.slice(0, idx), DRIVER_DETAILS_STEP, ...STATUS_STEPS_BASE.slice(idx)]
 }
@@ -273,8 +279,8 @@ const STATUS_ORDER_BASE = [
   'out_for_delivery', 'delivered', 'trip_created', 'completed',
 ]
 
-function buildStatusOrder(isAirportDelivery: boolean): string[] {
-  if (!isAirportDelivery) return STATUS_ORDER_BASE
+function buildStatusOrder(showDriverDetailsStep: boolean): string[] {
+  if (!showDriverDetailsStep) return STATUS_ORDER_BASE
   const idx = STATUS_ORDER_BASE.indexOf('delivered')
   return [...STATUS_ORDER_BASE.slice(0, idx), 'driver_details_shared', ...STATUS_ORDER_BASE.slice(idx)]
 }
@@ -718,18 +724,19 @@ export default function QuoteViewPage() {
 
   // ── Step-gated workflow functions ─────────────────────────────────
 
-  // Airport Delivery bookings get the extra "Driver Details Shared" step
-  // inserted between Out for Delivery and Delivered — STATUS_STEPS and
-  // STATUS_ORDER below are derived from this per booking, so no other
-  // service type is affected.
-  // Matches every airport-involving service_type value used across the codebase:
-  // the public booking form uses 'airport-delivery', while admin-created quotes
-  // use 'airport-to-doorstep' / 'airport-to-door' / 'doorstep-to-airport' /
-  // 'door-to-airport'. All of these contain "airport" — same heuristic already
-  // used in lib/driver-details.ts's deriveAirportName().
-  const isAirportDelivery = /airport/i.test(booking?.service_type ?? '')
-  const steps       = buildStatusSteps(isAirportDelivery)
-  const statusOrder = buildStatusOrder(isAirportDelivery)
+  // Destination-airport bookings (Doorstep→Airport, Airport→Airport) get the
+  // extra "Driver Details Shared" step inserted between Out for Delivery and
+  // Delivered — STATUS_STEPS and STATUS_ORDER below are derived from this
+  // per booking, so no other service type is affected. Founder spec
+  // (2026-08-22): hidden for Airport→Doorstep and Doorstep→Doorstep, since
+  // those deliver to the customer's door rather than requiring the customer
+  // to meet the driver at an airport. See lib/service-type.ts for the exact
+  // service_type values this checks (including legacy aliases) and the
+  // flagged assumption about the public form's generic 'airport-delivery'
+  // category.
+  const showDriverDetailsStep = shouldShowDriverDetailsStep(booking?.service_type)
+  const steps       = buildStatusSteps(showDriverDetailsStep)
+  const statusOrder = buildStatusOrder(showDriverDetailsStep)
 
   // Driver Details Shared form state — defaults from whatever's already
   // saved on the booking (e.g. if a previous attempt failed validation).
@@ -2449,7 +2456,8 @@ export default function QuoteViewPage() {
                   </div>
                 )}
 
-                {/* ── Step 13b: Driver Assignment & Share — Airport Delivery only ──
+                {/* ── Step 13b: Driver Assignment & Share — destination-airport
+                     service types only (Doorstep→Airport, Airport→Airport) ──
                      Single step, gated to Out for Delivery only — matches every
                      other step card's exclusivity. Two phases inside the one card:
                      enter driver name/mobile and save (+ optionally share
@@ -2457,7 +2465,7 @@ export default function QuoteViewPage() {
                      a Share button. Never shows before Out for Delivery, and stops
                      showing once driver details have actually been sent (Step 14
                      — Mark Delivered — takes over from there). ── */}
-                {atStatus('out_for_delivery') && isAirportDelivery && !booking.driver_details_sent_at && (
+                {atStatus('out_for_delivery') && showDriverDetailsStep && !booking.driver_details_sent_at && (
                   <div className="rounded-xl border border-indigo-100 bg-indigo-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-indigo-600">
                       🚕 Step 13b — {driverAssigned ? 'Share Driver Details' : 'Driver Assignment'}
@@ -2515,15 +2523,15 @@ export default function QuoteViewPage() {
                 )}
 
                 {/* ── Step 14: Delivered ──
-                     Non-Airport-Delivery: unlocks straight from Out for Delivery, exactly as before.
-                     Airport Delivery: unlocks after Driver Details Shared — OR if the booking is
+                     Non-destination-airport service types: unlocks straight from Out for Delivery, exactly as before.
+                     Destination-airport service types: unlocks after Driver Details Shared — OR if the booking is
                      back at Out for Delivery but driver_details_sent_at is already set (e.g. an
                      admin used Previous Step after a successful send). Without that second case,
                      re-visiting Out for Delivery after already sending leaves NO card visible at
                      all, since the Driver Assignment/Share card also hides once already sent. ── */}
-                {((atStatus('out_for_delivery') && !isAirportDelivery) ||
+                {((atStatus('out_for_delivery') && !showDriverDetailsStep) ||
                   atStatus('driver_details_shared') ||
-                  (atStatus('out_for_delivery') && isAirportDelivery && !!booking.driver_details_sent_at)) && (
+                  (atStatus('out_for_delivery') && showDriverDetailsStep && !!booking.driver_details_sent_at)) && (
                   <div className="rounded-xl border border-green-100 bg-green-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-green-600">✅ Step 14 — Mark Delivered</p>
                     <p className="text-sm text-green-700">Delivery agent on the way. Mark delivered once bags reach the customer.</p>
@@ -2567,6 +2575,23 @@ export default function QuoteViewPage() {
                   <div className="rounded-xl border border-green-200 bg-green-50 p-4 text-center">
                     <p className="text-base font-bold text-green-700">🎉 Booking Completed</p>
                     <p className="mt-1 text-sm text-green-600">This booking has been successfully completed and closed.</p>
+                    {/* Review — Completed bookings only, per founder spec
+                        (2026-08-22). Purely an extra manual action: never
+                        changes booking.status, payment status, or triggers
+                        any existing workflow. See ReviewPanel.tsx. */}
+                    <div className="mt-3 flex justify-center">
+                      <ReviewPanel
+                        adminKey={key}
+                        target={{
+                          bookingId: booking.id,
+                          bookingStatus: booking.status,
+                          title: lead.title,
+                          name: lead.name,
+                          phone: booking.customer_phone,
+                          email: booking.customer_email,
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 
