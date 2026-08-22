@@ -8,6 +8,7 @@ import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
 import { nextTrackingId } from '@/lib/number-series'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped bookings API
@@ -129,6 +130,15 @@ export async function POST(req: NextRequest) {
 
     if (dbError || !savedBooking) {
       console.error('[Skybird Bookings] Supabase insert error:', dbError)
+      await alertCreationFailure({
+        source:        'skybird-bookings',
+        trackingId,
+        failureStage:  'booking_insert',
+        customerName,
+        customerPhone,
+        customerEmail: customerEmail || null,
+        errorMessage:  dbError?.message ?? 'Insert returned no row',
+      })
       // Unlike the public /api/bookings route, we surface this instead of
       // silently returning success:true — an internal partner tool must
       // never show a "confirmed" tracking ID that was never persisted.
@@ -183,6 +193,19 @@ export async function POST(req: NextRequest) {
 
           if (leadInsertErr) {
             console.error('[Skybird Bookings] Lead insert error:', leadInsertErr.message)
+            // Deliberately NOT rolled back — this booking is a real Skybird
+            // partner customer's inquiry; repairable via
+            // /api/admin/repair/create-lead-for-booking rather than deleted.
+            await alertCreationFailure({
+              source:        'skybird-bookings',
+              trackingId,
+              leadNumber,
+              failureStage:  'lead_insert',
+              customerName,
+              customerPhone,
+              customerEmail: customerEmail || null,
+              errorMessage:  leadInsertErr.message,
+            })
           } else {
             console.log(`[Skybird Bookings] Auto-created lead ${leadNumber} for booking ${trackingId}`)
             if (newLead) {

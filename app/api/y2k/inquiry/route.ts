@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 // Y2K booking form restrictions — mirrors the constants of the same name in
 // app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
@@ -107,11 +108,33 @@ export async function POST(req: NextRequest) {
 
       if (dbError) {
         console.error('[y2k/inquiry] DB save error:', dbError)
+        // Booking insert failed outright — no lead gets attempted below
+        // (gated on savedBookingId), so this tracking number vanishes with
+        // NOTHING created anywhere, same failure class as the 2026-08-22
+        // BDA-2026-0114/0115/0117 incident. Surface it immediately.
+        await alertCreationFailure({
+          source:        'y2k-inquiry',
+          trackingId,
+          failureStage:  'booking_insert',
+          customerName:  name.trim(),
+          customerPhone: '+91' + digits,
+          customerEmail: email?.trim().toLowerCase() || null,
+          errorMessage:  dbError.message,
+        })
       } else {
         savedBookingId = savedBooking?.id ?? null
       }
     } catch (dbErr) {
       console.error('[y2k/inquiry] DB save error:', dbErr)
+      await alertCreationFailure({
+        source:        'y2k-inquiry',
+        trackingId,
+        failureStage:  'booking_insert',
+        customerName:  name.trim(),
+        customerPhone: '+91' + digits,
+        customerEmail: email?.trim().toLowerCase() || null,
+        errorMessage:  dbErr instanceof Error ? dbErr.message : String(dbErr),
+      })
     }
 
     // ── Auto-create Lead ────────────────────────────────────────
@@ -168,6 +191,25 @@ export async function POST(req: NextRequest) {
 
           if (leadInsertErr) {
             console.error('[y2k/inquiry] Lead insert error:', leadInsertErr.message)
+            // NOTE (2026-08-22): deliberately NOT rolled back — same
+            // reasoning as app/api/contact/route.ts. This is a real wedding
+            // guest's inquiry; the booking staying orphaned-but-visible on
+            // the Dashboard (repairable via
+            // /api/admin/repair/create-lead-for-booking) is far better than
+            // silently deleting their only record with us over a rare
+            // backend hiccup. Matches this function's existing "Non-fatal —
+            // the booking itself already saved above either way" comment
+            // below, which already reflects this intentional choice.
+            await alertCreationFailure({
+              source:        'y2k-inquiry',
+              trackingId,
+              leadNumber,
+              failureStage:  'lead_insert',
+              customerName:  name.trim(),
+              customerPhone: '+91' + digits,
+              customerEmail: email?.trim().toLowerCase() || null,
+              errorMessage:  leadInsertErr.message,
+            })
           } else {
             console.log(`[y2k/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
             // Internal ops WhatsApp ping — this route only ever emailed

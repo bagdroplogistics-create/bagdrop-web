@@ -4,6 +4,7 @@ import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 import { nextInquiryNumberPair } from '@/lib/number-series'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
@@ -148,6 +149,16 @@ export async function POST(req: Request) {
 
     if (bookingErr) {
       console.error('[Contact] Booking insert error (lead will still be created without a link):', bookingErr.message)
+      await alertCreationFailure({
+        source:        'contact-form',
+        trackingId,
+        leadNumber,
+        failureStage:  'booking_insert',
+        customerName:  (name as string).trim(),
+        customerPhone: normalizedPhone,
+        customerEmail: cleanEmail || null,
+        errorMessage:  bookingErr.message,
+      })
     }
 
     const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
@@ -166,6 +177,26 @@ export async function POST(req: Request) {
 
     if (leadInsertErr) {
       console.error('[Contact] Lead insert error:', leadInsertErr.message)
+      // NOTE (2026-08-22): if the booking above succeeded but this lead
+      // insert fails, the booking is left orphaned — visible on the
+      // Dashboard, invisible on the Leads tab (no lead row exists to find,
+      // Lost or otherwise). Deliberately NOT rolled back here: unlike the
+      // admin-created-lead case (app/api/admin/leads/route.ts), this is a
+      // real customer's contact-form submission — their message, phone,
+      // and email — and deleting their booking over a rare backend hiccup
+      // would destroy their only record with us. An orphaned-but-visible
+      // booking can be repaired via /api/admin/repair/create-lead-for-booking;
+      // a deleted one can't be recovered at all.
+      await alertCreationFailure({
+        source:        'contact-form',
+        trackingId:    newBooking?.tracking_id ?? trackingId,
+        leadNumber,
+        failureStage:  bookingErr ? 'both' : 'lead_insert',
+        customerName:  (name as string).trim(),
+        customerPhone: normalizedPhone,
+        customerEmail: cleanEmail || null,
+        errorMessage:  leadInsertErr.message,
+      })
     } else {
       console.log(`[Contact] Auto-created lead ${leadNumber}${newBooking ? ` + booking ${trackingId}` : ''} from contact form`)
       // Fire the "Thank You for Your Inquiry" email + WhatsApp — awaited so

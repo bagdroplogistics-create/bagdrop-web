@@ -7,6 +7,7 @@ import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITL
 import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { nextTrackingId } from '@/lib/number-series'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 // Best-effort mapping from the old '+91'/'+1'/'+44'/'+1CA' dial-code-string
 // convention to an ISO2 country — only hit if a client sends the pre-
@@ -134,6 +135,20 @@ export async function POST(req: Request) {
 
     if (dbError) {
       console.error('[Bookings] Supabase insert error:', dbError)
+      // Booking insert failed outright — no lead is attempted below (gated
+      // on savedBooking), so this tracking number vanishes with nothing
+      // created anywhere at all, same failure class as the 2026-08-22
+      // BDA-2026-0114/0115/0117 incident, on the highest-traffic creation
+      // path in the app. Surface it immediately.
+      await alertCreationFailure({
+        source:        bookingSource === 'mobile-app' ? 'mobile-app-booking' : 'website-booking',
+        trackingId,
+        failureStage:  'booking_insert',
+        customerName,
+        customerPhone,
+        customerEmail: customerEmail || null,
+        errorMessage:  dbError.message,
+      })
     }
 
     // ── Auto-create Lead ────────────────────────────────────────────
@@ -181,6 +196,22 @@ export async function POST(req: Request) {
 
           if (leadInsertErr) {
             console.error('[Bookings] Lead insert error:', leadInsertErr.message)
+            // Deliberately NOT rolled back — same reasoning as
+            // app/api/contact/route.ts: this is a real customer's booking
+            // (often with money about to change hands), and deleting it
+            // over a rare backend hiccup on the lead side would be far
+            // worse than leaving it orphaned-but-visible on the Dashboard,
+            // repairable via /api/admin/repair/create-lead-for-booking.
+            await alertCreationFailure({
+              source:        bookingSource === 'mobile-app' ? 'mobile-app-booking' : 'website-booking',
+              trackingId,
+              leadNumber,
+              failureStage:  'lead_insert',
+              customerName,
+              customerPhone,
+              customerEmail: customerEmail || null,
+              errorMessage:  leadInsertErr.message,
+            })
           } else {
             // Note: lead_id on bookings omitted (column may not exist in all DB schemas).
             // Relationship is maintained via leads.booking_id set above.

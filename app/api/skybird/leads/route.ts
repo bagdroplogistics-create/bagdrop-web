@@ -7,6 +7,7 @@ import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { nextInquiryNumberPair } from '@/lib/number-series'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped leads API
@@ -283,7 +284,20 @@ export async function POST(req: NextRequest) {
     console.error('[skybird/leads POST] booking insert failed:', bookingErr.message)
     const { data: existingByTracking } = await supabaseAdmin
       .from('bookings').select('id, tracking_id').eq('tracking_id', trackingId).maybeSingle()
-    if (existingByTracking) booking = existingByTracking
+    if (existingByTracking) {
+      booking = existingByTracking
+    } else {
+      await alertCreationFailure({
+        source:        'skybird-leads',
+        trackingId,
+        leadNumber,
+        failureStage:  'booking_insert',
+        customerName:  body.name?.trim() ?? null,
+        customerPhone: normPhone,
+        customerEmail: body.email?.trim() || null,
+        errorMessage:  bookingErr.message,
+      })
+    }
   }
 
   const { data: lead, error: leadErr } = await supabaseAdmin
@@ -324,6 +338,29 @@ export async function POST(req: NextRequest) {
 
   if (leadErr) {
     console.error('[skybird/leads POST] lead insert failed:', leadErr.message)
+    // Same rollback pattern as app/api/admin/leads/route.ts: this is a B2B
+    // partner API call (Skybird), not a customer-facing form — nothing has
+    // been promised to an end customer yet at this point, and Skybird gets
+    // an immediate error back it can retry, so it's safe (and better) to
+    // roll the orphaned booking back rather than leave an invisible ghost.
+    if (booking?.id) {
+      const { error: rollbackErr } = await supabaseAdmin.from('bookings').delete().eq('id', booking.id)
+      if (rollbackErr) {
+        console.error(`[skybird/leads POST] Failed to roll back orphaned booking ${booking.tracking_id}:`, rollbackErr.message)
+      } else {
+        console.warn(`[skybird/leads POST] Rolled back orphaned booking ${booking.tracking_id} after lead insert failed`)
+      }
+    }
+    await alertCreationFailure({
+      source:        'skybird-leads',
+      trackingId:    booking?.tracking_id ?? trackingId,
+      leadNumber,
+      failureStage:  bookingErr ? 'both' : 'lead_insert',
+      customerName:  body.name?.trim() ?? null,
+      customerPhone: normPhone,
+      customerEmail: body.email?.trim() || null,
+      errorMessage:  leadErr.message,
+    })
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 

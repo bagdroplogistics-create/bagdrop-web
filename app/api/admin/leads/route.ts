@@ -8,6 +8,7 @@ import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { nextInquiryNumberPair } from '@/lib/number-series'
 import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
+import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -94,6 +95,18 @@ export async function GET(req: NextRequest) {
   // the Dashboard's bookings table does, instead of a single flat
   // "Confirmed" label that would hide that detail.
   let bookingStatusMap: Record<string, string> = {}
+  // Leads whose linked booking has actually reached 'completed' — kept
+  // deliberately separate from confirmedLeadIds/ACTIVE_STATUSES (which
+  // intentionally excludes 'completed' — that set powers the Dashboard's
+  // "Total Confirmed Bookings" count via dashboard-analytics/route.ts, and
+  // changing its membership would change that metric too). Added
+  // 2026-08-22 after a lead (BDL-2026-0119) whose booking was force-
+  // completed via /api/admin/repair/force-complete-booking still showed
+  // "Lost" here — leads.status is a raw, separate CRM field that a booking
+  // reaching Completed never updates, and this table had no path to
+  // reflect that. Same read-only, computed-not-stored pattern as
+  // effective_status below.
+  let completedLeadIds: string[] = []
   if (!deleted) {
     const { data: activeBookings } = await supabaseAdmin
       .from('bookings')
@@ -108,6 +121,20 @@ export async function GET(req: NextRequest) {
         .in('booking_id', activeBookingIds)
         .not('quote_number', 'is', null)
       confirmedLeadIds = (confirmedLeads ?? []).map(l => l.id)
+    }
+
+    const { data: completedBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id')
+      .eq('status', 'completed')
+    const completedBookingIds = (completedBookings ?? []).map(b => b.id)
+    if (completedBookingIds.length > 0) {
+      const { data: completedLeads } = await supabaseAdmin
+        .from('leads')
+        .select('id')
+        .in('booking_id', completedBookingIds)
+        .not('quote_number', 'is', null)
+      completedLeadIds = (completedLeads ?? []).map(l => l.id)
     }
   }
 
@@ -171,9 +198,37 @@ export async function GET(req: NextRequest) {
     // force this exact inquiry to the top of the list by searching its
     // unique Inquiry ID (see app/(admin)/admin/leads/page.tsx) — purely
     // additive, existing name/phone/email search behavior is unchanged.
-    query = query.or(
-      `name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%,lead_number.ilike.%${search}%`
-    )
+    //
+    // tracking_id (the BDA- number shown everywhere in the admin UI —
+    // Dashboard, Booking Workflow, LR/Invoice) lives on `bookings`, not on
+    // `leads` itself, so a plain lead_number.ilike match can never find it.
+    // Staff naturally search by whichever number they're looking at (often
+    // the BDA one, since that's what's on the Dashboard), so this was a
+    // silent dead-end — searching a real, existing BDA- number returned
+    // "No quotes found" with zero indication that the search simply never
+    // checked that column (founder-reported 2026-08-22). Resolve it by
+    // first finding any bookings whose tracking_id matches, then OR-ing
+    // their booking_id into the same query.
+    const trimmedSearch = search.trim()
+    let matchingBookingIds: string[] = []
+    if (/^BDA-?/i.test(trimmedSearch) || /^\d{4}(-\d{4})?$/.test(trimmedSearch)) {
+      const { data: matchingBookings } = await supabaseAdmin
+        .from('bookings')
+        .select('id')
+        .ilike('tracking_id', `%${trimmedSearch}%`)
+      matchingBookingIds = (matchingBookings ?? []).map(b => b.id)
+    }
+
+    const orClauses = [
+      `name.ilike.%${search}%`,
+      `phone.ilike.%${search}%`,
+      `email.ilike.%${search}%`,
+      `lead_number.ilike.%${search}%`,
+    ]
+    if (matchingBookingIds.length > 0) {
+      orClauses.push(`booking_id.in.(${matchingBookingIds.join(',')})`)
+    }
+    query = query.or(orClauses.join(','))
   }
 
   let { data, error, count } = await query
@@ -231,9 +286,11 @@ export async function GET(req: NextRequest) {
   // every other system that reads it (sales-followup reminders, etc.).
   const enriched = (data ?? []).map(l => ({
     ...l,
-    effective_status: confirmedLeadIds.includes(l.id)
-      ? (bookingStatusMap[l.booking_id ?? ''] ?? 'confirmed')
-      : l.status,
+    effective_status: completedLeadIds.includes(l.id)
+      ? 'completed'
+      : confirmedLeadIds.includes(l.id)
+        ? (bookingStatusMap[l.booking_id ?? ''] ?? 'confirmed')
+        : l.status,
   }))
 
   return NextResponse.json({ leads: enriched, total: count, page, limit })
@@ -399,6 +456,20 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
     if (existingByTracking) {
       console.log('[leads POST] Recovered existing booking for', trackingId)
       booking = existingByTracking
+    } else {
+      // Real, unrecovered failure — surface it immediately instead of
+      // letting it become another silent "number vanished" incident (see
+      // supabase/migrations/20260822_inquiry_creation_failures.sql).
+      await alertCreationFailure({
+        source:        'admin-leads',
+        trackingId,
+        leadNumber,
+        failureStage:  'booking_insert',
+        customerName:  body.name?.trim() ?? null,
+        customerPhone: normPhone,
+        customerEmail: body.email?.trim() || null,
+        errorMessage:  bookingErr.message,
+      })
     }
     // If still null, the lead is created without a booking — admin can repair via
     // /api/admin/repair/create-booking-for-lead
@@ -475,6 +546,39 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
 
   if (leadErr) {
     console.error('[leads POST] lead insert failed:', leadErr.message)
+    // Root cause of the 2026-08-22 "BDA-2026-0114 to 0117 vanished" report:
+    // the booking above had already committed successfully (with a real,
+    // permanently-consumed tracking_id) by the time this lead insert could
+    // fail — and nothing ever cleaned it up. That left an orphaned booking
+    // sitting on the Dashboard & Bookings tab (which reads `bookings`
+    // directly) with NO linked lead row at all, so it was invisible on this
+    // Leads/Quote Management page under every filter, including Lost —
+    // there was no lead row to find, Lost or otherwise. The BDA/BDL
+    // pairing itself was never broken (nextInquiryNumberPair guarantees
+    // that); the numbers just went to a booking with no visible way to
+    // find it again. Roll the booking back so a failed attempt leaves
+    // nothing behind, exactly like the lead side already doesn't.
+    if (booking?.id) {
+      const { error: rollbackErr } = await supabaseAdmin.from('bookings').delete().eq('id', booking.id)
+      if (rollbackErr) {
+        console.error(`[leads POST] Failed to roll back orphaned booking ${booking.tracking_id} after lead insert failure:`, rollbackErr.message)
+        return NextResponse.json(
+          { error: `Lead creation failed (${leadErr.message}), and the booking ${booking.tracking_id} could not be automatically cleaned up — please delete it manually from Dashboard & Bookings before retrying.` },
+          { status: 500 }
+        )
+      }
+      console.warn(`[leads POST] Rolled back orphaned booking ${booking.tracking_id} after lead insert failed`)
+    }
+    await alertCreationFailure({
+      source:        'admin-leads',
+      trackingId:    booking?.tracking_id ?? trackingId,
+      leadNumber,
+      failureStage:  bookingErr ? 'both' : 'lead_insert',
+      customerName:  body.name?.trim() ?? null,
+      customerPhone: normPhone,
+      customerEmail: body.email?.trim() || null,
+      errorMessage:  leadErr.message,
+    })
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }
 
