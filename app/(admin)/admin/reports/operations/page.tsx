@@ -1,38 +1,54 @@
 'use client'
 
 // ============================================================================
-// BAGDROP — Operations Center (Reports & Dashboard Enhancements, Phase 1)
-// New module, additive only — does not touch the existing Dashboard
-// (app/(admin)/admin/page.tsx) or any booking-status workflow logic. Pulls
-// from GET /api/admin/reports/operations, which is read-only.
+// BAGDROP — Operations Center
+//
+// REWORKED 2026-08-22 per founder spec: this page now shows ONLY confirmed
+// and upcoming bookings — the information the Operations Team needs to
+// prepare and execute a booking. It answers one question: "what confirmed
+// bookings are coming up, and what does Ops need to do for them?"
+//
+// Removed entirely (not hidden) vs. the previous version: the "Today's
+// Inquiries" tab (lead/pre-confirmation data), the "Today's Operations" tab
+// (duplicated the same bookings the main table already covers), the tab
+// navigation itself, and every sales/financial summary widget (pending
+// quotes, pending payments, monthly revenue, active partners, conversion
+// rate). All of that is Leads-tab / Reports-Dashboard territory, neither of
+// which this change touches. The backing route
+// (app/api/admin/reports/operations/route.ts) now scopes every query to
+// confirmed-through-trip_created bookings, so pre-confirmation and
+// completed bookings can never reach this page even indirectly.
+//
+// "Driver Details Shared" relevance is gated by shouldShowDriverDetailsStep()
+// (lib/service-type.ts) — Doorstep→Airport and Airport→Airport only — the
+// same rule the Booking Workflow page and its PATCH route use, per the
+// founder's explicit "keep existing service-type workflow rules" note.
 // ============================================================================
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
-  AlertTriangle, RefreshCw, Inbox, CalendarClock, AlertOctagon, ClipboardList,
-  Loader2, ChevronRight, Plane, Truck, UserX, FileWarning, Clock,
-  Calendar, Link2, Unlink, ExternalLink, CheckCircle2, X,
+  AlertTriangle, RefreshCw, Loader2, Calendar, Link2, Unlink,
+  ExternalLink, CheckCircle2, X, ListFilter,
 } from 'lucide-react'
 import { formatCustomerName } from '@/lib/constants'
+import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 
 // ── Types (mirror the API response shape) ──────────────────────────────────
-interface TodayInquiry {
-  id: string; lead_number: string | null; title?: string | null; customer_name: string; phone: string
-  booking_id: string | null; tracking_id: string | null
-  service_type: string | null; from_city: string | null; to_city: string | null
-  pickup_date: string | null; status: string; assigned_to: string | null; has_quote: boolean
-}
 interface BookingLike {
   id: string; tracking_id: string; status: string
   title?: string | null
   customer_name: string | null; customer_phone: string | null
   service_type: string | null; service_label: string | null
   from_city: string | null; to_city: string | null
+  pickup_address: string | null; drop_address: string | null
   pickup_date: string | null; delivery_date: string | null; time_slot: string | null
   total_bags: number | null; total_amount: number | null
-  driver_name: string | null; created_at: string
+  payment_status: string | null
+  driver_name: string | null; driver_phone: string | null
+  notes: string | null; pickup_instructions: string | null
+  created_at: string
 }
 interface OverdueBooking extends BookingLike {
   overdue_reasons: Array<{ code: string; label: string }>
@@ -40,40 +56,51 @@ interface OverdueBooking extends BookingLike {
 interface Alert { severity: 'high' | 'medium'; message: string; count: number }
 interface CalendarStatus { connected: boolean; email: string | null; calendarId: string | null }
 interface Widgets {
-  todays_inquiries: number; todays_pickups: number; todays_deliveries: number
-  upcoming_pickups_7d: number; pending_quotes: number; pending_payments: number
-  pending_driver_assign: number; pending_documents: number
-  completed_deliveries_today: number; monthly_revenue: number
-  active_partners: number; conversion_rate: number
+  todays_pickups: number; todays_deliveries: number
+  delivered_today: number; upcoming_pickups_7d: number
 }
 interface OpsData {
-  todays_inquiries: TodayInquiry[]
-  todays_inquiries_totals: { total: number; pending_quotes: number; pending_payments: number; confirmed: number }
   upcoming_bookings: BookingLike[]
-  upcoming_range: { from: string; to: string; preset: string }
+  upcoming_range: { from: string; to: string | null; preset: string }
   overdue: OverdueBooking[]
-  todays_ops: {
-    pickups: BookingLike[]; airport_collections: BookingLike[]; deliveries: BookingLike[]
-    driver_assign_pending: number; driver_details_pending: number
-    indemnity_pending: number; documents_pending: number
-  }
   alerts: Alert[]
   widgets: Widgets
 }
 
+// Trimmed to only the statuses that can actually appear here (confirmed
+// through trip_created) — inquiry/quote/payment/cancelled/rejected/completed
+// statuses can never reach this page (see the API route), so they're
+// deliberately not in this map.
 const STATUS_LABEL: Record<string, string> = {
-  inquiry: 'Inquiry', quote_created: 'Quote Pending', quote_sent: 'Quote Sent',
-  accepted: 'Awaiting Approval', payment_pending: 'Payment Pending', payment_received: 'Payment Received',
-  payment_approved: 'Payment Approved', confirmed: 'Confirmed', indemnity_bond_sent: 'Bond Sent',
-  indemnity_bond_signed: 'Bond Signed', invoice_generated: 'Invoice Generated', invoice_sent: 'Invoice Sent',
-  pickup_scheduled: 'Pickup Scheduled', picked_up: 'Picked Up', in_transit: 'In Transit',
-  out_for_delivery: 'Out for Delivery', driver_details_shared: 'Driver Details Shared',
-  delivered: 'Delivered', trip_created: 'Trip Created', completed: 'Completed',
-  rejected: 'Rejected', cancelled: 'Cancelled',
+  confirmed:             'Confirmed',
+  indemnity_bond_sent:   'Bond Sent',
+  indemnity_bond_signed: 'Bond Signed',
+  invoice_generated:     'Invoice Generated',
+  invoice_sent:          'Invoice Sent',
+  pickup_scheduled:      'Pickup Scheduled',
+  picked_up:             'Picked Up',
+  in_transit:            'In Transit',
+  out_for_delivery:      'Out for Delivery',
+  driver_details_shared: 'Driver Details Shared',
+  delivered:             'Delivered',
+  trip_created:          'Trip Sheet Created',
 }
 function statusLabel(s: string) { return STATUS_LABEL[s] ?? s }
 
-function fmtRs(n: number) { return '₹' + Number(n || 0).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
+const PAYMENT_STATUS_LABEL: Record<string, { label: string; color: string }> = {
+  paid:                 { label: 'Paid',            color: 'bg-green-100 text-green-700' },
+  partially_paid:       { label: 'Partially Paid',  color: 'bg-orange-100 text-orange-700' },
+  pending_verification: { label: 'Under Verification', color: 'bg-amber-100 text-amber-700' },
+  approved_pending:     { label: 'Approved (Unpaid)', color: 'bg-amber-100 text-amber-700' },
+  pending:              { label: 'Pending',          color: 'bg-gray-100 text-gray-600' },
+  refunded:             { label: 'Refunded',         color: 'bg-purple-100 text-purple-700' },
+}
+function paymentBadge(status: string | null) {
+  if (!status) return null
+  const cfg = PAYMENT_STATUS_LABEL[status] ?? { label: status, color: 'bg-gray-100 text-gray-600' }
+  return <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.color}`}>{cfg.label}</span>
+}
+
 function fmtDate(d: string | null) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
@@ -83,6 +110,18 @@ function daysUntil(pickupDate: string | null): number | null {
   const today = new Date(); today.setHours(0, 0, 0, 0)
   const pickup = new Date(pickupDate + 'T00:00:00')
   return Math.round((pickup.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+function truncate(s: string | null, n = 26): string {
+  if (!s) return '—'
+  return s.length > n ? s.slice(0, n) + '…' : s
+}
+function opsNotes(b: BookingLike): string | null {
+  const parts: string[] = []
+  if (b.notes?.trim()) parts.push(b.notes.trim())
+  if (shouldShowDriverDetailsStep(b.service_type) && b.pickup_instructions?.trim()) {
+    parts.push(`Pickup instructions: ${b.pickup_instructions.trim()}`)
+  }
+  return parts.length ? parts.join(' · ') : null
 }
 
 const RANGE_OPTS = [
@@ -94,14 +133,6 @@ const RANGE_OPTS = [
   { value: 'custom',    label: 'Custom Range' },
 ]
 
-const TABS = [
-  { key: 'inquiries', label: 'Pickup Today',   icon: Inbox },
-  { key: 'upcoming',  label: 'Upcoming Confirmed Bookings', icon: CalendarClock },
-  { key: 'overdue',   label: 'Missed / Overdue',     icon: AlertOctagon },
-  { key: 'ops',       label: "Today's Operations",   icon: ClipboardList },
-] as const
-type TabKey = typeof TABS[number]['key']
-
 export default function OperationsCenterPage() {
   const router = useRouter()
   const [adminKey, setAdminKey] = useState('')
@@ -109,10 +140,20 @@ export default function OperationsCenterPage() {
   const [data, setData]         = useState<OpsData | null>(null)
   const [loading, setLoading]   = useState(true)
   const [error, setError]       = useState('')
-  const [tab, setTab]           = useState<TabKey>('inquiries')
   const [range, setRange]       = useState('all')
   const [customFrom, setCustomFrom] = useState('')
   const [customTo, setCustomTo]     = useState('')
+
+  // ── Extra filters — client-side, applied over whatever the date-range
+  // query already returned. Kept client-side deliberately: these are
+  // conveniences for scanning an already-small confirmed/upcoming list, not
+  // a reason to add more server round-trips. ──────────────────────────────
+  const [showFilters, setShowFilters]     = useState(false)
+  const [svcFilter, setSvcFilter]         = useState('')
+  const [statusFilter, setStatusFilter]   = useState('')
+  const [driverFilter, setDriverFilter]   = useState('')
+  const [pickupQ, setPickupQ]             = useState('')
+  const [deliveryQ, setDeliveryQ]         = useState('')
 
   // ── Google Calendar (shared "Bagdrop Ops" calendar) ──────────────────────
   const [calStatus, setCalStatus]   = useState<CalendarStatus | null>(null)
@@ -194,6 +235,39 @@ export default function OperationsCenterPage() {
 
   useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
 
+  // ── Distinct filter options, derived from whatever the date range
+  // already returned (not hardcoded — matches whatever service types /
+  // statuses / drivers actually exist in the current data). ──────────────
+  const serviceTypeOptions = useMemo(() => {
+    const set = new Set<string>()
+    ;(data?.upcoming_bookings ?? []).forEach(b => { if (b.service_type) set.add(b.service_type) })
+    return Array.from(set).sort()
+  }, [data])
+  const statusOptions = useMemo(() => {
+    const set = new Set<string>()
+    ;(data?.upcoming_bookings ?? []).forEach(b => set.add(b.status))
+    return Array.from(set)
+  }, [data])
+  const driverOptions = useMemo(() => {
+    const set = new Set<string>()
+    ;(data?.upcoming_bookings ?? []).forEach(b => { if (b.driver_name) set.add(b.driver_name) })
+    return Array.from(set).sort()
+  }, [data])
+
+  const filteredBookings = useMemo(() => {
+    if (!data) return []
+    return data.upcoming_bookings.filter(b => {
+      if (svcFilter && b.service_type !== svcFilter) return false
+      if (statusFilter && b.status !== statusFilter) return false
+      if (driverFilter && b.driver_name !== driverFilter) return false
+      if (pickupQ && !(`${b.pickup_address ?? ''} ${b.from_city ?? ''}`).toLowerCase().includes(pickupQ.toLowerCase())) return false
+      if (deliveryQ && !(`${b.drop_address ?? ''} ${b.to_city ?? ''}`).toLowerCase().includes(deliveryQ.toLowerCase())) return false
+      return true
+    })
+  }, [data, svcFilter, statusFilter, driverFilter, pickupQ, deliveryQ])
+
+  const activeExtraFilters = [svcFilter, statusFilter, driverFilter, pickupQ, deliveryQ].filter(Boolean).length
+
   if (!authed || (loading && !data)) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -209,7 +283,7 @@ export default function OperationsCenterPage() {
         <div className="mb-5 flex items-center justify-between">
           <div>
             <h1 className="text-lg font-bold text-gray-900">Operations Center</h1>
-            <p className="text-xs text-gray-500">Today&apos;s activity, upcoming bookings, and anything that needs attention — refreshed on load.</p>
+            <p className="text-xs text-gray-500">Confirmed and upcoming bookings only — what Ops needs to prepare for and execute.</p>
           </div>
           <div className="flex items-center gap-2">
             <Link href="/admin/reports" className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-xs font-semibold text-gray-600 hover:bg-gray-50">
@@ -231,7 +305,7 @@ export default function OperationsCenterPage() {
 
         {data && (
           <>
-            {/* ── Alerts ── */}
+            {/* ── Needs Attention ── */}
             {data.alerts.length > 0 && (
               <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50 p-4">
                 <div className="mb-2 flex items-center gap-2">
@@ -242,11 +316,10 @@ export default function OperationsCenterPage() {
                   {data.alerts.map((a, i) => (
                     <div
                       key={i}
-                      onClick={() => setTab(a.message.toLowerCase().includes('overdue') || a.message.toLowerCase().includes('driver') || a.message.toLowerCase().includes('indemnity') ? 'overdue' : 'upcoming')}
-                      className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium transition-colors ${
+                      className={`flex items-center justify-between rounded-lg border px-3 py-2 text-xs font-medium ${
                         a.severity === 'high'
-                          ? 'border-red-200 bg-red-50 text-red-700 hover:bg-red-100'
-                          : 'border-amber-200 bg-white text-amber-700 hover:bg-amber-100'
+                          ? 'border-red-200 bg-red-50 text-red-700'
+                          : 'border-amber-200 bg-white text-amber-700'
                       }`}
                     >
                       <span>{a.message}</span>
@@ -259,291 +332,18 @@ export default function OperationsCenterPage() {
               </div>
             )}
 
-            {/* ── Summary widgets ── */}
-            <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
-              {[
-                { label: 'Inquiries — Pickup Today', value: data.widgets.todays_inquiries, color: '#2563eb', bg: '#dbeafe' },
-                { label: "Today's Pickups", value: data.widgets.todays_pickups, color: '#d97706', bg: '#fef3c7' },
-                { label: "Today's Deliveries", value: data.widgets.todays_deliveries, color: '#16a34a', bg: '#dcfce7' },
-                { label: 'Upcoming Confirmed Pickups (7d)', value: data.widgets.upcoming_pickups_7d, color: '#0891b2', bg: '#cffafe' },
-                { label: 'Pending Quotes', value: data.widgets.pending_quotes, color: '#7c3aed', bg: '#ede9fe' },
-                { label: 'Pending Payments', value: data.widgets.pending_payments, color: '#dc2626', bg: '#fee2e2' },
-                { label: 'Driver Assign Pending', value: data.widgets.pending_driver_assign, color: '#ea580c', bg: '#ffedd5' },
-                { label: 'Documents Pending', value: data.widgets.pending_documents, color: '#be185d', bg: '#fce7f3' },
-                { label: 'Delivered Today', value: data.widgets.completed_deliveries_today, color: '#059669', bg: '#d1fae5' },
-                { label: 'Monthly Revenue', value: fmtRs(data.widgets.monthly_revenue), color: '#16a34a', bg: '#f0fdf4' },
-                { label: 'Active Partners', value: data.widgets.active_partners, color: '#4f46e5', bg: '#eef2ff' },
-                { label: 'Conversion Rate', value: data.widgets.conversion_rate + '%', color: '#0369a1', bg: '#e0f2fe' },
-              ].map(w => (
-                <div key={w.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{w.label}</p>
-                  <p className="mt-1 text-lg font-bold" style={{ color: w.color }}>{w.value}</p>
+            {/* ── Overdue bookings — the actual rows behind the alerts above ── */}
+            {data.overdue.length > 0 && (
+              <div className="mb-5 overflow-hidden rounded-xl border border-red-200 bg-white shadow-sm">
+                <div className="border-b border-red-100 bg-red-50 px-4 py-2.5">
+                  <p className="text-xs font-bold text-red-700">⚠️ Overdue / Needs Action ({data.overdue.length})</p>
                 </div>
-              ))}
-            </div>
-
-            {/* ── Tabs ── */}
-            <div className="mb-4 flex flex-wrap gap-2">
-              {TABS.map(t => {
-                const Icon = t.icon
-                const count = t.key === 'inquiries' ? data.todays_inquiries.length
-                            : t.key === 'upcoming'   ? data.upcoming_bookings.length
-                            : t.key === 'overdue'    ? data.overdue.length
-                            : data.todays_ops.pickups.length + data.todays_ops.deliveries.length
-                return (
-                  <button
-                    key={t.key}
-                    onClick={() => setTab(t.key)}
-                    className={`flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-semibold transition-colors ${
-                      tab === t.key ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-                    }`}
-                  >
-                    <Icon className="h-3.5 w-3.5" /> {t.label}
-                    <span className={`ml-1 rounded-full px-1.5 py-0.5 text-[10px] font-bold ${tab === t.key ? 'bg-orange-200 text-orange-800' : 'bg-gray-100 text-gray-500'}`}>{count}</span>
-                  </button>
-                )
-              })}
-            </div>
-
-            {/* ── Pickup Today (was "Today's Inquiries") ──────────────────
-                Redefined at the user's request: this now lists inquiries
-                whose PICKUP DATE is today (not ones merely created today) —
-                a don't-miss-it reminder list for Ops, since an inquiry can
-                sit around for weeks before its actual pickup day arrives.
-                Every row here qualifies by definition, so every row gets
-                the urgent treatment rather than singling any out. ── */}
-            {tab === 'inquiries' && (
-              <div>
-                <div className="mb-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
-                  <Clock className="mt-0.5 h-4 w-4 shrink-0" />
-                  <span><strong>Pickup scheduled for today.</strong> Make sure none of these are missed.</span>
-                </div>
-                <div className="mb-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
-                  {[
-                    { label: 'Pickups Today', value: data.todays_inquiries_totals.total },
-                    { label: 'Pending Quotes', value: data.todays_inquiries_totals.pending_quotes },
-                    { label: 'Pending Payments', value: data.todays_inquiries_totals.pending_payments },
-                    { label: 'Confirmed Bookings', value: data.todays_inquiries_totals.confirmed },
-                  ].map(c => (
-                    <div key={c.label} className="rounded-lg border border-gray-100 bg-white px-3 py-2">
-                      <p className="text-[10px] font-semibold uppercase text-gray-400">{c.label}</p>
-                      <p className="text-base font-bold text-gray-800">{c.value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                          <th className="px-4 py-2.5">Customer</th>
-                          <th className="px-4 py-2.5">Booking / Inquiry ID</th>
-                          <th className="px-4 py-2.5">Service</th>
-                          <th className="px-4 py-2.5">Route</th>
-                          <th className="px-4 py-2.5">Pickup Date</th>
-                          <th className="px-4 py-2.5">Status</th>
-                          <th className="px-4 py-2.5">Assigned Staff</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.todays_inquiries.length === 0 && (
-                          <tr><td colSpan={7} className="px-4 py-8 text-center text-sm text-gray-400">No pickups scheduled for today.</td></tr>
-                        )}
-                        {data.todays_inquiries.map(l => (
-                          <tr key={l.id} className="border-b border-gray-50 border-l-2 border-l-amber-400 last:border-b-0 bg-amber-50/30 hover:bg-amber-50">
-                            <td className="px-4 py-3 font-medium text-gray-800">{formatCustomerName(l.title, l.customer_name) || l.customer_name}<div className="text-xs text-gray-400">{l.phone}</div></td>
-                            <td className="px-4 py-3">
-                              <Link href={l.booking_id ? `/admin?highlight=${l.booking_id}` : '#'} className="font-mono text-xs text-orange-600 hover:underline">
-                                {l.tracking_id ?? l.lead_number ?? '—'}
-                              </Link>
-                            </td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{l.service_type ?? '—'}</td>
-                            <td className="px-4 py-3 text-xs text-gray-600">{l.from_city ?? '—'} → {l.to_city ?? '—'}</td>
-                            <td className="px-4 py-3 text-xs">
-                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2 py-0.5 font-bold text-amber-700">
-                                <Clock className="h-3 w-3" /> Today
-                              </span>
-                            </td>
-                            <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(l.status)}</span></td>
-                            <td className="px-4 py-3 text-xs text-gray-400">{l.assigned_to ?? '—'}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Upcoming Confirmed Bookings ── */}
-            {tab === 'upcoming' && (
-              <div>
-                {/* ── Google Calendar (shared "Bagdrop Ops" calendar) ── */}
-                <div className="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-orange-500" />
-                      <p className="text-xs font-bold text-gray-700">Bagdrop Ops Calendar</p>
-                      {calStatus?.connected ? (
-                        <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
-                          <CheckCircle2 className="h-3 w-3" /> Connected{calStatus.email ? ` — ${calStatus.email}` : ''}
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">Not connected</span>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {calStatus?.connected ? (
-                        <>
-                          <button
-                            onClick={handleCalSyncNow}
-                            disabled={calSyncing}
-                            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-                          >
-                            <RefreshCw className={`h-3.5 w-3.5 ${calSyncing ? 'animate-spin' : ''}`} /> Sync Now
-                          </button>
-                          <button
-                            onClick={handleCalDisconnect}
-                            disabled={calLoading}
-                            className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
-                          >
-                            <Unlink className="h-3.5 w-3.5" /> Disconnect
-                          </button>
-                        </>
-                      ) : (
-                        <button
-                          onClick={handleCalConnect}
-                          disabled={calLoading}
-                          className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
-                        >
-                          <Link2 className="h-3.5 w-3.5" /> Connect Google Calendar
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {calBanner && (
-                    <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-orange-50 px-4 py-2 text-xs font-medium text-orange-700">
-                      <span>{calBanner}</span>
-                      <button onClick={() => setCalBanner('')} className="text-orange-400 hover:text-orange-600"><X className="h-3.5 w-3.5" /></button>
-                    </div>
-                  )}
-
-                  {calStatus?.connected ? (
-                    <div className="p-4">
-                      <p className="mb-2 text-xs text-gray-500">
-                        Every confirmed booking automatically appears here as an all-day event on its pickup date. Team members can see reminders on their own phone by subscribing to this calendar —
-                        open Google Calendar → <strong>Other calendars → Subscribe by URL / Search for people</strong> → enter <span className="font-mono text-gray-700">{calStatus.email}</span>.
-                      </p>
-                      {calStatus.email && (
-                        <div className="overflow-hidden rounded-lg border border-gray-200">
-                          <iframe
-                            src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calStatus.email)}&ctz=Asia%2FKolkata&mode=AGENDA`}
-                            style={{ border: 0 }}
-                            width="100%"
-                            height="400"
-                            title="Bagdrop Ops Calendar"
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="p-4 text-xs text-gray-500">
-                      Connect one Google account (any Bagdrop team Gmail works) to auto-create a calendar event for every confirmed booking — customer name, booking ID, pickup date, addresses, and contact number included.
-                      Everyone else can subscribe to that one shared calendar afterward for reminders on their own devices. Admin only.
-                      <a href="https://calendar.google.com" target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-orange-600 hover:underline">
-                        Open Google Calendar <ExternalLink className="h-3 w-3" />
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                <p className="mb-3 text-xs text-gray-400">
-                  Only bookings the customer has confirmed — quotes still awaiting acceptance, rejected quotes, and inquiries that never converted are excluded.
-                </p>
-                <div className="mb-3 flex flex-wrap items-center gap-2">
-                  {RANGE_OPTS.map(o => (
-                    <button
-                      key={o.value}
-                      onClick={() => setRange(o.value)}
-                      className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                        range === o.value ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
-                      }`}
-                    >
-                      {o.label}
-                    </button>
-                  ))}
-                  {range === 'custom' && (
-                    <div className="flex items-center gap-2">
-                      <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
-                      <span className="text-xs text-gray-400">to</span>
-                      <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
-                      <button onClick={fetchData} className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600">Apply</button>
-                    </div>
-                  )}
-                  <span className="text-xs text-gray-400 ml-auto">
-                    {fmtDate(data.upcoming_range.from)} — {data.upcoming_range.to ? fmtDate(data.upcoming_range.to) : 'no end date'}
-                  </span>
-                </div>
-                <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                          <th className="px-4 py-2.5">Customer</th>
-                          <th className="px-4 py-2.5">Booking ID</th>
-                          <th className="px-4 py-2.5">Service</th>
-                          <th className="px-4 py-2.5">Pickup Date</th>
-                          <th className="px-4 py-2.5">Pickup Time</th>
-                          <th className="px-4 py-2.5">Delivery Date</th>
-                          <th className="px-4 py-2.5">Route</th>
-                          <th className="px-4 py-2.5">Status</th>
-                          <th className="px-4 py-2.5">Driver</th>
-                          <th className="px-4 py-2.5">Days to Pickup</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {data.upcoming_bookings.length === 0 && (
-                          <tr><td colSpan={10} className="px-4 py-8 text-center text-sm text-gray-400">No confirmed bookings scheduled in this range.</td></tr>
-                        )}
-                        {data.upcoming_bookings.map(b => {
-                          const days = daysUntil(b.pickup_date)
-                          return (
-                            <tr
-                              key={b.id}
-                              onClick={() => router.push(`/admin?highlight=${b.id}`)}
-                              className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-orange-50/60"
-                            >
-                              <td className="px-4 py-3 font-medium text-gray-800">{(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}</td>
-                              <td className="px-4 py-3 font-mono text-xs text-orange-600">{b.tracking_id}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">{b.time_slot ?? '—'}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.delivery_date)}</td>
-                              <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
-                              <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
-                              <td className="px-4 py-3 text-xs text-gray-500">{b.driver_name ?? <span className="text-gray-300">Unassigned</span>}</td>
-                              <td className="px-4 py-3 text-xs font-semibold">
-                                {days === null ? '—' : days < 0 ? <span className="text-red-600">Overdue</span> : days === 0 ? <span className="text-orange-600">Today</span> : `${days}d`}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {/* ── Missed / Overdue ── */}
-            {tab === 'overdue' && (
-              <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
                         <th className="px-4 py-2.5">Customer</th>
+                        <th className="px-4 py-2.5">Booking ID</th>
                         <th className="px-4 py-2.5">Route</th>
                         <th className="px-4 py-2.5">Status</th>
                         <th className="px-4 py-2.5">Pickup Date</th>
@@ -551,12 +351,14 @@ export default function OperationsCenterPage() {
                       </tr>
                     </thead>
                     <tbody>
-                      {data.overdue.length === 0 && (
-                        <tr><td colSpan={5} className="px-4 py-8 text-center text-sm text-gray-400">Nothing overdue — all clear.</td></tr>
-                      )}
                       {data.overdue.map(b => (
-                        <tr key={b.id} className="border-b border-red-50 bg-red-50/40 last:border-0 hover:bg-red-50">
-                          <td className="px-4 py-3 font-medium text-gray-800">{(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}<div className="font-mono text-xs text-red-600">{b.tracking_id}</div></td>
+                        <tr
+                          key={b.id}
+                          onClick={() => router.push(`/admin?highlight=${b.id}`)}
+                          className="cursor-pointer border-b border-red-50 bg-red-50/40 last:border-0 hover:bg-red-50"
+                        >
+                          <td className="px-4 py-3 font-medium text-gray-800">{(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}</td>
+                          <td className="px-4 py-3 font-mono text-xs text-red-600">{b.tracking_id}</td>
                           <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
                           <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
                           <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.pickup_date)}</td>
@@ -575,67 +377,235 @@ export default function OperationsCenterPage() {
               </div>
             )}
 
-            {/* ── Today's Operational Tasks ── */}
-            {tab === 'ops' && (
-              <div className="space-y-5">
-                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-                  {[
-                    { label: "Today's Pickups", value: data.todays_ops.pickups.length, icon: Truck, color: '#d97706' },
-                    { label: 'Airport Collections', value: data.todays_ops.airport_collections.length, icon: Plane, color: '#0891b2' },
-                    { label: "Today's Deliveries", value: data.todays_ops.deliveries.length, icon: ChevronRight, color: '#16a34a' },
-                    { label: 'Driver Assign Pending', value: data.todays_ops.driver_assign_pending, icon: UserX, color: '#dc2626' },
-                    { label: 'Driver Details Pending', value: data.todays_ops.driver_details_pending, icon: Clock, color: '#ea580c' },
-                    { label: 'Indemnity Bonds Pending', value: data.todays_ops.indemnity_pending, icon: FileWarning, color: '#7c3aed' },
-                    { label: 'Documents Pending Approval', value: data.todays_ops.documents_pending, icon: FileWarning, color: '#be185d' },
-                  ].map(c => {
-                    const Icon = c.icon
-                    return (
-                      <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-                        <Icon className="h-4 w-4" style={{ color: c.color }} />
-                        <p className="mt-2 text-[10px] font-semibold uppercase tracking-wide text-gray-400">{c.label}</p>
-                        <p className="text-xl font-bold" style={{ color: c.color }}>{c.value}</p>
-                      </div>
-                    )
-                  })}
+            {/* ── Summary — ops-only counts ── */}
+            <div className="mb-6 grid grid-cols-2 gap-2 sm:grid-cols-4">
+              {[
+                { label: "Today's Pickups", value: data.widgets.todays_pickups, color: '#d97706', bg: '#fef3c7' },
+                { label: "Today's Deliveries", value: data.widgets.todays_deliveries, color: '#16a34a', bg: '#dcfce7' },
+                { label: 'Delivered Today', value: data.widgets.delivered_today, color: '#059669', bg: '#d1fae5' },
+                { label: 'Upcoming Pickups (7d)', value: data.widgets.upcoming_pickups_7d, color: '#0891b2', bg: '#cffafe' },
+              ].map(w => (
+                <div key={w.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{w.label}</p>
+                  <p className="mt-1 text-lg font-bold" style={{ color: w.color }}>{w.value}</p>
                 </div>
+              ))}
+            </div>
 
-                {[
-                  { title: "Today's Pickups", rows: data.todays_ops.pickups },
-                  { title: "Today's Deliveries", rows: data.todays_ops.deliveries },
-                ].map(section => (
-                  <div key={section.title} className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
-                    <div className="border-b border-gray-100 px-4 py-2.5"><p className="text-xs font-bold text-gray-700">{section.title}</p></div>
-                    <div className="overflow-x-auto">
-                      <table className="w-full text-sm">
-                        <thead>
-                          <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
-                            <th className="px-4 py-2">Customer</th>
-                            <th className="px-4 py-2">Route</th>
-                            <th className="px-4 py-2">Service</th>
-                            <th className="px-4 py-2">Driver</th>
-                            <th className="px-4 py-2">Status</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {section.rows.length === 0 && (
-                            <tr><td colSpan={5} className="px-4 py-6 text-center text-xs text-gray-400">Nothing scheduled for today.</td></tr>
-                          )}
-                          {section.rows.map(b => (
-                            <tr key={b.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                              <td className="px-4 py-2.5 font-medium text-gray-800">{b.customer_name ?? '—'}</td>
-                              <td className="px-4 py-2.5 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
-                              <td className="px-4 py-2.5 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
-                              <td className="px-4 py-2.5 text-xs text-gray-500">{b.driver_name ?? <span className="text-red-500 font-semibold">Unassigned</span>}</td>
-                              <td className="px-4 py-2.5"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
+            {/* ── Google Calendar (shared "Bagdrop Ops" calendar) ── */}
+            <div className="mb-5 overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-gray-100 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-orange-500" />
+                  <p className="text-xs font-bold text-gray-700">Bagdrop Ops Calendar</p>
+                  {calStatus?.connected ? (
+                    <span className="flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 text-[10px] font-bold text-green-700">
+                      <CheckCircle2 className="h-3 w-3" /> Connected{calStatus.email ? ` — ${calStatus.email}` : ''}
+                    </span>
+                  ) : (
+                    <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-bold text-gray-500">Not connected</span>
+                  )}
+                </div>
+                <div className="flex items-center gap-2">
+                  {calStatus?.connected ? (
+                    <>
+                      <button
+                        onClick={handleCalSyncNow}
+                        disabled={calSyncing}
+                        className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                      >
+                        <RefreshCw className={`h-3.5 w-3.5 ${calSyncing ? 'animate-spin' : ''}`} /> Sync Now
+                      </button>
+                      <button
+                        onClick={handleCalDisconnect}
+                        disabled={calLoading}
+                        className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 py-1.5 text-xs font-semibold text-red-600 hover:bg-red-50 disabled:opacity-50"
+                      >
+                        <Unlink className="h-3.5 w-3.5" /> Disconnect
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      onClick={handleCalConnect}
+                      disabled={calLoading}
+                      className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50"
+                    >
+                      <Link2 className="h-3.5 w-3.5" /> Connect Google Calendar
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {calBanner && (
+                <div className="flex items-center justify-between gap-2 border-b border-gray-100 bg-orange-50 px-4 py-2 text-xs font-medium text-orange-700">
+                  <span>{calBanner}</span>
+                  <button onClick={() => setCalBanner('')} className="text-orange-400 hover:text-orange-600"><X className="h-3.5 w-3.5" /></button>
+                </div>
+              )}
+
+              {calStatus?.connected ? (
+                <div className="p-4">
+                  <p className="mb-2 text-xs text-gray-500">
+                    Every confirmed booking automatically appears here as an all-day event on its pickup date. Team members can see reminders on their own phone by subscribing to this calendar —
+                    open Google Calendar → <strong>Other calendars → Subscribe by URL / Search for people</strong> → enter <span className="font-mono text-gray-700">{calStatus.email}</span>.
+                  </p>
+                  {calStatus.email && (
+                    <div className="overflow-hidden rounded-lg border border-gray-200">
+                      <iframe
+                        src={`https://calendar.google.com/calendar/embed?src=${encodeURIComponent(calStatus.email)}&ctz=Asia%2FKolkata&mode=AGENDA`}
+                        style={{ border: 0 }}
+                        width="100%"
+                        height="400"
+                        title="Bagdrop Ops Calendar"
+                      />
                     </div>
-                  </div>
-                ))}
+                  )}
+                </div>
+              ) : (
+                <div className="p-4 text-xs text-gray-500">
+                  Connect one Google account (any Bagdrop team Gmail works) to auto-create a calendar event for every confirmed booking — customer name, booking ID, pickup date, addresses, and contact number included.
+                  Everyone else can subscribe to that one shared calendar afterward for reminders on their own devices. Admin only.
+                  <a href="https://calendar.google.com" target="_blank" rel="noreferrer" className="ml-1 inline-flex items-center gap-0.5 text-orange-600 hover:underline">
+                    Open Google Calendar <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* ── Confirmed & Upcoming Bookings ── */}
+            <p className="mb-3 text-xs text-gray-400">
+              Only bookings the customer has confirmed — inquiries, quotes (created, sent, awaiting approval, rejected, or expired), payment-pending bookings, and cancelled bookings are excluded. Completed bookings are excluded too; find those in the Leads tab.
+            </p>
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              {RANGE_OPTS.map(o => (
+                <button
+                  key={o.value}
+                  onClick={() => setRange(o.value)}
+                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                    range === o.value ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                  }`}
+                >
+                  {o.label}
+                </button>
+              ))}
+              {range === 'custom' && (
+                <div className="flex items-center gap-2">
+                  <input type="date" value={customFrom} onChange={e => setCustomFrom(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
+                  <span className="text-xs text-gray-400">to</span>
+                  <input type="date" value={customTo} onChange={e => setCustomTo(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
+                  <button onClick={fetchData} className="rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600">Apply</button>
+                </div>
+              )}
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
+                  showFilters || activeExtraFilters > 0 ? 'border-orange-400 bg-orange-50 text-orange-700' : 'border-gray-200 bg-white text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <ListFilter className="h-3.5 w-3.5" /> Filters
+                {activeExtraFilters > 0 && <span className="rounded-full bg-orange-200 px-1.5 py-0.5 text-[10px] font-bold text-orange-800">{activeExtraFilters}</span>}
+              </button>
+              <span className="text-xs text-gray-400 ml-auto">
+                {fmtDate(data.upcoming_range.from)} — {data.upcoming_range.to ? fmtDate(data.upcoming_range.to) : 'no end date'}
+              </span>
+            </div>
+
+            {showFilters && (
+              <div className="mb-3 grid grid-cols-1 gap-2 rounded-xl border border-gray-200 bg-white p-3 sm:grid-cols-3 lg:grid-cols-5">
+                <select value={svcFilter} onChange={e => setSvcFilter(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                  <option value="">All Service Types</option>
+                  {serviceTypeOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+                <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                  <option value="">All Statuses</option>
+                  {statusOptions.map(s => <option key={s} value={s}>{statusLabel(s)}</option>)}
+                </select>
+                <select value={driverFilter} onChange={e => setDriverFilter(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs">
+                  <option value="">All Drivers</option>
+                  {driverOptions.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <input type="text" placeholder="Pickup location contains…" value={pickupQ} onChange={e => setPickupQ(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
+                <input type="text" placeholder="Delivery location contains…" value={deliveryQ} onChange={e => setDeliveryQ(e.target.value)} className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs" />
               </div>
             )}
+
+            <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-100 bg-gray-50 text-left text-[10px] font-bold uppercase tracking-wide text-gray-400">
+                      <th className="px-4 py-2.5">Customer</th>
+                      <th className="px-4 py-2.5">Booking ID</th>
+                      <th className="px-4 py-2.5">Service Type</th>
+                      <th className="px-4 py-2.5">Pickup</th>
+                      <th className="px-4 py-2.5">Pickup Location</th>
+                      <th className="px-4 py-2.5">Delivery</th>
+                      <th className="px-4 py-2.5">Delivery Location</th>
+                      <th className="px-4 py-2.5">Route</th>
+                      <th className="px-4 py-2.5">Bags</th>
+                      <th className="px-4 py-2.5">Status</th>
+                      <th className="px-4 py-2.5">Driver</th>
+                      <th className="px-4 py-2.5">Days to Pickup</th>
+                      <th className="px-4 py-2.5">Payment</th>
+                      <th className="px-4 py-2.5">Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filteredBookings.length === 0 && (
+                      <tr><td colSpan={14} className="px-4 py-8 text-center text-sm text-gray-400">
+                        {data.upcoming_bookings.length === 0 ? 'No confirmed bookings scheduled in this range.' : 'No bookings match the current filters.'}
+                      </td></tr>
+                    )}
+                    {filteredBookings.map(b => {
+                      const days = daysUntil(b.pickup_date)
+                      const showDriver = shouldShowDriverDetailsStep(b.service_type)
+                      const notes = opsNotes(b)
+                      return (
+                        <tr
+                          key={b.id}
+                          onClick={() => router.push(`/admin?highlight=${b.id}`)}
+                          className="cursor-pointer border-b border-gray-50 last:border-0 hover:bg-orange-50/60"
+                        >
+                          <td className="px-4 py-3 font-medium text-gray-800">
+                            {(formatCustomerName(b.title, b.customer_name) || b.customer_name) ?? '—'}
+                            <div className="text-xs text-gray-400">{b.customer_phone ?? '—'}</div>
+                          </td>
+                          <td className="px-4 py-3 font-mono text-xs text-orange-600">{b.tracking_id}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{b.service_label ?? b.service_type ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">
+                            {fmtDate(b.pickup_date)}
+                            {b.time_slot && <div className="text-[11px] text-gray-400">{b.time_slot}</div>}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-gray-600" title={b.pickup_address ?? undefined}>{truncate(b.pickup_address)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{fmtDate(b.delivery_date)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600" title={b.drop_address ?? undefined}>{truncate(b.drop_address)}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{b.from_city ?? '—'} → {b.to_city ?? '—'}</td>
+                          <td className="px-4 py-3 text-xs text-gray-600">{b.total_bags ?? '—'}</td>
+                          <td className="px-4 py-3"><span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10px] font-semibold text-gray-600">{statusLabel(b.status)}</span></td>
+                          <td className="px-4 py-3 text-xs text-gray-500">
+                            {!showDriver ? (
+                              <span className="text-gray-300" title="Not required for this service type">—</span>
+                            ) : b.driver_name ? (
+                              <>
+                                <div className="text-gray-700">{b.driver_name}</div>
+                                {b.driver_phone && <div className="text-[11px] text-gray-400">{b.driver_phone}</div>}
+                              </>
+                            ) : (
+                              <span className="text-red-500 font-semibold">Unassigned</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-xs font-semibold">
+                            {days === null ? '—' : days < 0 ? <span className="text-red-600">Overdue</span> : days === 0 ? <span className="text-orange-600">Today</span> : `${days}d`}
+                          </td>
+                          <td className="px-4 py-3">{paymentBadge(b.payment_status) ?? <span className="text-gray-300">—</span>}</td>
+                          <td className="px-4 py-3 max-w-[160px] text-xs text-gray-500" title={notes ?? undefined}>{notes ? truncate(notes, 30) : '—'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </>
         )}
       </div>
