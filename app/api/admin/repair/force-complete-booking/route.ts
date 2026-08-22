@@ -52,31 +52,43 @@ export async function POST(req: NextRequest) {
   if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
   if (!booking)  return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
 
-  if (booking.status === 'completed') {
-    return NextResponse.json({ booking, updated: false, message: 'Already completed' })
+  // Bug fixed 2026-08-22: this used to early-return here for an
+  // already-completed booking WITHOUT ever reaching the lead-unlost step
+  // below — so a booking that reached Completed some other way (normal
+  // workflow, or a previous call to this same route) could sit forever
+  // with its lead still stuck on 'lost', invisible in normal browsing,
+  // even though its badge correctly read "Completed" (founder-reported:
+  // Mr. Sudhir Patel, BDL-2026-0092, completed independently but still
+  // hidden under the Lost filter). Now this only skips the booking UPDATE
+  // itself when already completed — the lead-unlost check always runs.
+  let updated: Record<string, unknown> = booking
+  let bookingWasUpdated = false
+
+  if (booking.status !== 'completed') {
+    const history = Array.isArray(booking.status_history) ? booking.status_history : []
+    const { data: newlyUpdated, error: updateErr } = await supabaseAdmin
+      .from('bookings')
+      .update({
+        status: 'completed',
+        status_history: [
+          ...history,
+          {
+            from: booking.status,
+            to: 'completed',
+            timestamp: new Date().toISOString(),
+            changed_by: 'admin',
+            note: 'Force-completed via repair tool — service confirmed done outside the tracked workflow',
+          },
+        ],
+      })
+      .eq('id', booking.id)
+      .select()
+      .single()
+
+    if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+    updated = newlyUpdated
+    bookingWasUpdated = true
   }
-
-  const history = Array.isArray(booking.status_history) ? booking.status_history : []
-  const { data: updated, error: updateErr } = await supabaseAdmin
-    .from('bookings')
-    .update({
-      status: 'completed',
-      status_history: [
-        ...history,
-        {
-          from: booking.status,
-          to: 'completed',
-          timestamp: new Date().toISOString(),
-          changed_by: 'admin',
-          note: 'Force-completed via repair tool — service confirmed done outside the tracked workflow',
-        },
-      ],
-    })
-    .eq('id', booking.id)
-    .select()
-    .single()
-
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
 
   // Flip the linked lead off 'lost' so it's visible in normal browsing
   // again (see module comment above) — only touches it if it was
@@ -100,5 +112,5 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ booking: updated, updated: true, lead_unlost: leadUpdated })
+  return NextResponse.json({ booking: updated, updated: bookingWasUpdated, lead_unlost: leadUpdated })
 }
