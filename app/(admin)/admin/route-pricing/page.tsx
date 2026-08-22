@@ -223,13 +223,19 @@ function MissingRouteRow({
   route: MissingRoute; adminKey: string; onAdded: () => void; onDismiss: () => void
 }) {
   const [basePrice, setBasePrice] = useState(route.suggested_base_price != null ? String(route.suggested_base_price) : '')
-  const [perBagRate, setPerBagRate] = useState(route.suggested_per_bag_rate != null ? String(route.suggested_per_bag_rate) : '')
+  // No real 3+ bag quote to derive this from yet doesn't have to block
+  // adding the route — default to 0 (no per-bag upcharge) rather than
+  // leaving it blank and forcing an error. This is an explicit, visible
+  // placeholder (not an invented business number) that's meant to be
+  // corrected the moment there's a real 3+ bag quote for this route — see
+  // "can I edit price later" confirmation from the founder (2026-08-22).
+  const [perBagRate, setPerBagRate] = useState(route.suggested_per_bag_rate != null ? String(route.suggested_per_bag_rate) : '0')
   const [showSamples, setShowSamples] = useState(false)
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
 
   async function save() {
-    if (!basePrice || !perBagRate) { setErr('Both prices are required'); return }
+    if (!basePrice || perBagRate === '') { setErr('Base price is required'); return }
     setSaving(true); setErr('')
     const res = await fetch('/api/admin/route-pricing', {
       method: 'POST',
@@ -262,7 +268,11 @@ function MissingRouteRow({
         </td>
         <td className="px-4 py-2">
           <input type="number" min="0" value={perBagRate} onChange={e => setPerBagRate(e.target.value)}
-            className={inp} placeholder={route.suggested_per_bag_rate == null ? 'Enter manually' : undefined} title={route.per_bag_rate_basis} />
+            className={inp}
+            title={route.suggested_per_bag_rate == null ? 'No 3+ bag quote yet — defaulted to 0, edit once you know the real rate' : route.per_bag_rate_basis} />
+          {route.suggested_per_bag_rate == null && (
+            <p className="mt-1 text-[10px] text-amber-600">No 3+ bag quote yet — defaulted to 0. Edit anytime once you know the rate.</p>
+          )}
           {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
         </td>
         <td className="px-4 py-2">
@@ -434,7 +444,7 @@ export default function RoutePricingPage() {
             </div>
             <div className="px-4 py-2 text-xs text-amber-700 bg-amber-50/50 flex items-start gap-1.5">
               <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-              <span>Prices below are pulled from real quotes on that exact route (never invented). Where there isn&apos;t a real quote to derive a number from, the field is left blank — fill it in before adding. Review and edit before clicking Add Route.</span>
+              <span>Base price is pulled from a real quote on that exact route (never invented) — required before adding. Per-bag rate defaults to 0 when there&apos;s no 3+ bag quote yet for that route; both prices can be edited anytime from the table below once you know the real number. Review before clicking Add Route.</span>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
