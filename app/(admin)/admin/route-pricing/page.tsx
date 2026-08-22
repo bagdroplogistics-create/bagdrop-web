@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
-  Plus, Pencil, Trash2, Check, X, ToggleLeft, ToggleRight, MapPin,
+  Plus, Pencil, Trash2, Check, X, ToggleLeft, ToggleRight, MapPin, Search, AlertCircle,
 } from 'lucide-react'
 
 interface Route {
@@ -14,6 +14,22 @@ interface Route {
   per_bag_rate: number
   is_active:    boolean
   created_at:   string
+}
+
+// ── Missing Routes (from real inquiries) ────────────────────────────────
+// Backed by GET /api/admin/route-pricing/missing-routes — see that route's
+// header comment for the full pricing-derivation logic. Nothing here is
+// invented: suggested prices come only from leads.quote_subtotal, and are
+// left blank when there isn't a real quote to derive them from.
+interface MissingRoute {
+  from_city:              string
+  to_city:                string
+  inquiry_count:          number
+  suggested_base_price:   number | null
+  suggested_per_bag_rate: number | null
+  base_price_basis:       string
+  per_bag_rate_basis:     string
+  sample_points: Array<{ bags: number; listSubtotal: number; leadNumber: string | null; name: string; createdAt: string }>
 }
 
 interface RouteForm {
@@ -194,6 +210,97 @@ function PricePreview({ base, perBag }: { base: number; perBag: number }) {
   )
 }
 
+// ── Missing route review row ──────────────────────────────────────
+// One row per route found in real inquiries but not yet in route_pricing.
+// Fields are pre-filled with the suggested price when derivable from a real
+// quote on that route, and left blank (with a placeholder explaining why)
+// otherwise — the founder must type in a real number before Add Route
+// enables, same as the manual AddRow above. Nothing is written until the
+// founder clicks Add Route.
+function MissingRouteRow({
+  route, adminKey, onAdded, onDismiss,
+}: {
+  route: MissingRoute; adminKey: string; onAdded: () => void; onDismiss: () => void
+}) {
+  const [basePrice, setBasePrice] = useState(route.suggested_base_price != null ? String(route.suggested_base_price) : '')
+  const [perBagRate, setPerBagRate] = useState(route.suggested_per_bag_rate != null ? String(route.suggested_per_bag_rate) : '')
+  const [showSamples, setShowSamples] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function save() {
+    if (!basePrice || !perBagRate) { setErr('Both prices are required'); return }
+    setSaving(true); setErr('')
+    const res = await fetch('/api/admin/route-pricing', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({
+        from_city:    route.from_city,
+        to_city:      route.to_city,
+        base_price:   Number(basePrice),
+        per_bag_rate: Number(perBagRate),
+      }),
+    })
+    const d = await res.json()
+    if (!res.ok) { setErr(d.error ?? 'Save failed'); setSaving(false); return }
+    onAdded()
+  }
+
+  const inp = 'w-full rounded border border-orange-200 px-2 py-1.5 text-sm focus:border-orange-500 focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white'
+
+  return (
+    <>
+      <tr className="bg-amber-50/60">
+        <td className="px-4 py-2 font-semibold text-gray-900 capitalize">{route.from_city}</td>
+        <td className="px-4 py-2 font-semibold text-gray-900 capitalize">{route.to_city}</td>
+        <td className="px-4 py-2">
+          <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-bold text-amber-700">{route.inquiry_count}</span>
+        </td>
+        <td className="px-4 py-2">
+          <input type="number" min="0" value={basePrice} onChange={e => setBasePrice(e.target.value)}
+            className={inp} placeholder={route.suggested_base_price == null ? 'Enter manually' : undefined} title={route.base_price_basis} />
+        </td>
+        <td className="px-4 py-2">
+          <input type="number" min="0" value={perBagRate} onChange={e => setPerBagRate(e.target.value)}
+            className={inp} placeholder={route.suggested_per_bag_rate == null ? 'Enter manually' : undefined} title={route.per_bag_rate_basis} />
+          {err && <p className="mt-1 text-xs text-red-500">{err}</p>}
+        </td>
+        <td className="px-4 py-2">
+          <button onClick={() => setShowSamples(v => !v)} className="text-xs font-medium text-orange-600 hover:underline">
+            {showSamples ? 'Hide' : 'View'} quotes
+          </button>
+        </td>
+        <td className="px-4 py-2">
+          <div className="flex items-center gap-2">
+            <button onClick={save} disabled={saving}
+              className="flex items-center gap-1 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+              <Check className="h-3.5 w-3.5" /> {saving ? 'Adding…' : 'Add Route'}
+            </button>
+            <button onClick={onDismiss} title="Dismiss for this session"
+              className="rounded-lg border border-gray-200 px-2 py-1.5 text-xs font-medium text-gray-500 hover:bg-gray-50">
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
+        </td>
+      </tr>
+      {showSamples && (
+        <tr className="bg-amber-50/30">
+          <td colSpan={7} className="px-4 py-2">
+            <p className="mb-1 text-[10px] font-bold uppercase tracking-wide text-gray-400">Real quotes behind this suggestion</p>
+            <div className="flex flex-wrap gap-2">
+              {route.sample_points.map((p, i) => (
+                <span key={i} className="rounded-lg border border-amber-200 bg-white px-2 py-1 text-xs text-gray-600">
+                  {p.leadNumber ?? p.name} · {p.bags} bag{p.bags > 1 ? 's' : ''} · ₹{p.listSubtotal.toLocaleString('en-IN')}
+                </span>
+              ))}
+            </div>
+          </td>
+        </tr>
+      )}
+    </>
+  )
+}
+
 // ── Main Page ─────────────────────────────────────────────────────
 export default function RoutePricingPage() {
   const router = useRouter()
@@ -206,6 +313,13 @@ export default function RoutePricingPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [preview,  setPreview]  = useState<Route | null>(null)
   const [err,      setErr]      = useState('')
+
+  // ── Missing Routes (from real inquiries) ──────────────────────────
+  const [missingRoutes,  setMissingRoutes]  = useState<MissingRoute[]>([])
+  const [missingLoading, setMissingLoading] = useState(true)
+  const [missingError,   setMissingError]   = useState('')
+  const [leadsConsidered, setLeadsConsidered] = useState(0)
+  const [dismissed, setDismissed] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -222,6 +336,24 @@ export default function RoutePricingPage() {
   }, [adminKey])
 
   useEffect(() => { if (authed) fetchRoutes() }, [authed, fetchRoutes])
+
+  const fetchMissingRoutes = useCallback(async () => {
+    if (!adminKey) return
+    setMissingLoading(true)
+    setMissingError('')
+    try {
+      const res = await fetch(`/api/admin/route-pricing/missing-routes?key=${adminKey}`)
+      const d = await res.json()
+      if (!res.ok) { setMissingError(d.error ?? 'Failed to load missing routes'); setMissingLoading(false); return }
+      setMissingRoutes(d.missing_routes ?? [])
+      setLeadsConsidered(d.leads_considered ?? 0)
+    } catch {
+      setMissingError('Network error while checking inquiries for missing routes.')
+    }
+    setMissingLoading(false)
+  }, [adminKey])
+
+  useEffect(() => { if (authed) fetchMissingRoutes() }, [authed, fetchMissingRoutes])
 
   async function toggleActive(route: Route) {
     await fetch(`/api/admin/route-pricing/${route.id}`, {
@@ -279,6 +411,61 @@ export default function RoutePricingPage() {
           <span className="font-semibold">Pricing formula:</span> Base price for 1–2 bags.
           For 3+ bags: <span className="font-mono">base + (bags − 2) × per-bag rate</span> + 5% GST.
         </div>
+
+        {/* ── Missing Routes (from real inquiries) ──────────────────────
+             Compares every route actually quoted in leads.quote_subtotal
+             against this table (alias/direction-aware), so a route can
+             never be silently missing from auto-pricing without it showing
+             up here first. Suggested prices come only from real quotes on
+             that exact route — never invented — and are left blank when
+             there isn't one, forcing manual entry before Add Route works. */}
+        {missingError && (
+          <div className="mb-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-600">{missingError}</div>
+        )}
+        {!missingLoading && missingRoutes.filter(r => !dismissed.has(`${r.from_city}|${r.to_city}`)).length > 0 && (
+          <div className="mb-6 rounded-2xl border border-amber-200 bg-white shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between border-b border-amber-100 bg-amber-50 px-4 py-3">
+              <div className="flex items-center gap-2">
+                <Search className="h-4 w-4 text-amber-600" />
+                <p className="text-sm font-bold text-amber-800">
+                  Missing Routes — found in {leadsConsidered} quoted inquiries, not yet in this table
+                </p>
+              </div>
+            </div>
+            <div className="px-4 py-2 text-xs text-amber-700 bg-amber-50/50 flex items-start gap-1.5">
+              <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+              <span>Prices below are pulled from real quotes on that exact route (never invented). Where there isn&apos;t a real quote to derive a number from, the field is left blank — fill it in before adding. Review and edit before clicking Add Route.</span>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 bg-gray-50/70">
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">From</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">To</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Inquiries</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Base (1–2 bags)</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Per extra bag</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Source</th>
+                    <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {missingRoutes
+                    .filter(r => !dismissed.has(`${r.from_city}|${r.to_city}`))
+                    .map(r => (
+                      <MissingRouteRow
+                        key={`${r.from_city}|${r.to_city}`}
+                        route={r}
+                        adminKey={adminKey}
+                        onAdded={() => { fetchRoutes(); fetchMissingRoutes() }}
+                        onDismiss={() => setDismissed(prev => new Set(prev).add(`${r.from_city}|${r.to_city}`))}
+                      />
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Table */}
         <div className="rounded-2xl border border-gray-100 bg-white shadow-sm overflow-hidden">
