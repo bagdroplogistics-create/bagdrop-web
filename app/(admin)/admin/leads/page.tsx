@@ -1128,7 +1128,7 @@ function LeadsPageInner() {
                             sync with the Status badge instead of a second,
                             separately-computed source of truth. */}
                         {BOOKING_STATUS_CONFIG[l.effective_status ?? l.status] ? (
-                          <p className="mt-0.5 text-[11px] font-semibold text-cyan-700">Confirmed</p>
+                          <p className="mt-0.5 text-[11px] font-semibold" style={{ color: '#ff6300' }}>Confirmed</p>
                         ) : null}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
