@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Printer, Download,
@@ -433,6 +433,20 @@ export default function QuoteViewPage() {
   const [proofMsg, setProofMsg]             = useState<string | null>(null)
   const [proofErr, setProofErr]             = useState<string | null>(null)
   const [verifyingProof, setVerifyingProof] = useState<'approve' | 'reject' | null>(null)
+
+  // Double-submit guard for Mark Payment Received (see doMarkPaymentReceived
+  // below — 2026-08-24 fix). The payments-ledger POST fires before
+  // patchBooking() sets `acting`, so the button's disabled={!!acting} guard
+  // alone didn't cover the window between a fast double-click and that
+  // state update — two clicks in that window both read the same stale
+  // outstandingAmount and each created their own 'paid' payments row,
+  // double-counting Total Paid (root cause of a booking showing Paid ₹10,500
+  // against a ₹5,250 quote — two ₹5,250 rows instead of one). A ref is used
+  // for the actual gate (checked-and-set synchronously, before any await —
+  // unlike state, it can't lag behind a second click that lands before
+  // React re-renders); the state mirror is just for disabling the button.
+  const submittingPaymentRef = useRef(false)
+  const [submittingPayment, setSubmittingPayment] = useState(false)
 
   // Outstanding Amount (spec item 14) — booking total minus the sum of
   // this booking's actually-approved ('paid') payments rows. Recomputed
@@ -920,32 +934,40 @@ export default function QuoteViewPage() {
     // approved), and the booking's payment_status is then derived from that
     // ledger by recomputeBookingPaymentStatus() (see POST /api/admin/
     // payments and lib/payment-status.ts).
-    if (booking?.id && lead && key) {
-      const amount = Math.round(outstandingAmount * 100) / 100
-      if (amount > 0) {
-        await fetch(`/api/admin/payments?key=${encodeURIComponent(key)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            booking_id:         booking.id,
-            customer_name:      formatCustomerName(lead.title, lead.name) || lead.name,
-            customer_phone:     booking.customer_phone ?? lead.phone,
-            amount,
-            payment_method:     'upi',
-            payment_status:     'paid',
-            payment_reference:  paymentRef.trim() || undefined,
-            notes:              'Marked Payment Received — Booking Workflow',
-          }),
-        }).catch(err => console.error('[doMarkPaymentReceived] payment create failed:', err))
+    if (submittingPaymentRef.current) return // guard against a fast double-click firing this twice
+    submittingPaymentRef.current = true
+    setSubmittingPayment(true)
+    try {
+      if (booking?.id && lead && key) {
+        const amount = Math.round(outstandingAmount * 100) / 100
+        if (amount > 0) {
+          await fetch(`/api/admin/payments?key=${encodeURIComponent(key)}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              booking_id:         booking.id,
+              customer_name:      formatCustomerName(lead.title, lead.name) || lead.name,
+              customer_phone:     booking.customer_phone ?? lead.phone,
+              amount,
+              payment_method:     'upi',
+              payment_status:     'paid',
+              payment_reference:  paymentRef.trim() || undefined,
+              notes:              'Marked Payment Received — Booking Workflow',
+            }),
+          }).catch(err => console.error('[doMarkPaymentReceived] payment create failed:', err))
+        }
       }
+      await patchBooking('mark_payment', {
+        status: 'payment_received',
+        ...(paymentRef ? { payment_reference: paymentRef } : {}),
+      })
+      setShowPaymentInput(false)
+      setPaymentRef('')
+      setPaymentRefreshTick(t => t + 1)
+    } finally {
+      submittingPaymentRef.current = false
+      setSubmittingPayment(false)
     }
-    await patchBooking('mark_payment', {
-      status: 'payment_received',
-      ...(paymentRef ? { payment_reference: paymentRef } : {}),
-    })
-    setShowPaymentInput(false)
-    setPaymentRef('')
-    setPaymentRefreshTick(t => t + 1)
   }
 
   async function doAdminApprove() {
@@ -2112,10 +2134,10 @@ export default function QuoteViewPage() {
                           value={paymentRef} onChange={e => setPaymentRef(e.target.value)}
                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-400" />
                         <div className="flex gap-2">
-                          <button onClick={doMarkPaymentReceived} disabled={!!acting}
+                          <button onClick={doMarkPaymentReceived} disabled={!!acting || submittingPayment}
                             className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-40">
-                            {acting === 'mark_payment' ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
-                            {acting === 'mark_payment' ? 'Processing...' : 'Confirm Payment Received ✓'}
+                            {(acting === 'mark_payment' || submittingPayment) ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                            {(acting === 'mark_payment' || submittingPayment) ? 'Processing...' : 'Confirm Payment Received ✓'}
                           </button>
                           <button onClick={() => setShowPaymentInput(false)}
                             className="rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm text-gray-600 hover:bg-gray-50">Cancel</button>
