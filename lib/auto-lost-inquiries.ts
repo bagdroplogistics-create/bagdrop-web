@@ -29,12 +29,16 @@
 // even before that external cron is registered.
 
 import { supabaseAdmin } from './supabase'
+import { ACTIVE_BOOKING_STATUSES } from './lifecycle-notifications'
 
-const PROTECTED_BOOKING_STATUSES = [
-  'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
-  'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
-  'indemnity_bond_sent', 'delivered', 'trip_created', 'completed',
-]
+// 2026-08-24 fix — was a locally hardcoded array missing
+// 'indemnity_bond_signed', meaning a live, paid, indemnity-signed booking
+// whose lead was still sitting at raw status 'new'/'contacted'/'qualified'
+// could have been silently auto-marked 'lost' once its pickup_date passed.
+// Now derived from the single shared definition (see ACTIVE_BOOKING_STATUSES's
+// doc comment in lib/booking-status.ts), with 'completed' appended since
+// this list — uniquely among the 5 — always included it.
+const PROTECTED_BOOKING_STATUSES = [...ACTIVE_BOOKING_STATUSES, 'completed']
 
 export interface AutoLostResult {
   checked: number

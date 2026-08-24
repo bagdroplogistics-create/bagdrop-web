@@ -16,6 +16,11 @@ import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constant
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 import ReviewPanel from '@/components/admin/ReviewPanel'
 import { resolveSource } from '@/lib/lead-source'
+// 2026-08-24 fix: import from lib/booking-status.ts (zero imports, client-safe)
+// rather than lib/lifecycle-notifications.ts (which imports supabaseAdmin —
+// unsafe to bundle into a 'use client' file). Aliased because this file
+// already declares its own local ACTIVE_BOOKING_STATUSES const below.
+import { ACTIVE_BOOKING_STATUSES as SHARED_ACTIVE_BOOKING_STATUSES } from '@/lib/booking-status'
 
 interface Booking {
   id: string
@@ -117,7 +122,10 @@ const WORKFLOW_PHASES = [
 // so that clicking a KPI card filters the bookings table to exactly the
 // records that make up that card's number. Read-only groupings — no
 // business logic (status values, workflow) is changed by this.
-const ACTIVE_BOOKING_STATUSES   = ['payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent', 'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared', 'indemnity_bond_sent', 'delivered', 'trip_created']
+// 2026-08-24 fix: was a locally hardcoded array missing
+// 'indemnity_bond_signed'; now the single shared definition (see
+// ACTIVE_BOOKING_STATUSES's doc comment in lib/booking-status.ts).
+const ACTIVE_BOOKING_STATUSES   = SHARED_ACTIVE_BOOKING_STATUSES
 const REJECTED_BOOKING_STATUSES = ['rejected', 'closed']
 const ALL_STATUS_KEYS           = Object.keys(STATUS_CONFIG)
 const PENDING_BOOKING_STATUSES  = ALL_STATUS_KEYS.filter(s =>

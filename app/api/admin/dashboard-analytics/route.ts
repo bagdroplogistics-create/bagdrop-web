@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/lifecycle-notifications'
 
 export const runtime = 'nodejs'
 
@@ -84,14 +85,10 @@ export const runtime = 'nodejs'
 // pickup_date-only bucketing if the column hasn't been migrated onto this
 // database yet (completedOverrideSupported reported in `debug`).
 
-const ACTIVE_STATUSES = new Set([
-  // Paid and still moving through the fulfillment pipeline, short of the
-      // final Completed status -- mirrors ACTIVE_BOOKING_STATUSES in
-      // app/(admin)/admin/page.tsx, which must stay in sync with this list.
-      'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
-      'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
-      'indemnity_bond_sent', 'delivered', 'trip_created',
-])
+// 2026-08-24 fix — was a locally hardcoded array missing
+// 'indemnity_bond_signed'; now the single shared definition (see
+// ACTIVE_BOOKING_STATUSES's doc comment in lib/lifecycle-notifications.ts).
+const ACTIVE_STATUSES = new Set(ACTIVE_BOOKING_STATUSES)
 
 type Bucket = 'completed' | 'cancelled' | 'active' | 'pending' | 'rejected'
 

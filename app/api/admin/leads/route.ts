@@ -8,6 +8,7 @@ import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 import { nextInquiryNumberPair } from '@/lib/number-series'
 import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/lifecycle-notifications'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 export async function GET(req: NextRequest) {
@@ -83,11 +84,10 @@ export async function GET(req: NextRequest) {
   // is computed read-only below — leads.status is never written to, so
   // this can't create a duplicate record or change the confirmation
   // workflow itself.
-  const ACTIVE_STATUSES = [
-    'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
-    'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
-    'indemnity_bond_sent', 'delivered', 'trip_created',
-  ]
+  // 2026-08-24 fix — was a locally hardcoded array missing
+  // 'indemnity_bond_signed'; now the single shared definition (see
+  // ACTIVE_BOOKING_STATUSES's doc comment in lib/lifecycle-notifications.ts).
+  const ACTIVE_STATUSES = ACTIVE_BOOKING_STATUSES
   let confirmedLeadIds: string[] = []
   // booking_id -> its real bookings.status (e.g. 'invoice_sent',
   // 'payment_received', 'pickup_scheduled') — so a Confirmed lead's badge

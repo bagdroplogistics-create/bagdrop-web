@@ -6,6 +6,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 import { nextTrackingId, nextQuoteNumber } from '@/lib/number-series'
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/lifecycle-notifications'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -45,11 +46,10 @@ export async function GET(req: NextRequest) {
   // Confirmed Bookings" bucket (app/api/admin/dashboard-analytics/route.ts)
   // — must stay in sync with both. Computed here, not stored: quotes.status
   // keeps meaning exactly what it always has for every other consumer.
-  const ACTIVE_STATUSES = [
-    'payment_received', 'payment_approved', 'confirmed', 'invoice_generated', 'invoice_sent',
-    'pickup_scheduled', 'picked_up', 'in_transit', 'out_for_delivery', 'driver_details_shared',
-    'indemnity_bond_sent', 'delivered', 'trip_created',
-  ]
+  // 2026-08-24 fix — was a locally hardcoded array missing
+  // 'indemnity_bond_signed'; now the single shared definition (see
+  // ACTIVE_BOOKING_STATUSES's doc comment in lib/booking-status.ts).
+  const ACTIVE_STATUSES = ACTIVE_BOOKING_STATUSES
   const bookingIds = Array.from(
     new Set((data ?? []).map(q => q.booking_id).filter((id): id is string => !!id))
   )
