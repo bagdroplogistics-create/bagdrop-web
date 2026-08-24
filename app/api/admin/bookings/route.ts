@@ -2,6 +2,42 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 
+// ── Source attachment ───────────────────────────────────────────────────
+// `bookings` has never had a `source` column — only `leads.source` does
+// (supabase/migrations/20260618_crm_tables.sql). The Dashboard used to
+// guess a booking's source from its tracking_id prefix instead, which
+// mislabeled website/contact-form inquiries as "Lead" (see lib/lead-
+// source.ts's module comment for the full root-cause writeup, and the
+// 2026-08-24 fix). This attaches the REAL source by joining to each
+// booking's linked lead via leads.booking_id — the one FK direction that's
+// reliably populated at creation (bookings.lead_id is intentionally left
+// unset by every current creation path; see the "lead_id on bookings is
+// omitted" comments in app/api/bookings/route.ts and app/api/admin/leads/
+// route.ts). No data backfill needed: every historical lead already has
+// the correct source value, this just makes bookings read it.
+async function attachLeadSource<T extends { id: string }>(bookings: T[]): Promise<(T & { source: string | null })[]> {
+  const ids = bookings.map(b => b.id).filter(Boolean)
+  if (ids.length === 0) return bookings.map(b => ({ ...b, source: null }))
+
+  const { data: leadRows, error } = await supabaseAdmin
+    .from('leads')
+    .select('booking_id, source')
+    .in('booking_id', ids)
+
+  if (error) {
+    // Non-fatal — surface bookings without source rather than failing the
+    // whole list.
+    console.error('[admin/bookings] attachLeadSource lookup failed:', error.message)
+    return bookings.map(b => ({ ...b, source: null }))
+  }
+
+  const sourceByBookingId = new Map<string, string | null>()
+  for (const row of leadRows ?? []) {
+    if (row.booking_id) sourceByBookingId.set(row.booking_id, row.source ?? null)
+  }
+  return bookings.map(b => ({ ...b, source: sourceByBookingId.get(b.id) ?? null }))
+}
+
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -34,7 +70,10 @@ export async function GET(req: NextRequest) {
       .limit(1)
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-    return NextResponse.json({ booking: data ?? null, bookings: data ? [data] : [], total: data ? 1 : 0 })
+    // Attach the real acquisition source (see attachLeadSource below) so
+    // this branch stays consistent with the main list.
+    const withSource = data ? (await attachLeadSource([data]))[0] : null
+    return NextResponse.json({ booking: withSource, bookings: withSource ? [withSource] : [], total: withSource ? 1 : 0 })
   }
 
   let query = supabaseAdmin
@@ -121,5 +160,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
-  return NextResponse.json({ bookings: data, total: count, page, limit })
+  const bookingsWithSource = await attachLeadSource(data ?? [])
+
+  return NextResponse.json({ bookings: bookingsWithSource, total: count, page, limit })
 }

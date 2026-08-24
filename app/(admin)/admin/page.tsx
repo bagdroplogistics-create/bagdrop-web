@@ -15,6 +15,7 @@ import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 import ReviewPanel from '@/components/admin/ReviewPanel'
+import { resolveSource } from '@/lib/lead-source'
 
 interface Booking {
   id: string
@@ -1866,13 +1867,22 @@ export default function AdminDashboard() {
                           {b.from_city} &rarr; {b.to_city}
                         </td>
                         <td className="px-4 py-3">
+                          {/* Source of truth: the linked lead's real `source`
+                              value (leads.source), attached server-side in
+                              app/api/admin/bookings/route.ts — NOT a guess
+                              from the tracking_id prefix. `bookings` has no
+                              source column of its own; the old prefix-based
+                              heuristic here mislabeled every website/
+                              contact-form inquiry as "Lead" even though the
+                              Leads tab (reading leads.source directly)
+                              correctly showed "Website" for the same
+                              inquiry. See lib/lead-source.ts for the full
+                              writeup — this must stay in sync with the
+                              Leads table's own source rendering (app/
+                              (admin)/admin/leads/page.tsx), which resolves
+                              through the same SOURCE_LABELS map. */}
                           {(() => {
-                            const tid = b.tracking_id ?? ''
-                            const src = tid.startsWith('BDA-') ? { label: 'Lead', color: '#2563eb', bg: '#dbeafe' }
-                                      : tid.startsWith('BDQ-') ? { label: 'Quote', color: '#7c3aed', bg: '#ede9fe' }
-                                      : tid.startsWith('BDM-') ? { label: 'Mobile App', color: '#ea580c', bg: '#ffedd5' }
-                                      : tid.startsWith('BDS-') ? { label: 'Skybird USA', color: '#0369a1', bg: '#e0f2fe' }
-                                      : { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
+                            const src = resolveSource(b.source)
                             return (
                               <span style={{ color: src.color, background: src.bg }}
                                 className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">

@@ -11,6 +11,7 @@ import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
+import { SOURCE_LABELS } from '@/lib/lead-source'
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -129,16 +130,11 @@ const BOOKING_STATUS_CONFIG: Record<string, { label: string; color: string; bg: 
   cancelled:             { label: 'Cancelled',           color: '#dc2626', bg: '#fee2e2' },
 }
 
-const SOURCE_LABELS: Record<string, string> = {
-  manual:         'Manual',
-  website:        'Website',
-  'mobile-app':   'Mobile App',
-  'contact-form': 'Contact Form',
-  referral:       'Referral',
-  b2b:            'B2B',
-  'walk-in':      'Walk-in',
-  skybird:        'Skybird',
-}
+// SOURCE_LABELS now lives in lib/lead-source.ts — shared with the
+// Dashboard (app/(admin)/admin/page.tsx) so both surfaces resolve a
+// lead/booking's source to the exact same label. See that file's module
+// comment for the 2026-08-24 root-cause writeup (Dashboard used to guess
+// source from tracking_id prefix instead of reading the real value).
 
 const SERVICE_TYPES = [
   { value: 'airport-to-doorstep', label: 'Airport → Doorstep', needsFlight: true },
