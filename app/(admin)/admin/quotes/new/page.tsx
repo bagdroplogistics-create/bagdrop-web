@@ -344,6 +344,9 @@ function QuotePageInner() {
   const [returnPriceLoading, setReturnPriceLoading] = useState(false)
   const [returnLineItems,    setReturnLineItems]    = useState<LineItemRow[]>([])
   const returnItemsFromPricing = useRef(false)
+  // Same 2026-08-24 fix as lastAutoFillBags above, mirrored for the return
+  // journey's Item Table.
+  const lastAutoFillReturnBags = useRef<number | null>(null)
 
   function enableReturnTrip() {
     setTripType('return')
@@ -380,6 +383,7 @@ function QuotePageInner() {
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setReturnLineItems(items); returnItemsFromPricing.current = true
+    lastAutoFillReturnBags.current = bags
   }
 
   function updateReturnRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
@@ -398,6 +402,19 @@ function QuotePageInner() {
     { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 },
   ])
   const itemsFromPricing = useRef(false)
+  // Bag count the auto-fill row was last built for (2026-08-24 fix). The
+  // route-pricing effect below used to ONLY populate once — itemsFromPricing
+  // latches to true after the first fill and then blocks every future run,
+  // so changing "No. of Bags" AFTER that first auto-fill never updated the
+  // flat-price row's Qty (it stayed frozen at whatever bag count was set
+  // when the effect first fired; Amount stayed correctly flat, only Qty
+  // went stale). Tracking the bags count separately lets the effect
+  // re-populate specifically when the admin changes bag count, while still
+  // never touching a saved quote's custom items in edit mode (that path
+  // never sets this ref, so it stays null) and still stopping the moment
+  // the admin manually edits a row (updateRow/selectItem reset
+  // itemsFromPricing to false, which already re-opens the guard on its own).
+  const lastAutoFillBags = useRef<number | null>(null)
 
   const [generating, setGenerating] = useState(false)
   // Set once the onward quote has been created for a fresh lead (Return
@@ -605,8 +622,17 @@ function QuotePageInner() {
         if (res.ok) {
           const p: RoutePrice = await res.json()
           setRoutePrice(p)
-          if (p.found && p.base_price != null && !itemsFromPricing.current) {
-            populateItemsFromRoute(p, fromCity, toCity, Number(bagsCount) || 1)
+          const wantBags = Number(bagsCount) || 1
+          // Populate on first fill (!itemsFromPricing.current), OR
+          // re-populate when the admin has changed "No. of Bags" since the
+          // last auto-fill (lastAutoFillBags.current !== null — never true
+          // for a saved quote loaded in edit mode, since that path sets
+          // itemsFromPricing.current directly without ever calling
+          // populateItemsFromRoute — so this can never override edit mode's
+          // protection of custom saved items).
+          const bagsChangedSinceFill = lastAutoFillBags.current !== null && lastAutoFillBags.current !== wantBags
+          if (p.found && p.base_price != null && (!itemsFromPricing.current || bagsChangedSinceFill)) {
+            populateItemsFromRoute(p, fromCity, toCity, wantBags)
           }
         } else setRoutePrice({ found: false })
       } catch { setRoutePrice({ found: false }) }
@@ -641,6 +667,7 @@ function QuotePageInner() {
       qty: bags - 2, rate: p.per_bag_rate ?? 0, taxId: TAX_GST5,
     })
     setLineItems(items); itemsFromPricing.current = true
+    lastAutoFillBags.current = bags
   }
 
   // ── Return journey route pricing — mirrors the onward effect above,
@@ -655,8 +682,10 @@ function QuotePageInner() {
         if (res.ok) {
           const p: RoutePrice = await res.json()
           setReturnRoutePrice(p)
-          if (p.found && p.base_price != null && !returnItemsFromPricing.current) {
-            populateReturnItemsFromRoute(p, returnFromCity, returnToCity, Number(returnBagsCount) || 1)
+          const wantReturnBags = Number(returnBagsCount) || 1
+          const returnBagsChangedSinceFill = lastAutoFillReturnBags.current !== null && lastAutoFillReturnBags.current !== wantReturnBags
+          if (p.found && p.base_price != null && (!returnItemsFromPricing.current || returnBagsChangedSinceFill)) {
+            populateReturnItemsFromRoute(p, returnFromCity, returnToCity, wantReturnBags)
           }
         } else setReturnRoutePrice({ found: false })
       } catch { setReturnRoutePrice({ found: false }) }

@@ -11,6 +11,7 @@ import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { createOrGetLrForBooking } from '@/lib/lr-auto-create'
 import type { BookingStatus } from '@/lib/supabase'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
+import { buildQuotePdfBuffer, quotePdfFilename, type LeadRowForPdf } from '@/lib/quote-pdf'
 
 // STATUS_ORDER / isForwardMove now live in lib/lifecycle-notifications.ts —
 // shared with app/api/admin/trip-sheets/[id]/route.ts, which needed the same
@@ -206,9 +207,13 @@ export async function PATCH(
       .single()
 
     if (bk?.customer_email) {
+      // Full row (not just the handful of fields this email's own HTML
+      // needs) — the Quote PDF attachment below (2026-08-24 — "quote pdf
+      // will also send with message template") needs everything QuotePDF.tsx
+      // renders: line items, terms, journey details, etc.
       const { data: lead } = await supabaseAdmin
         .from('leads')
-        .select('quote_number, quote_total, quote_subtotal, quote_tax, quote_notes, name, title, bags_count')
+        .select('*')
         .eq('booking_id', id)
         .maybeSingle()
 
@@ -217,6 +222,20 @@ export async function PATCH(
       const taxAmount   = parseFloat((lead?.quote_tax      ?? totalAmount - baseAmount).toFixed(2))
       const cgst        = parseFloat((taxAmount / 2).toFixed(2))
       const sgst        = parseFloat((taxAmount / 2).toFixed(2))
+
+      // Generate the same Quote PDF the "Download PDF" button produces and
+      // attach it — best-effort: a PDF failure should never block the
+      // email itself from going out (the customer already gets the full
+      // quote in the HTML body either way).
+      let attachment: { filename: string; content: string } | undefined
+      if (lead) {
+        try {
+          const buf = await buildQuotePdfBuffer(lead as LeadRowForPdf)
+          attachment = { filename: quotePdfFilename(lead as LeadRowForPdf), content: buf.toString('base64') }
+        } catch (err) {
+          console.error('[send_quote_email] PDF attachment generation failed (non-fatal):', err)
+        }
+      }
 
       await sendQuoteEmail({
         to:           bk.customer_email,
@@ -230,6 +249,7 @@ export async function PATCH(
         basePrice:    baseAmount,
         cgst, sgst, totalAmount,
         notes:        (lead?.quote_notes ?? null) as string | null,
+        attachment,
       })
     }
     // Don't return early — let status update to quote_sent continue below
@@ -641,6 +661,11 @@ async function sendQuoteEmail(p: {
   to: string; customerName: string; quoteNumber: string; serviceType: string
   fromCity: string; toCity: string; pickupDate: string | null; totalBags: number
   basePrice: number; cgst: number; sgst: number; totalAmount: number; notes: string | null
+  // Real PDF attachment (2026-08-24) — see the buildQuotePdfBuffer() call
+  // at this function's one call site above. Optional/best-effort: if PDF
+  // generation failed, the email still sends without it rather than not
+  // sending at all.
+  attachment?: { filename: string; content: string } // content = base64
 }): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY
   if (!apiKey) { console.warn('[bookings] RESEND_API_KEY not set'); return }
@@ -702,13 +727,17 @@ async function sendQuoteEmail(p: {
         to:      p.to,
         subject: `Your Bagdrop Quote ${p.quoteNumber} — ${p.fromCity} → ${p.toCity} | ${fmt(p.totalAmount)}`,
         html,
+        // Resend's attachments API — content must be base64. Omitted
+        // entirely (not sent as an empty array) when PDF generation failed
+        // upstream, rather than sending a broken/empty attachment.
+        ...(p.attachment ? { attachments: [{ filename: p.attachment.filename, content: p.attachment.content }] } : {}),
       }),
     })
     if (!res.ok) {
       const err = await res.json().catch(() => ({}))
       console.error('[sendQuoteEmail] Resend error:', err)
     } else {
-      console.log('[sendQuoteEmail] sent to', p.to)
+      console.log('[sendQuoteEmail] sent to', p.to, p.attachment ? '(with PDF attachment)' : '(no PDF attachment)')
     }
   } catch (e) { console.error('[sendQuoteEmail]', e) }
 }

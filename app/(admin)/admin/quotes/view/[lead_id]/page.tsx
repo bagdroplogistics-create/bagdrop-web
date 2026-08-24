@@ -449,6 +449,11 @@ export default function QuoteViewPage() {
   const submittingPaymentRef = useRef(false)
   const [submittingPayment, setSubmittingPayment] = useState(false)
 
+  // Send Quote via WhatsApp — generating the PDF (2026-08-24, see
+  // doSendQuoteWhatsApp below) takes a moment, so this drives the button's
+  // "Generating PDF…" state.
+  const [sendingQuoteWhatsApp, setSendingQuoteWhatsApp] = useState(false)
+
   // Outstanding Amount (spec item 14) — booking total minus the sum of
   // this booking's actually-approved ('paid') payments rows. Recomputed
   // fresh from the payments ledger every time, never manually decremented,
@@ -843,8 +848,73 @@ export default function QuoteViewPage() {
   }
 
   async function doSendQuote() {
-    // Resend quote email + advance to quote_sent
+    // Resend quote email + advance to quote_sent. The email itself now
+    // attaches the Quote PDF server-side (2026-08-24 — see sendQuoteEmail
+    // in app/api/admin/bookings/[id]/route.ts) — nothing needed here.
     await patchBooking('send_quote', { status: 'quote_sent', send_quote_email: true })
+  }
+
+  // Send Quote via WhatsApp — 2026-08-24: "quote pdf will also send with
+  // message template on whatsapp". WhatsApp Web's compose link
+  // (web.whatsapp.com/send?text=...) can only pre-fill TEXT — there is no
+  // way to attach a real file through it, so the only way to get the PDF
+  // into the chat is a downloadable link inside the message (same approach
+  // already used by the older quotes-table flow, app/(admin)/admin/quotes/
+  // page.tsx's sendToCustomer('whatsapp')). Generates + uploads the PDF via
+  // the new /api/admin/leads/[id]/quote-pdf route first, then opens
+  // WhatsApp with the link included. If PDF generation fails, still sends
+  // the text-only message rather than blocking the whole action — better
+  // to reach the customer late/without a link than not at all.
+  async function doSendQuoteWhatsApp() {
+    if (!lead || !booking || !key) return
+    setSendingQuoteWhatsApp(true)
+    try {
+      let pdfUrl: string | null = null
+      try {
+        const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}`, {
+          method: 'POST',
+          headers: { 'x-admin-key': key },
+        })
+        const d = await r.json().catch(() => ({}))
+        if (r.ok) pdfUrl = d.url ?? null
+        else console.error('[doSendQuoteWhatsApp] PDF generation failed (non-fatal):', d.error)
+      } catch (err) {
+        console.error('[doSendQuoteWhatsApp] PDF generation error (non-fatal):', err)
+      }
+
+      const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
+      const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
+      const from  = lead.from_city ?? booking?.tracking_id ?? ''
+      const to    = lead.to_city   ?? ''
+      const bags  = lead.bags_count ?? 1
+      const total = lead.quote_total ?? booking.total_amount ?? 0
+      const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
+      const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
+      const e164  = phone.startsWith('91') ? phone : '91' + phone
+      const msg = [
+        `Hi ${name}! 👋`,
+        '',
+        `Your Bagdrop quote is ready. Here's the summary:`,
+        '',
+        `👤 Customer Name: ${name}`,
+        `📋 Quote No: ${qnum}`,
+        `🗺️ Route: ${from} → ${to}`,
+        `🧳 No. of Bags: ${bags}`,
+        `💰 Total Amount: ${fmt(Number(total))}`,
+        '',
+        ...(pdfUrl ? [`📄 Download your quote PDF:`, pdfUrl, ''] : []),
+        'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
+        '',
+        '— Team Bagdrop',
+      ].join('\n')
+      // Mark as sent, then open WhatsApp Web directly (web.whatsapp.com/send
+      // skips the api.whatsapp.com landing page that wa.me shows on desktop
+      // browsers).
+      await patchBooking('send_quote', { status: 'quote_sent' })
+      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
+    } finally {
+      setSendingQuoteWhatsApp(false)
+    }
   }
 
   async function doMarkQuoteAccepted() {
@@ -1979,46 +2049,19 @@ export default function QuoteViewPage() {
                       The quote has been created. Send it to the customer via WhatsApp or Email.
                     </p>
                     <div className="flex flex-wrap gap-2">
-                      {/* WhatsApp Quote — opens with pre-filled message */}
+                      {/* WhatsApp Quote — generates the PDF, uploads it,
+                          then opens WhatsApp with a pre-filled message that
+                          includes the download link (see
+                          doSendQuoteWhatsApp — WhatsApp Web's compose link
+                          can't attach a real file, only text). */}
                       <button
-                        onClick={() => {
-                          if (!lead || !booking) return
-                          const name   = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
-                          const qnum   = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
-                          const from   = lead.from_city ?? booking?.tracking_id ?? ''
-                          const to     = lead.to_city   ?? ''
-                          const bags   = lead.bags_count ?? 1
-                          const total  = lead.quote_total ?? booking.total_amount ?? 0
-                          const fmt    = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
-                          const phone  = (booking.customer_phone ?? '').replace(/\D/g, '')
-                          const e164   = phone.startsWith('91') ? phone : '91' + phone
-                          const msg = [
-                            `Hi ${name}! 👋`,
-                            '',
-                            `Your Bagdrop quote is ready. Here's the summary:`,
-                            '',
-                            `👤 Customer Name: ${name}`,
-                            `📋 Quote No: ${qnum}`,
-                            `🗺️ Route: ${from} → ${to}`,
-                            `🧳 No. of Bags: ${bags}`,
-                            `💰 Total Amount: ${fmt(Number(total))}`,
-                            '',
-                            'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
-                            '',
-                            '— Team Bagdrop',
-                          ].join('\n')
-                          // Mark as sent, then open WhatsApp Web directly
-                          // (web.whatsapp.com/send skips the
-                          // api.whatsapp.com landing page that wa.me shows
-                          // on desktop browsers).
-                          patchBooking('send_quote', { status: 'quote_sent' }).then(() => {
-                            window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
-                          })
-                        }}
-                        disabled={!!acting}
+                        onClick={doSendQuoteWhatsApp}
+                        disabled={!!acting || sendingQuoteWhatsApp}
                         className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-40 transition-colors">
-                        <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
-                        Send Quote via WhatsApp
+                        {sendingQuoteWhatsApp
+                          ? <Loader2 className="h-4 w-4 animate-spin" />
+                          : <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>}
+                        {sendingQuoteWhatsApp ? 'Generating PDF…' : 'Send Quote via WhatsApp'}
                       </button>
 
                       {/* Email Quote */}
