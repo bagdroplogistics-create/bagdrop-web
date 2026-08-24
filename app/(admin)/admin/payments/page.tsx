@@ -12,6 +12,7 @@ import type { AdminRole } from '@/lib/admin-auth'
 import { formatCustomerName } from '@/lib/constants'
 import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
 import { amountInWords } from '@/lib/number-to-words'
+import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 
 interface Payment {
   id:                string
@@ -836,11 +837,17 @@ export default function PaymentsPage() {
     fetchPayments()
   }
 
-  const totalPaid    = payments.filter(p => p.payment_status === 'paid').reduce((s, p) => s + Number(p.amount), 0)
+  // countsTowardTotalPaid excludes payment_method === 'upload' rows — a
+  // payment-proof screenshot is a verification record (proof a payment
+  // already logged elsewhere happened), never its own ledger entry, even
+  // once Accounts approves it (see lib/payment-ledger.ts, 2026-08-24 fix
+  // for the BDA-2026-0124 double-count).
+  const totalPaid    = payments.filter(countsTowardTotalPaid).reduce((s, p) => s + Number(p.amount), 0)
   // Pending = confirmed/logged payments not yet paid and not refunded
   // (pending + approved_pending) — same definition used by the Payment
-  // report in Reports & Analytics, so the two numbers agree.
-  const totalPending = payments.filter(p => p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
+  // report in Reports & Analytics, so the two numbers agree. Upload rows
+  // excluded here too — they're a verification trail, not money owed.
+  const totalPending = payments.filter(p => p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
 
   if (!authed) return null
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 
 // Same slice used by app/api/admin/payments/route.ts to decide which
 // bookings can have a "payment" at all (confirmed or later in the
@@ -105,7 +106,7 @@ export async function GET(req: NextRequest) {
     const [realPaidRes, bookingsPaidRes] = await Promise.all([
       supabaseAdmin
         .from('payments')
-        .select('amount, created_at, booking_id')
+        .select('amount, created_at, booking_id, payment_method, payment_status')
         .eq('payment_status', 'paid'),
       supabaseAdmin
         .from('bookings')
@@ -115,7 +116,12 @@ export async function GET(req: NextRequest) {
     ])
 
     if (!realPaidRes.error && !bookingsPaidRes.error) {
-      const realPayments   = realPaidRes.data ?? []
+      // countsTowardTotalPaid excludes payment_method === 'upload' rows —
+      // a payment-proof screenshot is a verification record, never its own
+      // ledger entry (see lib/payment-ledger.ts, 2026-08-24 fix). Without
+      // this, an approved proof for an already-paid booking would double
+      // its contribution to Revenue Report.
+      const realPayments   = (realPaidRes.data ?? []).filter(countsTowardTotalPaid)
       const paidBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
       // Only bookings without a real payments row — avoids double-counting
       // a booking that has both a logged payment AND payment_status='paid'.

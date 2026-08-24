@@ -14,6 +14,7 @@ import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
 import { fmtTimeLabel } from '@/lib/time-options'
 import { shouldShowDriverDetailsStep } from '@/lib/service-type'
+import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 import PaymentFollowUpPanel from '@/components/admin/PaymentFollowUpPanel'
 import ReviewPanel from '@/components/admin/ReviewPanel'
 
@@ -464,8 +465,11 @@ export default function QuoteViewPage() {
     fetch(`/api/admin/payments?booking_id=${booking.id}&key=${encodeURIComponent(key)}`)
       .then(r => r.json())
       .then(d => {
+        // countsTowardTotalPaid excludes payment_method === 'upload' rows —
+        // a payment-proof screenshot is a verification record, never a
+        // ledger entry, even once approved (see lib/payment-ledger.ts).
         const sum = (d.payments ?? [])
-          .filter((p: { payment_status: string }) => p.payment_status === 'paid')
+          .filter(countsTowardTotalPaid)
           .reduce((acc: number, p: { amount: number }) => acc + (Number(p.amount) || 0), 0)
         setPaidTotal(sum)
       })
@@ -989,7 +993,18 @@ export default function QuoteViewPage() {
     try {
       const form = new FormData()
       form.append('file', proofFile)
-      form.append('amount', String(booking.total_amount ?? 0))
+      // Root cause of the 2026-08-24 double-payment bug (BDA-2026-0124
+      // showing Paid ₹10,500 against a ₹5,250 quote): this used to always
+      // send booking.total_amount here, ignoring any payment already
+      // recorded via "Mark Payment Received" (Step 6). If that step had
+      // already logged the full amount as 'paid', uploading proof here
+      // still created a SECOND payments row for the FULL total — once
+      // Accounts approved it, the ledger double-counted. Sending
+      // outstandingAmount (the actual remaining balance, already computed
+      // above from the live payments ledger — see the paidTotal effect)
+      // instead means a booking that's already fully paid uploads a ₹0
+      // proof row, which can never inflate Total Paid even if approved.
+      form.append('amount', String(outstandingAmount ?? 0))
       const r = await fetch(`/api/admin/bookings/${booking.id}/payment-proof?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'x-admin-key': key },

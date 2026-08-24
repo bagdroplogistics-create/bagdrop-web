@@ -74,8 +74,26 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // now() so this works even if the admin doesn't fill anything in.
   const amountRaw      = form.get('amount')
   const paymentDateRaw = form.get('payment_date')
-  const amount       = amountRaw ? Number(amountRaw) : Number(booking.total_amount) || 0
+  const requestedAmount = amountRaw ? Number(amountRaw) : Number(booking.total_amount) || 0
   const paymentDate  = (typeof paymentDateRaw === 'string' && paymentDateRaw) ? paymentDateRaw : new Date().toISOString()
+
+  // Defense-in-depth clamp (2026-08-24 fix — see the matching comment in
+  // doUploadPaymentProof, app/(admin)/admin/quotes/view/[lead_id]/page.tsx):
+  // never let a proof upload record more than what's actually still
+  // outstanding. Without this, a caller that (still) sends the booking's
+  // full total_amount — even though some or all of it was already recorded
+  // as 'paid' via Mark Payment Received or an earlier approved proof —
+  // creates a second payments row that double-counts once Accounts
+  // approves it. Recomputed live from the ledger rather than trusting any
+  // client-supplied figure.
+  const { data: paidRows } = await supabaseAdmin
+    .from('payments')
+    .select('amount')
+    .eq('booking_id', bookingId)
+    .eq('payment_status', 'paid')
+  const alreadyPaid = (paidRows ?? []).reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+  const outstanding = Math.max(0, (Number(booking.total_amount) || 0) - alreadyPaid)
+  const amount = Math.max(0, Math.min(requestedAmount, outstanding))
 
   const proofType: 'image' | 'pdf' = file.type === 'application/pdf' ? 'pdf' : 'image'
   const ext = file.type === 'application/pdf' ? 'pdf' : (file.name.split('.').pop() || 'jpg')

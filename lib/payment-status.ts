@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 
 // ── Payment Status engine (Full / Partial / VIP / Verification) ────────────
 // Founder spec, 2026-08-19: booking-workflow status (Pending/Admin Approved/
@@ -42,6 +43,13 @@ export interface PaymentStatusResult {
   balanceDue: number
 }
 
+// "Counts toward Total Paid" — see lib/payment-ledger.ts (kept dependency-
+// free there so client components can import the same predicate without
+// pulling in supabaseAdmin). Re-exported here so existing server-side
+// imports of `{ countsTowardTotalPaid } from '@/lib/payment-status'` keep
+// working.
+export { countsTowardTotalPaid } from '@/lib/payment-ledger'
+
 export async function recomputeBookingPaymentStatus(bookingId: string): Promise<PaymentStatusResult | null> {
   const { data: booking } = await supabaseAdmin
     .from('bookings')
@@ -52,12 +60,12 @@ export async function recomputeBookingPaymentStatus(bookingId: string): Promise<
 
   const { data: paymentsRows } = await supabaseAdmin
     .from('payments')
-    .select('amount, payment_status')
+    .select('amount, payment_status, payment_method')
     .eq('booking_id', bookingId)
 
-  const rows = (paymentsRows ?? []) as { amount: number; payment_status: string }[]
+  const rows = (paymentsRows ?? []) as { amount: number; payment_status: string; payment_method: string | null }[]
   const totalPaid = rows
-    .filter(p => p.payment_status === 'paid')
+    .filter(countsTowardTotalPaid)
     .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
   const hasPendingVerification = rows.some(p => p.payment_status === 'pending_verification')
 
