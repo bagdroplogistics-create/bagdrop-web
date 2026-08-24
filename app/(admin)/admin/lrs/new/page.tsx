@@ -18,6 +18,7 @@ interface BookingEntry {
   customer_name: string; customer_phone: string
   from_city: string | null; to_city: string | null
   pickup_address: string | null; drop_address: string | null
+  pickup_date: string | null
   total_bags: number | null; total_amount: number | null
   status: string
   // Business Customer support — see supabase/migrations/20260807_
@@ -73,6 +74,11 @@ function fmtRs(n: number | null | undefined) {
   return '₹' + Number(n).toLocaleString('en-IN')
 }
 
+function fmtDate(d: string | null | undefined) {
+  if (!d) return '—'
+  return new Date(d.includes('T') ? d : d + 'T00:00:00').toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 const EMPTY_CHARGES: Record<string, string> = Object.fromEntries(LR_CHARGE_FIELDS.map(f => [f.key, '']))
 
 export default function NewLRPage() {
@@ -91,6 +97,15 @@ export default function NewLRPage() {
   const [fromCity, setFromCity] = useState('')
   const [toCity, setToCity] = useState('')
   const [totalBags, setTotalBags] = useState('1')
+
+  // ── LR Date / Pickup Date. In Select Booking mode this is ALWAYS the
+  // selected booking's pickup_date — the API enforces "LR Date = Pickup
+  // Date" server-side and is not overridable (see lib/lr-auto-create.ts),
+  // so it's shown read-only here rather than as an editable field. In
+  // Manual mode there's no booking to inherit from, so it's a free date
+  // input that defaults to today if left blank (matches the API's own
+  // fallback in app/api/admin/lrs/route.ts).
+  const [lrDate, setLrDate] = useState('')
 
   // ── Consignor / Consignee (manual mode only) ──
   const [consignorName, setConsignorName] = useState('')
@@ -156,6 +171,7 @@ export default function NewLRPage() {
           customer_name: b.customer_name, customer_phone: b.customer_phone,
           from_city: b.from_city ?? null, to_city: b.to_city ?? null,
           pickup_address: b.pickup_address ?? null, drop_address: b.drop_address ?? null,
+          pickup_date: b.pickup_date ?? null,
           total_bags: b.total_bags ?? null, total_amount: b.total_amount ?? null,
           status: b.status,
           customer_type: b.customer_type ?? null,
@@ -209,6 +225,9 @@ export default function NewLRPage() {
 
   async function create() {
     if (mode === 'select' && !selected) return
+    if (mode === 'select' && selected && !selected.pickup_date) {
+      setError('This booking has no pickup date set — add one on the booking before generating its LR'); return
+    }
     if (mode === 'manual' && (!consignorName.trim() || !consigneeName.trim())) {
       setError('Consignor and consignee name are required'); return
     }
@@ -227,6 +246,7 @@ export default function NewLRPage() {
                 manual: true,
                 from_city: fromCity.trim() || null, to_city: toCity.trim() || null,
                 total_bags: Number(totalBags) || 1,
+                lr_date: lrDate || null,
               }),
           // Consignor/Consignee overrides — always sent. In manual mode
           // these are the only source; in select mode they start
@@ -374,21 +394,32 @@ export default function NewLRPage() {
 
               {/* ── 1. Route (manual mode only — first, as requested) ── */}
               {mode === 'manual' && (
-                <Card title="Route" icon={<MapPin className="h-4 w-4 text-orange-400" />} cols={3}>
+                <Card title="Route" icon={<MapPin className="h-4 w-4 text-orange-400" />} cols={4}>
                   <FInput label="From" value={fromCity} onChange={setFromCity} placeholder="Origin city" />
                   <FInput label="To" value={toCity} onChange={setToCity} placeholder="Destination city" />
                   <FInput label="Total Bags" value={totalBags} onChange={setTotalBags} type="number" />
+                  <FInput label="LR Date (defaults to today)" value={lrDate} onChange={setLrDate} type="date" />
                 </Card>
               )}
 
               {mode === 'select' && selected && (
                 <div className="rounded-2xl border border-blue-100 bg-blue-50/50 p-5">
                   <p className="mb-3 text-xs font-bold uppercase tracking-widest text-blue-500">Auto-filled from Booking</p>
-                  <div className="grid grid-cols-3 gap-3 text-sm">
+                  <div className="grid grid-cols-4 gap-3 text-sm">
                     <div><p className="text-xs text-gray-400">Route</p><p className="font-semibold text-gray-800">{selected.from_city ?? '—'} → {selected.to_city ?? '—'}</p></div>
                     <div><p className="text-xs text-gray-400">Bags</p><p className="font-semibold text-gray-800">{selected.total_bags ?? '—'}</p></div>
                     <div><p className="text-xs text-gray-400">Amount</p><p className="font-semibold text-gray-800">{fmtRs(selected.total_amount)}</p></div>
+                    <div>
+                      <p className="text-xs text-gray-400">Pickup Date (= LR Date)</p>
+                      <p className={`font-semibold ${selected.pickup_date ? 'text-gray-800' : 'text-red-600'}`}>{fmtDate(selected.pickup_date)}</p>
+                    </div>
                   </div>
+                  {!selected.pickup_date && (
+                    <p className="mt-3 flex items-center gap-1.5 text-xs font-medium text-red-600">
+                      <AlertCircle className="h-3.5 w-3.5 shrink-0" />
+                      This booking has no pickup date set — the LR cannot be generated until one is added on the booking.
+                    </p>
+                  )}
                 </div>
               )}
 
