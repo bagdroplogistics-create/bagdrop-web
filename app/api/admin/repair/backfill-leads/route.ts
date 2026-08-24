@@ -10,6 +10,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { nextLeadNumber } from '@/lib/number-series'
 
 export async function POST(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -32,7 +33,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ message: 'No orphan bookings found — nothing to repair.', created: 0 })
   }
 
-  const year = new Date().getFullYear()
   let created = 0
   const skipped: string[] = []
   const failed:  string[] = []
@@ -56,22 +56,24 @@ export async function POST(req: NextRequest) {
         continue
       }
 
-      // Generate next lead number
-      const { data: lastLead } = await supabaseAdmin
-        .from('leads')
-        .select('lead_number')
-        .like('lead_number', `BDL-${year}-%`)
-        .order('lead_number', { ascending: false })
-        .limit(1)
-        .maybeSingle()
-
-      let nextSeq = 1
-      if (lastLead?.lead_number) {
-        const parts = lastLead.lead_number.split('-')
-        const last = parseInt(parts[parts.length - 1], 10)
-        if (!isNaN(last)) nextSeq = last + 1
-      }
-      const leadNumber = `BDL-${year}-${String(nextSeq).padStart(4, '0')}`
+      // Generate next lead number — atomic, race-safe series (2026-08-24
+      // fix). This used to read the highest existing lead_number via
+      // `ORDER BY lead_number DESC LIMIT 1` and add 1 locally — the exact
+      // "MAX + 1" pattern lib/number-series.ts's atomic counter was built
+      // to replace everywhere else (see supabase/migrations/20260817_
+      // atomic_number_series.sql). That pattern is unsafe here for two
+      // reasons: (a) it never touches bagdrop_number_counters, so a number
+      // it mints is invisible to the atomic BDL/BDA counters and could
+      // later collide with one they issue; and (b) if the lead that
+      // currently holds the highest lead_number for this year is ever
+      // deleted (e.g. a duplicate manually-created inquiry removed after
+      // the fact — see the 2026-08-24 numbering-safety report), the next
+      // "highest" would silently drop to a lower, already-issued number,
+      // and this endpoint would reissue it. nextLeadNumber() reads/
+      // increments the persistent counter instead, which is never derived
+      // from live row data, so a deleted lead can never cause a reused
+      // number here either.
+      const leadNumber = await nextLeadNumber()
 
       const { data: newLead, error: insertErr } = await supabaseAdmin
         .from('leads')
