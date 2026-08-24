@@ -103,6 +103,10 @@ export async function PATCH(
   }
 
   const updates: Record<string, unknown> = {}
+  // Declared at function scope (not inside `if (status)` below) so the
+  // auto-confirm block further down — which runs after that block has
+  // already closed — can still read it. See its own comment there.
+  let notifiedStatusesSupported = true
 
   if (title !== undefined) {
     if (!TITLE_OPTIONS.includes(title)) {
@@ -309,7 +313,6 @@ export async function PATCH(
     // and WIPE status_history (history = existing?.status_history ?? [])
     // instead of appending to it. Same fallback pattern as
     // deletedAtSupported in app/api/admin/dashboard-analytics/route.ts.
-    let notifiedStatusesSupported = true
     let existingRes = await supabaseAdmin
       .from('bookings')
       .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
@@ -500,6 +503,59 @@ export async function PATCH(
   // everything sendLifecycleWhatsApp needs. Never throws.
   if (shouldSendLifecycleWhatsApp && status && data) {
     await sendLifecycleWhatsApp(status, data)
+  }
+
+  // ── Auto-advance to Confirmed once payment is received/approved ──
+  // Founder request (2026-08-24): a booking that just reached Payment
+  // Received (Step 6, "Mark Payment Received") or Payment Approved (Admin
+  // Approve bypass) should become Confirmed immediately — no separate
+  // manual "Confirm Booking" click needed. Mirrors the exact same
+  // auto-confirm pattern already used when Accounts approves an uploaded
+  // payment proof (see AUTO_CONFIRM_FROM_STATUSES in app/api/admin/
+  // payments/[id]/route.ts) — same status_history + notified_statuses +
+  // sendLifecycleWhatsApp shape, just triggered from this route too so
+  // both payment paths behave identically. The manual "Confirm Booking"
+  // button (Step 7 in the Booking Workflow UI) is left in place as a
+  // harmless fallback — it simply never appears in practice now, since the
+  // UI already hides it as soon as status reaches 'confirmed'.
+  if (data && (status === 'payment_received' || status === 'payment_approved')) {
+    const confirmHistory = Array.isArray(data.status_history) ? data.status_history as object[] : []
+    confirmHistory.push({
+      from:       data.status,
+      to:         'confirmed',
+      timestamp:  new Date().toISOString(),
+      changed_by: 'system',
+      note:       'Auto-confirmed — payment received',
+    })
+
+    const prevConfirmNotified = Array.isArray((data as { notified_statuses?: unknown }).notified_statuses)
+      ? (data as { notified_statuses?: string[] }).notified_statuses as string[]
+      : []
+    const alreadyConfirmNotified = prevConfirmNotified.includes('confirmed')
+    const shouldNotifyConfirm    = isForwardMove(data.status, 'confirmed') && !alreadyConfirmNotified
+
+    const confirmUpdate: Record<string, unknown> = { status: 'confirmed', status_history: confirmHistory }
+    if (shouldNotifyConfirm && notifiedStatusesSupported) {
+      confirmUpdate.notified_statuses = [...prevConfirmNotified, 'confirmed']
+    }
+
+    const { data: confirmedBooking, error: confirmErr } = await supabaseAdmin
+      .from('bookings')
+      .update(confirmUpdate)
+      .eq('id', id)
+      .select()
+      .single()
+
+    if (confirmErr) {
+      console.error('[booking patch] auto-confirm error:', confirmErr.message)
+    } else if (confirmedBooking) {
+      // Downstream Calendar/ops-reminders sync below must see the booking
+      // as 'confirmed', not the now-stale 'payment_received'/'payment_approved'.
+      Object.assign(data, confirmedBooking)
+      if (shouldNotifyConfirm) {
+        await sendLifecycleWhatsApp('confirmed', confirmedBooking)
+      }
+    }
   }
 
   // Google Calendar sync — keeps the shared "Bagdrop Ops" calendar in step
