@@ -153,6 +153,23 @@ const DEFAULT_TERMS =
 let _rowId = 0
 const uid = () => `r_${++_rowId}_${Date.now()}`
 
+// Founder spec 2026-08-25 — Subject auto-generated from Pickup/Delivery
+// Location, so admins never retype "Transportation of Goods From X to Y" by
+// hand. Degrades gracefully while either side is still blank (a brand new
+// manual quote before the admin has picked a route yet): both blank →
+// just the fixed prefix; only one side filled → prefix + that side. See the
+// subjectAutoValue-tracking effect in the component below for how this
+// stays in sync with From City / To City without clobbering a subject an
+// admin has deliberately customized away from the auto-generated pattern.
+function buildQuoteSubject(from: string, to: string): string {
+  const f = from.trim()
+  const t = to.trim()
+  if (!f && !t) return 'Transportation of Goods From'
+  if (f && t)   return `Transportation of Goods From ${f} to ${t}`
+  if (f)        return `Transportation of Goods From ${f} to`
+  return `Transportation of Goods From to ${t}`
+}
+
 function toLocalDate(iso: string | null) { return iso ? iso.slice(0, 10) : '' }
 function toLocalTime(iso: string | null) {
   if (!iso) return ''
@@ -320,6 +337,14 @@ function QuotePageInner() {
   const [custNotes,  setCustNotes]  = useState(DEFAULT_NOTES)
   const [terms,      setTerms]      = useState(DEFAULT_TERMS)
   const [sendEmail,  setSendEmail]  = useState(false)
+  // Tracks the exact string the Subject-auto-fill effect (below) last wrote
+  // into `subject` — used to tell "still exactly what we auto-generated, so
+  // safe to keep syncing on every From/To City change" apart from "the admin
+  // has typed something different into Subject, so leave it alone from now
+  // on". Same non-destructive-auto-fill pattern as itemsFromPricing/
+  // lastAutoFillBags above (Qty-sync fix, 2026-08-24) — populate/re-sync
+  // automatically until the admin's own edit diverges from it.
+  const subjectAutoValue = useRef<string | null>(null)
 
   // ── Return Trip ──────────────────────────────────────────────────────
   // Trip Type only applies to a fresh lead with no primary quote yet — once
@@ -519,6 +544,16 @@ function QuotePageInner() {
           setPaymentStatus(d.payment_status)
         }
         setSubject(d.quote_subject ?? '')
+        // If this quote's saved Subject was itself auto-generated (never
+        // customized) when it was first created, re-arm the auto-sync latch
+        // so editing From/To City here keeps it in sync too — otherwise
+        // leave the latch unset (null) so a genuinely custom subject is
+        // never silently overwritten. Compares against the ROUTE fields as
+        // loaded from this same lead, matching what the auto-fill effect
+        // below will compute once fromCity/toCity settle to these values.
+        if (d.quote_subject && d.quote_subject === buildQuoteSubject(d.from_city ?? '', d.to_city ?? '')) {
+          subjectAutoValue.current = d.quote_subject
+        }
         setCustNotes(d.quote_notes ?? DEFAULT_NOTES)
         setTerms(d.quote_terms ?? DEFAULT_TERMS)
         setExpiryDate(d.quote_expiry_date ? toLocalDate(d.quote_expiry_date) : '')
@@ -530,6 +565,25 @@ function QuotePageInner() {
   }, [adminKey, leadId, isEdit])
 
   useEffect(() => { if (authed) fetchLead() }, [authed, fetchLead])
+
+  // ── Auto-generate Subject from Pickup/Delivery Location ────────────
+  // Founder spec 2026-08-25: Subject should read "Transportation of Goods
+  // From {Pickup} to {Delivery}" automatically — for a brand-new manual
+  // quote (fromCity/toCity still blank, generates just the fixed prefix so
+  // the admin never retypes it), for a quote opened from any inquiry source
+  // (fromCity/toCity load from the lead's own from_city/to_city — this
+  // effect fires the moment fetchLead sets them), and it re-syncs live if
+  // the admin edits From City / To City afterward. Never overwrites a
+  // Subject the admin has deliberately customized away from the
+  // auto-generated pattern — see subjectAutoValue's doc comment above.
+  useEffect(() => {
+    const generated = buildQuoteSubject(fromCity, toCity)
+    setSubject(prev => {
+      if (prev !== '' && prev !== subjectAutoValue.current) return prev // admin customized it — leave alone
+      subjectAutoValue.current = generated
+      return generated
+    })
+  }, [fromCity, toCity])
 
   // ── "Select Existing Customer" search (debounced, new-quote only) ──
   // Fetches as soon as the field is focused (custSearchOpen), even with
@@ -866,6 +920,19 @@ function QuotePageInner() {
       }
       if (!resolvedLeadId) { setErr('Failed to get lead ID after creation'); setGenerating(false); return }
       setCreatedLeadId(resolvedLeadId)
+      // 2026-08-25 fix — sync the URL with the just-created lead immediately,
+      // not only after the quote itself finishes generating below. Without
+      // this, a manual quote (opened at /admin/quotes/new with no lead_id)
+      // whose quote-generation call then failed (network hiccup, a
+      // validation error, etc.) left a real lead already created in the DB,
+      // but the address bar still had no lead_id — a page refresh or
+      // back/forward navigation lost the in-memory createdLeadId, so
+      // retrying created a genuinely SECOND lead for the same customer
+      // (founder-reported 2026-08-25: "the same record can appear again or
+      // create duplicate records"). replace (not push) so this doesn't add
+      // a back-button entry — from the admin's perspective they're still on
+      // the same "creating this quote" screen, just now safely resumable.
+      router.replace(`/admin/quotes/new?lead_id=${resolvedLeadId}`)
     }
 
     const pickupDT = combineDateTime(pickupDate, pickupTime)

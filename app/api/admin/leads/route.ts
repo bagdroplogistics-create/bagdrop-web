@@ -277,20 +277,58 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: error.message }, { status: 500 })
   }
 
+  // ── Quoted-but-not-yet-Confirmed leads: also surface real booking status ──
+  // A lead's linked booking is auto-created at 'quote_created' the moment a
+  // quote is generated for it — see app/api/admin/zoho/generate-quote/
+  // route.ts — and from there moves through quote_sent/accepted/
+  // payment_pending before ever reaching payment_received (the point
+  // confirmedLeadIds above starts covering it). Until now, effective_status
+  // only ever surfaced the real booking status for that ACTIVE_STATUSES
+  // range — anything earlier fell through to the lead's own raw funnel
+  // status ('new'/'contacted'/etc), which quote generation deliberately
+  // never touches. Net effect (founder-reported 2026-08-25): a lead that
+  // was just quoted — including a manually created quote, generated and
+  // saved in one action — kept showing "New Inquiry" right up until
+  // Confirmed, instead of "Quote Created"/"Quote Sent"/etc. This is the
+  // actual backend root cause, not a frontend label to hide: leads.status
+  // itself is still never written here (still purely additive/read-only,
+  // same as confirmedLeadIds/completedLeadIds above), it's just that a
+  // quoted lead's *displayed* status now correctly prefers its booking's
+  // real progress over the stale funnel value. Scoped to just this page's
+  // rows (not a full-table pre-scan like confirmedLeadIds above) since it's
+  // purely for display.
+  const quotedBookingIds = Array.from(new Set(
+    (data ?? [])
+      .filter(l => l.quote_number && l.booking_id && !confirmedLeadIds.includes(l.id) && !completedLeadIds.includes(l.id))
+      .map(l => l.booking_id as string)
+  ))
+  let quotedBookingStatusMap: Record<string, string> = {}
+  if (quotedBookingIds.length > 0) {
+    const { data: quotedBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id, status')
+      .in('id', quotedBookingIds)
+    quotedBookingStatusMap = Object.fromEntries((quotedBookings ?? []).map(b => [b.id, b.status]))
+  }
+
   // Read-only display status — the linked booking's actual real-time
-  // status (e.g. 'invoice_sent', 'pickup_scheduled') once a lead qualifies
-  // as Confirmed, so its badge shows exactly what's currently happening
-  // instead of a single flat "Confirmed" label; otherwise the lead's own
-  // untouched funnel status. Computed here (not stored) so this is purely
-  // additive: leads.status keeps meaning exactly what it always has for
-  // every other system that reads it (sales-followup reminders, etc.).
+  // status (e.g. 'invoice_sent', 'pickup_scheduled', 'quote_created') once
+  // a lead has a real quote (Confirmed-or-later, or still quote-in-progress
+  // per the fix above), so its badge shows exactly what's currently
+  // happening instead of a single flat "Confirmed"/"New Inquiry" label;
+  // otherwise the lead's own untouched funnel status. Computed here (not
+  // stored) so this is purely additive: leads.status keeps meaning exactly
+  // what it always has for every other system that reads it (sales-
+  // followup reminders, etc.).
   const enriched = (data ?? []).map(l => ({
     ...l,
     effective_status: completedLeadIds.includes(l.id)
       ? 'completed'
       : confirmedLeadIds.includes(l.id)
         ? (bookingStatusMap[l.booking_id ?? ''] ?? 'confirmed')
-        : l.status,
+        : (l.quote_number && quotedBookingStatusMap[l.booking_id ?? ''])
+          ? quotedBookingStatusMap[l.booking_id ?? '']
+          : l.status,
   }))
 
   return NextResponse.json({ leads: enriched, total: count, page, limit })
