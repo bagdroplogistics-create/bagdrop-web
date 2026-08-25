@@ -461,24 +461,44 @@ export default function QuoteViewPage() {
   // never reduces it. Rejected/pending_verification payments are excluded
   // automatically since only payment_status === 'paid' is summed.
   const [paidTotal, setPaidTotal] = useState(0)
+  // An already-approved payment-proof upload (payment_method === 'upload',
+  // payment_status === 'paid') that hasn't yet been converted into a real
+  // ledger entry — see doMarkPaymentReceived below (2026-08-26 fix). Kept
+  // separately from paidTotal because countsTowardTotalPaid deliberately
+  // EXCLUDES this row from the ledger sum (Task 2026-08-24: a proof upload
+  // is "verification only"), which means outstandingAmount below never
+  // drops to 0 just because Accounts approved a proof — it still shows the
+  // full amount as owed. That's correct for Outstanding Amount itself, but
+  // it silently invited a second, genuinely duplicate payments row: an
+  // admin who uploads-then-approves proof BEFORE ever clicking "Mark
+  // Payment Received" would see the full amount still outstanding and
+  // click it anyway, creating a second 'paid' row for money already
+  // confirmed once (exactly the BDP-2026-0008/0009 and 0006/0007 pairs
+  // the founder flagged from the Payments tab). Only ever set to an
+  // UNCONVERTED upload row — once converted (see below), its
+  // payment_method is no longer 'upload', so it naturally stops matching.
+  const [convertibleUploadPayment, setConvertibleUploadPayment] = useState<{ id: string; amount: number } | null>(null)
   // Bumped after doMarkPaymentReceived creates a new payments row, so this
   // effect re-fetches immediately instead of waiting for some other field
   // (like payment_verification_status) to happen to change too.
   const [paymentRefreshTick, setPaymentRefreshTick] = useState(0)
   useEffect(() => {
-    if (!booking?.id || !key) { setPaidTotal(0); return }
+    if (!booking?.id || !key) { setPaidTotal(0); setConvertibleUploadPayment(null); return }
     fetch(`/api/admin/payments?booking_id=${booking.id}&key=${encodeURIComponent(key)}`)
       .then(r => r.json())
       .then(d => {
+        const payments = (d.payments ?? []) as { id: string; amount: number; payment_status: string; payment_method?: string | null }[]
         // countsTowardTotalPaid excludes payment_method === 'upload' rows —
         // a payment-proof screenshot is a verification record, never a
         // ledger entry, even once approved (see lib/payment-ledger.ts).
-        const sum = (d.payments ?? [])
+        const sum = payments
           .filter(countsTowardTotalPaid)
-          .reduce((acc: number, p: { amount: number }) => acc + (Number(p.amount) || 0), 0)
+          .reduce((acc, p) => acc + (Number(p.amount) || 0), 0)
         setPaidTotal(sum)
+        const convertible = payments.find(p => p.payment_method === 'upload' && p.payment_status === 'paid' && Number(p.amount) > 0)
+        setConvertibleUploadPayment(convertible ? { id: convertible.id, amount: Number(convertible.amount) } : null)
       })
-      .catch(() => setPaidTotal(0))
+      .catch(() => { setPaidTotal(0); setConvertibleUploadPayment(null) })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking?.id, booking?.payment_verification_status, paymentRefreshTick, key])
   const outstandingAmount = Math.max(0, (Number(booking?.total_amount) || 0) - paidTotal)
@@ -1027,6 +1047,15 @@ export default function QuoteViewPage() {
       if (booking?.id && lead && key) {
         const amount = Math.round(outstandingAmount * 100) / 100
         if (amount > 0) {
+          // 2026-08-26 fix — if this booking already has an approved
+          // payment-proof upload (convertibleUploadPayment), the server
+          // now UPGRADES that existing row into the real ledger entry
+          // instead of inserting a second 'paid' row for the same money —
+          // see the "convert, don't duplicate" block in POST /api/admin/
+          // payments/route.ts. This still always POSTs (server decides
+          // insert-vs-convert, so both this button and the Payments tab's
+          // own Record Payment modal get the same protection from one
+          // place, not two separately-maintained checks).
           await fetch(`/api/admin/payments?key=${encodeURIComponent(key)}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -2198,6 +2227,12 @@ export default function QuoteViewPage() {
                   <div className="rounded-xl border border-yellow-100 bg-yellow-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-yellow-600">💰 Step 6 — Confirm Payment Received</p>
                     <p className="text-sm text-yellow-700">Awaiting customer payment. Once received, enter UTR and confirm.</p>
+                    {convertibleUploadPayment && (
+                      <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
+                        An approved payment-proof upload of {fmtRs(convertibleUploadPayment.amount)} is already on file for this booking.
+                        Confirming below will apply that same payment — it won&apos;t create a second entry.
+                      </p>
+                    )}
                     {showPaymentInput ? (
                       <div className="space-y-2">
                         <input type="text" placeholder="UTR / Payment Reference (optional)"

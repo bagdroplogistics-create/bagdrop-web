@@ -172,8 +172,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'customer_name and amount required' }, { status: 400 })
   }
 
-  const paymentId = await nextPaymentId()
-
   // Convert empty strings to null for UUID columns — PostgreSQL rejects ""
   const bookingId = (body.booking_id ?? '').toString().trim() || null
 
@@ -185,6 +183,78 @@ export async function POST(req: NextRequest) {
   // Date" field) shows the admin-entered date with no further changes —
   // created_at otherwise defaults to "now" as before when omitted.
   const paymentDate = (body.payment_date ?? '').toString().trim() || null
+
+  // ── Convert-not-duplicate guard (2026-08-26 fix) ────────────────────────
+  // A customer's payment-proof screenshot can be uploaded and approved
+  // (payment_method 'upload', payment_status 'paid' via app/api/admin/
+  // bookings/[id]/payment-proof/route.ts and the Accounts verification
+  // link) independently of — and before — anyone using THIS route
+  // (Booking Workflow's "Mark Payment Received", or the Payments tab's own
+  // Record Payment form) to log the same real-world payment. Because
+  // countsTowardTotalPaid deliberately excludes 'upload' rows from the
+  // ledger sum (lib/payment-ledger.ts, by design — a proof upload alone
+  // was never meant to BE the ledger entry), the booking's outstanding
+  // balance still shows the full amount as owed even after that proof is
+  // approved. That used to mean a second, genuinely redundant 'paid' row
+  // got inserted here for the exact same money — two separate line items
+  // in the Payments tab for one real payment (founder-reported:
+  // BDP-2026-0008/0009 and BDP-2026-0006/0007, both pairs same customer,
+  // same amount, same day). Fix: when this request is recording a 'paid'
+  // payment for a booking that has exactly one still-unconverted approved
+  // upload payment, UPGRADE that existing row into the real ledger entry
+  // instead of inserting a new one — same payment, same row id, now
+  // correctly counted. Only triggers for payment_status 'paid' (a merely
+  // 'pending' record here is a distinct in-progress payment, not a
+  // confirmation of the proof already on file, so it inserts normally).
+  // More than one matching upload row is deliberately left alone (falls
+  // through to a normal insert) rather than guessing which one to convert.
+  if (bookingId && (body.payment_status ?? 'pending') === 'paid') {
+    // Every 'paid' row for this booking — not just upload ones. Only
+    // convert when the upload row is the ONLY 'paid' payment on file
+    // (nothing else already recorded this money). If a real, non-upload
+    // 'paid' row already exists too, converting the upload row here would
+    // just shift the duplicate instead of removing it — that combination
+    // needs the dedicated cleanup route (app/api/admin/payments/
+    // fix-duplicate-uploads/route.ts) or manual review, not a silent
+    // overwrite here, so it falls through to a normal insert instead.
+    const { data: existingPaid } = await supabaseAdmin
+      .from('payments')
+      .select('id, payment_method')
+      .eq('booking_id', bookingId)
+      .eq('payment_status', 'paid')
+    const existingUploads = (existingPaid ?? []).filter(p => p.payment_method === 'upload')
+    const existingNonUploads = (existingPaid ?? []).filter(p => p.payment_method !== 'upload')
+    if (existingUploads.length === 1 && existingNonUploads.length === 0) {
+      const { data: converted, error: convertErr } = await supabaseAdmin
+        .from('payments')
+        .update({
+          amount:             Number(body.amount),
+          payment_method:     body.payment_method ?? 'upi',
+          payment_reference:  body.payment_reference?.trim() || null,
+          notes:              body.notes?.trim() || 'Confirmed — converted from an approved payment-proof upload (no duplicate entry created)',
+          ...(paymentDate ? { payment_date: paymentDate, created_at: new Date(paymentDate + 'T12:00:00').toISOString() } : {}),
+          ...(body.bank_charges != null && body.bank_charges !== '' ? { bank_charges: Number(body.bank_charges) } : {}),
+          ...(body.tds_deducted ? { tds_deducted: true, tds_amount: body.tds_amount != null && body.tds_amount !== '' ? Number(body.tds_amount) : null } : {}),
+        })
+        .eq('id', existingUploads[0].id)
+        .select()
+        .single()
+
+      if (!convertErr && converted) {
+        await supabaseAdmin.from('bookings').update({
+          payment_method:    body.payment_method ?? 'upi',
+          payment_reference: body.payment_reference?.trim() || null,
+        }).eq('id', bookingId)
+        await recomputeBookingPaymentStatus(bookingId)
+        return NextResponse.json({ payment: converted, converted: true }, { status: 200 })
+      }
+      // Update failed for some reason (e.g. race) — fall through and
+      // insert normally rather than silently dropping the payment.
+      if (convertErr) console.error('[payments POST] convert-existing-upload failed, inserting new row instead:', convertErr.message)
+    }
+  }
+
+  const paymentId = await nextPaymentId()
 
   const { data, error } = await supabaseAdmin.from('payments').insert({
     payment_id:        paymentId,

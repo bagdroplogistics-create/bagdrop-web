@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   CreditCard, Search, RefreshCw, ChevronDown,
   CheckCircle, XCircle, Clock, AlertCircle, Plus, X, Save, FileText, Loader2,
-  Paperclip, Trash2, Upload, Download,
+  Paperclip, Trash2, Upload, Download, GitMerge,
 } from 'lucide-react'
 import { getRoleFromSession, can } from '@/lib/roles'
 import type { AdminRole } from '@/lib/admin-auth'
@@ -781,6 +781,63 @@ export default function PaymentsPage() {
   // opened for synthetic (is_synthetic) rows, which have no real row to
   // fetch a receipt for.
   const [viewingPaymentId, setViewingPaymentId] = useState<string | null>(null)
+  const [fixingDuplicates, setFixingDuplicates] = useState(false)
+
+  // One-time cleanup utility (2026-08-26, founder-reported: BDP-2026-0008/
+  // 0009, BDP-2026-0006/0007 showing as separate "Paid" rows for the same
+  // real payment) — see app/api/admin/payments/fix-duplicate-uploads/
+  // route.ts for the full explanation and the safety scoping (only merges
+  // an unambiguous upload+non-upload pair on the same booking; anything
+  // more complex is left for manual review, never guessed at). Uses
+  // window.confirm/alert rather than a custom modal since this is a rare,
+  // explicit utility action, not a everyday workflow step — matches this
+  // page's existing refundPayment() convention just above.
+  async function fixDuplicatePayments() {
+    setFixingDuplicates(true)
+    try {
+      const previewRes = await fetch(`/api/admin/payments/fix-duplicate-uploads?key=${adminKey}`, {
+        headers: { 'x-admin-key': adminKey },
+      })
+      const preview = await previewRes.json().catch(() => ({}))
+      if (!previewRes.ok) { alert(preview.error ?? 'Scan failed'); return }
+
+      if (!preview.fixable || preview.fixable.length === 0) {
+        alert(preview.ambiguousCount > 0
+          ? `No safe-to-auto-fix duplicates found. ${preview.ambiguousCount} booking(s) have a more complex payment pattern (more than 2 payments) and need manual review in the list below.`
+          : 'No duplicate payments found — nothing to fix.')
+        return
+      }
+
+      type FixablePreview = { customer_name: string; amount: number }
+      const summary = (preview.fixable as FixablePreview[])
+        .map(p => `• ${p.customer_name} — ${fmtRs(p.amount)}`)
+        .join('\n')
+      const confirmed = window.confirm(
+        `Found ${preview.fixable.length} duplicate payment pair(s):\n\n${summary}\n\n` +
+        `Each pair will be merged into a single entry (the payment-proof row is kept and upgraded; the redundant manually-recorded row is removed). ` +
+        `No customer's actual paid amount changes. Proceed?`
+      )
+      if (!confirmed) return
+
+      const fixRes = await fetch(`/api/admin/payments/fix-duplicate-uploads?key=${adminKey}`, {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+      })
+      const result = await fixRes.json().catch(() => ({}))
+      if (!fixRes.ok) { alert(result.error ?? 'Fix failed'); return }
+
+      alert(
+        `Merged ${result.mergedCount} duplicate payment pair(s).` +
+        (result.failed?.length ? ` ${result.failed.length} failed — check server logs.` : '') +
+        (result.ambiguousCount ? ` ${result.ambiguousCount} booking(s) still need manual review.` : '')
+      )
+      fetchPayments()
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setFixingDuplicates(false)
+    }
+  }
 
   function openLogPaymentModal(p: Payment) {
     setModalPrefill({
@@ -869,10 +926,18 @@ export default function PaymentsPage() {
             <h1 className="text-xl font-bold text-gray-900">Payments</h1>
             <p className="mt-0.5 text-sm text-gray-400">{payments.length} transactions · {fmtRs(totalPaid)} collected</p>
           </div>
-          <button onClick={() => setShowModal(true)}
-            className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">
-            <Plus className="h-4 w-4" /> New
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={fixDuplicatePayments} disabled={fixingDuplicates}
+              title="Scans for a payment-proof upload and a manually-recorded payment that duplicate the same real payment, and merges each pair into one entry"
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60">
+              {fixingDuplicates ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+              Fix Duplicate Payments
+            </button>
+            <button onClick={() => setShowModal(true)}
+              className="flex items-center gap-2 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600">
+              <Plus className="h-4 w-4" /> New
+            </button>
+          </div>
         </div>
       </div>
 
