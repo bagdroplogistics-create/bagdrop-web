@@ -329,6 +329,26 @@ export async function GET(req: NextRequest) {
         : (l.quote_number && quotedBookingStatusMap[l.booking_id ?? ''])
           ? quotedBookingStatusMap[l.booking_id ?? '']
           : l.status,
+    // 2026-08-25 fix — explicit, unambiguous "has this lead actually
+    // reached Confirmed (payment received/approved) or later" flag, kept
+    // SEPARATE from effective_status above. The Leads tab's small orange
+    // "Confirmed" sub-label used to infer this by checking whether
+    // effective_status matched ANY entry in BOOKING_STATUS_CONFIG — which
+    // was a safe proxy back when effective_status only ever held a real
+    // booking status for the Confirmed-or-later range. Once the fix above
+    // (2026-08-25, same day) started ALSO surfacing early statuses like
+    // 'quote_created'/'quote_sent' for any quoted lead, that proxy broke:
+    // BOOKING_STATUS_CONFIG has an entry for every pipeline status, not
+    // just Confirmed+, so the sub-label started firing for every quoted
+    // lead regardless of payment — founder-reported 2026-08-25 ("all
+    // inquiries are showing the Confirmed badge, even when payment has not
+    // been completed"). is_confirmed reuses the exact same
+    // confirmedLeadIds/completedLeadIds sets the Dashboard's own "Total
+    // Confirmed Bookings" KPI is built from (see the ACTIVE_STATUSES
+    // comment above), so this stays permanently in sync with that
+    // definition — Payment Received/Approved onward, never earlier —
+    // without the frontend having to re-derive it from a label lookup.
+    is_confirmed: confirmedLeadIds.includes(l.id) || completedLeadIds.includes(l.id),
   }))
 
   return NextResponse.json({ leads: enriched, total: count, page, limit })

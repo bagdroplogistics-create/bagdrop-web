@@ -868,18 +868,30 @@ export default function QuoteViewPage() {
   async function doSendQuoteWhatsApp() {
     if (!lead || !booking || !key) return
     setSendingQuoteWhatsApp(true)
+    setActionError(null)
     try {
-      let pdfUrl: string | null = null
+      // 2026-08-25 fix — the PDF used to be best-effort here: if generation/
+      // upload failed, the send just quietly continued without the link,
+      // and the customer received a message that looked complete but
+      // wasn't. Founder spec: never send an incomplete message — if the PDF
+      // can't be attached, stop and show a clear error instead, so the
+      // admin knows to retry rather than believing the customer got the
+      // quote document when they didn't. getQuotePdfUrl (called via this
+      // route) always regenerates fresh off the lead's CURRENT saved quote,
+      // so this can never attach an old/previous version.
+      let pdfUrl: string
       try {
         const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}`, {
           method: 'POST',
           headers: { 'x-admin-key': key },
         })
         const d = await r.json().catch(() => ({}))
-        if (r.ok) pdfUrl = d.url ?? null
-        else console.error('[doSendQuoteWhatsApp] PDF generation failed (non-fatal):', d.error)
+        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
+        pdfUrl = d.url
       } catch (err) {
-        console.error('[doSendQuoteWhatsApp] PDF generation error (non-fatal):', err)
+        console.error('[doSendQuoteWhatsApp] PDF generation/upload failed:', err)
+        setActionError('Unable to attach Quote PDF. Please try again.')
+        return
       }
 
       const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
@@ -902,7 +914,7 @@ export default function QuoteViewPage() {
         `🧳 No. of Bags: ${bags}`,
         `💰 Total Amount: ${fmt(Number(total))}`,
         '',
-        ...(pdfUrl ? [`📄 Download your quote PDF:`, pdfUrl, ''] : []),
+        `📄 Download your quote PDF:`, pdfUrl, '',
         'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
         '',
         '— Team Bagdrop',

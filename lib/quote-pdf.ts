@@ -19,6 +19,7 @@ import { pdf } from '@react-pdf/renderer'
 import React from 'react'
 import QuotePDF from '@/app/(admin)/admin/quotes/view/[lead_id]/QuotePDF'
 import { formatCustomerName } from '@/lib/constants'
+import { supabaseAdmin } from '@/lib/supabase'
 
 // Loose shape — deliberately not the full `Lead` interface from the quotes
 // view page (that's a client-only file's local type). Every field here is
@@ -126,4 +127,48 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf): Promise<Buffer> 
   const blob  = await pdf(element as any).toBlob()
   const arr   = await blob.arrayBuffer()
   return Buffer.from(arr)
+}
+
+export interface QuotePdfUrlResult {
+  url: string
+  filename: string
+}
+
+// Generates the CURRENT Quote PDF for this lead and uploads it to Supabase
+// Storage, returning a public URL + filename. `upsert: true` always
+// overwrites the same deterministic path (leads/{id}/{filename}) rather
+// than versioning it, so the URL this returns can never point at a stale
+// or previous quote — every call regenerates the PDF fresh off the lead's
+// current row (buildQuotePdfBuffer above never caches), and re-running this
+// after a quote edit simply replaces the same file in place. The returned
+// URL also has a cache-busting query param appended so a CDN-cached
+// response for that storage path can't serve an older version to whatever
+// fetches it right after a regenerate (e.g. Fast2SMS fetching media_url).
+//
+// Single source of truth for every caller that needs a downloadable/
+// attachable PDF LINK rather than raw bytes (the browser "Download PDF"
+// button generates bytes client-side instead; the email attachment path
+// uses buildQuotePdfBuffer directly for the same reason — it needs base64
+// content, not a URL). Callers: app/api/admin/leads/[id]/quote-pdf/route.ts
+// (manual "Send Quote via WhatsApp" button's text-link fallback — web.
+// whatsapp.com can't attach real files) and lib/lifecycle-notifications.ts's
+// automated Fast2SMS 'quote_sent' send (2026-08-25 — a real Document-header
+// PDF attachment, since that template has one configured).
+export async function getQuotePdfUrl(lead: LeadRowForPdf): Promise<QuotePdfUrlResult> {
+  const pdfBuffer    = await buildQuotePdfBuffer(lead)
+  const filename     = quotePdfFilename(lead)
+  const storagePath  = `leads/${lead.id}/${filename}`
+
+  const { error: uploadError } = await supabaseAdmin.storage
+    .from('quotes')
+    .upload(storagePath, pdfBuffer, {
+      contentType: 'application/pdf',
+      upsert: true,
+    })
+  if (uploadError) {
+    throw new Error(`Quote PDF upload failed: ${uploadError.message}`)
+  }
+
+  const { data: urlData } = supabaseAdmin.storage.from('quotes').getPublicUrl(storagePath)
+  return { url: `${urlData.publicUrl}?t=${Date.now()}`, filename }
 }

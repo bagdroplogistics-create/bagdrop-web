@@ -41,10 +41,17 @@ interface Lead {
   booking_id:           string | null
   lead_number:          string | null
   status:               string
-  // Read-only, computed server-side in GET /api/admin/leads — 'confirmed'
-  // when the linked booking has reached that status, otherwise equal to
+  // Read-only, computed server-side in GET /api/admin/leads — the linked
+  // booking's real current status once a quote exists, otherwise equal to
   // `status`. Never present on POST/PATCH payloads; display-only.
   effective_status?:    string
+  // Read-only, computed server-side in GET /api/admin/leads (2026-08-25) —
+  // true only once the linked booking has reached Payment Received/
+  // Approved or later (same definition as the Dashboard's "Total Confirmed
+  // Bookings" KPI). Use this, not a BOOKING_STATUS_CONFIG lookup, for
+  // anything that means "is this lead actually Confirmed" — effective_status
+  // above can hold an early, pre-payment status too.
+  is_confirmed?:         boolean
   notes:                string | null
   assigned_to:          string | null
   created_at:           string
@@ -1123,14 +1130,27 @@ function LeadsPageInner() {
                         <div className="flex items-center gap-1 text-xs text-gray-400">
                           <Phone className="h-3 w-3" />{l.phone}
                         </div>
-                        {/* Small standalone "Confirmed" tag under the name —
-                            same test as the Status column's badge-source
-                            pick (BOOKING_STATUS_CONFIG match = a real
-                            bookings.status, i.e. this inquiry has actually
-                            reached Confirmed-or-later), so it's always in
-                            sync with the Status badge instead of a second,
-                            separately-computed source of truth. */}
-                        {BOOKING_STATUS_CONFIG[l.effective_status ?? l.status] ? (
+                        {/* Small standalone "Confirmed" tag under the name.
+                            2026-08-25 fix — this used to test
+                            "BOOKING_STATUS_CONFIG[effective_status] exists"
+                            as a proxy for "reached Confirmed-or-later", which
+                            broke the moment effective_status started ALSO
+                            surfacing early statuses like quote_created/
+                            quote_sent for any quoted lead (same-day fix,
+                            see app/api/admin/leads/route.ts) — since
+                            BOOKING_STATUS_CONFIG has an entry for every
+                            pipeline status, not just Confirmed+, this tag
+                            started showing for every quoted lead regardless
+                            of payment (founder-reported: "all inquiries are
+                            showing the Confirmed badge, even when payment
+                            has not been completed"). Now reads the explicit
+                            is_confirmed flag from that same route instead —
+                            true only from Payment Received/Approved onward,
+                            exactly matching the Dashboard's "Total Confirmed
+                            Bookings" definition, never for quote_created/
+                            quote_sent/accepted/payment_pending/partially
+                            paid. */}
+                        {l.is_confirmed ? (
                           <p className="mt-0.5 text-[11px] font-semibold" style={{ color: '#ff6300' }}>Confirmed</p>
                         ) : null}
                       </td>

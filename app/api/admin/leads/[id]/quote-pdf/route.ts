@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { buildQuotePdfBuffer, quotePdfFilename, type LeadRowForPdf } from '@/lib/quote-pdf'
+import { getQuotePdfUrl, type LeadRowForPdf } from '@/lib/quote-pdf'
 
 // POST /api/admin/leads/[id]/quote-pdf
 //
@@ -38,34 +38,15 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'This lead has no quote yet — generate a quote first.' }, { status: 400 })
   }
 
-  let pdfBuffer: Buffer
   try {
-    pdfBuffer = await buildQuotePdfBuffer(lead as LeadRowForPdf)
+    // getQuotePdfUrl (lib/quote-pdf.ts) always regenerates the PDF fresh off
+    // this lead's CURRENT row and re-uploads (upsert) to the same
+    // deterministic storage path, so the URL returned here can never be an
+    // old/previous version of the quote — see its own doc comment.
+    const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf)
+    return NextResponse.json({ url, filename })
   } catch (err) {
-    console.error('[leads/quote-pdf] PDF generation error:', err)
-    return NextResponse.json({ error: 'PDF generation failed' }, { status: 500 })
+    console.error('[leads/quote-pdf] PDF generation/upload error:', err)
+    return NextResponse.json({ error: 'Unable to attach Quote PDF. Please try again.' }, { status: 500 })
   }
-
-  const filename    = quotePdfFilename(lead as LeadRowForPdf)
-  // Namespaced under leads/ in the same 'quotes' bucket the older
-  // quotes-table PDF flow (app/api/admin/quotes/[id]/upload-pdf/route.ts)
-  // already uses — different ID space (lead id, not a quotes-table row id),
-  // so paths can never collide between the two.
-  const storagePath = `leads/${id}/${filename}`
-
-  const { error: uploadError } = await supabaseAdmin.storage
-    .from('quotes')
-    .upload(storagePath, pdfBuffer, {
-      contentType: 'application/pdf',
-      upsert: true,
-    })
-
-  if (uploadError) {
-    console.error('[leads/quote-pdf] Storage upload error:', uploadError)
-    return NextResponse.json({ error: 'Upload failed: ' + uploadError.message }, { status: 500 })
-  }
-
-  const { data: urlData } = supabaseAdmin.storage.from('quotes').getPublicUrl(storagePath)
-
-  return NextResponse.json({ url: urlData.publicUrl, filename })
 }
