@@ -115,7 +115,39 @@ export async function GET(req: NextRequest) {
   const { data, error } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  const realPayments = (data ?? []) as unknown as PaymentRecord[]
+  // ── Hide a redundant approved payment-proof upload once a real payment
+  // also exists for the same booking (2026-08-26, founder-reported: an
+  // approved proof and a manually-recorded payment for the same money
+  // both showing as separate "Paid" rows here, in either order — proof
+  // approved after Mark Payment Received, or Mark Payment Received clicked
+  // while a proof was still pending and only approved afterward). Fixing
+  // just the write paths (POST /api/admin/payments's "convert, don't
+  // duplicate" guard) only prevents ONE of those two orderings — this list
+  // itself is the one place that can guarantee "only one entry shows"
+  // regardless of which order things happened in, without deleting or
+  // altering any row. The upload row is never removed from the database —
+  // only left out of what this list returns — so the actual proof
+  // (proof_url/proof_type) and its approval history stay fully intact and
+  // reachable from the Booking Workflow page; it just stops appearing as
+  // a second, redundant line item here once a real payment covers it.
+  const rawPayments = (data ?? []) as unknown as PaymentRecord[]
+  const byBookingId = new Map<string, PaymentRecord[]>()
+  for (const p of rawPayments) {
+    if (!p.booking_id) continue
+    const list = byBookingId.get(p.booking_id) ?? []
+    list.push(p)
+    byBookingId.set(p.booking_id, list)
+  }
+  const redundantUploadIds = new Set<string>()
+  for (const group of byBookingId.values()) {
+    if (group.length < 2) continue
+    const paidUploads = group.filter(p => p.payment_method === 'upload' && p.payment_status === 'paid')
+    const paidOthers  = group.filter(p => p.payment_method !== 'upload' && p.payment_status === 'paid')
+    if (paidUploads.length >= 1 && paidOthers.length >= 1) {
+      for (const p of paidUploads) redundantUploadIds.add(p.id)
+    }
+  }
+  const realPayments = rawPayments.filter(p => !redundantUploadIds.has(p.id))
   const existingBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
 
   let synthetic = await fetchUnloggedBookingPayments(existingBookingIds)
