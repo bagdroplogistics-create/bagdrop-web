@@ -1,16 +1,70 @@
 // BAGDROP — lib/confirmed-ongoing-summary.ts
 //
-// Automated "Confirmed & Ongoing Inquiry" WhatsApp summary. Twice a day
+// Automated "Confirmed & Ongoing Booking" WhatsApp report. Twice a day
 // (9:00 AM and 6:00 PM IST), sends the fixed internal ops WhatsApp numbers
-// (see lib/internal-whatsapp-recipients.ts) a report listing EVERY booking
+// (see lib/internal-whatsapp-recipients.ts) ONE MESSAGE PER BOOKING
 // currently at 'confirmed' or one of the operational "ongoing" statuses —
 // so a confirmed pickup/delivery never gets missed just because nobody
-// opened the admin dashboard.
+// opened the admin dashboard. Every message carries the run's summary
+// counts (Confirmed/Ongoing/Total) at the top AND that one booking's full
+// detail below — a single template, reused once per booking.
+//
+// ── 2026-08-25 redesign: real fields, one template ──────────────────────
+// v1 packed every booking into a single WhatsApp template variable
+// ({{1}}) as one long pre-rendered block of text with real line breaks
+// between fields. WhatsApp Business API silently flattens any line break
+// INSIDE a single template variable's value before delivery — see
+// lib/notifications.ts's sendWhatsAppTemplateFast2SMS, which has always
+// had to replace \n with " • " before sending for exactly this reason —
+// so the "vertical" report actually always arrived as one run-on line.
+//
+// v2 split this into a separate summary message (5 variables) plus one
+// per-booking message (14 variables), mirroring the working
+// "NEW BAGDROP INQUIRY" template (lib/new-inquiry-notification.ts), which
+// renders perfectly vertical because it uses one variable PER FIELD with
+// the line breaks baked into the template's own static body.
+//
+// v3 (per founder request 2026-08-25 "add template 2 in template 1")
+// merged those two templates back into ONE — every message carries both
+// the run's summary line AND one booking's full detail, so only a single
+// Fast2SMS/Meta template needs to be created and approved. Still one
+// WhatsApp message per booking (a variable-length list still can't be one
+// fixed-shape template), just no separate summary-only message anymore.
+//
+// v4 (this version) — that 18-variable merged template was REJECTED by
+// Fast2SMS/Meta at submission: "This template has too many variables for
+// its length. Reduce the number of variables or increase the message
+// length." Dropped Tracking ID, Inquiry ID, and Service (the 3 fields
+// with the shortest static label text relative to their values) to bring
+// it down to 15 variables — same approval-ratio issue already documented
+// in this file's history (see the old §12 "too many variables" note).
+// Tracking ID/Inquiry ID/Service are still tracked internally (visible on
+// the admin dashboard) — they just aren't in this particular WhatsApp
+// message anymore.
+//
+// v5 (this version) — dropping to 13 variables STILL got the same "too
+// many variables for its length" rejection. Deleting a field removes both
+// a variable and its ~1-word label, which barely moves the static-text-
+// to-variable ratio Meta actually checks (per Meta's published template
+// guidance: static text needs to scale with variable count, not just
+// exist). Rather than keep cutting fields the founder wants kept, this
+// version keeps all 15 variables and instead adds real static wording:
+// a longer title, a full sentence around the booking-index variables, and
+// a closing sentence — mirroring the already-approved
+// `new_inquiry_notification` template's proven label+sentence density
+// (lib/new-inquiry-notification.ts, 10 variables, live and working). The
+// actual template body lives on Fast2SMS's dashboard, not in this file —
+// see FAST2SMS_TEMPLATES.md §12 for the exact text to submit. This file's
+// buildSummaryVariables()/buildBookingVariables() are UNCHANGED by this
+// version (same 15 values, same order) — only the static wrapper text
+// around them changed. FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID below; until
+// set, sends safely no-op (logged, not thrown) — same fallback convention
+// as every other Fast2SMS-dependent cron in this app.
 //
 // ── Critical design constraint (per founder spec, 2026-08-18) ──────────
-// Each booking is its own row in the report. NEVER grouped/deduped by
-// customer, never LIMIT 1, never DISTINCT ON(customer). A customer with 3
-// separate confirmed bookings must see all 3 listed separately. The query
+// Each booking is its own message. NEVER grouped/deduped by customer,
+// never LIMIT 1, never DISTINCT ON(customer). A customer with 3 separate
+// confirmed bookings must see all 3 sent as 3 separate messages. The query
 // below selects plain rows from `bookings` filtered by status only — no
 // customer-keyed aggregation anywhere in this file.
 //
@@ -27,36 +81,20 @@
 //               driver_details_shared).
 // 'delivered', 'trip_created', 'completed', 'cancelled', 'rejected', and
 // everything before 'confirmed' (inquiry/quote/payment stages) are
-// deliberately excluded — matches the spec's explicit exclusion list.
-// This is an assumption (the spec describes "Confirmed"/"Ongoing" as
-// business concepts, not raw DB status values) — flagged here since it's
-// the one interpretive judgment call in an otherwise literal spec.
+// deliberately excluded.
 //
-// ── WhatsApp template constraint ────────────────────────────────────────
-// Fast2SMS (Meta-approved WABA) requires a pre-approved, FIXED-shape
-// template for any business-initiated message — see the "Fast2SMS
-// WhatsApp Template Sender" comment in lib/notifications.ts. A template
-// cannot have a variable number of placeholders, so an arbitrary-length
-// multi-inquiry report can't be one template with "one slot per inquiry."
-// Instead this uses ONE simple template with a single {{1}} variable
-// holding the full pre-rendered report chunk, wrapped in fixed intro/outro
-// sentences (see buildReportChunks() below and FAST2SMS_TEMPLATES.md §12
-// for the exact template text). Originally tried 2 variables ({{1}} short
-// header, {{2}} body) with almost no surrounding fixed text — Fast2SMS/
-// Meta rejected that as "too many variables for its length" (their
-// approval check requires enough static template text relative to
-// variable count). Down to 1 variable + real fixed sentences fixes it.
-// New template, not yet approved — see FAST2SMS_TEMPLATES.md §12 and the
-// FAST2SMS_CONFIRMED_ONGOING_SUMMARY_MESSAGE_ID env var. Until that env
-// var is set, sends safely no-op (logged, not thrown) — same fallback
-// convention as every other Fast2SMS-dependent cron in this app (see
-// ops_pickup_reminder's note).
+// ── Zero-bookings case ───────────────────────────────────────────────────
+// Spec item 8 requires a heartbeat even when nothing is confirmed/ongoing,
+// so nobody wonders if the report silently stopped running. When there are
+// no bookings, exactly ONE message still goes out — same template, summary
+// counts all 0, booking half filled with "0 of 0" / "—" placeholders (see
+// ZERO_BOOKING_PLACEHOLDER below).
 //
 // ── Idempotency ──────────────────────────────────────────────────────────
 // See supabase/migrations/20260818d_confirmed_ongoing_summary.sql's
-// comment for the full claim mechanism. Short version: report_key
-// 'YYYY-MM-DD_morning'/'_evening' (IST date), claimed via
-// INSERT ... ON CONFLICT DO NOTHING before any work happens — a second
+// comment for the full claim mechanism (unchanged by this redesign). Short
+// version: report_key 'YYYY-MM-DD_morning'/'_evening' (IST date), claimed
+// via INSERT ... ON CONFLICT DO NOTHING before any work happens — a second
 // concurrent/retried invocation for the same key gets 0 inserted rows and
 // no-ops immediately, however many times cron-job.org or Vercel retries it.
 
@@ -73,15 +111,6 @@ const REPORT_SCHEDULED_TIME: Record<ReportType, string> = { morning: '09:00', ev
 const CONFIRMED_STATUS = 'confirmed'
 const ONGOING_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed') + 1, STATUS_ORDER.indexOf('delivered'))
 const INCLUDED_STATUSES = [CONFIRMED_STATUS, ...ONGOING_STATUSES]
-const ACCEPTED_IDX = STATUS_ORDER.indexOf('accepted')
-
-// Meta's hard template-body cap is 1024 characters for the whole rendered
-// message. This budgets only the {{1}} variable's contribution, leaving
-// headroom (~400 chars) for the fixed intro/outro sentences now baked into
-// the template itself (see FAST2SMS_TEMPLATES.md §12). Conservative on
-// purpose — better to split one message earlier than to have Fast2SMS/
-// Meta silently truncate or reject an oversized send.
-const BODY_CHAR_BUDGET = 550
 
 interface BookingSummaryRow {
   id: string
@@ -100,9 +129,13 @@ interface BookingSummaryRow {
   total_bags: number | null
   payment_status: string | null
   created_at: string
+  service_type: string | null
+  service_label: string | null
+  driver_name: string | null
+  vehicle_number: string | null
 }
 
-const BOOKING_SELECT = 'id, tracking_id, status, title, customer_name, customer_phone, from_city, to_city, pickup_address, drop_address, pickup_date, delivery_date, time_slot, total_bags, payment_status, created_at'
+const BOOKING_SELECT = 'id, tracking_id, status, title, customer_name, customer_phone, from_city, to_city, pickup_address, drop_address, pickup_date, delivery_date, time_slot, total_bags, payment_status, created_at, service_type, service_label, driver_name, vehicle_number'
 
 /**
  * Every booking currently Confirmed or Ongoing — one row per booking, no
@@ -124,24 +157,6 @@ async function fetchConfirmedOngoingBookings(): Promise<BookingSummaryRow[]> {
   return (data ?? []) as unknown as BookingSummaryRow[]
 }
 
-/** Inquiry ID (lead_number) for each booking, resolved via leads.booking_id — batched, not per-row. */
-async function fetchInquiryIdsByBooking(bookingIds: string[]): Promise<Record<string, string>> {
-  if (bookingIds.length === 0) return {}
-  const { data, error } = await supabaseAdmin
-    .from('leads')
-    .select('booking_id, lead_number')
-    .in('booking_id', bookingIds)
-  if (error) {
-    console.warn('[confirmed-ongoing-summary] leads lookup failed (non-fatal, Inquiry ID will show as —):', error.message)
-    return {}
-  }
-  const map: Record<string, string> = {}
-  for (const row of (data ?? []) as unknown as { booking_id: string | null; lead_number: string | null }[]) {
-    if (row.booking_id && row.lead_number) map[row.booking_id] = row.lead_number
-  }
-  return map
-}
-
 function fmtDate(d: string | null): string {
   if (!d) return 'TBC'
   return new Date(`${d}T00:00:00Z`).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
@@ -154,101 +169,88 @@ function fmtPaymentLabel(status: string | null): string {
   if (status === 'paid') return 'Received'
   return fmtStatusLabel(status)
 }
-function bucketLabel(status: string): 'Confirmed' | 'Ongoing' {
-  return status === CONFIRMED_STATUS ? 'Confirmed' : 'Ongoing'
-}
-function bucketEmoji(status: string): string {
-  return status === CONFIRMED_STATUS ? '🔵' : '🟢'
-}
 
-interface ReportEntry { n: number; text: string }
-
-function buildEntry(n: number, b: BookingSummaryRow, inquiryId: string | undefined): string {
-  const name       = formatCustomerName(b.title, b.customer_name) || b.customer_name || 'Customer'
-  const route      = [b.from_city, b.to_city].filter(Boolean).join(' → ') || '—'
-  const quoteStatus = STATUS_ORDER.indexOf(b.status) >= ACCEPTED_IDX && STATUS_ORDER.indexOf(b.status) !== -1 ? 'Accepted' : 'Pending'
+// 5 fixed fields — the summary half of the merged template (variables
+// {{1}}-{{5}}). Identical across every message sent in one run.
+function buildSummaryVariables(confirmedCount: number, ongoingCount: number, totalCount: number, reportType: ReportType, now: Date): string[] {
+  const dateLabel = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
   return [
-    `${n}. ${name}`,
-    `🆔 Inquiry: ${inquiryId ?? '—'}`,
-    `📦 Tracking: ${b.tracking_id}`,
-    `📍 Route: ${route}`,
-    `📅 Pickup: ${fmtDate(b.pickup_date)}${b.time_slot ? ', ' + b.time_slot : ''}`,
-    b.delivery_date ? `🚚 Delivery: ${fmtDate(b.delivery_date)}` : null,
-    `🧳 Bags: ${b.total_bags ?? '—'}`,
-    `📱 Mobile: ${b.customer_phone || '—'}`,
-    `💰 Payment: ${fmtPaymentLabel(b.payment_status)}`,
-    `📝 Quote: ${quoteStatus}`,
-    `${bucketEmoji(b.status)} Status: ${fmtStatusLabel(b.status)}`,
-    '━━━━━━━━━━━━━━',
-  ].filter((l): l is string => l !== null).join('\n')
+    dateLabel,                       // {{1}} Date
+    REPORT_TIME_LABEL[reportType],   // {{2}} Report Time
+    String(confirmedCount),          // {{3}} Confirmed
+    String(ongoingCount),            // {{4}} Ongoing
+    String(totalCount),              // {{5}} Total
+  ]
 }
+
+// 10 fixed fields — the booking half of the merged template (variables
+// {{6}}-{{15}}). Tracking ID, Inquiry ID, and Service were dropped here
+// 2026-08-26 to fix a Meta "too many variables for its length" rejection
+// at 18 variables — see file-header comment. Every value here is a SINGLE
+// line (no \n) since each one becomes its own WhatsApp template variable
+// — the line breaks between fields live in the template's static body,
+// not in these values (this is the whole fix for the original problem —
+// see file-header comment). Missing values always render as "—", never
+// blank, both for a consistent look and because some WhatsApp template
+// configs reject an empty variable value outright.
+function buildBookingVariables(idx: number, total: number, b: BookingSummaryRow): string[] {
+  const name     = formatCustomerName(b.title, b.customer_name) || b.customer_name || '—'
+  const route    = [b.from_city, b.to_city].filter(Boolean).join(' -> ') || '—'
+  const pickup   = b.pickup_date ? `${fmtDate(b.pickup_date)}${b.time_slot ? ', ' + b.time_slot : ''}` : '—'
+  const delivery = b.delivery_date ? fmtDate(b.delivery_date) : '—'
+
+  return [
+    String(idx),                                          // {{6}}  Booking N
+    String(total),                                         // {{7}}  of Total
+    name,                                                   // {{8}}  Customer
+    b.customer_phone || '—',                                // {{9}}  Contact
+    route,                                                   // {{10}} Route
+    pickup,                                                  // {{11}} Pickup
+    delivery,                                                // {{12}} Delivery
+    b.total_bags != null ? String(b.total_bags) : '—',      // {{13}} Bags
+    fmtStatusLabel(b.status),                                // {{14}} Status
+    fmtPaymentLabel(b.payment_status),                       // {{15}} Payment
+  ]
+}
+
+/** Placeholder booking half used for the single zero-bookings heartbeat message — see file-header comment. */
+const ZERO_BOOKING_PLACEHOLDER: string[] = ['0', '0', '—', '—', '—', '—', '—', '—', '—', '—']
 
 /**
- * Splits the full inquiry list into WhatsApp-template-safe chunks (each
- * chunk under BODY_CHAR_BUDGET characters), preserving inquiry order and
- * using CONTINUOUS numbering across chunks (1..N overall, not reset per
- * chunk) — matches the spec's "Part 1/3, Part 2/3" example. Returns one
- * plain string per chunk — the single {{1}} template variable value (see
- * the file-header comment on why this is 1 variable, not 2: Fast2SMS/Meta
- * rejected a 2-variable version as "too many variables for its length"
- * since there was almost no fixed template text around them — the fixed
- * "Please review..."/intro wording now lives in the template body itself,
- * not in this variable). Always returns at least one chunk (the "0
- * confirmed/ongoing" case still needs to send a heartbeat message — spec
- * item 8).
+ * Human-readable reconstruction of one merged message — dry-run/test
+ * preview only, never what's actually transmitted (that's the raw
+ * variables[] array sent to Fast2SMS; the wrapper wording below lives in
+ * Fast2SMS's approved template body, not in this file). Mirrors the fuller
+ * label/sentence wording added 2026-08-26 to fix a Meta "too many
+ * variables for its length" rejection — see file-header comment.
  */
-function buildReportChunks(
-  bookings: BookingSummaryRow[],
-  inquiryIds: Record<string, string>,
-  reportType: ReportType,
-  now: Date
-): string[] {
-  const dateLabel = now.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
-  const timeLabel = REPORT_TIME_LABEL[reportType]
-  const confirmedCount = bookings.filter(b => b.status === CONFIRMED_STATUS).length
-  const ongoingCount   = bookings.length - confirmedCount
-
-  const summaryBlock = [
-    'SUMMARY',
-    `✅ Confirmed: ${confirmedCount}`,
-    `🟢 Ongoing: ${ongoingCount}`,
-    `📦 Total: ${bookings.length}`,
-    '━━━━━━━━━━━━━━',
+function previewMergedText(vars: string[]): string {
+  const [
+    dateLabel, timeLabel, confirmed, ongoing, total,
+    idx, ofTotal, name, contact, route, pickup, delivery, bags, status, payment,
+  ] = vars
+  return [
+    'Confirmed & Ongoing Bookings Report for Bagdrop Operations',
+    '',
+    `Report Date: ${dateLabel}`,
+    `Report Time: ${timeLabel}`,
+    `Total Confirmed Bookings: ${confirmed}`,
+    `Total Ongoing Bookings: ${ongoing}`,
+    `Total Bookings Listed: ${total}`,
+    '',
+    `This message covers booking number ${idx} out of ${ofTotal} total bookings in this report.`,
+    '',
+    `Customer Name: ${name}`,
+    `Customer Contact Number: ${contact}`,
+    `Pickup to Delivery Route: ${route}`,
+    `Scheduled Pickup: ${pickup}`,
+    `Scheduled Delivery: ${delivery}`,
+    `Number of Bags: ${bags}`,
+    `Current Booking Status: ${status}`,
+    `Payment Status: ${payment}`,
+    '',
+    'Please review this booking and take any necessary action.',
   ].join('\n')
-
-  if (bookings.length === 0) {
-    return [`Date: ${dateLabel} · Report: ${timeLabel}\n\n${summaryBlock}\nNo confirmed or ongoing inquiries at this time.`]
-  }
-
-  const entries: ReportEntry[] = bookings.map((b, i) => ({ n: i + 1, text: buildEntry(i + 1, b, inquiryIds[b.id]) }))
-
-  // First pass: greedily pack entries into chunks under the char budget
-  // (summary block only counted against the first chunk's budget).
-  const chunkEntryGroups: ReportEntry[][] = []
-  let current: ReportEntry[] = []
-  let currentLen = summaryBlock.length
-  for (const entry of entries) {
-    const entryLen = entry.text.length + 1
-    if (current.length > 0 && currentLen + entryLen > BODY_CHAR_BUDGET) {
-      chunkEntryGroups.push(current)
-      current = []
-      currentLen = 0
-    }
-    current.push(entry)
-    currentLen += entryLen
-  }
-  if (current.length > 0) chunkEntryGroups.push(current)
-
-  const totalParts = chunkEntryGroups.length
-  return chunkEntryGroups.map((group, idx) => {
-    const partSuffix = totalParts > 1 ? ` (Part ${idx + 1}/${totalParts})` : ''
-    const rangeLabel = group.length > 1 ? `Inquiries ${group[0].n}–${group[group.length - 1].n}` : `Inquiry ${group[0].n}`
-    const lines: string[] = [`Date: ${dateLabel} · Report: ${timeLabel}${partSuffix}`, '']
-    if (idx === 0) lines.push(summaryBlock)
-    if (totalParts > 1) lines.push(rangeLabel + '\n━━━━━━━━━━━━━━')
-    lines.push(...group.map(e => e.text))
-    return lines.join('\n')
-  })
 }
 
 interface RunResult {
@@ -258,9 +260,11 @@ interface RunResult {
   inquiryCount: number
   confirmedCount: number
   ongoingCount: number
+  /** Total WhatsApp messages this run sends: one per booking, or exactly 1 heartbeat message when there are none. */
   messageParts: number
   recipients: string[]
   success: boolean
+  /** Human-readable preview of every message this run sends, in order — for dry-run/test eyeballing only. */
   chunks: string[]
   fastResults: FanOutResult[]
 }
@@ -271,12 +275,14 @@ function istDateStr(d: Date): string {
 }
 
 /**
- * Runs (or dry-runs) one report send. `manual` sends use a report_key that
- * can never collide with a real scheduled day's key (see migration
- * comment), so testing is always allowed to run regardless of whether
- * today's real report has already gone out — and never consumes/blocks the
- * real slot. `dryRun` builds and returns the message content without
- * calling Fast2SMS or writing a run row at all, for previewing in tests.
+ * Runs (or dry-runs) one report send: one WhatsApp message per confirmed/
+ * ongoing booking (or one heartbeat message if there are none), each
+ * carrying both the run's summary counts and that booking's full detail
+ * via a single merged template (see file-header comment). `manual` sends
+ * use a report_key that can never collide with a real scheduled day's key,
+ * so testing is always allowed regardless of whether today's real report
+ * has already gone out. `dryRun` builds and returns the message previews
+ * without calling Fast2SMS or writing a run row at all.
  */
 export async function runScheduledSummary(
   reportType: ReportType,
@@ -287,15 +293,21 @@ export async function runScheduledSummary(
   const reportKey = opts.manual ? `test_${Date.now()}_${reportType}` : `${dateStr}_${reportType}`
 
   const bookings = await fetchConfirmedOngoingBookings()
-  const inquiryIds = await fetchInquiryIdsByBooking(bookings.map(b => b.id))
-  const chunks = buildReportChunks(bookings, inquiryIds, reportType, now)
   const confirmedCount = bookings.filter(b => b.status === CONFIRMED_STATUS).length
   const ongoingCount   = bookings.length - confirmedCount
+
+  const summaryVars = buildSummaryVariables(confirmedCount, ongoingCount, bookings.length, reportType, now)
+  const bookingHalves = bookings.length > 0
+    ? bookings.map((b, i) => buildBookingVariables(i + 1, bookings.length, b))
+    : [ZERO_BOOKING_PLACEHOLDER]
+  const messages = bookingHalves.map(bookingVars => [...summaryVars, ...bookingVars])
+  const chunks = messages.map(previewMergedText)
+  const messageParts = messages.length
 
   if (opts.dryRun) {
     return {
       skipped: false, reportKey, inquiryCount: bookings.length, confirmedCount, ongoingCount,
-      messageParts: chunks.length, recipients: [], success: true, chunks, fastResults: [],
+      messageParts, recipients: [], success: true, chunks, fastResults: [],
     }
   }
 
@@ -315,7 +327,7 @@ export async function runScheduledSummary(
     return {
       skipped: true, reason: claimErr ? `claim insert failed: ${claimErr.message}` : 'already sent (report_key already claimed)',
       reportKey, inquiryCount: bookings.length, confirmedCount, ongoingCount,
-      messageParts: chunks.length, recipients: [], success: false, chunks, fastResults: [],
+      messageParts, recipients: [], success: false, chunks, fastResults: [],
     }
   }
 
@@ -323,29 +335,36 @@ export async function runScheduledSummary(
     .from('settings').select('key, value').eq('key', 'confirmed_ongoing_summary_whatsapp')
   const recipients = parseWhatsAppRecipients(settingsRows?.[0]?.value as string | undefined)
 
-  const templateId = process.env.FAST2SMS_CONFIRMED_ONGOING_SUMMARY_MESSAGE_ID ?? ''
+  const templateId = process.env.FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID ?? ''
   const fastResults: FanOutResult[] = []
-  for (const chunk of chunks) {
-    const result = await sendToAllRecipients(recipients, templateId, [chunk])
-    fastResults.push(result)
+
+  if (templateId) {
+    for (const vars of messages) {
+      fastResults.push(await sendToAllRecipients(recipients, templateId, vars))
+    }
+  } else {
+    console.log('[confirmed-ongoing-summary] skipped: FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID not set')
   }
+
   const success = fastResults.length > 0 && fastResults.every(r => r.anySuccess)
 
   await supabaseAdmin
     .from('scheduled_report_runs')
     .update({
       inquiry_count: bookings.length, confirmed_count: confirmedCount, ongoing_count: ongoingCount,
-      message_parts: chunks.length, recipients,
+      message_parts: messageParts, recipients,
       fast2sms_response: fastResults,
       success,
-      error: success ? null : fastResults.map(r => r.summary).join(' | ') || 'No template configured (FAST2SMS_CONFIRMED_ONGOING_SUMMARY_MESSAGE_ID unset)',
+      error: success ? null : (fastResults.length === 0
+        ? 'No template configured (FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID unset)'
+        : fastResults.map(r => r.summary).join(' | ')),
       completed_at: new Date().toISOString(),
     })
     .eq('id', claimed.id)
 
   return {
     skipped: false, reportKey, inquiryCount: bookings.length, confirmedCount, ongoingCount,
-    messageParts: chunks.length, recipients, success, chunks, fastResults,
+    messageParts, recipients, success, chunks, fastResults,
   }
 }
 

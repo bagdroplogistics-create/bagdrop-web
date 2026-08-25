@@ -297,90 +297,123 @@ facing impact).
 
 ---
 
-## 12. Confirmed & Ongoing Inquiry Summary — `confirmed_ongoing_summary`
+## 12. Confirmed & Ongoing Bookings Report — `confirmed_ongoing_summary`
 
 **Internal only — never sent to a customer.** Sent automatically to the
 internal ops WhatsApp numbers (Settings → `confirmed_ongoing_summary_whatsapp`,
-default same two numbers as every other internal template — see
-lib/internal-whatsapp-recipients.ts) twice daily, 9:00 AM and 6:00 PM IST,
-listing every booking currently Confirmed or Ongoing so nothing gets missed
-just because nobody opened the dashboard. See
-lib/confirmed-ongoing-summary.ts for the full implementation.
+default same numbers as every other internal template — see
+lib/internal-whatsapp-recipients.ts) twice daily, 9:00 AM and 6:00 PM IST:
+one WhatsApp message per booking currently Confirmed or Ongoing (or one
+heartbeat message when there are none), so nothing gets missed just
+because nobody opened the dashboard. See lib/confirmed-ongoing-summary.ts
+for the full implementation.
 
-**Why only 1 variable, unlike the other templates:** a WhatsApp template
-can't have a variable number of placeholders, but this report's inquiry
-count changes every send. The whole report chunk (summary + inquiry list,
-or "no inquiries" message, or "Part 2/3" continuation) is pre-rendered in
-code and passed as ONE variable. An earlier 2-variable version (short
-header + body, almost no fixed wrapper text) was **rejected by Fast2SMS/
-Meta** with "This template has too many variables for its length" — their
-approval check requires enough fixed template text relative to variable
-count. Fixed by dropping to 1 variable and adding real fixed sentences
-around it (below).
+**Redesign history — now ONE template.** v1 packed the whole report into
+a single `{{1}}` variable with real line breaks between fields. That
+doesn't work: WhatsApp Business API silently flattens any line break
+*inside a single template variable's value* before delivery (confirmed
+via `sendWhatsAppTemplateFast2SMS`'s existing `\n` → `" • "` replacement,
+originally added for this exact reason), so the "vertical" report was
+actually always arriving as one run-on line. v2 split this into a
+separate summary-only template plus a per-booking template, mirroring the
+working `new_inquiry_notification` template
+(lib/new-inquiry-notification.ts), which renders perfectly vertical
+because it uses one variable PER FIELD with the line breaks baked into
+the template's own static body. v3 merged those two back into ONE
+template — **rejected** at 18 variables with "This template has too many
+variables for its length." v4 dropped 3 fields to 15 variables (kept the
+same terse `Label: {{n}}` style) — **rejected again on the same grounds**
+at 13 (Tracking ID/Inquiry ID/Service were already trimmed further by
+then). Deleting fields barely moves Meta's actual static-text-to-variable
+ratio, since each field removed takes its own ~1-word label with it. **v5
+(current)** keeps all 15 variables (all fields the founder wants) and
+instead adds real static wording — a longer title, a full sentence around
+the booking-index pair, and a closing sentence — mirroring the
+already-approved `new_inquiry_notification` template's proven label/
+sentence density instead of guessing at a ratio.
 
-**Variables (1):** {{1}} — the full report chunk for that message: date +
-report time + "(Part X/Y)" when split, summary counts (first part only),
-and one block per inquiry — or "No confirmed or ongoing inquiries at this
-time." when the list is empty.
+**Variables (15):**
 
 ```
-BAGDROP DAILY OPERATIONS UPDATE
+Confirmed & Ongoing Bookings Report for Bagdrop Operations
 
-This is your automated Confirmed and Ongoing bookings report from the Bagdrop Admin System, generated at the scheduled report time shown below.
+Report Date: {{1}}
+Report Time: {{2}}
+Total Confirmed Bookings: {{3}}
+Total Ongoing Bookings: {{4}}
+Total Bookings Listed: {{5}}
 
-{{1}}
+This message covers booking number {{6}} out of {{7}} total bookings in this report.
 
-Please review all Confirmed and Ongoing bookings listed above and take any necessary action. This message was sent automatically by the Bagdrop system.
+Customer Name: {{8}}
+Customer Contact Number: {{9}}
+Pickup to Delivery Route: {{10}}
+Scheduled Pickup: {{11}}
+Scheduled Delivery: {{12}}
+Number of Bags: {{13}}
+Current Booking Status: {{14}}
+Payment Status: {{15}}
+
+Please review this booking and take any necessary action.
 ```
 
-Example {{1}} (short case):
+Sample values for Meta review (one per variable, in order):
 ```
-Date: 18 Aug 2026 | Report: 9:00 AM
-
-SUMMARY
-✅ Confirmed: 1
-🟢 Ongoing: 1
-📦 Total: 2
-━━━━━━━━━━━━━━
-1. Mr. Sachin Patel
-🆔 Inquiry: BDL-2026-0090
-📦 Tracking: BDA-2026-0090
-📍 Route: Vadodara → Mumbai
-📅 Pickup: 20 Aug 2026, 10:00 AM
-🧳 Bags: 3
-📱 Mobile: +919825017493
-💰 Payment: Received
-📝 Quote: Accepted
-🔵 Status: Confirmed
-━━━━━━━━━━━━━━
+18 Aug 2026
+9:00 AM
+1
+1
+2
+1
+2
+Mr. Sachin Patel
++919825017493
+Vadodara -> Mumbai
+20 Aug 2026, 10:00 AM
+22 Aug 2026
+3
+Confirmed
+Received
 ```
 
-**Approval-risk note:** your two already-approved templates are both plain
-text with zero emoji/formatting, and this repo's own experience (see the
-formatting note at the top of this file) is that plain text approves
-fastest and most reliably. This template's {{1}} content is emoji-heavy
-per the original spec, though the new fixed intro/outro sentences are
-plain text. If Meta rejects or stalls on the emoji version, the safe
-fallback is resubmitting with the emoji stripped from the *sample* {{1}}
-text you submit for approval — the code doesn't care either way, since
-{{1}}'s actual content is just a string built in
-lib/confirmed-ongoing-summary.ts (see `buildEntry()`/`buildReportChunks()`)
-and can be switched to a plain-text render with a one-line change if needed.
+`{{1}}`-`{{5}}` (Report Date/Time/Confirmed/Ongoing/Total) are identical
+across every message sent in one run. `{{6}}`-`{{15}}` change per booking.
+Missing values always send as `—`, never a blank string — some template
+configs reject an empty variable value outright, and it keeps every field
+visibly present. When there are zero Confirmed/Ongoing bookings, exactly
+one heartbeat message still goes out with `{{3}}`/`{{4}}`/`{{5}}` = `0`
+and `{{6}}`-`{{15}}` = `0`/`0`/`—`×8.
 
-Set `FAST2SMS_CONFIRMED_ONGOING_SUMMARY_MESSAGE_ID=<id>` in Vercel once
-approved — the cron job
-(`app/api/cron/send-confirmed-ongoing-summary/route.ts`, polled every 10
-minutes by your external scheduler same as the other three cron routes)
-is already built and will start sending real messages the moment that env
-var exists; until then it safely no-ops each due report (logged as
-`failed` with "No template configured" on the scheduled_report_runs row,
-no crash, no customer-facing impact — customers are never on this
-template's recipient list anyway).
+Set `FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID=<id>` in Vercel once approved —
+the cron job (`app/api/cron/send-confirmed-ongoing-summary/route.ts`,
+polled every 10 minutes by your external scheduler same as the other
+three cron routes) is already built and will start sending real messages
+the moment that env var exists; until then it safely no-ops each due
+report (logged as `failed` with "No template configured" on the
+scheduled_report_runs row, no crash, no customer-facing impact —
+customers are never on this recipient list).
+
+**Approval-risk note:** no emoji, real labels, and now real sentences
+around the two connector variables ({{6}}/{{7}}) rather than a bare
+"Booking X of Y" — this pushes the static-text-to-variable ratio
+noticeably above the already-approved `new_inquiry_notification`
+template's ratio (10 variables, shorter labels, one footer sentence).
+Meta's exact threshold isn't published, so this is evidence-based, not
+guaranteed — but simply removing more fields already failed twice in a
+row, so adding real static text is the more promising lever left. If this
+STILL gets rejected, the fallback is splitting back into two templates
+(a 5-variable summary + an 8-11 variable per-booking message), each well
+under the variable count of the template that's already live and working.
+
+**Sending behavior:** busy days now send one WhatsApp message per booking
+(same as the previous designs) — the tradeoff for the report actually
+rendering vertically instead of one run-on line.
 
 Test without waiting for 9AM/6PM: `POST /api/admin/confirmed-ongoing-summary/test`
 with header `x-admin-key: <your admin key>` and body
-`{"reportType":"morning","dryRun":true}` — returns the exact rendered
-message text (no Fast2SMS call, no DB row) so you can eyeball it. Drop
+`{"reportType":"morning","dryRun":true}` — returns a human-readable preview
+of every message this run would send, in order (no Fast2SMS call, no DB
+row) so you can eyeball it before the template is even approved. Drop
 `dryRun` (or set `false`) to actually send once the template is approved.
 
 ---

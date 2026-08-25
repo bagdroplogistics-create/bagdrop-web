@@ -5,9 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
   Receipt, Search, RefreshCw, ChevronDown, Eye,
   Download, Mail, MessageCircle, CheckCircle, Clock, FileText, Loader2,
-  X, ExternalLink, Plus, Pencil,
+  X, ExternalLink, Plus, Pencil, FileArchive, FileSpreadsheet, AlertCircle,
 } from 'lucide-react'
 import { formatCustomerName } from '@/lib/constants'
+import { INVOICE_DATE_RANGE_OPTIONS, type InvoiceDateRangeKind } from '@/lib/invoice-export-dates'
 import type { InvoicePDFLineItem, InvoicePDFProps } from './[id]/InvoicePDF'
 
 interface Invoice {
@@ -394,6 +395,124 @@ export default function InvoicesPage() {
   const [generating, setGenerating] = useState<string | null>(null)
   const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null)
 
+  // ── Bulk export toolbar (founder spec, 2026-08-26) ─────────────────────
+  // exportRange/exportMonth/exportFrom/exportTo drive the "filtered"
+  // Download PDF/Excel buttons; the two "Download All" buttons at the top
+  // always use range='all' regardless of this selection (spec item 1 is
+  // explicitly separate from item 5's filter-driven pair).
+  const [exportRange, setExportRange] = useState<InvoiceDateRangeKind>('all')
+  const [exportMonth, setExportMonth] = useState('') // 'YYYY-MM', for range === 'month'
+  const [exportFrom,  setExportFrom]  = useState('') // 'YYYY-MM-DD', for range === 'custom'
+  const [exportTo,    setExportTo]    = useState('')
+  const [exportCount, setExportCount] = useState<number | null>(null)
+  const [exportCountLoading, setExportCountLoading] = useState(false)
+  const [exportBusy, setExportBusy] = useState<'pdf' | 'excel' | 'all-pdf' | 'all-excel' | null>(null)
+  const [exportMessage, setExportMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null)
+
+  // Whether the current filter selection has everything it needs to run
+  // (month/custom need their extra field(s) filled in first) — gates both
+  // the live count fetch and the Download buttons themselves.
+  const exportRangeReady =
+    exportRange === 'all' || exportRange === 'this_month' || exportRange === 'last_month'
+      ? true
+      : exportRange === 'month' ? !!exportMonth
+      : !!exportFrom && !!exportTo
+
+  function exportQueryParams(range: InvoiceDateRangeKind = exportRange): URLSearchParams {
+    const qs = new URLSearchParams({ range })
+    if (range === 'month')  qs.set('month', exportMonth)
+    if (range === 'custom') { qs.set('from', exportFrom); qs.set('to', exportTo) }
+    return qs
+  }
+
+  useEffect(() => {
+    if (!adminKey || !exportRangeReady) { setExportCount(null); return }
+    let cancelled = false
+    setExportCountLoading(true)
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/admin/invoices/export/count?${exportQueryParams()}`, {
+          headers: { 'x-admin-key': adminKey },
+        })
+        const d = await res.json().catch(() => ({}))
+        if (!cancelled) setExportCount(res.ok ? d.count : null)
+      } catch {
+        if (!cancelled) setExportCount(null)
+      } finally {
+        if (!cancelled) setExportCountLoading(false)
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, 300)
+    return () => { cancelled = true; clearTimeout(t) }
+  }, [adminKey, exportRange, exportMonth, exportFrom, exportTo, exportRangeReady])
+
+  // Shared by "Download All PDF/Excel" (always range='all') and the
+  // filter-driven "Download PDF/Excel — N Invoices" buttons. Fetches via
+  // the same adminKey header every other admin fetch in this app already
+  // uses (not a raw <a href> navigation) specifically so a failure can be
+  // shown as a clear message instead of the browser silently landing on a
+  // blank JSON error page — spec item 9.
+  async function runExport(kind: 'pdf' | 'excel', busyKey: 'pdf' | 'excel' | 'all-pdf' | 'all-excel', range: InvoiceDateRangeKind = exportRange) {
+    if (exportBusy) return
+    setExportBusy(busyKey)
+    setExportMessage(null)
+    try {
+      const res = await fetch(`/api/admin/invoices/export/${kind}?${exportQueryParams(range)}`, {
+        headers: { 'x-admin-key': adminKey },
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setExportMessage({ type: 'error', text: d.error ?? 'Export failed. Please try again.' })
+        return
+      }
+      const blob = await res.blob()
+      const cd = res.headers.get('Content-Disposition') ?? ''
+      const match = /filename="([^"]+)"/.exec(cd)
+      const filename = match?.[1] ?? (kind === 'pdf' ? 'invoices.zip' : 'invoices.xlsx')
+
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url; link.download = filename
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+
+      const total   = Number(res.headers.get('X-Invoice-Export-Total') ?? 0)
+      const failed  = Number(res.headers.get('X-Invoice-Export-Failed') ?? 0)
+      const success = Number(res.headers.get('X-Invoice-Export-Success') ?? total)
+      if (failed > 0) {
+        setExportMessage({ type: 'error', text: `${success} of ${total} invoices exported successfully. ${failed} invoice${failed === 1 ? '' : 's'} could not be generated and ${failed === 1 ? 'was' : 'were'} skipped.` })
+      } else {
+        setExportMessage({ type: 'success', text: `${total} invoice${total === 1 ? '' : 's'} exported successfully.` })
+      }
+    } catch {
+      setExportMessage({ type: 'error', text: 'Network error — please try again.' })
+    } finally {
+      setExportBusy(null)
+    }
+  }
+
+  async function downloadSingleExcel(inv: Invoice) {
+    setExportMessage(null)
+    try {
+      const res = await fetch(`/api/admin/invoices/export/excel?invoice_id=${inv.id}`, {
+        headers: { 'x-admin-key': adminKey },
+      })
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}))
+        setExportMessage({ type: 'error', text: d.error ?? 'Excel export failed.' })
+        return
+      }
+      const blob = await res.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url; link.download = `${inv.invoice_number ?? 'invoice'}.xlsx`
+      document.body.appendChild(link); link.click(); document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch {
+      setExportMessage({ type: 'error', text: 'Network error — please try again.' })
+    }
+  }
+
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key')
     if (!key) { router.replace('/admin/login'); return }
@@ -488,6 +607,73 @@ export default function InvoicesPage() {
               <p className="mt-1.5 text-xl font-bold" style={{ color: c.color }}>{c.value}</p>
             </div>
           ))}
+        </div>
+
+        {/* Bulk export toolbar (founder spec, 2026-08-26) */}
+        <div className="mb-5 rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">Export Invoices</p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => runExport('pdf', 'all-pdf', 'all')} disabled={!!exportBusy}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                {exportBusy === 'all-pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileArchive className="h-3.5 w-3.5" />}
+                Download All PDF
+              </button>
+              <button onClick={() => runExport('excel', 'all-excel', 'all')} disabled={!!exportBusy}
+                className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50 disabled:opacity-60">
+                {exportBusy === 'all-excel' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                Download All Excel
+              </button>
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-xs font-medium text-gray-500">Date Filter:</span>
+            <div className="relative">
+              <select value={exportRange} onChange={e => { setExportRange(e.target.value as InvoiceDateRangeKind); setExportMessage(null) }}
+                className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none">
+                {INVOICE_DATE_RANGE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+              <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+            </div>
+
+            {exportRange === 'month' && (
+              <input type="month" value={exportMonth} onChange={e => { setExportMonth(e.target.value); setExportMessage(null) }}
+                className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm focus:border-orange-400 focus:outline-none" />
+            )}
+            {exportRange === 'custom' && (
+              <>
+                <input type="date" value={exportFrom} onChange={e => { setExportFrom(e.target.value); setExportMessage(null) }}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm focus:border-orange-400 focus:outline-none" />
+                <span className="text-xs text-gray-400">to</span>
+                <input type="date" value={exportTo} onChange={e => { setExportTo(e.target.value); setExportMessage(null) }}
+                  className="rounded-lg border border-gray-200 bg-white px-2.5 py-1.5 text-xs shadow-sm focus:border-orange-400 focus:outline-none" />
+              </>
+            )}
+
+            <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => runExport('pdf', 'pdf')} disabled={!!exportBusy || !exportRangeReady || exportCount === 0}
+                className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-900 disabled:opacity-50">
+                {exportBusy === 'pdf' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileArchive className="h-3.5 w-3.5" />}
+                Download PDF{exportRangeReady && exportCount !== null ? ` — ${exportCount} Invoice${exportCount === 1 ? '' : 's'}` : ''}
+              </button>
+              <button onClick={() => runExport('excel', 'excel')} disabled={!!exportBusy || !exportRangeReady || exportCount === 0}
+                className="flex items-center gap-1.5 rounded-lg bg-gray-800 px-3 py-1.5 text-xs font-semibold text-white hover:bg-gray-900 disabled:opacity-50">
+                {exportBusy === 'excel' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileSpreadsheet className="h-3.5 w-3.5" />}
+                Download Excel{exportRangeReady && exportCount !== null ? ` — ${exportCount} Invoice${exportCount === 1 ? '' : 's'}` : ''}
+              </button>
+            </div>
+          </div>
+
+          {exportCountLoading && exportRangeReady && (
+            <p className="mt-2 text-xs text-gray-400">Counting matching invoices…</p>
+          )}
+          {exportMessage && (
+            <p className={`mt-2 flex items-center gap-1.5 text-xs font-medium ${exportMessage.type === 'success' ? 'text-green-600' : 'text-red-600'}`}>
+              {exportMessage.type === 'success' ? <CheckCircle className="h-3.5 w-3.5" /> : <AlertCircle className="h-3.5 w-3.5" />}
+              {exportMessage.text}
+            </p>
+          )}
         </div>
 
         {/* Filters */}
@@ -590,6 +776,10 @@ export default function InvoicesPage() {
                             <button onClick={() => printInvoice(inv.id)} title="Download PDF"
                               className="rounded-lg p-1.5 text-gray-400 hover:bg-blue-50 hover:text-blue-500 transition-colors">
                               <Download className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => downloadSingleExcel(inv)} title="Download Excel"
+                              className="rounded-lg p-1.5 text-gray-400 hover:bg-emerald-50 hover:text-emerald-500 transition-colors">
+                              <FileSpreadsheet className="h-3.5 w-3.5" />
                             </button>
                             <button onClick={() => markSent(inv.id, 'email')} disabled={sending === inv.id + 'email' || inv.sent_email}
                               title="Mark email sent"
