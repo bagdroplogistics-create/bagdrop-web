@@ -10,6 +10,7 @@ import { nextInquiryNumberPair } from '@/lib/number-series'
 import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
 import { ACTIVE_BOOKING_STATUSES } from '@/lib/lifecycle-notifications'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
+import { findOpenWebsiteInquiry } from '@/lib/duplicate-inquiry-check'
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -423,6 +424,50 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
   const phoneParsed = parseStoredPhone(normPhone)
   const phoneCountryCode = body.phone_country_code || phoneParsed.iso2
   const phoneNational    = body.phone_national     || phoneParsed.nationalNumber
+
+  // ── Website/Contact-Form duplicate-inquiry guard (2026-08-25) ──────────
+  // This route (POST /api/admin/leads) is only ever called from admin-
+  // facing UI — the real website form, contact form, mobile app, and every
+  // partner integration all insert into `leads` directly, never through
+  // here (see app/api/bookings/route.ts, app/api/contact/route.ts, etc.).
+  // So every request reaching this point is an admin MANUALLY creating a
+  // lead — via the New Lead modal (app/(admin)/admin/leads/page.tsx) or the
+  // "Add New Quote" page with no lead_id yet (app/(admin)/admin/quotes/new/
+  // page.tsx) — and this is the single choke point both of those already
+  // go through, so guarding here protects both (and anything else built on
+  // this endpoint later) at once.
+  //
+  // Deliberately narrower than the duplicate-phone guard removed 2026-08-17
+  // — see lib/duplicate-inquiry-check.ts's module comment for why. Only
+  // fires for a still-open (unquoted), non-lost inquiry that itself came
+  // from a genuine self-service channel (website/contact-form/mobile-app),
+  // has the SAME trip date (2026-08-25 follow-up — "Different Trip/Inquiry
+  // Date = New Inquiry": the same customer booking several separate trips
+  // must get a separate tracking number for each one, never merged just
+  // because name/phone/email match), and — when both sides have a route on
+  // file — the same route too. Never against another admin-created lead.
+  // Never blocks outright — `force_duplicate: true` (already sent by the
+  // New Lead modal's "Create Anyway" button) always proceeds to create a
+  // normal, independent lead.
+  if (!body.force_duplicate) {
+    const duplicate = await findOpenWebsiteInquiry({
+      phone:      normPhone,
+      email:      body.email,
+      pickupDate: nullDate(body.pickup_date),
+      fromCity:   body.from_city,
+      toCity:     body.to_city,
+    })
+    if (duplicate) {
+      return NextResponse.json(
+        {
+          error: 'Existing website inquiry found for this customer.',
+          code: 'DUPLICATE_PHONE',
+          duplicate_lead: duplicate,
+        },
+        { status: 409 }
+      )
+    }
+  }
 
   // Lead number and tracking ID — each atomically assigned via
   // next_series_number() (see lib/number-series.ts / supabase/migrations/

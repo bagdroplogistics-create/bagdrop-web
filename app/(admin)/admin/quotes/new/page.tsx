@@ -12,6 +12,7 @@ import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
+import { SOURCE_LABELS } from '@/lib/lead-source'
 import {
   TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName,
   CUSTOMER_TYPES, DEFAULT_CUSTOMER_TYPE, type CustomerType,
@@ -274,6 +275,21 @@ function QuotePageInner() {
   const [custPhone,   setCustPhone]   = useState('')       // national digits only — see PhoneInput
   const [custCountryIso2, setCustCountryIso2] = useState('IN')
   const [custEmail,   setCustEmail]   = useState('')
+
+  // ── Existing website/contact-form inquiry check (2026-08-25) ──────────
+  // Live, non-blocking inline warning (checked on every phone/email
+  // change) — purely informational, shown alongside the form so the admin
+  // can catch a duplicate before they even try to submit. The actual
+  // enforcement is server-side on POST /api/admin/leads (see
+  // lib/duplicate-inquiry-check.ts and dupModal below), so this can never
+  // itself block a legitimate new inquiry — worst case it's just wrong/
+  // stale for a moment while the debounce settles.
+  const [inlineDuplicate, setInlineDuplicate] = useState<{
+    id: string; lead_number: string | null; tracking_id: string | null
+    name: string; source: string; created_at: string
+  } | null>(null)
+  // The hard-stop modal shown when Generate itself hits the 409 guard.
+  const [dupModal, setDupModal] = useState<typeof inlineDuplicate>(null)
   const [custSource,  setCustSource]  = useState('admin')
   const [custService, setCustService] = useState('')
   const [custStatus,  setCustStatus]  = useState('new')
@@ -609,6 +625,46 @@ function QuotePageInner() {
     return () => clearTimeout(t)
   }, [custSearchQ, adminKey, lead, custSearchOpen])
 
+  // ── Live duplicate-inquiry check (debounced, new-quote only) ──────────
+  // Founder spec 2026-08-25 UI Improvements: warn as soon as phone/email
+  // matches an existing still-open website/contact-form/mobile-app inquiry
+  // for the SAME trip date — before the admin even reaches Generate.
+  // Purely informational (see inlineDuplicate's doc comment above); `lead`
+  // being set means this page is already working an existing/edit record,
+  // so there's nothing to check against itself.
+  //
+  // 2026-08-25 follow-up — "Different Trip / Inquiry Date = New Inquiry":
+  // pickupDate/fromCity/toCity now feed into the match too (see
+  // findOpenWebsiteInquiry's doc comment), so this only ever fires for the
+  // SAME trip, never just because the same customer is booking a second,
+  // genuinely different one. No pickupDate yet = nothing to check against
+  // (the server always requires it before matching), so this effect simply
+  // stays quiet until the admin fills one in.
+  useEffect(() => {
+    if (lead || !adminKey) { setInlineDuplicate(null); return }
+    const phoneE164 = custPhone.trim() ? toE164(custPhone, custCountryIso2) : ''
+    const email     = custEmail.trim()
+    if ((!phoneE164 && !email) || !pickupDate) { setInlineDuplicate(null); return }
+    const t = setTimeout(async () => {
+      try {
+        const qs = new URLSearchParams({
+          key: adminKey,
+          pickup_date: pickupDate,
+          ...(phoneE164 ? { phone: phoneE164 } : {}),
+          ...(email ? { email } : {}),
+          ...(fromCity.trim() ? { from_city: fromCity.trim() } : {}),
+          ...(toCity.trim()   ? { to_city:   toCity.trim()   } : {}),
+        })
+        const res = await fetch(`/api/admin/leads/check-duplicate?${qs}`)
+        const j   = await res.json().catch(() => ({}))
+        setInlineDuplicate(res.ok ? (j.duplicate ?? null) : null)
+      } catch {
+        setInlineDuplicate(null)
+      }
+    }, 400)
+    return () => clearTimeout(t)
+  }, [custPhone, custCountryIso2, custEmail, pickupDate, fromCity, toCity, adminKey, lead])
+
   // Fills in the same fields the Customer Information section below
   // already exposes for manual entry — nothing new is written anywhere
   // that the admin couldn't already type in by hand.
@@ -863,8 +919,15 @@ function QuotePageInner() {
   }
 
   // ── Generate quote ───────────────────────────────────────────────────
-  async function generate() {
+  // forceDuplicate: passed true only from the dupModal's "Create Anyway"
+  // button below — re-runs generate() bypassing the server's 409 guard
+  // (see lib/duplicate-inquiry-check.ts), for the rare genuine case (per
+  // spec: "avoid false duplicate warnings when two genuinely different
+  // customers have the same [phone]") where the admin confirms this really
+  // is a separate, new inquiry.
+  async function generate(forceDuplicate = false) {
     setErr('')
+    setDupModal(null)
     const effectiveName  = lead?.name  ?? custName.trim()
     const effectivePhone = lead?.phone ?? toE164(custPhone, custCountryIso2)
     const effectivePhoneCountryCode = lead?.phone_country_code ?? custCountryIso2
@@ -902,16 +965,24 @@ function QuotePageInner() {
           pickup_date: pickupDate || null, delivery_date: deliveryDate || null, pickup_time: pickupTime || null,
           pickup_address: pickupAddr.trim() || null, drop_address: dropAddr.trim() || null,
           bags_count: Number(bagsCount) || 1, status: 'new',
+          ...(forceDuplicate ? { force_duplicate: true } : {}),
           ...businessFieldsPayload(),
         }),
       })
       const cj = await createRes.json().catch(() => ({}))
       if (!createRes.ok) {
-        // POST /api/admin/leads no longer blocks or asks on a matching
-        // phone number (see that route's comment) — same customer does not
-        // mean same inquiry, so every submission here always gets its own
-        // new lead + booking + tracking number, even for a repeat
-        // customer. A failure here is a genuine error, not a duplicate.
+        // 2026-08-25 — the blanket "any matching phone = duplicate" guard
+        // stays removed (see that route's comment on why: same customer
+        // does not mean same inquiry), but a narrower guard is back for one
+        // specific case: this customer already has a still-open, unquoted
+        // inquiry that itself came from the website/contact form/mobile
+        // app. Stop and let the admin open that instead, rather than
+        // silently creating a second record for the same inquiry.
+        if (createRes.status === 409 && cj.code === 'DUPLICATE_PHONE' && cj.duplicate_lead) {
+          setDupModal(cj.duplicate_lead)
+          setGenerating(false)
+          return
+        }
         setErr(cj.error ?? 'Failed to create lead')
         setGenerating(false)
         return
@@ -1148,6 +1219,48 @@ function QuotePageInner() {
   // ── FORM ─────────────────────────────────────────────────────────────
   return (
     <>
+      {/* Existing Website Inquiry Found — hard-stop modal shown when
+          Generate itself hits the server's 409 duplicate guard (see
+          lib/duplicate-inquiry-check.ts). Separate from inlineDuplicate's
+          non-blocking warning card above the form — this is the actual
+          enforcement point, since the admin could type quickly and hit
+          Generate before the debounced inline check settles. */}
+      {dupModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+            <p className="text-base font-bold text-amber-800">⚠️ Existing Website Inquiry Found</p>
+            <p className="mt-2 text-sm text-gray-600">
+              This customer already has an inquiry received from the website
+              ({SOURCE_LABELS[dupModal.source] ?? dupModal.source}):{' '}
+              <span className="font-semibold text-gray-800">{dupModal.lead_number}</span>
+              {dupModal.tracking_id && <> · <span className="font-mono">{dupModal.tracking_id}</span></>}
+              {' '}({dupModal.name}), created {new Date(dupModal.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.
+            </p>
+            <p className="mt-2 text-sm text-gray-600">
+              Please create the quote from the existing inquiry in the Dashboard / Lead Table instead of creating a new one.
+            </p>
+            <div className="mt-5 flex flex-wrap items-center gap-2">
+              <button
+                onClick={() => router.push(`/admin/quotes/new?lead_id=${dupModal.id}`)}
+                className="rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 transition-colors">
+                Open Existing Inquiry →
+              </button>
+              <button
+                onClick={() => setDupModal(null)}
+                className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
+                Cancel
+              </button>
+              <button
+                onClick={() => generate(true)}
+                disabled={generating}
+                className="ml-auto text-xs text-gray-400 underline hover:text-gray-600 disabled:opacity-50">
+                This is a different inquiry — create anyway
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Topbar */}
       <div className="flex items-center justify-between border-b border-gray-200 bg-white px-6 py-3">
         <div className="flex items-center gap-2 text-sm">
@@ -1174,7 +1287,7 @@ function QuotePageInner() {
               {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Changes</>}
             </button>
           ) : null}
-          <button onClick={generate} disabled={generating || (!isEdit && !!lead?.quote_number)}
+          <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number)}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
             {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
           </button>
@@ -1333,6 +1446,28 @@ function QuotePageInner() {
                     className={(!!lead && !isEdit ? inpRO : inp) + ' pl-7'} />
                 </div>
               </div>
+
+              {/* Live existing-inquiry warning (2026-08-25) — see
+                  inlineDuplicate's doc comment above. Purely informational;
+                  the admin can still fill in and submit the form normally —
+                  the real gate is the dupModal shown from Generate itself. */}
+              {inlineDuplicate && (
+                <div className="col-span-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5">
+                  <p className="text-xs font-semibold text-amber-800">⚠️ Existing inquiry found</p>
+                  <p className="mt-0.5 text-xs text-amber-700">
+                    A website inquiry already exists for this customer.
+                    {inlineDuplicate.tracking_id && <> Tracking ID: <span className="font-semibold">{inlineDuplicate.tracking_id}</span>.</>}
+                    {' '}Source: {SOURCE_LABELS[inlineDuplicate.source] ?? inlineDuplicate.source} · Date: {new Date(inlineDuplicate.created_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}.
+                    Please open the existing inquiry and create the quote from there.
+                  </p>
+                  <button type="button"
+                    onClick={() => router.push(`/admin/quotes/new?lead_id=${inlineDuplicate.id}`)}
+                    className="mt-1.5 rounded-md bg-amber-600 px-3 py-1 text-xs font-semibold text-white hover:bg-amber-700 transition-colors">
+                    View Existing Inquiry →
+                  </button>
+                </div>
+              )}
+
               <div>
                 <label className={lbl}>Source</label>
                 <select value={custSource} onChange={e => setCustSource(e.target.value)}
@@ -1877,7 +2012,7 @@ function QuotePageInner() {
               </button>
             )}
 
-            <button onClick={generate} disabled={generating || (!isEdit && !!lead?.quote_number)}
+            <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number)}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
               {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
             </button>
