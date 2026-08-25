@@ -388,13 +388,58 @@ const ORG_NAME_PATTERN = /\b(PVT|PRIVATE|LTD|LIMITED|LLP|LLC|INC\.?|CORP|CORPORA
  * lead/booking is created and no Title was explicitly collected (no
  * dropdown on that form). Returns null — not a default — when it can't
  * tell, so callers decide whether "no guess" means omitting the title
- * entirely or falling back to DEFAULT_TITLE.
+ * entirely or falling back to DEFAULT_TITLE. Exported so write paths
+ * (e.g. POST /api/admin/payments) can compute a real title to store
+ * instead of silently taking the payments.title column's 'Mr.' default.
  */
-function guessTitleFromName(name: string): TitleId | null {
+export function guessTitleFromName(name: string): TitleId | null {
   if (ORG_NAME_PATTERN.test(name)) return null
   const firstName = name.trim().split(/\s+/)[0]?.toLowerCase()
   if (firstName && FEMALE_FIRST_NAMES.has(firstName)) return 'Ms.'
   return null
+}
+
+// Matches a title token accidentally typed/baked directly into a name
+// field itself — e.g. customer_name stored as "Ms. Nidhi Vasava" or
+// "MR. RAMESHBHAI BHAGAT" instead of the bare name (root cause: some
+// write paths, like doMarkPaymentReceived in the Booking Workflow page,
+// used to pass formatCustomerName(title, name)'s combined output back in
+// as customer_name). Left uncorrected, a later formatCustomerName() call
+// on that same field prepends a SECOND title on top, e.g. "Mr. Ms. Nidhi
+// Vasava". Stripping it here, at the start of every format, fixes every
+// existing bad record's display immediately without touching stored data.
+const EMBEDDED_TITLE_PATTERN = /^(mr|mrs|ms|m\/s)\.?\s+/i
+
+export function stripEmbeddedTitle(name: string): string {
+  return name.replace(EMBEDDED_TITLE_PATTERN, '').trim()
+}
+
+/**
+ * Resolves the single correct TitleId for a customer, combining a stored
+ * title value with a name-based gender guess. Used both for display
+ * (formatCustomerName below) and by write paths that want to store a real
+ * title instead of relying on a DB column default.
+ *
+ * Precedence:
+ *   1. A stored title that's anything OTHER than DEFAULT_TITLE ('Mr.') —
+ *      i.e. Mrs./Ms./M/S — was clearly an intentional choice (nothing
+ *      defaults to those). Always trust it, never override.
+ *   2. Otherwise (title missing, invalid, or sitting at the untouched
+ *      'Mr.' default — which is what every bookings/leads/quotes/
+ *      invoices/payments row gets from the DB column default, reviewed
+ *      or not) — try the name-based guess. It only ever returns 'Ms.' or
+ *      null, so this can only ever correct a likely-female name stuck at
+ *      an unreviewed default; it can never wrongly downgrade a
+ *      deliberately-chosen Mrs./Ms./M/S, and never touches an actually
+ *      correct 'Mr.' for a male name (guess returns null, falls through).
+ *   3. Final fallback: the stored title if valid, else DEFAULT_TITLE.
+ */
+export function resolveCustomerTitle(title: string | null | undefined, name: string | null | undefined): TitleId {
+  const safeName = stripEmbeddedTitle((name ?? '').trim())
+  const storedTitle = TITLE_OPTIONS.includes(title as TitleId) ? (title as TitleId) : null
+  if (storedTitle && storedTitle !== DEFAULT_TITLE) return storedTitle
+  const guessed = guessTitleFromName(safeName)
+  return guessed ?? storedTitle ?? DEFAULT_TITLE
 }
 
 /**
@@ -410,12 +455,14 @@ function guessTitleFromName(name: string): TitleId | null {
  * name-based heuristic as the one-time SQL backfill
  * (20260801_customer_title_gender_backfill.sql), so a customer named e.g.
  * "Monali" or "Neha" isn't shown as "Mr." just because no title was ever
- * collected for that particular form.
+ * collected for that particular form. Also strips any title already
+ * embedded in `name` itself (see stripEmbeddedTitle) so bad historical
+ * data never shows a doubled "Mr. Ms. Name".
  */
 export function formatCustomerName(title: string | null | undefined, name: string | null | undefined): string {
-  const safeName = (name ?? '').trim()
+  const safeName = stripEmbeddedTitle((name ?? '').trim())
   if (!safeName) return ''
-  const safeTitle = TITLE_OPTIONS.includes(title as TitleId) ? title : (guessTitleFromName(safeName) ?? DEFAULT_TITLE)
+  const safeTitle = resolveCustomerTitle(title, safeName)
   return `${safeTitle} ${safeName}`
 }
 

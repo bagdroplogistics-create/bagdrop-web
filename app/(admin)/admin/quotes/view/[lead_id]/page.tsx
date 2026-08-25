@@ -1061,7 +1061,14 @@ export default function QuoteViewPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               booking_id:         booking.id,
-              customer_name:      formatCustomerName(lead.title, lead.name) || lead.name,
+              // Bare name + separate title — NOT formatCustomerName's
+              // combined "Mr. Name" string. That used to get stored
+              // straight into payments.customer_name, which then showed a
+              // DOUBLED title in the Payments tab once formatCustomerName
+              // ran again at display time (e.g. "Mr. Ms. Nidhi Vasava" —
+              // 2026-08-26 title-bug fix, see lib/constants.ts).
+              customer_name:      lead.name,
+              title:              lead.title,
               customer_phone:     booking.customer_phone ?? lead.phone,
               amount,
               payment_method:     'upi',

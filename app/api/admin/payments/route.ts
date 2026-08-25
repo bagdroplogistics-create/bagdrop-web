@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
+import { resolveCustomerTitle, DEFAULT_TITLE } from '@/lib/constants'
 
 // Confirmed-or-later bookings that have no matching row in `payments` at all
 // show up here as "no payment logged" — same slice used by
@@ -262,10 +263,15 @@ export async function POST(req: NextRequest) {
     const existingUploads = (existingPaid ?? []).filter(p => p.payment_method === 'upload')
     const existingNonUploads = (existingPaid ?? []).filter(p => p.payment_method !== 'upload')
     if (existingUploads.length === 1 && existingNonUploads.length === 0) {
+      // Opportunistically correct the title too, if this request carries a
+      // better one than whatever the original upload row defaulted to.
+      const convertTitleRaw = resolveCustomerTitle(body.title, body.customer_name)
+      const convertTitle = convertTitleRaw === 'M/S' ? DEFAULT_TITLE : convertTitleRaw
       const { data: converted, error: convertErr } = await supabaseAdmin
         .from('payments')
         .update({
           amount:             Number(body.amount),
+          title:              convertTitle,
           payment_method:     body.payment_method ?? 'upi',
           payment_reference:  body.payment_reference?.trim() || null,
           notes:              body.notes?.trim() || 'Confirmed — converted from an approved payment-proof upload (no duplicate entry created)',
@@ -293,9 +299,22 @@ export async function POST(req: NextRequest) {
 
   const paymentId = await nextPaymentId()
 
+  // Resolve a real title instead of letting the payments.title column
+  // silently fall back to its DB default ('Mr.' — see supabase/migrations/
+  // 20260801_customer_title_COMPLETE_run_this.sql) for every new row. Uses
+  // whatever title the caller supplied (e.g. an explicit selection, or a
+  // customer-search result's title) if valid, otherwise guesses from the
+  // name — see lib/constants.ts's resolveCustomerTitle for the precedence.
+  // payments_title_check only allows 'Mr.'/'Mrs.'/'Ms.' (unlike TITLE_OPTIONS,
+  // which also has 'M/S' for business bookings) — clamp so a business
+  // customer's payment never fails the insert on a constraint violation.
+  const resolvedTitleRaw = resolveCustomerTitle(body.title, body.customer_name)
+  const resolvedTitle = resolvedTitleRaw === 'M/S' ? DEFAULT_TITLE : resolvedTitleRaw
+
   const { data, error } = await supabaseAdmin.from('payments').insert({
     payment_id:        paymentId,
     booking_id:        bookingId,
+    title:             resolvedTitle,
     customer_name:     body.customer_name.trim(),
     customer_phone:    body.customer_phone?.trim() ?? '',
     amount:            Number(body.amount),

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { SITE } from '@/lib/constants'
+import { SITE, resolveCustomerTitle } from '@/lib/constants'
 import { sendPaymentVerificationRequest } from '@/lib/payment-verification-notification'
 import { generateVerificationToken, VERIFICATION_TOKEN_VALID_DAYS } from '@/lib/payment-verification-token'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
@@ -44,7 +44,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, tracking_id, customer_name, customer_phone, total_amount, from_city, to_city')
+    .select('id, tracking_id, title, customer_name, customer_phone, total_amount, from_city, to_city')
     .eq('id', bookingId)
     .single()
 
@@ -117,6 +117,13 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   // email (see app/api/payment-verification/[token]/route.ts) without an
   // admin dashboard login — same random-token model as the indemnity bond
   // signing links (lib/indemnity-token.ts).
+  // Resolve a real title from the booking instead of letting payments.title
+  // fall back to its DB default ('Mr.') — see lib/constants.ts's
+  // resolveCustomerTitle. M/S is clamped since payments_title_check only
+  // allows Mr./Mrs./Ms.
+  const resolvedTitleRaw = resolveCustomerTitle(booking.title, booking.customer_name)
+  const resolvedTitle = resolvedTitleRaw === 'M/S' ? 'Mr.' : resolvedTitleRaw
+
   const paymentId = await nextPaymentId()
   const verificationToken = generateVerificationToken()
   const verificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_VALID_DAYS * 24 * 60 * 60 * 1000).toISOString()
@@ -125,6 +132,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     .insert({
       payment_id:     paymentId,
       booking_id:     bookingId,
+      title:          resolvedTitle,
       customer_name:  booking.customer_name,
       customer_phone: booking.customer_phone,
       amount,

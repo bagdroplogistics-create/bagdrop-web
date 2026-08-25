@@ -118,6 +118,12 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
 
   const [form, setForm] = useState({
     customer_name: initial?.customer_name ?? '',
+    // Populated when a customer is picked from search (pickCustomer below)
+    // so the resulting payment row stores their real title instead of
+    // letting payments.title fall back to its DB default ('Mr.') — see
+    // lib/constants.ts's resolveCustomerTitle, used server-side either way
+    // as a fallback if this is left blank (manually-typed name).
+    title: '' as string,
     customer_phone: initial?.customer_phone ?? '',
     amount: initial?.amount ?? '',
     bank_charges: '',
@@ -157,7 +163,7 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
   }, [custQ, custOpen, adminKey, customerLocked])
 
   function pickCustomer(c: CustomerSearchResult) {
-    setForm(f => ({ ...f, customer_name: c.name, customer_phone: c.phone }))
+    setForm(f => ({ ...f, customer_name: c.name, customer_phone: c.phone, title: c.title ?? '' }))
     setCustQ(''); setCustResults([]); setCustOpen(false)
   }
 
@@ -249,6 +255,7 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
         customer_name:      form.customer_name.trim(),
+        title:              form.title || undefined,
         customer_phone:     form.customer_phone.trim(),
         amount:             amountReceived,
         bank_charges:       form.bank_charges ? Number(form.bank_charges) : 0,
@@ -327,7 +334,7 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
                 <>
                   <input
                     value={form.customer_name}
-                    onChange={e => { setForm(f => ({ ...f, customer_name: e.target.value })); setCustQ(e.target.value) }}
+                    onChange={e => { setForm(f => ({ ...f, customer_name: e.target.value, title: '' })); setCustQ(e.target.value) }}
                     onFocus={() => setCustOpen(true)}
                     onBlur={() => setTimeout(() => setCustOpen(false), 160)}
                     placeholder="Select Customer" className={inp} />
