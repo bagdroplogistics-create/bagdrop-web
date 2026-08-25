@@ -100,6 +100,10 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; 
   // any other service type. See app/api/admin/trip-sheets/[id]/route.ts.
   driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe', icon: <Phone className="h-3 w-3" /> },
   indemnity_bond_sent: { label: 'Indemnity Bond Sent', color: '#b45309', bg: '#fef3c7', icon: <FileCheck className="h-3 w-3" /> },
+  // 2026-08-24 fix — was missing (same class of bug as the ACTIVE_STATUSES
+  // gap fixed earlier today); a booking at exactly this status fell through
+  // this lookup and rendered no badge at all.
+  indemnity_bond_signed: { label: 'Indemnity Bond Signed', color: '#65a30d', bg: '#ecfccb', icon: <CheckCircle className="h-3 w-3" /> },
   delivered:         { label: 'Delivered',          color: '#16a34a', bg: '#dcfce7', icon: <CheckCircle className="h-3 w-3" /> },
   trip_created:      { label: 'Trip Sheet Created', color: '#0891b2', bg: '#cffafe', icon: <Truck className="h-3 w-3" /> },
   // Phase 6: Final
@@ -112,7 +116,7 @@ const WORKFLOW_PHASES = [
   { label: 'Quote',      statuses: ['quote_created','quote_sent','accepted','rejected','closed'] },
   { label: 'Payment',    statuses: ['payment_pending','payment_received','payment_approved'] },
   { label: 'Booking',    statuses: ['confirmed','invoice_generated','invoice_sent'] },
-  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared','indemnity_bond_sent'] },
+  { label: 'Operations', statuses: ['pickup_scheduled','picked_up','in_transit','out_for_delivery','driver_details_shared','indemnity_bond_sent','indemnity_bond_signed'] },
   { label: 'Closed',     statuses: ['delivered','trip_created','completed','cancelled'] },
 ]
 

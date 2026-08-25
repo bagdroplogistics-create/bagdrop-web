@@ -124,6 +124,13 @@ const BOOKING_STATUS_CONFIG: Record<string, { label: string; color: string; bg: 
   out_for_delivery:      { label: 'Out for Delivery',    color: '#ea580c', bg: '#ffedd5' },
   driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe' },
   indemnity_bond_sent:   { label: 'Indemnity Bond Sent', color: '#b45309', bg: '#fef3c7' },
+  // 2026-08-24 fix — was missing (same class of bug as the ACTIVE_STATUSES
+  // gap fixed earlier today): a booking at exactly this status fell through
+  // to the displayStatus fallback (`{ label: displayStatus, ... }`), which
+  // is why the badge rendered the raw enum text "indemnity_bond_signed"
+  // instead of a real label, and the "Confirmed" sub-label above it (which
+  // keys off this same lookup succeeding) didn't show either.
+  indemnity_bond_signed: { label: 'Indemnity Bond Signed', color: '#65a30d', bg: '#ecfccb' },
   delivered:             { label: 'Delivered',           color: '#16a34a', bg: '#dcfce7' },
   trip_created:          { label: 'Trip Sheet Created',  color: '#0891b2', bg: '#cffafe' },
   completed:             { label: 'Completed',           color: '#14532d', bg: '#bbf7d0' },

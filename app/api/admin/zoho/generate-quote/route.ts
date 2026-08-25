@@ -36,7 +36,7 @@ import { supabaseAdmin }             from '@/lib/supabase'
 import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
 import { findRouteMatch }            from '@/lib/city-normalize'
-import { nextTrackingId }            from '@/lib/number-series'
+import { nextTrackingId, nextQuoteNumber } from '@/lib/number-series'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
 
@@ -150,6 +150,54 @@ function deriveQuoteNumber(leadNumber: string): string {
   // BDL-2026-0022 → QT-2026-0022
   const parts = leadNumber.split('-')
   return parts.length >= 3 ? 'QT-' + parts.slice(1).join('-') : 'QT-' + leadNumber
+}
+
+// 2026-08-25 fix — deriveQuoteNumber() ties QT-YYYY-NNNN 1:1 to the lead's
+// own lead_number by simple string substitution, which only stays
+// collision-free as long as no two leads ever end up mapping to the same
+// NNNN. That invariant broke after the 2026-08-24 manual renumber
+// (supabase/migrations/20260824_renumber_0127_to_0125.sql) — that repair
+// deliberately only touched bookings.tracking_id and leads.lead_number (per
+// its own documented scope), leaving the renumbered lead's OLD quote_number
+// (if it already had one, e.g. "QT-2026-0127") in place. Once the counter
+// rolled back and issued 0127 again to a brand-new lead, that new lead's
+// derived quote number collided with the old one still sitting on Nidhi
+// Vasava's row — "duplicate key value violates unique constraint
+// leads_quote_number_idx". Rather than re-touching quote_number in another
+// one-off SQL repair (which would just move the same risk to the next
+// coincidental collision), this makes quote-number assignment itself
+// collision-safe going forward: try the natural derived number first
+// (unchanged behavior for the overwhelming common case, and it keeps quote
+// numbers matching lead numbers exactly like today), and only if that's
+// already taken by some OTHER lead, mint a fresh globally-unique number off
+// the existing atomic BDQ counter (lib/number-series.ts's nextQuoteNumber())
+// instead of ever retrying the same derived value.
+async function resolveUniqueQuoteNumber(baseNumber: string, excludeLeadId: string): Promise<string> {
+  const isFree = async (candidate: string): Promise<boolean> => {
+    const { data } = await supabaseAdmin
+      .from('leads')
+      .select('id')
+      .or(`quote_number.eq.${candidate},return_quote_number.eq.${candidate}`)
+      .neq('id', excludeLeadId)
+      .limit(1)
+      .maybeSingle()
+    return !data
+  }
+
+  if (await isFree(baseNumber)) return baseNumber
+
+  // Collision — mint from the atomic BDQ series instead (reformatted to the
+  // QT- prefix everywhere else in the app expects) and re-check, looping a
+  // few times purely as a defensive belt-and-braces measure; a second
+  // collision here would be astronomically unlikely since BDQ advances on
+  // its own independent counter.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const minted    = await nextQuoteNumber() // BDQ-YYYY-NNNN
+    const candidate = minted.replace(/^BDQ-/, 'QT-')
+    if (await isFree(candidate)) return candidate
+  }
+
+  throw new Error('Could not find a unique quote number after 5 attempts')
 }
 
 // City normalization (strips airport terminal suffixes, aliases short
@@ -310,7 +358,11 @@ export async function POST(req: NextRequest) {
   // Primary:  QT-2026-0022
   // Return:   QT-2026-0022-R
   const primaryQuoteNumber = deriveQuoteNumber(lead.lead_number)
-  const quoteNumber        = isReturnQuote ? primaryQuoteNumber + '-R' : primaryQuoteNumber
+  const desiredQuoteNumber = isReturnQuote ? primaryQuoteNumber + '-R' : primaryQuoteNumber
+  // Collision-safe resolution (see resolveUniqueQuoteNumber's doc comment
+  // above) — returns desiredQuoteNumber unchanged unless it's already taken
+  // by a different lead, in which case it mints a fresh unique one instead.
+  const quoteNumber        = await resolveUniqueQuoteNumber(desiredQuoteNumber, lead.id)
   const today              = new Date().toISOString().slice(0, 10)
 
   // ── Save to leads table ───────────────────────────────────────────
