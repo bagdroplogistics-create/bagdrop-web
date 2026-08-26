@@ -184,6 +184,7 @@ export interface LRPDFProps {
   sizeW: number | null
   sizeH: number | null
   privateMark: string | null
+  tiTag: string | null
 
   charges: Record<string, number>
   subTotal:    number
@@ -369,21 +370,23 @@ export default function LRPDF(p: LRPDFProps) {
             {/* ── Packages table ── */}
             <View style={s.pkgHead}>
               <Text style={[s.pkgHcell, { flex: 0.7 }]}>Pkgs</Text>
-              <Text style={[s.pkgHcell, { flex: 1.8 }]}>Content</Text>
-              <Text style={[s.pkgHcell, { flex: 1 }]}>A Weight</Text>
-              <Text style={[s.pkgHcell, { flex: 1 }]}>C Weight</Text>
-              <Text style={[s.pkgHcell, { flex: 1.4 }]}>Size (L×W×H)</Text>
-              <Text style={[s.pkgHcell, { flex: 1.2, borderRightWidth: 0 }]}>Private Mark</Text>
+              <Text style={[s.pkgHcell, { flex: 1.6 }]}>Content</Text>
+              <Text style={[s.pkgHcell, { flex: 0.9 }]}>A Weight</Text>
+              <Text style={[s.pkgHcell, { flex: 0.9 }]}>C Weight</Text>
+              <Text style={[s.pkgHcell, { flex: 1.3 }]}>Size (L×W×H)</Text>
+              <Text style={[s.pkgHcell, { flex: 1.1 }]}>Private Mark</Text>
+              <Text style={[s.pkgHcell, { flex: 1, borderRightWidth: 0 }]}>Ti-Tag</Text>
             </View>
             <View style={s.pkgRow}>
               <Text style={[s.pkgCell, { flex: 0.7 }]}>{p.totalBags ?? 1}</Text>
-              <Text style={[s.pkgCell, { flex: 1.8 }]}>{p.contentDescription ?? '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 1 }]}>{p.actualWeight != null ? `${p.actualWeight} kg` : '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 1 }]}>{p.chargeableWeight != null ? `${p.chargeableWeight} kg` : '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 1.4 }]}>
+              <Text style={[s.pkgCell, { flex: 1.6 }]}>{p.contentDescription ?? '—'}</Text>
+              <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.actualWeight != null ? `${p.actualWeight} kg` : '—'}</Text>
+              <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.chargeableWeight != null ? `${p.chargeableWeight} kg` : '—'}</Text>
+              <Text style={[s.pkgCell, { flex: 1.3 }]}>
                 {p.sizeL != null && p.sizeW != null && p.sizeH != null ? `${p.sizeL} × ${p.sizeW} × ${p.sizeH}` : '—'}
               </Text>
-              <Text style={[s.pkgCell, { flex: 1.2, borderRightWidth: 0 }]}>{p.privateMark ?? '—'}</Text>
+              <Text style={[s.pkgCell, { flex: 1.1 }]}>{p.privateMark ?? '—'}</Text>
+              <Text style={[s.pkgCell, { flex: 1, borderRightWidth: 0 }]}>{p.tiTag ?? '—'}</Text>
             </View>
 
             {/* ── Insurance / GST Payable / Payment Terms / LR Type ── */}

@@ -7,7 +7,7 @@ import {
   ArrowLeft, Download, Loader2, Save, Truck, Package, User, MapPin,
   IndianRupee, FileText, CheckCircle, Pencil, X,
 } from 'lucide-react'
-import { LR_STATUS_LABELS, LR_CHARGE_FIELDS, LR_TYPE_OPTIONS, PAYMENT_TERMS_OPTIONS, GST_PAYABLE_BY_OPTIONS, MODE_OPTIONS } from '@/lib/lr-constants'
+import { LR_STATUS_LABELS, LR_CHARGE_FIELDS, LR_TYPE_OPTIONS, PAYMENT_TERMS_OPTIONS, GST_PAYABLE_BY_OPTIONS, MODE_OPTIONS, isValidTiTag } from '@/lib/lr-constants'
 
 interface LR {
   id: string; lr_number: string; lr_date: string | null; booking_id: string | null
@@ -21,6 +21,7 @@ interface LR {
   total_bags: number | null; content_description: string | null
   actual_weight: number | null; chargeable_weight: number | null
   size_l: number | null; size_w: number | null; size_h: number | null; private_mark: string | null
+  ti_tag: string | null
   sub_total: number; igst_amount: number; cgst_amount: number; sgst_amount: number; total_amount: number
   insurance_by_customer: boolean; gst_payable_by: string | null; payment_terms: string | null
   lr_type: string | null; delivery_at: string | null; remarks: string | null; prepared_by: string | null
@@ -39,7 +40,7 @@ const EDITABLE_TEXT_FIELDS = [
   'consignee_name', 'consignee_address', 'consignee_mobile', 'consignee_gstin',
   'billed_to_name', 'billed_to_gstin', 'delivery_address',
   'invoice_number', 'eway_bill_number',
-  'content_description', 'private_mark',
+  'content_description', 'private_mark', 'ti_tag',
   'delivery_at', 'remarks', 'prepared_by',
   'driver_name', 'driver_mobile', 'vehicle_type',
 ] as const
@@ -165,6 +166,12 @@ export default function LRDetailPage() {
 
   async function saveLr() {
     if (!lr) return
+    // Ti-Tag stays optional — only validated if the admin actually typed
+    // something into it.
+    const tiTagVal = form.ti_tag?.trim()
+    if (tiTagVal && !isValidTiTag(tiTagVal)) {
+      setErr('Ti-Tag must be alphanumeric (letters and numbers only)'); return
+    }
     setSaving(true); setErr('')
     const payload: Record<string, unknown> = { insurance_by_customer: insuranceByCustomer }
     for (const k of EDITABLE_TEXT_FIELDS)   payload[k] = form[k]?.trim() || null
@@ -204,7 +211,7 @@ export default function LRDetailPage() {
           invoiceNumber: lr.invoice_number, invoiceValue: lr.invoice_value, ewayBillNumber: lr.eway_bill_number,
           totalBags: lr.total_bags, contentDescription: lr.content_description,
           actualWeight: lr.actual_weight, chargeableWeight: lr.chargeable_weight,
-          sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark,
+          sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark, tiTag: lr.ti_tag,
           charges, subTotal: lr.sub_total, igstAmount: lr.igst_amount,
           cgstAmount: lr.cgst_amount, sgstAmount: lr.sgst_amount, totalAmount: lr.total_amount,
           insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,
@@ -333,6 +340,7 @@ export default function LRDetailPage() {
               <EField label="Size W (cm)" k="size_w" type="number" />
               <EField label="Size H (cm)" k="size_h" type="number" />
               <EField label="Private Mark" k="private_mark" />
+              <EField label="Ti-Tag" k="ti_tag" />
             </div>
           </Card>
 

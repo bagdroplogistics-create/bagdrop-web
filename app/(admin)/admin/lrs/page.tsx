@@ -173,7 +173,7 @@ export default function LRsPage() {
           invoiceNumber: lr.invoice_number, invoiceValue: lr.invoice_value, ewayBillNumber: lr.eway_bill_number,
           totalBags: lr.total_bags, contentDescription: lr.content_description,
           actualWeight: lr.actual_weight, chargeableWeight: lr.chargeable_weight,
-          sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark,
+          sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark, tiTag: lr.ti_tag,
           charges, subTotal: lr.sub_total, igstAmount: lr.igst_amount,
           cgstAmount: lr.cgst_amount, sgstAmount: lr.sgst_amount, totalAmount: lr.total_amount,
           insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,

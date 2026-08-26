@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { findRouteMatch } from '@/lib/city-normalize'
-import { computeLrCharges } from '@/lib/lr-constants'
+import { computeLrCharges, isValidTiTag } from '@/lib/lr-constants'
 import { nextLrNumber, createOrGetLrForBooking } from '@/lib/lr-auto-create'
 
 export const runtime = 'nodejs'
@@ -54,6 +54,12 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null)
   if (!body?.booking_id && !body?.manual) {
     return NextResponse.json({ error: 'booking_id is required (or set manual: true for a manual LR)' }, { status: 400 })
+  }
+
+  // Ti-Tag is optional — only validated (letters/digits only) if present,
+  // for either creation path (booking-linked or manual).
+  if (typeof body.ti_tag === 'string' && body.ti_tag.trim() && !isValidTiTag(body.ti_tag.trim())) {
+    return NextResponse.json({ error: 'Ti-Tag must be alphanumeric (letters and numbers only)' }, { status: 400 })
   }
 
   if (body.booking_id) {
@@ -151,6 +157,7 @@ export async function POST(req: NextRequest) {
     size_w:              body.size_w != null ? Number(body.size_w) : null,
     size_h:              body.size_h != null ? Number(body.size_h) : null,
     private_mark:        body.private_mark?.trim() || null,
+    ti_tag:              body.ti_tag?.trim() || null,
 
     ...charges,
     ...totals,

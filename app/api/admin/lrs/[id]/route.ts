@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth, getAdminRole } from '@/lib/admin-auth'
-import { computeLrCharges, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
+import { computeLrCharges, LR_CHARGE_FIELDS, isValidTiTag } from '@/lib/lr-constants'
 
 export const runtime = 'nodejs'
 
@@ -38,13 +38,19 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'billed_to_name', 'billed_to_gstin', 'delivery_address',
     'invoice_number', 'invoice_value', 'eway_bill_number',
     'total_bags', 'content_description', 'actual_weight', 'chargeable_weight',
-    'size_l', 'size_w', 'size_h', 'private_mark',
+    'size_l', 'size_w', 'size_h', 'private_mark', 'ti_tag',
     ...LR_CHARGE_FIELDS.map(f => f.key),
     'insurance_by_customer', 'gst_payable_by', 'payment_terms', 'lr_type', 'delivery_at',
     'remarks', 'prepared_by',
     'flight_number', 'airline', 'arrival_date', 'arrival_time',
     'driver_name', 'driver_mobile', 'vehicle_type',
   ]
+
+  // Ti-Tag stays optional on edit too — only checked when actually present
+  // and non-empty in the request.
+  if (typeof body.ti_tag === 'string' && body.ti_tag.trim() && !isValidTiTag(body.ti_tag.trim())) {
+    return NextResponse.json({ error: 'Ti-Tag must be alphanumeric (letters and numbers only)' }, { status: 400 })
+  }
 
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {

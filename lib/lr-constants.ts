@@ -33,6 +33,17 @@ export const LR_STATUS_LABELS: Record<string, { label: string; color: string; bg
   cancelled:   { label: 'Cancelled',   color: '#dc2626', bg: '#fee2e2' },
 }
 
+// Ti-Tag — an optional alphanumeric tag/code (e.g. a baggage tie-tag
+// number) attached to an LR. Never required to save/generate an LR; when
+// present it must be letters and digits only (no spaces or punctuation).
+// Shared by the New LR form (client-side check) and both LR API routes
+// (server-side check) so the rule can't drift between them.
+export const TI_TAG_PATTERN = /^[A-Za-z0-9]+$/
+
+export function isValidTiTag(value: string): boolean {
+  return TI_TAG_PATTERN.test(value)
+}
+
 export const LR_TYPE_OPTIONS = ['At Branch', 'TBB (MANUAL)', 'Door Delivery'] as const
 export const PAYMENT_TERMS_OPTIONS = ['To Pay', 'Paid', 'To Be Billed'] as const
 export const GST_PAYABLE_BY_OPTIONS = ['Consignor', 'Consignee', 'Transporter'] as const

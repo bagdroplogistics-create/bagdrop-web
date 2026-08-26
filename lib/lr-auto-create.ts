@@ -175,6 +175,7 @@ export async function createOrGetLrForBooking(
     size_w:              ov.size_w != null ? Number(ov.size_w) : null,
     size_h:              ov.size_h != null ? Number(ov.size_h) : null,
     private_mark:        (ov.private_mark as string)?.trim() || null,
+    ti_tag:              (ov.ti_tag as string)?.trim() || null,
 
     ...charges,
     ...totals,

@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import {
   MODE_OPTIONS, LR_CHARGE_FIELDS, GST_PAYABLE_BY_OPTIONS, PAYMENT_TERMS_OPTIONS, LR_TYPE_OPTIONS,
+  isValidTiTag,
 } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
 
@@ -136,6 +137,9 @@ export default function NewLRPage() {
   const [sizeW, setSizeW] = useState('')
   const [sizeH, setSizeH] = useState('')
   const [privateMark, setPrivateMark] = useState('')
+  // Ti-Tag — optional alphanumeric tag/code. Never required to submit the
+  // form; only validated (letters/digits only) if the admin fills it in.
+  const [tiTag, setTiTag] = useState('')
 
   // ── Charges ledger (both modes) ──
   const [charges, setCharges] = useState<Record<string, string>>({ ...EMPTY_CHARGES })
@@ -231,6 +235,10 @@ export default function NewLRPage() {
     if (mode === 'manual' && (!consignorName.trim() || !consigneeName.trim())) {
       setError('Consignor and consignee name are required'); return
     }
+    // Optional field — only checked if the admin actually typed something.
+    if (tiTag.trim() && !isValidTiTag(tiTag.trim())) {
+      setError('Ti-Tag must be alphanumeric (letters and numbers only)'); return
+    }
     setCreating(true); setError('')
     try {
       const chargePayload = Object.fromEntries(
@@ -274,6 +282,7 @@ export default function NewLRPage() {
           size_w: sizeW ? Number(sizeW) : null,
           size_h: sizeH ? Number(sizeH) : null,
           private_mark: privateMark.trim() || null,
+          ti_tag: tiTag.trim() || null,
 
           ...chargePayload,
 
@@ -469,6 +478,7 @@ export default function NewLRPage() {
                 <FInput label="Actual Weight (kg)" value={actualWeight} onChange={setActualWeight} type="number" />
                 <FInput label="Chargeable Weight (kg)" value={chargeableWeight} onChange={setChargeableWeight} type="number" />
                 <FInput label="Private Mark" value={privateMark} onChange={setPrivateMark} />
+                <FInput label="Ti-Tag (optional)" value={tiTag} onChange={setTiTag} placeholder="Alphanumeric code" />
                 <div className="sm:col-span-2">
                   <label className={lbl}>Size — L × W × H (cm)</label>
                   <div className="grid grid-cols-3 gap-3">
