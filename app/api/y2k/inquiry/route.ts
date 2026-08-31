@@ -28,7 +28,15 @@ const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, deliveryTime, requests } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId } = body
+    // returnPickup / originalTrackingId: set only by the second call
+    // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
+    // pickup". Used below purely to make this leg visibly distinct in the
+    // dashboard (Service column + WhatsApp ping) and linked back to the
+    // onward booking's tracking ID — it's still a fully separate
+    // booking/lead row (see that file's comment for why), just labeled so
+    // ops doesn't mistake it for an unrelated new inquiry.
+    const isReturnPickup = returnPickup === true
 
     // Basic validation
     const digits = phone?.replace(/\D/g, '') ?? ''
@@ -56,9 +64,6 @@ export async function POST(req: NextRequest) {
     if (!pickupCity?.trim() || pickupCity.trim().length > Y2K_PICKUP_CITY_MAX_LEN) {
       return NextResponse.json({ error: 'Please provide a valid pickup location.' }, { status: 400 })
     }
-    if (!deliveryTime || !Y2K_TIME_SLOTS.includes(deliveryTime)) {
-      return NextResponse.json({ error: 'Delivery time must be Morning, Afternoon, or Evening.' }, { status: 400 })
-    }
 
     // Atomic, race-safe BDA-YYYY-NNNN tracking ID — was a random 'Y2K-'
     // prefixed string, which broke the continuous numbering every other
@@ -77,7 +82,7 @@ export async function POST(req: NextRequest) {
         customer_email: email?.trim().toLowerCase() || null,
         customer_phone: '+91' + digits,
         service_type:   'destination-weddings',
-        service_label:  'Destination Wedding — #Y2K',
+        service_label:  isReturnPickup ? 'Destination Wedding — #Y2K (Return Pickup)' : 'Destination Wedding — #Y2K',
         from_city:      'Udaipur',
         to_city:        'Udaipur',
         pickup_address: pickupAddress || null,
@@ -96,6 +101,7 @@ export async function POST(req: NextRequest) {
         currency:       'INR',
         notes: [
           '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17th–18th Dec 2026]',
+          isReturnPickup ? `[RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'}]` : '',
           guests       ? `Group size: ${guests} guests` : '',
           bags         ? `Luggage pieces: ${bags}` : '',
           pickupAddress   ? `Pickup: ${pickupAddress}` : '',
@@ -185,7 +191,9 @@ export async function POST(req: NextRequest) {
             pickup_address:   pickupAddress || null,
             drop_address:     deliveryAddress || null,
             bags_count:       parseInt(bags) || 1,
-            notes:            `Auto-created from #Y2K wedding page inquiry ${trackingId}`,
+            notes:            isReturnPickup
+              ? `Return Pickup — linked to onward booking ${originalTrackingId || 'unknown'} — Auto-created from #Y2K wedding page inquiry ${trackingId}`
+              : `Auto-created from #Y2K wedding page inquiry ${trackingId}`,
             booking_id:       savedBookingId,
           })
 
@@ -237,7 +245,9 @@ export async function POST(req: NextRequest) {
               // sending blanks rather than failing loudly.
               bagsCount:       parseInt(bags) || 1,
               deliveryDate:    arrivalDate,
-              notes:           `#Y2K wedding inquiry ${trackingId}`,
+              notes:           isReturnPickup
+                ? `RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'} — #Y2K wedding inquiry ${trackingId}`
+                : `#Y2K wedding inquiry ${trackingId}`,
               submittedAt:     new Date().toISOString(),
             })
           }

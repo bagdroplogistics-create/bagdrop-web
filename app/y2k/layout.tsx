@@ -24,12 +24,16 @@ const lato = Lato({
 })
 
 export const metadata: Metadata = {
-  title: 'Yashna ❤️ Yash — #Y2K | Wedding Luggage Concierge by Bagdrop',
+  // Browser tab / bookmark / share-preview title — deliberately generic
+  // (no couple names, no #Y2K) per Founder request. The on-page hero still
+  // shows the couple's names and wedding branding; this only controls what
+  // shows in the tab, search results, and link previews.
+  title: 'Wedding Excess Luggage Delivery | Bagdrop',
   description:
-    'Exclusive luggage concierge service for guests attending Yashna & Yash\'s destination wedding at Taj Aravali, Udaipur on 17th–18th December 2026.',
+    'Exclusive luggage concierge service for destination wedding guests — pickup, delivery and safe handling of excess baggage across India.',
   openGraph: {
-    title: 'Yashna ❤️ Yash — #Y2K Wedding Luggage Concierge',
-    description: 'BagDrop is the official luggage concierge partner for #Y2K at Taj Aravali, Udaipur.',
+    title: 'Wedding Excess Luggage Delivery | Bagdrop',
+    description: 'Bagdrop is a wedding luggage concierge service — pickup, delivery and safe handling of excess baggage for destination wedding guests.',
     type: 'website',
   },
 }

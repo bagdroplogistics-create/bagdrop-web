@@ -69,7 +69,6 @@ const IMG_HERO        = '/images/y2k-hero-mountains.webp'    // "misty Aravalli 
 const IMG_CELEBRATION = '/images/y2k-couple.jpeg'             // "editorial couple / candid moment" — Yashna & Yash
 const IMG_DESTINATION = '/images/y2k-taj-aravali-dusk.webp'   // "wide Udaipur / Taj Aravali landscape" — the actual resort at dusk
 const IMG_TRAVEL      = '/images/y2k-bagdrop-luggage.webp'    // "Bagdrop luggage-delivery image" — bellman with tagged bags
-const IMG_INFO_BG     = '/images/y2k-mountains-mist.webp'     // "soft Aravalli mountain image, misty ridgelines"
 // Stacked/vertical lockup (icon on top, BAGDROP wordmark + tagline below)
 // — this is the mark used in the approved HTML design reference, not the
 // side-by-side horizontal lockup. Same file already in the repo as
@@ -170,13 +169,27 @@ function BookingForm() {
     bags: 2,
     pickupCity: '', pickupCityOther: '', pickupAddress: '',
     pickupDate: '', pickupTime: '',
-    deliveryTime: '',
     notes: '',
+    // Return Pickup — optional second leg, reusing every other detail
+    // already entered above (same guest, same pickup city/address/date/
+    // time, same delivery venue). The only thing the guest fills in
+    // independently is how many bags come back — see submit() below,
+    // which fires a second /api/y2k/inquiry request with this bag count
+    // when returnPickup is checked.
+    returnPickup: false,
+    returnBags: 2,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [busy, setBusy]     = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [code, setCode]     = useState('')
+  // Set only when the guest checked "Add a return pickup" AND that second
+  // /api/y2k/inquiry submission also succeeded — see submit() below. If the
+  // onward booking succeeds but the return one fails, we still show the
+  // onward confirmation rather than losing the whole submission, and flag
+  // it via returnFailed instead.
+  const [returnCode, setReturnCode] = useState('')
+  const [returnFailed, setReturnFailed] = useState(false)
   const [confirmName, setConfirmName] = useState('')
 
   function field(key: keyof typeof form) {
@@ -187,6 +200,9 @@ function BookingForm() {
   }
   function incBags() { setForm(s => ({ ...s, bags: Math.min(50, s.bags + 1) })) }
   function decBags() { setForm(s => ({ ...s, bags: Math.max(1, s.bags - 1) })) }
+  function incReturnBags() { setForm(s => ({ ...s, returnBags: Math.min(50, s.returnBags + 1) })) }
+  function decReturnBags() { setForm(s => ({ ...s, returnBags: Math.max(1, s.returnBags - 1) })) }
+  function toggleReturnPickup() { setForm(s => ({ ...s, returnPickup: !s.returnPickup })) }
 
   async function submit(e: React.FormEvent) {
     e.preventDefault()
@@ -201,29 +217,63 @@ function BookingForm() {
     if (f.pickupCity === 'Other' && !f.pickupCityOther.trim()) er.pickupCityOther = 'Enter the pickup address.'
     if (!f.pickupAddress.trim()) er.pickupAddress = 'Enter the pickup address.'
     if (!f.pickupTime) er.pickupTime = 'Select a pickup time.'
-    if (!f.deliveryTime) er.deliveryTime = 'Select a delivery time.'
     if (Object.keys(er).length) { setErrors(er); return }
 
     setBusy(true)
+    setReturnCode(''); setReturnFailed(false)
     try {
       const resolvedPickupCity = f.pickupCity === 'Other' ? f.pickupCityOther.trim() : f.pickupCity
+      // Shared by both legs — Return Pickup (below) reuses every one of
+      // these fields exactly as entered above; only `bags` and the notes
+      // marker differ per leg.
+      const basePayload = {
+        name: f.name, phone: digits, email: f.email,
+        guests: '1',
+        pickupAddress: `${f.pickupAddress}, ${resolvedPickupCity}`,
+        pickupCity: resolvedPickupCity,
+        pickupTime: f.pickupTime,
+        deliveryAddress: WEDDING_VENUE,
+        arrivalDate: f.pickupDate,
+      }
+
       const res = await fetch('/api/y2k/inquiry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: f.name, phone: digits, email: f.email,
-          bags: String(f.bags), guests: '1',
-          pickupAddress: `${f.pickupAddress}, ${resolvedPickupCity}`,
-          pickupCity: resolvedPickupCity,
-          pickupTime: f.pickupTime,
-          deliveryAddress: WEDDING_VENUE,
-          requests: f.notes,
-          arrivalDate: f.pickupDate,
-          deliveryTime: f.deliveryTime,
-        }),
+        body: JSON.stringify({ ...basePayload, bags: String(f.bags), requests: f.notes }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Submission failed')
       setCode(d.trackingId ?? '')
+
+      // ── Return Pickup — same details, independent bag count ──────────
+      // A second, separate inquiry/booking (own tracking ID), not a
+      // variation of the onward one — same guest/pickup/delivery/date/time,
+      // just tagged as a return pickup in the internal notes so ops can
+      // tell the two apart on the dashboard. Never blocks the onward
+      // confirmation above if this second call fails.
+      if (f.returnPickup) {
+        try {
+          const returnRes = await fetch('/api/y2k/inquiry', {
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              ...basePayload,
+              bags: String(f.returnBags),
+              requests: ['[Return Pickup]', f.notes].filter(Boolean).join(' — '),
+              // Tells the API to label this leg distinctly (Service column +
+              // internal WhatsApp ping) and reference the onward booking's
+              // tracking ID, so it doesn't look like an unrelated new
+              // inquiry in the dashboard — see route.ts's isReturnPickup.
+              returnPickup: true,
+              originalTrackingId: d.trackingId ?? '',
+            }),
+          })
+          const rd = await returnRes.json()
+          if (returnRes.ok) setReturnCode(rd.trackingId ?? '')
+          else setReturnFailed(true)
+        } catch {
+          setReturnFailed(true)
+        }
+      }
+
       setConfirmName(f.name.trim().split(' ')[0])
       setSubmitted(true)
       document.getElementById('book')?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -236,7 +286,8 @@ function BookingForm() {
 
   function resetForm() {
     setSubmitted(false); setCode(''); setConfirmName(''); setErrors({})
-    setForm({ name:'', phone:'', email:'', bags:2, pickupCity:'', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', deliveryTime:'', notes:'' })
+    setReturnCode(''); setReturnFailed(false)
+    setForm({ name:'', phone:'', email:'', bags:2, pickupCity:'', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', notes:'', returnPickup:false, returnBags:2 })
   }
 
   const fi: React.CSSProperties = { height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 16px', fontSize:15, color:Y.textDark, outline:'none', width:'100%', fontFamily:FONT_BODY, transition:'border-color 0.2s, box-shadow 0.2s, background 0.2s' }
@@ -268,6 +319,15 @@ function BookingForm() {
             <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:'clamp(28px,4vw,40px)', margin:'0 0 12px', color:Y.textDark }}>Your pickup is booked</h3>
             <p style={{ fontFamily:FONT_BODY, fontSize:16, lineHeight:1.7, color:Y.textBody, margin:'0 0 24px' }}>We&apos;ve saved your details, {confirmName}. Your tracking code is below — we&apos;ll confirm on WhatsApp shortly.</p>
             <div style={{ display:'inline-block', fontFamily:"'Geist Mono', monospace", fontSize:22, letterSpacing:'0.14em', color:Y.eyebrow, background:'#F9F3E8', border:'1px dashed #D9C08A', borderRadius:14, padding:'16px 32px' }}>{code}</div>
+            {returnCode && (
+              <div style={{ marginTop:20 }}>
+                <p style={{ fontFamily:FONT_BODY, fontSize:13, letterSpacing:'0.08em', textTransform:'uppercase', color:Y.goldMuted, margin:'0 0 10px' }}>Return pickup tracking code</p>
+                <div style={{ display:'inline-block', fontFamily:"'Geist Mono', monospace", fontSize:22, letterSpacing:'0.14em', color:Y.eyebrow, background:'#F9F3E8', border:'1px dashed #D9C08A', borderRadius:14, padding:'16px 32px' }}>{returnCode}</div>
+              </div>
+            )}
+            {returnFailed && (
+              <p style={{ fontFamily:FONT_BODY, fontSize:13, color:Y.error, margin:'20px 0 0' }}>Your return pickup could not be saved automatically — please WhatsApp us to arrange it.</p>
+            )}
             <div style={{ marginTop:28 }}>
               <button type="button" onClick={resetForm} style={{ background:'none', border:'none', fontFamily:FONT_BODY, fontSize:13, letterSpacing:'0.14em', textTransform:'uppercase', color:Y.goldMuted, cursor:'pointer', borderBottom:`1px solid ${Y.gold}`, padding:'4px 0' }}>
                 Book another pickup
@@ -362,21 +422,30 @@ function BookingForm() {
                 </div>
               </div>
 
-              <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <label style={label}>Delivery time</label>
-                <div style={{ position:'relative' }}>
-                  <select value={form.deliveryTime} onChange={e=>field('deliveryTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
-                    <option value="" disabled>Select a slot</option>
-                    {TIME_SLOTS.map(t=><option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
-                  </select>
-                  <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
-                </div>
-                {errors.deliveryTime && <span style={fieldErr}>{errors.deliveryTime}</span>}
-              </div>
-
               <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
                 <label style={label}>Special notes <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
                 <textarea value={form.notes} onChange={e=>field('notes')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} rows={3} placeholder="Fragile items, extra bags, hotel name, gate codes…" style={{ ...fi, height:'auto', padding:'14px 16px', resize:'vertical', lineHeight:1.6 }}/>
+              </div>
+
+              {/* Return Pickup — optional second leg, same guest/pickup/
+                  delivery/date/time as above; only the bag count differs.
+                  See submit() for how this fires a second inquiry. */}
+              <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1', marginTop:4, paddingTop:20, borderTop:`1px solid ${Y.border}` }}>
+                <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
+                  <input type="checkbox" checked={form.returnPickup} onChange={toggleReturnPickup} style={{ width:18, height:18, accentColor:Y.darkGreen, cursor:'pointer' }}/>
+                  <span style={{ fontFamily:FONT_BODY, fontSize:14, fontWeight:600, color:Y.textDark }}>Add a return pickup</span>
+                  <span style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted }}>(same guest, address, date &amp; time — just returning your bags)</span>
+                </label>
+                {form.returnPickup && (
+                  <div style={{ marginTop:10, maxWidth:280 }}>
+                    <label style={label}>Return — number of bags</label>
+                    <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between', marginTop:8 }}>
+                      <button type="button" onClick={decReturnBags} aria-label="Fewer bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>−</button>
+                      <span style={{ fontFamily:FONT_DISPLAY, fontSize:24, color:Y.textDark, minWidth:32, textAlign:'center' }}>{form.returnBags}</span>
+                      <button type="button" onClick={incReturnBags} aria-label="More bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>+</button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -484,7 +553,6 @@ export default function Y2KPage() {
           <a href="#celebration">Celebration</a>
           <a href="#destination">Destination</a>
           <a href="#travel">Travel</a>
-          <a href="#info">Details</a>
           <a href="#book" style={{ border:'1px solid currentColor', padding:'9px 20px', borderRadius:999, letterSpacing:'0.13em', transition:'background 0.2s, border-color 0.2s, color 0.2s' }}
             onMouseEnter={e=>{ e.currentTarget.style.background=Y.gold; e.currentTarget.style.borderColor=Y.gold; e.currentTarget.style.color='#fff' }}
             onMouseLeave={e=>{ e.currentTarget.style.background='transparent'; e.currentTarget.style.borderColor='currentColor'; e.currentTarget.style.color='inherit' }}>
@@ -510,7 +578,6 @@ export default function Y2KPage() {
           <a onClick={()=>setMenuOpen(false)} href="#celebration" style={{ fontSize:30, padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,0.1)' }}>The Celebration</a>
           <a onClick={()=>setMenuOpen(false)} href="#destination" style={{ fontSize:30, padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,0.1)' }}>The Destination</a>
           <a onClick={()=>setMenuOpen(false)} href="#travel" style={{ fontSize:30, padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,0.1)' }}>Travel Light</a>
-          <a onClick={()=>setMenuOpen(false)} href="#info" style={{ fontSize:30, padding:'12px 0', borderBottom:'1px solid rgba(255,255,255,0.1)' }}>The Details</a>
         </nav>
         <a onClick={()=>setMenuOpen(false)} href="#book" style={{ marginTop:'auto', textAlign:'center', background:Y.gold, color:Y.darkGreen, fontFamily:FONT_BODY, fontSize:13, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', padding:18, borderRadius:999 }}>
           Book Luggage Pickup
@@ -673,43 +740,7 @@ export default function Y2KPage() {
       </section>
 
       {/* ════════════════════════════════════════════════════ */}
-      {/* 05 EVENT INFORMATION                                */}
-      {/* ════════════════════════════════════════════════════ */}
-      <section id="info" style={{ background:Y.beige, padding:'clamp(88px,12vw,148px) clamp(20px,5vw,56px)', scrollMarginTop:92, position:'relative', overflow:'hidden' }}>
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_INFO_BG})`, backgroundSize:'cover', backgroundPosition:'center' }}/>
-        <div style={{ position:'absolute', inset:0, zIndex:0, pointerEvents:'none', background:'linear-gradient(180deg, rgba(237,229,214,0.97) 0%, rgba(237,229,214,0.86) 40%, rgba(237,229,214,0.9) 100%)' }}/>
-        <div style={{ position:'absolute', inset:0, zIndex:0, pointerEvents:'none' }}>
-          <FloatSVG dur="11s" del="0s"   r="-12deg" style={{ top:'8%',  left:'5%',  width:84 }} stroke={Y.eyebrow} opacity={0.28}/>
-          <FloatSVG dur="9s"  del="1.5s" r="18deg"  style={{ top:'14%', right:'7%', width:70 }} stroke="#8A9A6B" opacity={0.24}/>
-          <FloatSVG dur="13s" del="0.8s" r="6deg"   style={{ bottom:'12%', left:'9%', width:60 }} stroke="#8A9A6B" opacity={0.2} big/>
-          <FloatSVG dur="10s" del="2.2s" r="-20deg" style={{ bottom:'18%', right:'6%', width:52 }} stroke={Y.eyebrow} opacity={0.22}/>
-        </div>
-        <div style={{ maxWidth:1120, margin:'0 auto', position:'relative', zIndex:1 }}>
-          <div style={{ textAlign:'center', marginBottom:56 }}>
-            <Eyebrow>05 — The Details</Eyebrow>
-            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'16px 0 0' }}>Everything you&apos;ll need</h2>
-          </div>
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(240px,1fr))', gap:20 }}>
-            {[
-              { label:'Day One',       title:'Mehndi & Sangeet', body:'17 December, from 5 PM\nGarden Terrace, Taj Aravali' },
-              { label:'Day Two',       title:'The Wedding',       body:'18 December, from 6 PM\nAravalli Lawn, under the stars' },
-              { label:'Getting there', title:'Reach Udaipur',     body:'Fly into Maharana Pratap Airport (UDR).\n30 min drive — cabs on request.' },
-              { label:'Good to know',  title:'Dress & weather',   body:'Mountain evenings, ~12°C.\nElegant, warm, and comfortable shoes.' },
-            ].map(c=>(
-              <Reveal key={c.label}>
-                <div className="wd-float-card" style={{ height:'100%', boxSizing:'border-box', display:'flex', flexDirection:'column', background:Y.creamCard, borderRadius:20, padding:34, border:`1px solid ${Y.border}` }}>
-                  <Eyebrow>{c.label}</Eyebrow>
-                  <h3 style={{ fontFamily:FONT_DISPLAY, fontWeight:500, fontSize:28, margin:'12px 0 6px', color:Y.textDark }}>{c.title}</h3>
-                  <p style={{ fontFamily:FONT_BODY, fontSize:14.5, lineHeight:1.7, color:Y.textBody, margin:0, whiteSpace:'pre-line' }}>{c.body}</p>
-                </div>
-              </Reveal>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ════════════════════════════════════════════════════ */}
-      {/* 06 FOOTER                                           */}
+      {/* 05 FOOTER                                           */}
       {/* ════════════════════════════════════════════════════ */}
       <footer style={{ background:Y.darkerGreen, color:Y.beige, padding:'clamp(72px,10vw,110px) clamp(20px,5vw,56px) 40px', textAlign:'center' }}>
         {/* eslint-disable-next-line @next/next/no-img-element */}
