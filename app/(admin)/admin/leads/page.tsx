@@ -67,6 +67,12 @@ interface Lead {
   // lib/sales-followup-reminders.ts / app/api/admin/sales-followup-summary/route.ts.
   quote_number?:           string | null
   quote_date?:             string | null
+  // Set only once a Return Journey quote has been generated for this lead
+  // (see app/api/admin/zoho/generate-quote/route.ts's is_return_quote
+  // auto-detect — calling that route again for a lead that already has
+  // quote_number writes here instead of overwriting the primary quote).
+  // Used purely to decide whether to show "+ Return Quote" below.
+  return_quote_number?:    string | null
   customer_responded_at?:  string | null
   deleted_at?:             string | null
 }
@@ -1254,6 +1260,29 @@ function LeadsPageInner() {
                                     : `−₹${Number(l.quote_discount_amt).toLocaleString('en-IN')}`
                                   } discount
                                 </span>
+                              )}
+
+                              {/* Return Quote — was ONLY reachable by
+                                  manually editing the URL, since there was
+                                  no button anywhere once a lead has a
+                                  primary quote (2026-08-31 bug report:
+                                  "website inquiry has no return trip
+                                  option" — not source-specific, this
+                                  applies to every already-quoted lead the
+                                  same way). Server-side guards in
+                                  generate-quote/route.ts (isReturnQuote
+                                  block) enforce this can only ever write
+                                  return_quote_* — never the primary. */}
+                              {!l.return_quote_number ? (
+                                <Link href={`/admin/quotes/new?lead_id=${l.id}&add_return=true`}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:border-purple-300 transition-colors">
+                                  <Plus className="h-3 w-3" /> Return Quote
+                                </Link>
+                              ) : (
+                                <Link href={`/admin/quotes/view/${l.id}`}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:border-purple-300 transition-colors">
+                                  <ExternalLink className="h-3 w-3" /> {l.return_quote_number}
+                                </Link>
                               )}
                               {/* Pending/Received payment toggle removed from this
                                   table per request — payment status is now only

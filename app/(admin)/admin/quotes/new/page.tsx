@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   ArrowLeft, FileText, ExternalLink, CheckCircle, AlertTriangle,
   Loader2, Send, Plus, Trash2, RotateCcw, User, Phone, Mail, Save, Search,
-  Building2,
+  Building2, Package,
 } from 'lucide-react'
 import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
@@ -278,12 +278,26 @@ function QuotePageInner() {
   const searchParams = useSearchParams()
   const leadId       = searchParams.get('lead_id')
   const isEdit       = searchParams.get('edit') === 'true'   // edit mode = no quote generation, just save lead
+  // Dedicated "Add Return Quote" mode — see the Leads tab's Return Quote
+  // link (only shown once a lead already has a primary quote_number but no
+  // return_quote_number yet). Deliberately separate from the Trip Type =
+  // Return Trip flow above (that one only ever runs for a FRESH lead, in
+  // the same click as the onward quote) — this mode is resolved once
+  // `lead` has actually loaded, since it needs lead.quote_number/
+  // return_quote_number from the server, not just the URL.
 
   const [adminKey, setAdminKey] = useState('')
   const [authed,   setAuthed]   = useState(false)
   const [lead,     setLead]     = useState<Lead | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [err,      setErr]      = useState('')
+
+  // Resolved once `lead` loads — see the comment above `isEdit`. Only true
+  // for a lead that already has a primary quote AND has no return quote
+  // yet (the server enforces both of these too — see generate-quote's
+  // return-quote guards — this is purely for what the UI shows/allows).
+  const addReturnOnly = !isEdit && searchParams.get('add_return') === 'true'
+    && !!lead?.quote_number && !lead?.return_quote_number
   const [saving,   setSaving]   = useState(false)  // for edit mode save
 
   // ── Customer fields (editable in both new-quote and edit mode) ─────
@@ -380,15 +394,15 @@ function QuotePageInner() {
   const subjectAutoValue = useRef<string | null>(null)
 
   // ── Return Trip ──────────────────────────────────────────────────────
-  // Trip Type only applies to a fresh lead with no primary quote yet — once
-  // lead.quote_number exists, the backend already auto-detects return-quote
-  // mode on its own (that's the pre-existing behavior reached via the
-  // "Return Quote" button on the Leads tab, and it can't be turned off here
-  // — it's a safety net against accidentally overwriting a primary quote).
-  // For a brand-new lead, choosing "Return Trip" here shows a full Return
+  // Trip Type only applies to a fresh lead with no primary quote yet — for
+  // a brand-new lead, choosing "Return Trip" here shows a full Return
   // Journey Details section and — on Generate — fires a SECOND
   // generate-quote call right after the onward one succeeds, so both legs
-  // are created from one click.
+  // are created from one click. For a lead that ALREADY has a primary
+  // quote, use the separate "Add Return Quote" mode instead (addReturnOnly
+  // above, reached via the Leads tab's Return Quote link) — it reuses this
+  // same Return Journey Details/Items UI and state, just without the Trip
+  // Type toggle or the onward-quote step.
   const [tripType, setTripType] = useState<'one_way' | 'return'>('one_way')
   const [returnFromCity,    setReturnFromCity]    = useState('')
   const [returnToCity,      setReturnToCity]      = useState('')
@@ -415,6 +429,16 @@ function QuotePageInner() {
     if (!returnPickupAddr && !returnDropAddr) { setReturnPickupAddr(dropAddr); setReturnDropAddr(pickupAddr) }
     if (returnBagsCount === '1' && bagsCount && bagsCount !== '1') setReturnBagsCount(bagsCount)
   }
+
+  // Add Return Quote mode has no Trip Type toggle to click (it's hidden —
+  // see the JSX below), so nothing else calls enableReturnTrip() for this
+  // mode. Run the same one-time, non-destructive prefill automatically
+  // once the lead (with its onward route/address/bags already loaded by
+  // fetchLead) is available.
+  useEffect(() => {
+    if (addReturnOnly && lead) enableReturnTrip()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addReturnOnly, lead?.id])
 
   function populateReturnItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
     const items: LineItemRow[] = [{
@@ -973,6 +997,59 @@ function QuotePageInner() {
   async function generate(forceDuplicate = false) {
     setErr('')
     setDupModal(null)
+
+    // ── Add Return Quote mode — completely separate, early-exit path ────
+    // Deliberately does NOT touch any of the onward-quote logic below (no
+    // name/phone/pickup-address validation against the PRIMARY quote's
+    // fields, no lead creation, no primary generate-quote call) — this
+    // lead and its primary quote already exist; only the return leg is
+    // being added. Mirrors the payload shape of the Trip Type = Return
+    // Trip flow's return call further down, just fired on its own instead
+    // of right after an onward quote in the same click.
+    if (addReturnOnly) {
+      if (!lead) { setErr('Lead not loaded yet.'); return }
+      const returnValidItems = returnLineItems.filter(r => r.name.trim() && r.rate > 0)
+      if (returnValidItems.length === 0) {
+        setErr('Add at least one Return Journey item with a name and rate before generating.')
+        return
+      }
+      setGenerating(true)
+      const returnPickupDT = combineDateTime(returnPickupDate, returnPickupTime)
+      const returnPayload: Record<string, unknown> = {
+        lead_id:             lead.id,
+        is_return_quote:     true,
+        from_city:           returnFromCity.trim() || undefined,
+        to_city:             returnToCity.trim()   || undefined,
+        bags_count:          Number(returnBagsCount) || undefined,
+        pickup_address:      returnPickupAddr.trim() || undefined,
+        drop_address:        returnDropAddr.trim()   || undefined,
+        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
+        // The primary quote's own email already went out separately — this
+        // is an internal pricing addition, not a fresh customer-facing send.
+        send_email: false,
+      }
+      if (returnPickupDT)     returnPayload.pickup_datetime  = returnPickupDT
+      if (returnNotes.trim()) returnPayload.customer_notes   = returnNotes.trim()
+      if (salesperson)        returnPayload.salesperson_name = salesperson
+      if (agentName.trim())   returnPayload.agent_name       = agentName.trim()
+
+      try {
+        const res = await fetch('/api/admin/zoho/generate-quote', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify(returnPayload),
+        })
+        const d = await res.json()
+        if (!res.ok) { setErr(d.error ?? d.message ?? 'Failed to generate return quote.'); setGenerating(false); return }
+        setResult({ estimate_number: d.estimate_number, estimate_id: d.estimate_id, total: d.total, zoho_url: d.zoho_url, sent_to_customer: d.sent_to_customer, is_return_quote: true })
+      } catch {
+        setErr('Failed to generate return quote — network error, please try again.')
+      } finally {
+        setGenerating(false)
+      }
+      return
+    }
+
     const effectiveName  = lead?.name  ?? custName.trim()
     const effectivePhone = lead?.phone ?? toE164(custPhone, custCountryIso2)
     const effectivePhoneCountryCode = lead?.phone_country_code ?? custCountryIso2
@@ -1223,6 +1300,15 @@ function QuotePageInner() {
               <div className="flex justify-between"><span className="text-gray-500">Return Total</span><span className="font-semibold text-purple-600">{rupees(result.return_total ?? 0)}</span></div>
               <div className="flex justify-between border-t border-gray-200 pt-2 mt-1"><span className="font-bold text-gray-700">Grand Total</span><span className="font-bold text-gray-900">{rupees(result.total + (result.return_total ?? 0))}</span></div>
             </>
+          ) : result.is_return_quote ? (
+            // Add Return Quote mode — fromCity/toCity here are still the
+            // PRIMARY quote's onward route (loaded from the lead), so show
+            // the actual return-leg route instead, or this would silently
+            // display the wrong direction.
+            <>
+              <div className="flex justify-between"><span className="text-gray-500">Return Route</span><span className="font-semibold">{returnFromCity} → {returnToCity}</span></div>
+              <div className="flex justify-between"><span className="text-gray-500">Return Total</span><span className="font-bold text-purple-600">{rupees(result.total)}</span></div>
+            </>
           ) : (
             <>
               <div className="flex justify-between"><span className="text-gray-500">Route</span><span className="font-semibold">{fromCity} → {toCity}</span></div>
@@ -1313,7 +1399,7 @@ function QuotePageInner() {
             <ArrowLeft className="h-4 w-4" /> Leads
           </Link>
           <span className="text-gray-300">/</span>
-          <span className="font-semibold text-gray-800">{isEdit ? `Edit — ${lead?.lead_number ?? 'Quote'}` : 'New Quote'}</span>
+          <span className="font-semibold text-gray-800">{addReturnOnly ? `Add Return Quote — ${lead?.lead_number ?? ''}` : isEdit ? `Edit — ${lead?.lead_number ?? 'Quote'}` : 'New Quote'}</span>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {lead?.zoho_estimate_number && (
@@ -1332,9 +1418,9 @@ function QuotePageInner() {
               {saving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Changes</>}
             </button>
           ) : null}
-          <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number)}
+          <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number && !addReturnOnly)}
             className="flex items-center gap-2 rounded-lg bg-orange-500 px-5 py-1.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
+            {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {addReturnOnly ? 'Generate Return Quote' : tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
           </button>
         </div>
       </div>
@@ -1344,6 +1430,22 @@ function QuotePageInner() {
 
         {/* ── Left form ── */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden bg-gray-50 p-5 space-y-4 min-w-0">
+
+          {/* Add Return Quote mode — replaces the Trip Type toggle and the
+              amber "blocked" banner entirely with a single explanatory
+              banner. The primary quote's own Customer/Route/Item sections
+              further down still render (pre-filled read-only-ish from the
+              lead) — left visible for context since it's harmless; Generate
+              in this mode never touches them (see the addReturnOnly branch
+              in generate()). */}
+          {addReturnOnly && (
+            <div className="flex items-center gap-2 rounded-lg border border-purple-200 bg-purple-50 px-4 py-2.5 text-sm">
+              <Package className="h-4 w-4 shrink-0 text-purple-500" />
+              <span className="text-purple-800">
+                Adding a <strong>Return Journey Quote</strong> to lead <strong>{lead?.lead_number}</strong> (primary quote <strong>{lead?.quote_number}</strong> already exists and won&apos;t be changed). Fill in the Return Journey section below, then click Generate Return Quote.
+              </span>
+            </div>
+          )}
 
           {/* Trip Type — only relevant for a fresh lead with no primary quote
               yet. Return Trip quotes can only be created together with the
@@ -1371,12 +1473,13 @@ function QuotePageInner() {
             </div>
           )}
 
-          {/* A lead already having a quote_number here (outside Edit mode)
-              means this page was reopened for an already-quoted lead —
+          {/* A lead already having a quote_number here (outside Edit mode,
+              and NOT the deliberate Add Return Quote mode above) means this
+              page was reopened for an already-quoted lead by mistake —
               Generate is blocked (see the guard in generate()) rather than
               silently creating an unintended Return Journey Quote, which is
               what used to happen here. Direct the admin to Edit instead. */}
-          {lead?.quote_number && !isEdit && (
+          {lead?.quote_number && !isEdit && !addReturnOnly && (
             <div className="flex items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm">
               <AlertTriangle className="h-4 w-4 shrink-0 text-amber-500" />
               <span className="text-amber-800">
@@ -1912,10 +2015,12 @@ function QuotePageInner() {
             </div>
           </label>
 
-          {/* ── Return Journey Details — positioned last, only visible when
-              Return Trip is selected. Kept purely additive on top of the
-              existing one-way form; nothing above this point changed. ── */}
-          {!isEdit && !lead?.quote_number && tripType === 'return' && (
+          {/* ── Return Journey Details — positioned last, visible when
+              either Return Trip is selected (fresh lead) or Add Return
+              Quote mode is active (already-quoted lead). Kept purely
+              additive on top of the existing one-way form; nothing above
+              this point changed. ── */}
+          {(addReturnOnly || (!isEdit && !lead?.quote_number && tripType === 'return')) && (
             <div className={sect + ' border-purple-200'}>
               <p className={sectH + ' text-purple-500'}>Return Journey Details</p>
               <div className="grid grid-cols-2 gap-3 mb-3">
@@ -2057,9 +2162,9 @@ function QuotePageInner() {
               </button>
             )}
 
-            <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number)}
+            <button onClick={() => generate()} disabled={generating || (!isEdit && !!lead?.quote_number && !addReturnOnly)}
               className="flex w-full items-center justify-center gap-2 rounded-lg bg-orange-500 py-2.5 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
-              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
+              {generating ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</> : <><FileText className="h-3.5 w-3.5" /> {addReturnOnly ? 'Generate Return Quote' : tripType === 'return' ? 'Generate Both Quotes' : 'Generate Quote'}</>}
             </button>
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">

@@ -5,9 +5,16 @@
  * Computes line items from route pricing (or explicit items passed by the frontend),
  * saves them to the leads table, and updates the linked booking total + status.
  *
- * If the lead ALREADY has a primary quote (quote_number is set), this call
- * is treated as a RETURN QUOTE and stored in return_quote_* fields WITHOUT
- * overwriting the primary quote or downgrading the booking status.
+ * Pass is_return_quote: true to add a RETURN quote to a lead that already
+ * has a primary quote — stored in return_quote_* fields WITHOUT overwriting
+ * the primary quote or downgrading the booking status. (This used to be
+ * auto-detected purely from lead.quote_number already being set, with no
+ * explicit flag required — removed 2026-08-21 after that silently converted
+ * an accidental second "Generate Quote" click on an already-quoted lead
+ * into a phantom return quote. Now requires the explicit flag AND is
+ * guarded below: a primary quote must already exist, and a return quote
+ * must not already exist. See app/(admin)/admin/quotes/new/page.tsx's
+ * "Add Return Quote" flow — the only caller that sets this flag.)
  *
  * Body:
  *   lead_id              string   (required)
@@ -295,6 +302,30 @@ export async function POST(req: NextRequest) {
   // lead (see app/(admin)/admin/quotes/new/page.tsx) — this is the single
   // source of truth for Return Trip creation.
   const isReturnQuote = forceReturnQuote === true
+
+  // ── Return-quote guards ─────────────────────────────────────────────
+  // Both conditions matter: without the first, a return quote could be
+  // created before any primary quote exists (nonsensical — there'd be
+  // nothing for it to be a "return leg" of, and quoteNumber derivation
+  // below assumes a primary QT- number to suffix with "-R"). Without the
+  // second, clicking "Add Return Quote" twice would silently overwrite an
+  // existing return quote instead of erroring — the admin has to
+  // deliberately remove the old one first (Quote view page) so nothing is
+  // lost by accident.
+  if (isReturnQuote) {
+    if (!lead.quote_number) {
+      return NextResponse.json(
+        { error: 'A primary quote must exist on this lead before a return quote can be added.' },
+        { status: 400 }
+      )
+    }
+    if (lead.return_quote_number) {
+      return NextResponse.json(
+        { error: `This lead already has a return quote (${lead.return_quote_number}). Remove it first (Quote view page) if you need to recreate it.` },
+        { status: 409 }
+      )
+    }
+  }
 
   // ── Resolve line items ────────────────────────────────────────────
   let lineItems: LineItem[]

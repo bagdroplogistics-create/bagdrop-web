@@ -3064,6 +3064,27 @@ export default function QuoteViewPage() {
           </div>
         )}
 
+        {/* ── Add Return Quote CTA (no-print) ── */}
+        {/* Shown once this lead has a primary quote but no return quote yet
+            — was previously no way to reach this from here at all
+            (2026-08-31 bug report: no return-trip option once a lead is
+            already quoted). Routes to the same Add Return Quote mode as
+            the Leads tab's "Return Quote" link — see app/(admin)/admin/
+            quotes/new/page.tsx's addReturnOnly, guarded server-side in
+            generate-quote/route.ts so it can only ever write
+            return_quote_* fields, never touch this primary quote. */}
+        {lead.quote_number && !lead.return_quote_number && (
+          <div className="no-print mx-auto mt-4 max-w-3xl rounded-xl border border-purple-200 bg-purple-50 px-6 py-4 text-center shadow-sm">
+            <p className="text-sm text-purple-800">Need to quote a return journey for this same customer?</p>
+            <button
+              onClick={() => router.push(`/admin/quotes/new?lead_id=${lead.id}&add_return=true`)}
+              className="mt-2 inline-flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2 text-sm font-semibold text-white hover:bg-purple-700 transition-colors"
+            >
+              <Package className="h-4 w-4" /> Add Return Quote
+            </button>
+          </div>
+        )}
+
         {/* ── Return Quote Card (no-print) ── */}
         {lead.return_quote_number && (
           <div className="no-print mx-auto mt-4 max-w-3xl overflow-hidden rounded-xl border border-purple-200 bg-white shadow-sm">
