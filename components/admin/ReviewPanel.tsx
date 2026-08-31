@@ -196,8 +196,19 @@ export default function ReviewPanel({ target, adminKey, compact }: { target: Rev
     ? 'inline-flex items-center gap-1 rounded-lg border border-yellow-300 bg-yellow-50 px-2.5 py-1 text-xs font-semibold text-yellow-700 hover:border-yellow-400 transition-colors'
     : 'flex items-center justify-center gap-1.5 rounded-lg border border-yellow-300 bg-yellow-50 px-3 py-2 text-xs font-semibold text-yellow-700 shadow-sm hover:bg-yellow-100 hover:border-yellow-400 transition-colors'
 
+  // inline-flex + flex-col + items-center (not inline-block) — the trigger
+  // button below uses Tailwind's `flex` class (display:flex), which makes
+  // it a block-level box that no longer respects an ancestor's inherited
+  // text-align: an inline-block wrapper's shrink-to-fit width used to be
+  // set by whichever child was widest (often the okMsg/err message, up to
+  // 220px), leaving the narrower trigger button and history link sitting
+  // at the container's left edge instead of centered under it — visible as
+  // the whole Review control looking left-shifted inside the centered
+  // "Booking Completed" card (2026-08-27 fix). items-center centers every
+  // child on the cross axis relative to the widest one, deterministically,
+  // regardless of each child's own display type.
   return (
-    <div className="relative inline-block" ref={menuRef}>
+    <div className="relative inline-flex flex-col items-center" ref={menuRef}>
       <button
         onClick={e => { e.stopPropagation(); setMenuOpen(o => !o); setErr(''); setOkMsg('') }}
         className={triggerClassName}>
