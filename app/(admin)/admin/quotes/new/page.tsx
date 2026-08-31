@@ -91,17 +91,34 @@ interface LineItemRow {
   qty: number; rate: number; taxId: string
   // Optional flat-amount override. When set, this exact amount is used as
   // the row's Amount (both on-screen and when saved/sent to the quote API)
-  // INSTEAD of qty × rate. Exists solely for the auto-populated "Upto 2
-  // Bags" route-pricing row: the founder wants Qty to visually reflect the
-  // real bag count (1 or 2) while the flat "up to 2 bags" price itself
-  // never gets multiplied by that quantity (founder instruction,
-  // 2026-08-20 — fixes a regression from the 2026-08-19 Qty-display
-  // change, which had started doubling the price for 2-bag quotes because
-  // Amount was always computed as qty × rate). Cleared automatically the
-  // moment the admin manually edits that row's Qty/Rate or picks a
-  // different catalog item, so manual edits behave like any normal line
-  // item (Amount = qty × rate) — this override is never user-facing.
+  // INSTEAD of qty × rate. Originally existed solely for the auto-populated
+  // "Upto 2 Bags" route-pricing row (founder instruction, 2026-08-20 — the
+  // flat "up to 2 bags" price should never get multiplied by Qty just
+  // because Qty visually reflects the real bag count).
+  //
+  // GENERALIZED 2026-08-31: the exact same problem showed up for any OTHER
+  // "Upto N Bags/pcs" item too — e.g. picking or typing the catalog item
+  // "DLNG - Transportation of goods ( Upto 2 Bags ) from Delhi To Nagpur"
+  // (rate ₹10,000) and setting Qty to 2 (the real bag count) doubled the
+  // Amount to ₹20,000, because only that one specific auto-generated row
+  // had the override — every other flat-priced catalog item just did
+  // qty × rate like a normal per-unit item. Fixed by detecting the "Upto
+  // N" cap from the item NAME itself (see flatPriceCap() below) and
+  // applying the same flat-amount behavior to ANY row whose name matches
+  // that pattern and whose Qty is within the cap — not just the one
+  // hardcoded auto-fill row. See updateRow()/selectItem() below.
   amount?: number
+}
+
+// Detects "package/flat" pricing items from their catalog name — e.g.
+// "Upto 2 Bags", "Up to 2pcs", "Up to Min Of 15 Pcs" — where the rate is a
+// flat price covering UP TO that many bags, not a per-bag rate. Returns
+// the cap (2, 3, 15, ...) or null if the name doesn't look like a flat-
+// price item (a normal per-unit item like "Add on Luggage" correctly
+// falls through to ordinary qty × rate).
+function flatPriceCap(name: string): number | null {
+  const m = /up\s*-?\s*to\s+(?:min\.?\s*(?:of\s+)?)?(\d+)/i.exec(name)
+  return m ? parseInt(m[1], 10) : null
 }
 
 // ── Constants ──────────────────────────────────────────────────────────
@@ -428,11 +445,22 @@ function QuotePageInner() {
   }
 
   function updateReturnRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
-    setReturnLineItems(prev => prev.map(r => r.id === id
-      // Same override-clearing behavior as updateRow() above.
-      ? { ...r, [field]: value, ...(field === 'qty' || field === 'rate' ? { amount: undefined } : {}) }
-      : r
-    ))
+    // Same flat-price re-evaluation as updateRow() above — the return
+    // item table has no catalog search (plain text name field), but an
+    // admin can still type a flat-priced item name like "Upto 2 Bags"
+    // here and needs the same protection against Qty doubling the Amount.
+    setReturnLineItems(prev => prev.map(r => {
+      if (r.id !== id) return r
+      const next: LineItemRow = { ...r, [field]: value }
+      if (field === 'qty' || field === 'rate' || field === 'name') {
+        const cap = flatPriceCap(field === 'name' ? String(value) : r.name)
+        const qtyNum = Number(field === 'qty' ? value : r.qty) || 0
+        next.amount = (cap != null && qtyNum >= 1 && qtyNum <= cap)
+          ? Number(field === 'rate' ? value : r.rate)
+          : undefined
+      }
+      return next
+    }))
     returnItemsFromPricing.current = false
   }
   function addReturnRow() { setReturnLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
@@ -808,13 +836,25 @@ function QuotePageInner() {
   function addRow() { setLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
   function removeRow(id: string) { setLineItems(prev => prev.filter(r => r.id !== id)) }
   function updateRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
-    setLineItems(prev => prev.map(r => r.id === id
-      // Manually touching Qty or Rate takes the row out of "flat amount"
-      // mode — clear the override so Amount goes back to the normal
-      // qty × rate (matches every other, non-auto-populated row).
-      ? { ...r, [field]: value, ...(field === 'qty' || field === 'rate' ? { amount: undefined } : {}) }
-      : r
-    ))
+    setLineItems(prev => prev.map(r => {
+      if (r.id !== id) return r
+      const next: LineItemRow = { ...r, [field]: value }
+      // Re-evaluate flat-price status on every Qty/Rate/Name edit — see
+      // flatPriceCap()'s doc comment. A row stays "flat" (Amount = rate,
+      // not qty × rate) as long as its (possibly just-edited) name matches
+      // an "Upto N" pattern AND its (possibly just-edited) Qty is within
+      // that cap. Falls through to ordinary qty × rate the moment either
+      // condition stops holding (name no longer matches, or Qty exceeds
+      // what the flat price actually covers) — same as any normal row.
+      if (field === 'qty' || field === 'rate' || field === 'name') {
+        const cap = flatPriceCap(field === 'name' ? String(value) : r.name)
+        const qtyNum = Number(field === 'qty' ? value : r.qty) || 0
+        next.amount = (cap != null && qtyNum >= 1 && qtyNum <= cap)
+          ? Number(field === 'rate' ? value : r.rate)
+          : undefined
+      }
+      return next
+    }))
     itemsFromPricing.current = false
   }
   function resetItems() {
@@ -825,14 +865,19 @@ function QuotePageInner() {
   }
 
   function selectItem(rowId: string, item: BagdropItem) {
-    setLineItems(prev => prev.map(r =>
-      r.id === rowId
-        // Picking a catalog item replaces the rate entirely, so any flat
-        // "up to 2 bags" amount override no longer applies — clear it,
-        // same as a manual Qty/Rate edit (see updateRow above).
-        ? { ...r, name: item.name, description: item.description ?? '', rate: item.rate, amount: undefined }
-        : r
-    ))
+    setLineItems(prev => prev.map(r => {
+      if (r.id !== rowId) return r
+      // Picking a catalog item whose name matches "Upto N" (see
+      // flatPriceCap()) starts the row in flat-price mode immediately —
+      // Qty capped to whatever the flat price actually covers (keeping the
+      // row's existing Qty if it's already sensible, e.g. the admin set
+      // Qty=2 before finding the matching item), Amount pinned to the
+      // item's rate. A normal per-unit item (no "Upto N" in its name)
+      // behaves exactly as before — plain qty × rate.
+      const cap = flatPriceCap(item.name)
+      const qty = cap != null ? Math.max(1, Math.min(r.qty || 1, cap)) : r.qty
+      return { ...r, name: item.name, description: item.description ?? '', rate: item.rate, qty, amount: cap != null ? item.rate : undefined }
+    }))
     itemsFromPricing.current = false
   }
 

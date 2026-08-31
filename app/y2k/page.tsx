@@ -198,6 +198,17 @@ function BookingForm() {
   const [returnFailed, setReturnFailed] = useState(false)
   const [confirmName, setConfirmName] = useState('')
 
+  // Test mode — ?test=1 on the URL. Lets the Founder repeatedly test this
+  // form without burning real BDA/BDL tracking numbers or triggering real
+  // ops WhatsApp/email notifications — see app/api/y2k/inquiry/route.ts's
+  // isTestMode handling. Read via window.location directly (not
+  // useSearchParams) so this page doesn't need a Suspense boundary.
+  const [isTestMode, setIsTestMode] = useState(false)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    setIsTestMode(params.get('test') === '1' || params.get('test') === 'true')
+  }, [])
+
   function field(key: keyof typeof form) {
     return (v: string) => {
       setForm(s => ({ ...s, [key]: v }))
@@ -243,6 +254,7 @@ function BookingForm() {
           deliveryAddress: WEDDING_VENUE,
           arrivalDate: f.pickupDate,
           requests: f.notes,
+          testMode: isTestMode,
         }),
       })
       const d = await res.json()
@@ -276,6 +288,7 @@ function BookingForm() {
               // inquiry in the dashboard — see route.ts's isReturnPickup.
               returnPickup: true,
               originalTrackingId: d.trackingId ?? '',
+              testMode: isTestMode,
             }),
           })
           const rd = await returnRes.json()
@@ -316,6 +329,11 @@ function BookingForm() {
 
   return (
     <>
+      {isTestMode && (
+        <div style={{ maxWidth:720, margin:'0 auto 24px', background:'#FEF3C7', border:'1px solid #F59E0B', borderRadius:12, padding:'12px 20px', textAlign:'center', fontFamily:FONT_BODY, fontSize:13, fontWeight:600, color:'#92400E' }}>
+          🧪 TEST MODE — submissions here don&apos;t use real BDA/BDL tracking numbers and won&apos;t send any WhatsApp or email notifications.
+        </div>
+      )}
       <div style={{ maxWidth:760, margin:'0 auto', textAlign:'center' }}>
         <Eyebrow>04 — Reserve Your Pickup</Eyebrow>
         <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.textDark, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.05, margin:'18px 0 12px' }}>Book your luggage pickup</h2>

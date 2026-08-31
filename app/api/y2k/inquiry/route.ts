@@ -30,10 +30,25 @@ const Y2K_PICKUP_CITY_MAX_LEN = 200
 // 10 AM – 6 PM for this event.
 const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 
+// ── Test mode ──────────────────────────────────────────────────────────
+// Triggered by ?test=1 on the Y2K page (see app/y2k/page.tsx) — for the
+// Founder to repeatedly test the booking form without burning real BDA/BDL
+// tracking numbers or spamming ops with fake "New Inquiry" pings. Test
+// tracking/lead IDs are deliberately OUTSIDE the `BDA-YYYY-NNNN` /
+// `BDL-YYYY-NNNN` pattern the atomic counters (lib/number-series.ts) and
+// the manual resync tool (app/api/admin/repair/resync-number-counter/
+// route.ts) scan for — so test rows can never pollute the real sequence,
+// and never need a cleanup+resync afterward. Delete them from the
+// dashboard whenever; nothing else needs to know they existed.
+function generateTestTrackingId(): string {
+  const suffix = Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 5).toUpperCase()
+  return `BDA-TEST-${suffix}`
+}
+
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode } = body
     // returnPickup / originalTrackingId: set only by the second call
     // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
     // pickup". Used below purely to make this leg visibly distinct in the
@@ -42,6 +57,12 @@ export async function POST(req: NextRequest) {
     // booking/lead row (see that file's comment for why), just labeled so
     // ops doesn't mistake it for an unrelated new inquiry.
     const isReturnPickup = returnPickup === true
+    // testMode: see generateTestTrackingId() above. Skips the real
+    // tracking-number series AND every outbound notification (ops
+    // WhatsApp ping, ops email, guest confirmation email) — only the
+    // dashboard-visible booking/lead rows are created, so the Founder can
+    // see the flow end-to-end without any real-world side effects.
+    const isTestMode = testMode === true
 
     // Basic validation
     const digits = phone?.replace(/\D/g, '') ?? ''
@@ -78,8 +99,9 @@ export async function POST(req: NextRequest) {
 
     // Atomic, race-safe BDA-YYYY-NNNN tracking ID — was a random 'Y2K-'
     // prefixed string, which broke the continuous numbering every other
-    // inquiry source uses. See lib/number-series.ts.
-    const trackingId = await nextTrackingId()
+    // inquiry source uses. See lib/number-series.ts. Test submissions skip
+    // this entirely — see generateTestTrackingId() above.
+    const trackingId = isTestMode ? generateTestTrackingId() : await nextTrackingId()
 
     // ── Save to database ──────────────────────────────────────
     let savedBookingId: string | null = null
@@ -93,7 +115,7 @@ export async function POST(req: NextRequest) {
         customer_email: email?.trim().toLowerCase() || null,
         customer_phone: '+91' + digits,
         service_type:   'destination-weddings',
-        service_label:  isReturnPickup ? 'Destination Wedding — #Y2K (Return Pickup)' : 'Destination Wedding — #Y2K',
+        service_label:  (isReturnPickup ? 'Destination Wedding — #Y2K (Return Pickup)' : 'Destination Wedding — #Y2K') + (isTestMode ? ' [TEST]' : ''),
         // Was hardcoded 'Udaipur' → 'Udaipur' regardless of where the guest
         // actually is — showed as "Udaipur → Udaipur" on the dashboard's
         // Route column for every single #Y2K booking, onward AND return
@@ -120,6 +142,7 @@ export async function POST(req: NextRequest) {
         total_amount:   0,
         currency:       'INR',
         notes: [
+          isTestMode ? '[TEST SUBMISSION — safe to delete, does not affect real tracking numbers]' : '',
           '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17th–18th Dec 2026]',
           isReturnPickup ? `[RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'}]` : '',
           guests       ? `Group size: ${guests} guests` : '',
@@ -246,33 +269,39 @@ export async function POST(req: NextRequest) {
             // Internal ops WhatsApp ping — this route only ever emailed
             // info@bagdrop.co, same gap as the contact form had (see
             // app/api/contact/route.ts). Added so every inquiry source
-            // notifies ops the same way.
-            await sendNewInquiryWhatsApp({
-              inquiryNumber:   leadNumber,
-              source:          'website',
-              customerName:    name.trim(),
-              customerPhone:   '+91' + digits,
-              customerEmail:   email?.trim().toLowerCase() || null,
-              serviceType:     'destination-weddings',
-              fromCity:        pickupCity?.trim() || 'Mumbai',
-              toCity:          isReturnPickup ? (deliveryCity?.trim() || 'Mumbai') : 'Udaipur',
-              pickupAddress:   pickupAddress || null,
-              deliveryAddress: deliveryAddress || null,
-              pickupDate:      arrivalDate,
-              // Both were previously omitted from this call entirely,
-              // which is why the WhatsApp template showed "Bags: —" and
-              // "Delivery Date: —" — the approved template requires all
-              // 10 variables filled or WhatsApp rejects the send outright
-              // (see the template-variable-order note at the top of
-              // lib/new-inquiry-notification.ts), so this was silently
-              // sending blanks rather than failing loudly.
-              bagsCount:       parseInt(bags) || 1,
-              deliveryDate:    arrivalDate,
-              notes:           isReturnPickup
-                ? `RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'} — #Y2K wedding inquiry ${trackingId}`
-                : `#Y2K wedding inquiry ${trackingId}`,
-              submittedAt:     new Date().toISOString(),
-            })
+            // notifies ops the same way. Skipped entirely for test
+            // submissions — the whole point of test mode is repeated
+            // testing without spamming ops with fake "New Inquiry" pings.
+            if (!isTestMode) {
+              await sendNewInquiryWhatsApp({
+                inquiryNumber:   leadNumber,
+                source:          'website',
+                customerName:    name.trim(),
+                customerPhone:   '+91' + digits,
+                customerEmail:   email?.trim().toLowerCase() || null,
+                serviceType:     'destination-weddings',
+                fromCity:        pickupCity?.trim() || 'Mumbai',
+                toCity:          isReturnPickup ? (deliveryCity?.trim() || 'Mumbai') : 'Udaipur',
+                pickupAddress:   pickupAddress || null,
+                deliveryAddress: deliveryAddress || null,
+                pickupDate:      arrivalDate,
+                // Both were previously omitted from this call entirely,
+                // which is why the WhatsApp template showed "Bags: —" and
+                // "Delivery Date: —" — the approved template requires all
+                // 10 variables filled or WhatsApp rejects the send outright
+                // (see the template-variable-order note at the top of
+                // lib/new-inquiry-notification.ts), so this was silently
+                // sending blanks rather than failing loudly.
+                bagsCount:       parseInt(bags) || 1,
+                deliveryDate:    arrivalDate,
+                notes:           isReturnPickup
+                  ? `RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'} — #Y2K wedding inquiry ${trackingId}`
+                  : `#Y2K wedding inquiry ${trackingId}`,
+                submittedAt:     new Date().toISOString(),
+              })
+            } else {
+              console.log(`[y2k/inquiry] Test submission ${trackingId} — skipped ops WhatsApp ping`)
+            }
           }
         }
       } catch (leadErr) {
@@ -282,10 +311,12 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Send notification email to info@bagdrop.co ────────────
+    // Skipped entirely for test submissions, same reasoning as the
+    // WhatsApp ping above.
     const apiKey = process.env.RESEND_API_KEY
     let emailSent = false
 
-    if (apiKey) {
+    if (apiKey && !isTestMode) {
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#FAF4EE;font-family:Georgia,serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF4EE;padding:32px 0">
@@ -367,7 +398,9 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Send confirmation to guest (if email provided) ────────
-    if (apiKey && email?.trim()) {
+    // Skipped for test submissions too — don't want a real confirmation
+    // email landing in whatever inbox was used to test the form.
+    if (apiKey && email?.trim() && !isTestMode) {
       const guestHtml = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#FAF4EE;font-family:Georgia,serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#FAF4EE;padding:32px 0">
@@ -406,7 +439,7 @@ export async function POST(req: NextRequest) {
       } catch { /* non-critical */ }
     }
 
-    return NextResponse.json({ success: true, trackingId, emailSent })
+    return NextResponse.json({ success: true, trackingId, emailSent, testMode: isTestMode })
   } catch (err) {
     console.error('[y2k/inquiry] Unhandled error:', err)
     return NextResponse.json({ error: 'Server error. Please try again.' }, { status: 500 })
