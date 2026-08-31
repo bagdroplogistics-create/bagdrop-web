@@ -42,24 +42,34 @@
 // the admin dashboard) — they just aren't in this particular WhatsApp
 // message anymore.
 //
-// v5 (this version) — dropping to 13 variables STILL got the same "too
-// many variables for its length" rejection. Deleting a field removes both
-// a variable and its ~1-word label, which barely moves the static-text-
-// to-variable ratio Meta actually checks (per Meta's published template
-// guidance: static text needs to scale with variable count, not just
-// exist). Rather than keep cutting fields the founder wants kept, this
-// version keeps all 15 variables and instead adds real static wording:
-// a longer title, a full sentence around the booking-index variables, and
-// a closing sentence — mirroring the already-approved
-// `new_inquiry_notification` template's proven label+sentence density
-// (lib/new-inquiry-notification.ts, 10 variables, live and working). The
+// v5 — dropping to 13 variables STILL got the same "too many variables
+// for its length" rejection. Deleting a field removes both a variable and
+// its ~1-word label, which barely moves the static-text-to-variable ratio
+// Meta actually checks (per Meta's published template guidance: static
+// text needs to scale with variable count, not just exist). Rather than
+// keep cutting fields the founder wants kept, this version keeps all 15
+// variables and instead adds real static wording: a longer title, a full
+// sentence around the booking-index variables, and a closing sentence —
+// mirroring the already-approved `new_inquiry_notification` template's
+// proven label+sentence density (lib/new-inquiry-notification.ts, 10
+// variables, live and working). v5's title line lived as the first line
+// of the template BODY: "Confirmed & Ongoing Bookings Report for Bagdrop
+// Operations".
+//
+// v6 (this version) — approved, then the founder added a WhatsApp
+// template HEADER component ("Confirmed & Ongoing Bookings Report") on
+// top of that same body, which duplicated the title 2-3x in the delivered
+// message (Header + the body's own title line). The title now lives ONLY
+// in the template's Header field; the body's static title line is
+// removed and the body starts directly at "Report Date: {{1}}". This
+// file's buildSummaryVariables()/buildBookingVariables() are UNCHANGED by
+// this version (same 15 values, same order) — only the static wrapper
+// text (now split Header/Body instead of one Body block) changed. The
 // actual template body lives on Fast2SMS's dashboard, not in this file —
-// see FAST2SMS_TEMPLATES.md §12 for the exact text to submit. This file's
-// buildSummaryVariables()/buildBookingVariables() are UNCHANGED by this
-// version (same 15 values, same order) — only the static wrapper text
-// around them changed. FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID below; until
-// set, sends safely no-op (logged, not thrown) — same fallback convention
-// as every other Fast2SMS-dependent cron in this app.
+// see FAST2SMS_TEMPLATES.md §12 for the exact text to submit.
+// FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID below; until set, sends safely
+// no-op (logged, not thrown) — same fallback convention as every other
+// Fast2SMS-dependent cron in this app.
 //
 // ── Critical design constraint (per founder spec, 2026-08-18) ──────────
 // Each booking is its own message. NEVER grouped/deduped by customer,
@@ -220,9 +230,12 @@ const ZERO_BOOKING_PLACEHOLDER: string[] = ['0', '0', '—', '—', '—', '—'
  * Human-readable reconstruction of one merged message — dry-run/test
  * preview only, never what's actually transmitted (that's the raw
  * variables[] array sent to Fast2SMS; the wrapper wording below lives in
- * Fast2SMS's approved template body, not in this file). Mirrors the fuller
- * label/sentence wording added 2026-08-26 to fix a Meta "too many
- * variables for its length" rejection — see file-header comment.
+ * Fast2SMS's approved template Header/Body, not in this file). Mirrors
+ * the v6 shape — see file-header comment: the title now lives ONLY in the
+ * template's Header component ("Confirmed & Ongoing Bookings Report"),
+ * so it's NOT repeated here as a body line anymore (v5 had it as the
+ * body's first line too, which — once the founder also added the Header
+ * component — showed the title 2-3x in the delivered message).
  */
 function previewMergedText(vars: string[]): string {
   const [
@@ -230,8 +243,6 @@ function previewMergedText(vars: string[]): string {
     idx, ofTotal, name, contact, route, pickup, delivery, bags, status, payment,
   ] = vars
   return [
-    'Confirmed & Ongoing Bookings Report for Bagdrop Operations',
-    '',
     `Report Date: ${dateLabel}`,
     `Report Time: ${timeLabel}`,
     `Total Confirmed Bookings: ${confirmed}`,

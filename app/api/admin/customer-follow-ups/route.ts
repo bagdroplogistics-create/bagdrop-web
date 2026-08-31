@@ -91,14 +91,35 @@ export async function POST(req: NextRequest) {
   // email address" per the feature spec means the SEND TARGET always comes
   // from the booking record, never from the request body. Only the message
   // text itself is editable by the admin.
-  const { data: booking, error: bookingErr } = await supabaseAdmin
+  //
+  // .limit(1) instead of .single() — 2026-08-27 fix. .single() hard-errors
+  // ("Booking not found") not just when zero rows match but ALSO when MORE
+  // THAN ONE row matches the same id (PostgREST's PGRST116), which this
+  // route was previously conflating into the same generic message. Given
+  // this repeatedly-repaired database (renumbering/dedup scripts run
+  // against `bookings` more than once this month), a stray duplicate row
+  // sharing an id is a real possibility this route shouldn't hard-fail on
+  // — it only needs contact details to log a follow-up, not a strict
+  // uniqueness guarantee, so taking the first match is safe here even if
+  // the underlying duplicate is worth cleaning up separately.
+  const { data: bookingRows, error: bookingErr } = await supabaseAdmin
     .from('bookings')
     .select('id, lead_id, tracking_id, customer_email, customer_phone')
     .eq('id', booking_id)
-    .single()
+    .limit(1)
+
+  const booking = bookingRows?.[0] ?? null
 
   if (bookingErr || !booking) {
-    return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    console.error('[customer-follow-ups] booking lookup failed', { booking_id, error: bookingErr?.message, code: bookingErr?.code })
+    return NextResponse.json({
+      error: 'Booking not found',
+      // Surfaced for admin-side debugging only (this route is
+      // admin-authenticated, never customer-facing) — the previous generic
+      // message gave no way to tell "genuinely no such id" apart from a
+      // transient query error without checking server logs.
+      detail: bookingErr ? `${bookingErr.code ?? ''} ${bookingErr.message}`.trim() : `no row matched booking_id=${booking_id}`,
+    }, { status: 404 })
   }
 
   let status: 'sent' | 'failed' = 'sent'

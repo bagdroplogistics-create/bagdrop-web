@@ -148,7 +148,7 @@ export default function ReviewPanel({ target, adminKey, compact }: { target: Rev
       }),
     })
     const d = await res.json().catch(() => ({}))
-    if (!res.ok) throw new Error(d.error ?? 'Failed to record review request')
+    if (!res.ok) throw new Error(d.detail ? `${d.error ?? 'Failed to record review request'} (${d.detail})` : (d.error ?? 'Failed to record review request'))
     return d as { success: boolean; status: 'sent' | 'failed'; error?: string | null }
   }
 

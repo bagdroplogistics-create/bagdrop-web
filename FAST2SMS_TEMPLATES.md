@@ -325,18 +325,28 @@ variables for its length." v4 dropped 3 fields to 15 variables (kept the
 same terse `Label: {{n}}` style) — **rejected again on the same grounds**
 at 13 (Tracking ID/Inquiry ID/Service were already trimmed further by
 then). Deleting fields barely moves Meta's actual static-text-to-variable
-ratio, since each field removed takes its own ~1-word label with it. **v5
-(current)** keeps all 15 variables (all fields the founder wants) and
-instead adds real static wording — a longer title, a full sentence around
-the booking-index pair, and a closing sentence — mirroring the
-already-approved `new_inquiry_notification` template's proven label/
-sentence density instead of guessing at a ratio.
+ratio, since each field removed takes its own ~1-word label with it. v5
+kept all 15 variables (all fields the founder wants) and instead added
+real static wording — a longer title AS THE BODY'S FIRST LINE, a full
+sentence around the booking-index pair, and a closing sentence — mirroring
+the already-approved `new_inquiry_notification` template's proven label/
+sentence density instead of guessing at a ratio. **v6 (current)** — v5 got
+approved, then the founder added a WhatsApp template **Header** component
+("Confirmed & Ongoing Bookings Report") on top of that same Body, which
+made the title show 2-3x in the delivered message (Header + the Body's own
+title line, sometimes plus this app's own message-log preview repeating
+it again). Fix: the title now lives ONLY in the Header field — the Body's
+static title line is deleted and the Body starts directly at
+"Report Date: {{1}}".
 
-**Variables (15):**
+**Header component (new in v6):**
+```
+Confirmed & Ongoing Bookings Report
+```
+
+**Body — Variables (15):**
 
 ```
-Confirmed & Ongoing Bookings Report for Bagdrop Operations
-
 Report Date: {{1}}
 Report Time: {{2}}
 Total Confirmed Bookings: {{3}}
@@ -356,6 +366,14 @@ Payment Status: {{15}}
 
 Please review this booking and take any necessary action.
 ```
+
+**Editing the already-approved template:** since this changes visible
+Header/Body content on a template that's already been approved, Fast2SMS/
+Meta will most likely require re-review after you save the edit — expect
+the template's Status to drop back to Pending for a bit, same as the
+original submission. If Fast2SMS's editor lets you edit Header/Body text
+without triggering re-review, even better, but don't assume that's the
+case going in.
 
 Sample values for Meta review (one per variable, in order):
 ```
