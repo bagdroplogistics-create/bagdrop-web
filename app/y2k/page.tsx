@@ -35,6 +35,12 @@ const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
 const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport', 'Other']
 const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 const WEDDING_VENUE = 'Taj Aravali, Udaipur'
+// Return Pickup is a reversed leg, not a copy of the onward one: bags are
+// collected FROM the venue (fixed — the wedding runs 17th-18th, so nothing
+// is ready for collection until the day after) and delivered back to the
+// guest's own address entered above. Fixed, not user-editable — matches
+// how the (also-fixed) Delivery location field above is presented.
+const Y2K_RETURN_PICKUP_DATE = '2026-12-19'
 
 // ── Design tokens — exact hex values from the approved reference ──────
 const Y = {
@@ -223,40 +229,46 @@ function BookingForm() {
     setReturnCode(''); setReturnFailed(false)
     try {
       const resolvedPickupCity = f.pickupCity === 'Other' ? f.pickupCityOther.trim() : f.pickupCity
-      // Shared by both legs — Return Pickup (below) reuses every one of
-      // these fields exactly as entered above; only `bags` and the notes
-      // marker differ per leg.
-      const basePayload = {
-        name: f.name, phone: digits, email: f.email,
-        guests: '1',
-        pickupAddress: `${f.pickupAddress}, ${resolvedPickupCity}`,
-        pickupCity: resolvedPickupCity,
-        pickupTime: f.pickupTime,
-        deliveryAddress: WEDDING_VENUE,
-        arrivalDate: f.pickupDate,
-      }
+      const resolvedPickupAddress = `${f.pickupAddress}, ${resolvedPickupCity}`
 
       const res = await fetch('/api/y2k/inquiry', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...basePayload, bags: String(f.bags), requests: f.notes }),
+        body: JSON.stringify({
+          name: f.name, phone: digits, email: f.email,
+          guests: '1',
+          bags: String(f.bags),
+          pickupAddress: resolvedPickupAddress,
+          pickupCity: resolvedPickupCity,
+          pickupTime: f.pickupTime,
+          deliveryAddress: WEDDING_VENUE,
+          arrivalDate: f.pickupDate,
+          requests: f.notes,
+        }),
       })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error ?? 'Submission failed')
       setCode(d.trackingId ?? '')
 
-      // ── Return Pickup — same details, independent bag count ──────────
-      // A second, separate inquiry/booking (own tracking ID), not a
-      // variation of the onward one — same guest/pickup/delivery/date/time,
-      // just tagged as a return pickup in the internal notes so ops can
-      // tell the two apart on the dashboard. Never blocks the onward
-      // confirmation above if this second call fails.
+      // ── Return Pickup — reversed leg, independent date/location/bags ──
+      // A second, separate inquiry/booking (own tracking ID) — NOT a copy
+      // of the onward leg. Bags are collected FROM the venue (fixed date,
+      // the day after the wedding ends) and delivered back to the guest's
+      // own address entered above. Never blocks the onward confirmation
+      // above if this second call fails.
       if (f.returnPickup) {
         try {
           const returnRes = await fetch('/api/y2k/inquiry', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              ...basePayload,
+              name: f.name, phone: digits, email: f.email,
+              guests: '1',
               bags: String(f.returnBags),
+              pickupAddress: WEDDING_VENUE,
+              pickupCity: 'Udaipur',
+              pickupTime: f.pickupTime,
+              deliveryAddress: resolvedPickupAddress,
+              deliveryCity: resolvedPickupCity,
+              arrivalDate: Y2K_RETURN_PICKUP_DATE,
               requests: ['[Return Pickup]', f.notes].filter(Boolean).join(' — '),
               // Tells the API to label this leg distinctly (Service column +
               // internal WhatsApp ping) and reference the onward booking's
@@ -427,19 +439,33 @@ function BookingForm() {
                 <textarea value={form.notes} onChange={e=>field('notes')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} rows={3} placeholder="Fragile items, extra bags, hotel name, gate codes…" style={{ ...fi, height:'auto', padding:'14px 16px', resize:'vertical', lineHeight:1.6 }}/>
               </div>
 
-              {/* Return Pickup — optional second leg, same guest/pickup/
-                  delivery/date/time as above; only the bag count differs.
-                  See submit() for how this fires a second inquiry. */}
+              {/* Return Pickup — optional SECOND, REVERSED leg: bags
+                  collected from the venue (fixed date, day after the
+                  wedding ends) and delivered back to the guest's own
+                  address entered above. Not a copy of the onward leg —
+                  only the guest's identity/contact carries over. See
+                  submit() for how this fires a second inquiry with its own
+                  fixed pickup date/location. */}
               <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1', marginTop:4, paddingTop:20, borderTop:`1px solid ${Y.border}` }}>
                 <label style={{ display:'flex', alignItems:'center', gap:10, cursor:'pointer' }}>
                   <input type="checkbox" checked={form.returnPickup} onChange={toggleReturnPickup} style={{ width:18, height:18, accentColor:Y.darkGreen, cursor:'pointer' }}/>
                   <span style={{ fontFamily:FONT_BODY, fontSize:14, fontWeight:600, color:Y.textDark }}>Add a return pickup</span>
-                  <span style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted }}>(same guest, address, date &amp; time — just returning your bags)</span>
+                  <span style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted }}>(we&apos;ll collect your bags from the venue and deliver them back to you)</span>
                 </label>
                 {form.returnPickup && (
-                  <div style={{ marginTop:10, maxWidth:280 }}>
-                    <label style={label}>Return — number of bags</label>
-                    <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between', marginTop:8 }}>
+                  <div style={{ marginTop:10 }}>
+                    <div className="wd-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20, maxWidth:560 }}>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={label}>Return pickup location <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(fixed)</span></label>
+                        <input disabled value={WEDDING_VENUE} style={{ ...fi, color:Y.statLabel, cursor:'not-allowed', opacity:0.85 }}/>
+                      </div>
+                      <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                        <label style={label}>Return pickup date <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(fixed)</span></label>
+                        <input disabled value="19 December 2026" style={{ ...fi, color:Y.statLabel, cursor:'not-allowed', opacity:0.85 }}/>
+                      </div>
+                    </div>
+                    <label style={{ ...label, display:'block', marginTop:16 }}>Return — number of bags</label>
+                    <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between', marginTop:8, maxWidth:280 }}>
                       <button type="button" onClick={decReturnBags} aria-label="Fewer bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>−</button>
                       <span style={{ fontFamily:FONT_DISPLAY, fontSize:24, color:Y.textDark, minWidth:32, textAlign:'center' }}>{form.returnBags}</span>
                       <button type="button" onClick={incReturnBags} aria-label="More bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>+</button>

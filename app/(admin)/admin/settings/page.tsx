@@ -2,11 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Settings, Building2, CreditCard, Bell, Shield, Save, CheckCircle } from 'lucide-react'
+import { Settings, Building2, CreditCard, Bell, Shield, Save, CheckCircle, RefreshCw } from 'lucide-react'
 import { getRoleFromSession, can } from '@/lib/roles'
 import type { AdminRole } from '@/lib/admin-auth'
 
-type Tab = 'company' | 'payment' | 'notifications' | 'roles'
+type Tab = 'company' | 'payment' | 'notifications' | 'roles' | 'system'
 
 interface SettingsMap {
   company_name?:       string
@@ -33,6 +33,7 @@ const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
   { id: 'payment',       label: 'Payment',        icon: <CreditCard className="h-4 w-4" /> },
   { id: 'notifications', label: 'Notifications',  icon: <Bell className="h-4 w-4" /> },
   { id: 'roles',         label: 'User Roles',     icon: <Shield className="h-4 w-4" /> },
+  { id: 'system',        label: 'System',         icon: <RefreshCw className="h-4 w-4" /> },
 ]
 
 const inp = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400'
@@ -47,6 +48,13 @@ export default function SettingsPage() {
   const [saving,   setSaving]     = useState(false)
   const [saved,    setSaved]      = useState(false)
   const [error,    setError]      = useState('')
+
+  // Manual tracking-number counter resync — see app/api/admin/repair/
+  // resync-number-counter/route.ts for the full reasoning. Never runs
+  // automatically; only this button triggers it.
+  const [resyncing, setResyncing] = useState(false)
+  const [resyncResult, setResyncResult] = useState<{ message: string; results: Record<string, { before: number | null; after: number; unchanged: boolean }> } | null>(null)
+  const [resyncError, setResyncError] = useState('')
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key')
@@ -79,6 +87,27 @@ export default function SettingsPage() {
     if (res.ok) { setSaved(true); setTimeout(() => setSaved(false), 3000) }
     else { const j = await res.json().catch(() => ({})); setError(j.error ?? 'Failed to save') }
     setSaving(false)
+  }
+
+  async function resyncCounters() {
+    if (!confirm(
+      'This moves the BDA/BDL/BDQ tracking-number counters back down to match the real highest number still in the database for this year — only use this after manually deleting trailing dummy/test inquiries. It will NOT reissue any number still attached to a real record. Continue?'
+    )) return
+    setResyncing(true); setResyncError(''); setResyncResult(null)
+    try {
+      const res = await fetch('/api/admin/repair/resync-number-counter', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ series: ['BDA', 'BDL', 'BDQ'] }),
+      })
+      const j = await res.json()
+      if (!res.ok) throw new Error(j.error ?? 'Resync failed')
+      setResyncResult(j)
+    } catch (e) {
+      setResyncError(e instanceof Error ? e.message : 'Resync failed')
+    } finally {
+      setResyncing(false)
+    }
   }
 
   if (!authed) return null
@@ -273,6 +302,49 @@ export default function SettingsPage() {
                 ))}
               </div>
               <p className="mt-4 text-xs text-gray-400">To change a role's access level, update the corresponding environment variable in your deployment settings (e.g. Vercel → Environment Variables).</p>
+            </div>
+          )}
+
+          {tab === 'system' && (
+            <div className="max-w-xl space-y-4">
+              <h2 className="text-base font-bold text-gray-900">Tracking Number Counter</h2>
+              <p className="text-xs text-gray-500">
+                BDA (booking), BDL (lead), and BDQ (quote) numbers come from a counter that only ever moves forward automatically — it
+                never re-checks live data, which is what keeps two bookings from ever getting the same number. That also means deleting
+                a test/dummy inquiry leaves a permanent gap in the sequence by design.
+              </p>
+              {!isAdmin ? (
+                <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-700">
+                  <strong>Admin only.</strong> Only Admins can resync the number counters.
+                </div>
+              ) : (
+                <div className="rounded-xl border border-gray-100 p-4">
+                  <h3 className="mb-1 text-xs font-bold text-gray-700">Resync Counter to Real Data</h3>
+                  <p className="mb-3 text-xs text-gray-500">
+                    Use this only after you&apos;ve manually deleted trailing dummy/test inquiries from the database and want the next
+                    real booking to continue the sequence without the gap. It moves each counter down to match the real highest number
+                    still on record this year — it can never reissue a number still attached to an existing row.
+                  </p>
+                  <button onClick={resyncCounters} disabled={resyncing}
+                    className="flex items-center gap-2 rounded-lg bg-gray-900 px-4 py-2 text-sm font-semibold text-white hover:bg-gray-800 disabled:opacity-50">
+                    <RefreshCw className={`h-4 w-4 ${resyncing ? 'animate-spin' : ''}`} />
+                    {resyncing ? 'Resyncing…' : 'Resync BDA / BDL / BDQ counters'}
+                  </button>
+
+                  {resyncError && <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-xs text-red-600">{resyncError}</p>}
+
+                  {resyncResult && (
+                    <div className="mt-3 rounded-lg bg-green-50 px-3 py-2.5 text-xs text-green-800">
+                      <p className="mb-1.5 font-semibold">{resyncResult.message}</p>
+                      {Object.entries(resyncResult.results).map(([s, r]) => (
+                        <p key={s} className="text-green-700">
+                          {s}: {r.before ?? '—'} → {r.after} {r.unchanged && '(no change needed)'}
+                        </p>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
         </main>

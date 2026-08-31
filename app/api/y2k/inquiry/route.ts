@@ -12,6 +12,11 @@ import { alertCreationFailure } from '@/lib/creation-failure-alert'
 // location dropdown, so a request built by hand (devtools, curl, editing
 // the form's values directly) can't submit an out-of-window pickup.
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
+// Return Pickup is a reversed leg (venue → guest), not a copy of the
+// onward one — bags aren't ready for collection from the venue until the
+// day after the wedding ends. Fixed, single date — mirrors
+// Y2K_RETURN_PICKUP_DATE in app/y2k/page.tsx.
+const Y2K_RETURN_PICKUP_DATE = '2026-12-19'
 // Preset dropdown options on the frontend. 'Other' isn't a real location —
 // picking it reveals a free-text field, and *that* text is what's actually
 // sent as pickupCity, so this route never sees the literal word "Other".
@@ -28,7 +33,7 @@ const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId } = body
     // returnPickup / originalTrackingId: set only by the second call
     // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
     // pickup". Used below purely to make this leg visibly distinct in the
@@ -50,7 +55,13 @@ export async function POST(req: NextRequest) {
     // what the guest actually selected. Fixed as part of wiring up this
     // validation, since restricting the date picker on the frontend would
     // otherwise have had no effect on what actually gets saved/serviced.
-    if (!arrivalDate || !Y2K_PICKUP_DATES.includes(arrivalDate)) {
+    // Return Pickup is a separate, fixed date (see Y2K_RETURN_PICKUP_DATE) —
+    // re-validated here too, same reasoning as the onward window below.
+    if (isReturnPickup) {
+      if (arrivalDate !== Y2K_RETURN_PICKUP_DATE) {
+        return NextResponse.json({ error: 'Return pickup date must be 19 December 2026.' }, { status: 400 })
+      }
+    } else if (!arrivalDate || !Y2K_PICKUP_DATES.includes(arrivalDate)) {
       return NextResponse.json({ error: 'Pickup date must be 10, 11, or 12 December 2026.' }, { status: 400 })
     }
     // Pickup time is now a morning/afternoon/evening slot id (matches
@@ -86,11 +97,14 @@ export async function POST(req: NextRequest) {
         // Was hardcoded 'Udaipur' → 'Udaipur' regardless of where the guest
         // actually is — showed as "Udaipur → Udaipur" on the dashboard's
         // Route column for every single #Y2K booking, onward AND return
-        // alike (2026-08-31 bug report). The real movement is: guest's
-        // pickup city (whatever they selected/typed — Mumbai, Mumbai
-        // Airport, or custom) → the fixed wedding venue in Udaipur.
+        // alike (2026-08-31 bug report). Onward: guest's pickup city
+        // (whatever they selected/typed — Mumbai, Mumbai Airport, or
+        // custom) → the fixed wedding venue in Udaipur. Return: reversed —
+        // venue → the guest's own city, carried separately as
+        // `deliveryCity` since `pickupCity` on a return-leg request is
+        // itself 'Udaipur' (see app/y2k/page.tsx's return-leg payload).
         from_city:      pickupCity?.trim() || 'Mumbai',
-        to_city:        'Udaipur',
+        to_city:        isReturnPickup ? (deliveryCity?.trim() || 'Mumbai') : 'Udaipur',
         pickup_address: pickupAddress || null,
         drop_address:   deliveryAddress || null,
         // Was hardcoded to the wedding date ('2026-12-17') — now uses the
@@ -191,9 +205,10 @@ export async function POST(req: NextRequest) {
             service_type:     'destination-weddings',
             service_interest: 'destination-weddings',
             // Same fix as the booking insert above — real pickup city →
-            // Udaipur venue, not a hardcoded 'Udaipur' → 'Udaipur'.
+            // Udaipur venue (or reversed, for the return leg), not a
+            // hardcoded 'Udaipur' → 'Udaipur'.
             from_city:        pickupCity?.trim() || 'Mumbai',
-            to_city:          'Udaipur',
+            to_city:          isReturnPickup ? (deliveryCity?.trim() || 'Mumbai') : 'Udaipur',
             travel_date:      arrivalDate,
             pickup_date:      arrivalDate,
             pickup_address:   pickupAddress || null,
@@ -240,7 +255,7 @@ export async function POST(req: NextRequest) {
               customerEmail:   email?.trim().toLowerCase() || null,
               serviceType:     'destination-weddings',
               fromCity:        pickupCity?.trim() || 'Mumbai',
-              toCity:          'Udaipur',
+              toCity:          isReturnPickup ? (deliveryCity?.trim() || 'Mumbai') : 'Udaipur',
               pickupAddress:   pickupAddress || null,
               deliveryAddress: deliveryAddress || null,
               pickupDate:      arrivalDate,
