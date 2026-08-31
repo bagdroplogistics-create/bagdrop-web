@@ -61,18 +61,40 @@ export async function GET(req: NextRequest) {
   const offset         = (page - 1) * limit
 
   // ── Lead-id lookup: return single booking linked to this lead ──────────────
+  // 2026-08-27 fix: this used to query bookings.lead_id directly, but that
+  // column does not exist (confirmed in production — Postgres error 42703
+  // — same root cause already documented and fixed in
+  // lib/indemnity-token.ts's resolveIndemnityToken; that comment flagged
+  // this exact endpoint as still broken but it was never actually fixed
+  // until now). The relationship only exists in the other direction —
+  // leads.booking_id references bookings.id — so resolve it from there:
+  // look up the lead's booking_id first, then fetch that booking by its
+  // real id. Matches app/(admin)/admin/quotes/view/[lead_id]/page.tsx's
+  // own comment describing this as the fallback for when a lead's
+  // booking_id column itself is null but a booking still references it —
+  // that case simply has no booking to find here either way.
   if (leadId) {
-    const { data, error } = await supabaseAdmin
-      .from('bookings')
-      .select('*')
-      .eq('lead_id', leadId)
-      .order('created_at', { ascending: false })
-      .limit(1)
+    const { data: leadRow, error: leadErr } = await supabaseAdmin
+      .from('leads')
+      .select('booking_id')
+      .eq('id', leadId)
       .maybeSingle()
-    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 })
+
+    let data: Record<string, unknown> | null = null
+    if (leadRow?.booking_id) {
+      const bookingRes = await supabaseAdmin
+        .from('bookings')
+        .select('*')
+        .eq('id', leadRow.booking_id)
+        .maybeSingle()
+      if (bookingRes.error) return NextResponse.json({ error: bookingRes.error.message }, { status: 500 })
+      data = bookingRes.data
+    }
+
     // Attach the real acquisition source (see attachLeadSource below) so
     // this branch stays consistent with the main list.
-    const withSource = data ? (await attachLeadSource([data]))[0] : null
+    const withSource = data ? (await attachLeadSource([data as { id: string }]))[0] : null
     return NextResponse.json({ booking: withSource, bookings: withSource ? [withSource] : [], total: withSource ? 1 : 0 })
   }
 

@@ -93,18 +93,24 @@ export async function POST(req: NextRequest) {
   // text itself is editable by the admin.
   //
   // .limit(1) instead of .single() — 2026-08-27 fix. .single() hard-errors
-  // ("Booking not found") not just when zero rows match but ALSO when MORE
-  // THAN ONE row matches the same id (PostgREST's PGRST116), which this
-  // route was previously conflating into the same generic message. Given
-  // this repeatedly-repaired database (renumbering/dedup scripts run
-  // against `bookings` more than once this month), a stray duplicate row
-  // sharing an id is a real possibility this route shouldn't hard-fail on
-  // — it only needs contact details to log a follow-up, not a strict
-  // uniqueness guarantee, so taking the first match is safe here even if
-  // the underlying duplicate is worth cleaning up separately.
+  // not just when zero rows match but ALSO when MORE THAN ONE row matches
+  // the same id (PostgREST's PGRST116); this route only needs contact
+  // details to log a follow-up, not a strict uniqueness guarantee, so
+  // taking the first match is safer here.
+  //
+  // NOTE: bookings has no `lead_id` column — that relationship only exists
+  // in the other direction (leads.booking_id references bookings.id; see
+  // supabase/migrations/20260618_quotes_version_leads_booking.sql). This
+  // route used to select a nonexistent `bookings.lead_id`, which made
+  // EVERY call here fail with Postgres error 42703 ("column does not
+  // exist") — surfaced by the founder as a persistent "Booking not found"
+  // (the generic 404 this route used to return for any lookup error,
+  // masking the real schema mismatch). Fixed by dropping it from the
+  // select below and resolving the lead separately, from the correct
+  // direction, right before the insert.
   const { data: bookingRows, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, lead_id, tracking_id, customer_email, customer_phone')
+    .select('id, tracking_id, customer_email, customer_phone')
     .eq('id', booking_id)
     .limit(1)
 
@@ -155,6 +161,19 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // customer_follow_ups.lead_id is purely optional (nullable FK, ON DELETE
+  // SET NULL — see 20260820_customer_follow_ups.sql) — resolved here from
+  // the correct direction (leads.booking_id -> bookings.id) since bookings
+  // itself has no lead_id column (see the lookup comment above). Never
+  // blocks the follow-up on failure; a booking with no matching lead row
+  // just logs with lead_id: null, same as before this fix.
+  const { data: linkedLead } = await supabaseAdmin
+    .from('leads')
+    .select('id')
+    .eq('booking_id', booking.id)
+    .limit(1)
+    .maybeSingle()
+
   // follow_up_type/outstanding_amount only exist after
   // 20260821_customer_follow_ups_payment_type.sql has been run. Only
   // include them for a payment-type follow-up (the new feature) so the
@@ -162,7 +181,7 @@ export async function POST(req: NextRequest) {
   // that migration hasn't been applied yet.
   const insertRow: Record<string, unknown> = {
     booking_id: booking.id,
-    lead_id:    booking.lead_id ?? null,
+    lead_id:    linkedLead?.id ?? null,
     method,
     status,
     subject:    method === 'email' ? subject!.trim() : null,
