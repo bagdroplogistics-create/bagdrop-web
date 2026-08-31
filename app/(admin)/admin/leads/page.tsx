@@ -973,6 +973,18 @@ function LeadsPageInner() {
     return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
   }
 
+  // For DATE-ONLY columns (pickup_date etc.) as opposed to full timestamps
+  // (created_at). Supabase returns these as plain "YYYY-MM-DD" strings,
+  // which `new Date(...)` parses as UTC midnight — formatDate() above then
+  // renders that in the viewing browser's own local timezone, silently
+  // rolling the date back a day for any admin not on a timezone at/ahead of
+  // UTC (2026-08-31 bug report: pickup date shown didn't match what the
+  // customer actually selected). Pinning timeZone to 'UTC' fixes it.
+  function formatDateOnly(d: string | null) {
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+  }
+
   if (!authed) return null
 
   return (
@@ -1165,7 +1177,7 @@ function LeadsPageInner() {
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{formatDate(l.pickup_date)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{formatDateOnly(l.pickup_date)}</td>
                       <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{l.bags_count ?? '—'}</td>
                       <td className="px-4 py-3">
                         {l.source ? (

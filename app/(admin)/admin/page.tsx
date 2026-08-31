@@ -188,6 +188,22 @@ function formatDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+// For DATE-ONLY columns (pickup_date, delivery_date, etc.) as opposed to
+// full timestamps (created_at). Supabase returns these as plain
+// "YYYY-MM-DD" strings, which `new Date(...)` parses as UTC midnight per
+// the JS spec. formatDate() above renders in the viewing browser's own
+// local timezone — fine for a real timestamp like created_at, but for a
+// date-only value that silently rolls the date back a day for any admin
+// whose machine isn't set to a timezone at/ahead of UTC (2026-08-31 bug
+// report: the pickup date shown on the dashboard didn't match what the
+// customer actually selected). Pinning timeZone to 'UTC' guarantees the
+// calendar date shown always matches the date-only value as stored,
+// regardless of the viewer's own clock/timezone settings.
+function formatDateOnly(d: string | null) {
+  if (!d) return '—'
+  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, color: '#6b7280', bg: '#f3f4f6', icon: null }
   return (
@@ -438,7 +454,7 @@ function EditModal({ booking, adminKey, onSaved, onClose }: {
               Dashboard Analytics reporting month
             </p>
             <p className="text-[11px] text-amber-700">
-              Defaults to this booking's pickup date ({booking.pickup_date ? formatDate(booking.pickup_date) : '—'}).
+              Defaults to this booking's pickup date ({booking.pickup_date ? formatDateOnly(booking.pickup_date) : '—'}).
               Only set this if that's the wrong month for Current/Last Month Completed Bookings.
             </p>
             <div className="flex items-center gap-2">
@@ -1904,7 +1920,7 @@ export default function AdminDashboard() {
                           })()}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">{b.service_label}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600">{formatDate(b.pickup_date)}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{formatDateOnly(b.pickup_date)}</td>
                         <td className="px-4 py-3 text-sm font-semibold text-gray-900">{b.total_bags}</td>
                         <td className="px-4 py-3"><StatusBadge status={b.status} /></td>
                       </tr>

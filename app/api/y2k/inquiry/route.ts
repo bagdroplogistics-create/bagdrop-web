@@ -83,7 +83,13 @@ export async function POST(req: NextRequest) {
         customer_phone: '+91' + digits,
         service_type:   'destination-weddings',
         service_label:  isReturnPickup ? 'Destination Wedding — #Y2K (Return Pickup)' : 'Destination Wedding — #Y2K',
-        from_city:      'Udaipur',
+        // Was hardcoded 'Udaipur' → 'Udaipur' regardless of where the guest
+        // actually is — showed as "Udaipur → Udaipur" on the dashboard's
+        // Route column for every single #Y2K booking, onward AND return
+        // alike (2026-08-31 bug report). The real movement is: guest's
+        // pickup city (whatever they selected/typed — Mumbai, Mumbai
+        // Airport, or custom) → the fixed wedding venue in Udaipur.
+        from_city:      pickupCity?.trim() || 'Mumbai',
         to_city:        'Udaipur',
         pickup_address: pickupAddress || null,
         drop_address:   deliveryAddress || null,
@@ -184,7 +190,9 @@ export async function POST(req: NextRequest) {
             status:           'new',
             service_type:     'destination-weddings',
             service_interest: 'destination-weddings',
-            from_city:        'Udaipur',
+            // Same fix as the booking insert above — real pickup city →
+            // Udaipur venue, not a hardcoded 'Udaipur' → 'Udaipur'.
+            from_city:        pickupCity?.trim() || 'Mumbai',
             to_city:          'Udaipur',
             travel_date:      arrivalDate,
             pickup_date:      arrivalDate,
@@ -231,7 +239,7 @@ export async function POST(req: NextRequest) {
               customerPhone:   '+91' + digits,
               customerEmail:   email?.trim().toLowerCase() || null,
               serviceType:     'destination-weddings',
-              fromCity:        'Udaipur',
+              fromCity:        pickupCity?.trim() || 'Mumbai',
               toCity:          'Udaipur',
               pickupAddress:   pickupAddress || null,
               deliveryAddress: deliveryAddress || null,
