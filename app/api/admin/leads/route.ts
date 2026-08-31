@@ -108,6 +108,9 @@ export async function GET(req: NextRequest) {
   // reflect that. Same read-only, computed-not-stored pattern as
   // effective_status below.
   let completedLeadIds: string[] = []
+  // See the Cancel Booking block below (inside the same `if (!deleted)`) for
+  // how this is populated.
+  let cancelledLeadIds: string[] = []
   if (!deleted) {
     const { data: activeBookings } = await supabaseAdmin
       .from('bookings')
@@ -137,6 +140,28 @@ export async function GET(req: NextRequest) {
         .not('quote_number', 'is', null)
       completedLeadIds = (completedLeads ?? []).map(l => l.id)
     }
+
+    // Cancel Booking feature (2026-08-31) — mirrors confirmedLeadIds/
+    // completedLeadIds above, but deliberately WITHOUT the
+    // .not('quote_number', 'is', null) filter those two use: a booking can
+    // be cancelled before a quote was ever generated (the most common case
+    // — "we can't serve this route" on a brand-new website inquiry), so
+    // requiring a quote_number here would hide exactly the inquiries this
+    // feature exists to close out. Powers both the `status === 'cancelled'`
+    // filter branch below and effective_status further down, so a
+    // cancelled lead's badge and the "Status → Cancelled" filter agree.
+    const { data: cancelledBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id')
+      .eq('status', 'cancelled')
+    const cancelledBookingIds = (cancelledBookings ?? []).map(b => b.id)
+    if (cancelledBookingIds.length > 0) {
+      const { data: cancelledLeads } = await supabaseAdmin
+        .from('leads')
+        .select('id')
+        .in('booking_id', cancelledBookingIds)
+      cancelledLeadIds = (cancelledLeads ?? []).map(l => l.id)
+    }
   }
 
   let query = supabaseAdmin
@@ -161,6 +186,13 @@ export async function GET(req: NextRequest) {
       // an unfiltered (i.e. wrong) list.
       query = confirmedLeadIds.length > 0
         ? query.in('id', confirmedLeadIds)
+        : query.eq('id', '00000000-0000-0000-0000-000000000000')
+    } else if (status === 'cancelled') {
+      // Same pattern as 'confirmed' above — 'cancelled' isn't a real
+      // leads.status value either, it's the linked booking's status, so
+      // this filters on cancelledLeadIds instead of a plain .eq('status', ...).
+      query = cancelledLeadIds.length > 0
+        ? query.in('id', cancelledLeadIds)
         : query.eq('id', '00000000-0000-0000-0000-000000000000')
     } else {
       query = query.eq('status', status)
@@ -249,6 +281,10 @@ export async function GET(req: NextRequest) {
         fallbackQuery = confirmedLeadIds.length > 0
           ? fallbackQuery.in('id', confirmedLeadIds)
           : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
+      } else if (status === 'cancelled') {
+        fallbackQuery = cancelledLeadIds.length > 0
+          ? fallbackQuery.in('id', cancelledLeadIds)
+          : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
       } else {
         fallbackQuery = fallbackQuery.eq('status', status)
         if (confirmedLeadIds.length > 0) {
@@ -327,9 +363,19 @@ export async function GET(req: NextRequest) {
       ? 'completed'
       : confirmedLeadIds.includes(l.id)
         ? (bookingStatusMap[l.booking_id ?? ''] ?? 'confirmed')
-        : (l.quote_number && quotedBookingStatusMap[l.booking_id ?? ''])
-          ? quotedBookingStatusMap[l.booking_id ?? '']
-          : l.status,
+        // Cancel Booking feature (2026-08-31) — checked before the
+        // quote_number branch below, because a cancelled inquiry often has
+        // NO quote_number at all (cancelled straight from the Dashboard
+        // before any quote was generated), so it would otherwise fall
+        // straight through to the lead's stale raw `status` ('new', etc.)
+        // and never show as Cancelled here. cancelledLeadIds already
+        // covers that case (no quote_number requirement — see where it's
+        // built above), unlike quotedBookingStatusMap.
+        : cancelledLeadIds.includes(l.id)
+          ? 'cancelled'
+          : (l.quote_number && quotedBookingStatusMap[l.booking_id ?? ''])
+            ? quotedBookingStatusMap[l.booking_id ?? '']
+            : l.status,
     // 2026-08-25 fix — explicit, unambiguous "has this lead actually
     // reached Confirmed (payment received/approved) or later" flag, kept
     // SEPARATE from effective_status above. The Leads tab's small orange

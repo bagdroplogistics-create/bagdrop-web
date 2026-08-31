@@ -57,6 +57,23 @@ export const ACTIVE_BOOKING_STATUSES = STATUS_ORDER.slice(
   STATUS_ORDER.indexOf('completed'),
 )
 
+// Every status BEFORE payment has actually come in — 'inquiry' through
+// 'payment_pending'. This is the "Admin hasn't committed to fulfilling this
+// yet" range the Cancel Booking feature (2026-08-31) is scoped to: an
+// inquiry/quote the admin decides not to proceed with (out of service area,
+// route unsupported, customer declined, etc.). Deliberately excludes
+// 'payment_received' onward — once money has actually come in, cancelling
+// is a different, higher-stakes operation this first version doesn't cover
+// (see the founder spec: "be careful with confirmed bookings... focus this
+// functionality on unconfirmed inquiries/bookings"). Also excludes the
+// existing terminal branches 'cancelled'/'rejected' (nothing to cancel
+// twice) since those aren't in STATUS_ORDER at all, so a plain slice
+// naturally never includes them.
+export const UNCONFIRMED_BOOKING_STATUSES = STATUS_ORDER.slice(
+  0,
+  STATUS_ORDER.indexOf('payment_received'),
+)
+
 export function isForwardMove(oldStatus: string | null | undefined, newStatus: string): boolean {
   if (!oldStatus) return true
   const oldIdx = STATUS_ORDER.indexOf(oldStatus)

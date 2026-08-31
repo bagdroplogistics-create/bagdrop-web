@@ -99,6 +99,19 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   // OUT of EDITABLE_LEAD_STATUSES below since it can never be set directly
   // on a lead.
   confirmed: { label: 'Confirmed', color: '#0e7490', bg: '#cffafe' },
+  // Same treatment as 'confirmed' above — not a real leads.status value,
+  // it's the linked booking's real status (bookings.status = 'cancelled',
+  // set via the Dashboard's Cancel Booking action, 2026-08-31). Adding it
+  // here is what makes "Cancelled" appear as a Status filter option below
+  // (the dropdown is built by iterating this object) and lets a cancelled
+  // lead's badge fall back to this if BOOKING_STATUS_CONFIG's own
+  // 'cancelled' entry is ever bypassed. See GET /api/admin/leads' matching
+  // `status === 'cancelled'` branch for how the filter actually queries —
+  // cancelled inquiries stay visible in the table (never deleted), just
+  // findable via this filter, per founder spec: "Cancelled inquiries should
+  // remain visible in the Leads table when the Admin selects Status →
+  // Cancelled."
+  cancelled: { label: 'Cancelled', color: '#dc2626', bg: '#fee2e2' },
 }
 
 // The lead-funnel statuses an admin can actually set via the Edit Quote

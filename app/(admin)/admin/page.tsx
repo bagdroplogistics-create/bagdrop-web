@@ -15,12 +15,13 @@ import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 import ReviewPanel from '@/components/admin/ReviewPanel'
+import CancelBookingPanel from '@/components/admin/CancelBookingPanel'
 import { resolveSource } from '@/lib/lead-source'
 // 2026-08-24 fix: import from lib/booking-status.ts (zero imports, client-safe)
 // rather than lib/lifecycle-notifications.ts (which imports supabaseAdmin —
 // unsafe to bundle into a 'use client' file). Aliased because this file
 // already declares its own local ACTIVE_BOOKING_STATUSES const below.
-import { ACTIVE_BOOKING_STATUSES as SHARED_ACTIVE_BOOKING_STATUSES } from '@/lib/booking-status'
+import { ACTIVE_BOOKING_STATUSES as SHARED_ACTIVE_BOOKING_STATUSES, UNCONFIRMED_BOOKING_STATUSES } from '@/lib/booking-status'
 
 interface Booking {
   id: string
@@ -202,6 +203,24 @@ function formatDate(d: string | null) {
 function formatDateOnly(d: string | null) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
+}
+
+// Pulls the most recent { from, to, timestamp, note, changed_by } entry
+// matching a given target status out of a booking's status_history jsonb.
+// Same read-only recovery pattern already used by app/api/admin/reports/
+// detailed/route.ts's lastHistoryEntryTo() (bookings has no dedicated
+// cancellation_reason/cancelled_at column — status_history is the existing
+// source of truth this app already reads cancellation details back out of
+// for reporting; this is the same lookup, just local to this page so the
+// Cancel Booking feature's reason/notes/who/when are visible right where
+// Admin cancelled it, not only in the Reports tab).
+function lastHistoryEntryTo(history: unknown, targetStatus: string): { timestamp?: string; note?: string; changed_by?: string } | null {
+  if (!Array.isArray(history)) return null
+  const matches = history.filter((e): e is { to?: string; timestamp?: string; note?: string; changed_by?: string } =>
+    !!e && typeof e === 'object' && (e as { to?: string }).to === targetStatus)
+  if (matches.length === 0) return null
+  matches.sort((a, b) => new Date(b.timestamp ?? 0).getTime() - new Date(a.timestamp ?? 0).getTime())
+  return matches[0]
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -1938,6 +1957,21 @@ export default function AdminDashboard() {
                                 {b.pickup_address && <DetailRow icon={<MapPin className="h-3.5 w-3.5 text-orange-500" />}   label="Pickup"   val={b.pickup_address} />}
                                 {b.drop_address   && <DetailRow icon={<MapPin className="h-3.5 w-3.5 text-orange-500" />}   label="Drop"     val={b.drop_address} />}
                                 {b.notes          && <DetailRow icon={<Calendar className="h-3.5 w-3.5 text-orange-500" />} label="Notes"    val={b.notes} />}
+                                {/* Cancellation record — read back from status_history
+                                    (see lastHistoryEntryTo above), not a dedicated column.
+                                    Only ever shown once b.status is actually 'cancelled',
+                                    so this never appears for an active booking. */}
+                                {b.status === 'cancelled' && (() => {
+                                  const entry = lastHistoryEntryTo(b.status_history, 'cancelled')
+                                  return (
+                                    <>
+                                      <DetailRow icon={<X className="h-3.5 w-3.5 text-red-500" />} label="Cancellation Reason"
+                                        val={entry?.note || 'Not recorded'} />
+                                      <DetailRow icon={<Clock className="h-3.5 w-3.5 text-red-500" />} label="Cancelled At"
+                                        val={entry?.timestamp ? new Date(entry.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'} />
+                                    </>
+                                  )
+                                })()}
                               </div>
 
                               {/* —— Right panel: Actions only —— */}
@@ -1966,6 +2000,27 @@ export default function AdminDashboard() {
                                     Manage in Leads →
                                   </Link>
                                 </div>
+
+                                {/* Cancel Booking — unconfirmed inquiries only (founder
+                                    spec 2026-08-31): lets Admin manually close an inquiry
+                                    we can't/won't fulfill (out of service area, route
+                                    unsupported, customer declined, etc.) with a required
+                                    reason, instead of leaving it sitting as a stale
+                                    inquiry forever. Component itself refuses to render
+                                    outside UNCONFIRMED_BOOKING_STATUSES as a defensive
+                                    backstop — this wrapper condition is the primary gate.
+                                    Deliberately does NOT appear for confirmed/ongoing/
+                                    completed bookings — see components/admin/
+                                    CancelBookingPanel.tsx's module comment. */}
+                                {UNCONFIRMED_BOOKING_STATUSES.includes(b.status) && (
+                                  <div onClick={e => e.stopPropagation()}>
+                                    <CancelBookingPanel
+                                      adminKey={adminKey}
+                                      target={{ bookingId: b.id, bookingStatus: b.status, trackingId: b.tracking_id }}
+                                      onCancelled={fetchData}
+                                    />
+                                  </div>
+                                )}
 
                                 {/* Follow Up — Quote Created / Quote Sent only, per spec.
                                     Purely an extra manual communication option: never
