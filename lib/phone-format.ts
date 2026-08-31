@@ -56,8 +56,38 @@ export function parseStoredPhone(stored: string | null | undefined): ParsedPhone
   }
   if (!raw) return empty
 
+  // Legacy rows: bare digits, no "+" at all. Bagdrop only served India
+  // before this feature existed, so a plain 10-digit string is assumed to
+  // be an Indian mobile number that's simply missing its +91 prefix.
+  //
+  // 2026-08-31 fix — this check now runs BEFORE the parsePhoneNumberFromString
+  // attempt below, not after it. It used to run only as a fallback once that
+  // attempt "failed", but for a bare 10-digit string that attempt very often
+  // doesn't fail — it "succeeds" with a WRONG country, because prepending a
+  // bare "+" to 10 raw digits with no real country code is genuinely
+  // ambiguous, and libphonenumber-js will happily match the first few digits
+  // against some real country's calling code even though the number isn't
+  // actually valid for it. Confirmed by direct testing: a legacy Indian
+  // mobile number like "9876543210" parses as Iran (+98, national
+  // "76543210", isValid() === false) purely because "98" happens to be
+  // Iran's calling code — and the old code only checked `parsed?.country`
+  // (truthy for Iran) not `parsed.isValid()`, so it returned that bogus
+  // Iran result and never reached this legacy-India branch at all. Same
+  // false-positive hit Philippines (+63) and Turkey (+90) for other real
+  // Indian mobile prefixes during testing. Since this bare-digit legacy
+  // case is exactly what the Fast2SMS/WhatsApp send path
+  // (lib/notifications.ts's buildInternationalRecipient) and the PhoneInput
+  // edit-prefill path both rely on to correctly keep treating old Indian
+  // rows as Indian, this had to be fixed here — checking the unambiguous
+  // "no +, exactly 10 digits → assume India" rule FIRST means it can never
+  // be shadowed by an accidental foreign-country match again.
+  const digitsOnly = raw.replace(/\D/g, '')
+  if (!raw.startsWith('+') && digitsOnly.length === 10) {
+    return { iso2: 'IN', dialCode: '91', nationalNumber: digitsOnly, e164: `+91${digitsOnly}` }
+  }
+
   try {
-    const withPlus = raw.startsWith('+') ? raw : `+${raw.replace(/\D/g, '')}`
+    const withPlus = raw.startsWith('+') ? raw : `+${digitsOnly}`
     const parsed = parsePhoneNumberFromString(withPlus)
     if (parsed?.country) {
       return {
@@ -68,15 +98,7 @@ export function parseStoredPhone(stored: string | null | undefined): ParsedPhone
       }
     }
   } catch {
-    // falls through to the legacy handling below
-  }
-
-  // Legacy rows: bare digits, no "+" at all. Bagdrop only served India
-  // before this feature existed, so a plain 10-digit string is assumed to
-  // be an Indian mobile number that's simply missing its +91 prefix.
-  const digitsOnly = raw.replace(/\D/g, '')
-  if (!raw.startsWith('+') && digitsOnly.length === 10) {
-    return { iso2: 'IN', dialCode: '91', nationalNumber: digitsOnly, e164: `+91${digitsOnly}` }
+    // falls through to the final fallback below
   }
 
   return { ...empty, nationalNumber: digitsOnly, e164: digitsOnly ? `+${digitsOnly}` : '' }

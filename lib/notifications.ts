@@ -4,6 +4,12 @@
  */
 
 import { formatCustomerName } from './constants'
+// 2026-08-31 fix — see buildInternationalRecipient() below for the full
+// root-cause writeup. parseStoredPhone() is the same helper the PhoneInput
+// UI already uses to read a stored "+<dialCode><digits>" string back apart
+// (lib/phone-format.ts) — zero React/browser dependency, safe to import
+// into this server-side notification module.
+import { parseStoredPhone } from './phone-format'
 
 export type BookingStatus =
   | 'pending'
@@ -135,6 +141,40 @@ async function sendEmail(
 // Returns a result object (rather than swallowing errors) so callers that
 // need delivery status — e.g. for logging to communication_log — can see
 // exactly what happened.
+// ── Build the full international recipient number for outbound WhatsApp ──
+// (Fast2SMS and Meta Graph API sends) — 2026-08-31 fix.
+//
+// Root cause of the "+1 US number sent to +91 instead" bug: both send
+// functions below used to strip the stored phone down to bare digits and
+// either take just the LAST 10 digits (sendWhatsAppTemplateFast2SMS — see
+// old comment "Fast2SMS wants a bare 10-digit Indian mobile number") or
+// prepend "91" unless the digit string already happened to start with "91"
+// (sendWhatsAppText). Both approaches silently throw away whatever country
+// code was actually stored (e.g. "+17037129479" → digits "17037129479" →
+// last 10 = "7037129479", country code gone entirely) and hand Fast2SMS/
+// Meta a number with NO country code — which both platforms then default
+// to India for, since Bagdrop's account is Indian. This was a pure
+// send-time bug: the correct "+17037129479" was already sitting in
+// bookings.customer_phone the whole time (see PhoneInput +
+// lib/phone-format.ts's toE164(), which builds it correctly on entry) —
+// this function is what finally reads that stored value back out CORRECTLY
+// instead of re-deriving a broken one.
+//
+// parseStoredPhone() (lib/phone-format.ts) already handles every shape
+// currently in the database: a proper "+<dialCode><digits>" string parses
+// via libphonenumber-js to the real {dialCode, nationalNumber}; a legacy
+// bare 10-digit row (written before international numbers existed) is
+// still correctly assumed Indian (dialCode '91') — so existing Indian
+// customers keep receiving messages exactly as before. Returns digits only,
+// country code + national number concatenated with NO leading "+" and NO
+// separator — confirmed against Fast2SMS's own sibling endpoint
+// (/dev/whatsapp-session's `to` param, documented example "919876543210")
+// as the format both of Fast2SMS's WhatsApp APIs expect.
+function buildInternationalRecipient(phone: string): string {
+  const { dialCode, nationalNumber } = parseStoredPhone(phone)
+  return `${dialCode}${nationalNumber}`
+}
+
 export async function sendWhatsAppText(
   phone: string,
   text: string
@@ -149,8 +189,7 @@ export async function sendWhatsAppText(
     return { success: false, error: 'No phone number provided' }
   }
 
-  const digits = phone.replace(/\D/g, '')
-  const e164 = digits.startsWith('91') ? digits : '91' + digits
+  const e164 = buildInternationalRecipient(phone)
 
   try {
     const res = await fetch(`https://graph.facebook.com/v19.0/${phoneId}/messages`, {
@@ -218,9 +257,13 @@ export async function sendWhatsAppTemplateFast2SMS(
     return { success: false, error: 'No Fast2SMS template message_id provided' }
   }
 
-  // Fast2SMS wants a bare 10-digit Indian mobile number (no country code).
-  const digits   = phone.replace(/\D/g, '')
-  const tenDigit = digits.slice(-10)
+  // See buildInternationalRecipient()'s module comment above for the full
+  // 2026-08-31 root-cause writeup — this used to blindly take the last 10
+  // digits (silently discarding the country code entirely), which is what
+  // sent a US customer's +1 number to +91 instead. Now sends the full
+  // international number (country code + national number, no "+"),
+  // matching the format Fast2SMS's own docs show for its WhatsApp APIs.
+  const recipient = buildInternationalRecipient(phone)
 
   // Templates with an Image/PDF header (e.g. payment_request's QR code) do
   // NOT bake the approved-template sample image into every send — Fast2SMS
@@ -276,7 +319,7 @@ export async function sendWhatsAppTemplateFast2SMS(
   const params = new URLSearchParams({
     message_id:       messageId,
     phone_number_id:  phoneNumberId,
-    numbers:          tenDigit,
+    numbers:          recipient,
     variables_values: sanitizedVariables.join('|'),
     ...(mediaUrl ? { media_url: mediaUrl } : {}),
   })
@@ -306,7 +349,7 @@ export async function sendWhatsAppTemplateFast2SMS(
     }
 
     const requestId = data.request_id as string | undefined
-    console.log('[Fast2SMS WhatsApp] SENT', '| to:', tenDigit, '| request_id:', requestId)
+    console.log('[Fast2SMS WhatsApp] SENT', '| to:', recipient, '| request_id:', requestId)
     return { success: true, requestId }
   } catch (err) {
     const isAbort = err instanceof Error && err.name === 'AbortError'
