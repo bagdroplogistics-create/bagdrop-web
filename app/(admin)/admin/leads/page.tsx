@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
-  Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown,
+  Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -866,6 +866,22 @@ function LeadsPageInner() {
   const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting]       = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
+  // Read-only Communication Log viewer (2026-09-01 — founder reported an
+  // acknowledgment WhatsApp not arriving for an international-number lead
+  // and needed to see the actual send status/error). LeadModal already
+  // renders lead.communication_log (see its own JSX further down this
+  // file), but LeadModal is only ever opened with `lead: null` — for
+  // CREATING a brand-new lead — from the empty-state "Add First Quote"
+  // button. There was no way to open it for an EXISTING lead at all, and
+  // deliberately not fixed by wiring the existing pencil/edit icon to it:
+  // that icon already routes every lead (quoted or not) to
+  // /admin/quotes/new?edit=true, a separate specialized editor — reusing
+  // LeadModal (a full create/edit form) for an already-quoted lead risks
+  // the exact same two-conflicting-edit-paths problem already fixed once
+  // this session for Return Quote. This is a small, separate, READ-ONLY
+  // viewer instead — no form fields, nothing it can write, zero risk of
+  // clobbering anything the quote editor owns.
+  const [logLead, setLogLead] = useState<Lead | null>(null)
   const [showDeleted, setShowDeleted] = useState(false)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const handledOpenParam = useRef(false)
@@ -1015,6 +1031,62 @@ function LeadsPageInner() {
           onClose={() => setModal({ open: false, lead: null })}
           onSaved={() => { setModal({ open: false, lead: null }); fetchLeads() }}
         />
+      )}
+
+      {/* Communication Log viewer — see logLead state comment. Read-only:
+          every email/WhatsApp send attempt for this lead (acknowledgment,
+          quote-sent, etc.), including the exact failure reason for
+          anything that didn't go out. */}
+      {logLead && (
+        <div onClick={() => setLogLead(null)} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-lg rounded-xl bg-white p-5 shadow-xl max-h-[85vh] overflow-y-auto">
+            <div className="mb-1 flex items-center justify-between">
+              <h3 className="text-sm font-bold text-gray-900">Communication Log</h3>
+              <button onClick={() => setLogLead(null)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+            </div>
+            <p className="mb-3 text-xs text-gray-500">
+              {logLead.lead_number ?? logLead.id.slice(0, 8)} — {logLead.name}
+            </p>
+
+            {!logLead.communication_log || logLead.communication_log.length === 0 ? (
+              <p className="py-6 text-center text-sm text-gray-400">No communication logged yet for this lead.</p>
+            ) : (
+              <div className="rounded-lg border border-gray-200 divide-y divide-gray-100 overflow-hidden">
+                {logLead.communication_log.map((entry, i) => {
+                  const statusStyle =
+                    entry.status === 'sent'    ? { color: '#16a34a', bg: '#f0fdf4', label: 'Sent' } :
+                    entry.status === 'failed'  ? { color: '#dc2626', bg: '#fef2f2', label: 'Failed' } :
+                                                  { color: '#6b7280', bg: '#f9fafb', label: 'Skipped' }
+                  const channelLabel = entry.channel === 'whatsapp' ? 'WhatsApp' : entry.channel === 'email' ? 'Email' : entry.channel
+                  return (
+                    <div key={i} className="flex flex-col gap-1 px-3 py-2.5 text-xs">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="font-semibold text-gray-700 whitespace-nowrap">
+                            {entry.type ? `${entry.type} — ` : ''}{channelLabel}
+                          </span>
+                          <span className="text-gray-400">·</span>
+                          <span className="text-gray-500 truncate">
+                            {new Date(entry.timestamp).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        </div>
+                        <span style={{ color: statusStyle.color, background: statusStyle.bg }}
+                          className="shrink-0 rounded-full px-2 py-0.5 font-semibold whitespace-nowrap">
+                          {statusStyle.label}
+                        </span>
+                      </div>
+                      {entry.detail && (
+                        <p className={entry.status === 'failed' ? 'text-red-500 break-words' : 'text-gray-400 break-words'}>
+                          {entry.detail}
+                        </p>
+                      )}
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
 
       {/* ── Delete Confirmation Modal ── */}
@@ -1347,6 +1419,15 @@ function LeadsPageInner() {
                               <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              {/* Communication Log — see logLead state comment above.
+                                  Read-only: shows every acknowledgment/notification send
+                                  attempt (email + WhatsApp) for this lead, with the exact
+                                  error text for anything that failed. */}
+                              <button onClick={() => setLogLead(l)}
+                                title="Communication Log"
+                                className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors">
+                                <History className="h-3.5 w-3.5" />
                               </button>
                               <button onClick={() => setDeleteConfirm(l)} disabled={deleting === l.id}
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
