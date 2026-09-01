@@ -882,6 +882,39 @@ function LeadsPageInner() {
   // viewer instead — no form fields, nothing it can write, zero risk of
   // clobbering anything the quote editor owns.
   const [logLead, setLogLead] = useState<Lead | null>(null)
+  // Manual "Resend Acknowledgment (WhatsApp)" — added 2026-09-01 alongside
+  // the Fast2SMS Meta-format migration, so an admin can re-send the
+  // WhatsApp acknowledgment for a lead whose original automatic attempt
+  // failed (e.g. an international number rejected by the old endpoint).
+  // See app/api/admin/leads/[id]/resend-acknowledgment/route.ts for why
+  // this can't just re-trigger the normal acknowledgment flow.
+  const [resending, setResending] = useState(false)
+  const resendAcknowledgment = async () => {
+    if (!logLead || !adminKey || resending) return
+    setResending(true)
+    try {
+      const res = await fetch(`/api/admin/leads/${logLead.id}/resend-acknowledgment`, {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+      })
+      const data = await res.json().catch(() => ({}))
+      if (data.entry) {
+        // Reflect the new log entry immediately, in both the open modal
+        // and the underlying leads list, without a full refetch.
+        setLogLead(prev => prev ? { ...prev, communication_log: [...(prev.communication_log ?? []), data.entry] } : prev)
+        setLeads(prev => prev.map(l => l.id === logLead.id
+          ? { ...l, communication_log: [...(l.communication_log ?? []), data.entry] }
+          : l))
+      }
+      if (!res.ok || !data.success) {
+        alert(`Resend failed: ${data.error ?? 'Unknown error'}`)
+      }
+    } catch (err) {
+      alert(`Resend failed: ${err instanceof Error ? err.message : String(err)}`)
+    } finally {
+      setResending(false)
+    }
+  }
   const [showDeleted, setShowDeleted] = useState(false)
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const handledOpenParam = useRef(false)
@@ -1044,9 +1077,20 @@ function LeadsPageInner() {
               <h3 className="text-sm font-bold text-gray-900">Communication Log</h3>
               <button onClick={() => setLogLead(null)} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
             </div>
-            <p className="mb-3 text-xs text-gray-500">
-              {logLead.lead_number ?? logLead.id.slice(0, 8)} — {logLead.name}
-            </p>
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <p className="text-xs text-gray-500">
+                {logLead.lead_number ?? logLead.id.slice(0, 8)} — {logLead.name}
+              </p>
+              {logLead.phone && (
+                <button
+                  onClick={resendAcknowledgment}
+                  disabled={resending}
+                  title={`Resend the WhatsApp acknowledgment to ${logLead.phone}`}
+                  className="shrink-0 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1 text-xs font-semibold text-orange-700 hover:bg-orange-100 disabled:opacity-50 transition-colors">
+                  {resending ? 'Sending…' : 'Resend Acknowledgment'}
+                </button>
+              )}
+            </div>
 
             {!logLead.communication_log || logLead.communication_log.length === 0 ? (
               <p className="py-6 text-center text-sm text-gray-400">No communication logged yet for this lead.</p>
