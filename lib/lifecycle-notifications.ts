@@ -16,6 +16,7 @@
 import { supabaseAdmin } from './supabase'
 import { sendWhatsAppTemplate } from './notifications'
 import { formatCustomerName } from './constants'
+import { getQuotePdfUrl, type LeadRowForPdf } from './quote-pdf'
 
 // STATUS_ORDER / ACTIVE_BOOKING_STATUSES / isForwardMove moved to
 // lib/booking-status.ts (2026-08-24) — that file has zero imports, so it's
@@ -57,11 +58,14 @@ interface BookingLike {
 // instead of bags_delivered_review (which bakes in a Google-review CTA)
 // because review requests are already handled separately by
 // components/admin/ReviewPanel.tsx's own manual flow — sending both would
-// double up. quote_sent_v2 (adds a Document header with the quote PDF) is
-// still "Pending" Meta approval, so plain quote_sent (no header, Approved)
-// is used for now; swap this one line once quote_sent_v2 is approved.
+// double up. quote_sent_v2 (adds a Document header with the quote PDF) was
+// "Pending" Meta approval as of 2026-09-01 — now Approved (confirmed via
+// Fast2SMS's template dashboard), so it's used here instead of the plain
+// quote_sent (no header) template. Same body/variable order as the plain
+// version — only the header is new. See the quote_sent branch below for
+// the PDF-header wiring.
 const TEMPLATE_BY_STATUS: Record<string, string> = {
-  quote_sent:       'quote_sent',
+  quote_sent:       'quote_sent_v2',
   accepted:         'quote_accepted',
   rejected:         'quote_rejected',
   payment_pending:  'payment_request',
@@ -110,13 +114,17 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     const route       = [booking.from_city, booking.to_city].filter(Boolean).join(' → ')
 
     let variables: string[] = []
+    let quotePdfHeader: { type: 'document'; url: string; filename: string } | undefined
 
     if (status === 'quote_sent' || status === 'accepted' || status === 'rejected') {
       // These three need the quote number, which lives on the linked lead,
-      // not the booking itself.
+      // not the booking itself. Full row (not a narrow select) because
+      // quote_sent additionally needs everything getQuotePdfUrl/
+      // LeadRowForPdf reads to regenerate the PDF for the template's
+      // Document header.
       const { data: lead } = await supabaseAdmin
         .from('leads')
-        .select('quote_number, quote_total, bags_count')
+        .select('*')
         .eq('booking_id', booking.id)
         .maybeSingle()
       const quoteNumber = lead?.quote_number ?? booking.tracking_id
@@ -129,6 +137,18 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
           String(lead?.bags_count ?? booking.total_bags ?? 1),
           fmtRs(lead?.quote_total ?? booking.total_amount),
         ]
+        // quote_sent_v2's approved template has a Document header — the
+        // quote PDF itself. getQuotePdfUrl() always regenerates fresh off
+        // the lead's current row (see lib/quote-pdf.ts), so this can never
+        // attach a stale/previous quote. If PDF generation fails, this
+        // throws up to the outer try/catch below — the WhatsApp send for
+        // this booking is skipped and logged, same as any other transient
+        // failure, rather than sending a Document-header template with no
+        // document attached.
+        if (lead) {
+          const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf)
+          quotePdfHeader = { type: 'document', url, filename }
+        }
       } else {
         variables = [name, quoteNumber]
       }
@@ -151,11 +171,14 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), booking.drop_address || route || '—']
     }
 
-    // payment_pending is the only stage whose approved template has a media
-    // (Image) header — the QR code — so it's the only one that needs a
-    // header param.
+    // payment_pending's template has an Image header (the QR code);
+    // quote_sent's (quote_sent_v2) has a Document header (the quote PDF,
+    // built above). Every other status's template has a plain text header
+    // (or none), so no header param is needed for those.
     const header = status === 'payment_pending'
       ? { type: 'image' as const, url: PAYMENT_QR_MEDIA_URL }
+      : status === 'quote_sent'
+      ? quotePdfHeader
       : undefined
 
     // Routed via sendWhatsAppTemplate() (lib/notifications.ts) — Indian
