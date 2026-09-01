@@ -30,7 +30,7 @@
 
 import { supabaseAdmin } from './supabase'
 import { sendInquiryAcknowledgmentEmail } from './email'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
 import { formatCustomerName } from './constants'
 
 export interface AcknowledgeableLead {
@@ -109,12 +109,17 @@ export async function sendLeadAcknowledgment(lead: AcknowledgeableLead): Promise
       })
     }
 
-    // ── WhatsApp (via Fast2SMS, using the approved "inquiry_acknowledgment"
-    // template — required because this is the first, business-initiated
-    // message to a customer who hasn't messaged us first) ─────────────
+    // ── WhatsApp (via Fast2SMS's Meta-format endpoint, using the approved
+    // "inquiry_acknowledgment" template — required because this is the
+    // first, business-initiated message to a customer who hasn't messaged
+    // us first). Migrated 2026-09-01 off the old GET-based sender, which
+    // could not reach non-Indian numbers (see sendWhatsAppTemplateFast2SMSv2's
+    // module comment in lib/notifications.ts for the full root cause —
+    // this exact template is what failed for Mr. Ameet's +1 US number).
+    // Template name confirmed via Fast2SMS's live template list
+    // (GET /dev/dlt_manager/whatsapp?type=template) on 2026-09-01.
     if (lead.phone) {
-      const templateId = process.env.FAST2SMS_ACK_MESSAGE_ID ?? ''
-      const result = await sendWhatsAppTemplateFast2SMS(lead.phone, templateId, [displayName])
+      const result = await sendWhatsAppTemplateFast2SMSv2(lead.phone, 'inquiry_acknowledgment', [displayName])
       newEntries.push({
         type:      'acknowledgment',
         channel:   'whatsapp',

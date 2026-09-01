@@ -34,7 +34,7 @@
 
 import { supabaseAdmin } from './supabase'
 import { sendDriverDetailsEmail } from './email'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
 
 interface BookingRow {
   id:              string
@@ -97,14 +97,15 @@ export async function sendDriverDetails(bookingId: string): Promise<void> {
       channelResults.push({ channel: 'email', status: 'skipped', detail: 'No email on file' })
     }
 
-    // ── WhatsApp (Fast2SMS template) ──────────────────────────────────
-    // Template must be Approved in Fast2SMS > WhatsApp Business > WhatsApp
-    // Manager, and its Message ID (the short number, not the long Meta
-    // Template ID) set as FAST2SMS_DRIVER_DETAILS_MESSAGE_ID. Variables:
+    // ── WhatsApp (Fast2SMS Meta-format template) ──────────────────────
+    // Migrated 2026-09-01 to sendWhatsAppTemplateFast2SMSv2 — the old
+    // GET-based sender couldn't reach non-Indian numbers (see that
+    // function's module comment in lib/notifications.ts). Template name
+    // 'driver_details_shared_v2' confirmed Approved, 3 variables, via
+    // Fast2SMS's live template list on 2026-09-01. Variables:
     // {{1}} customer name, {{2}} driver name, {{3}} driver mobile.
     if (booking.customer_phone) {
-      const templateId = process.env.FAST2SMS_DRIVER_DETAILS_MESSAGE_ID ?? ''
-      const result = await sendWhatsAppTemplateFast2SMS(booking.customer_phone, templateId, [
+      const result = await sendWhatsAppTemplateFast2SMSv2(booking.customer_phone, 'driver_details_shared_v2', [
         name,
         booking.driver_name  ?? 'To be assigned',
         booking.driver_phone ?? '-',

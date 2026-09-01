@@ -361,6 +361,133 @@ export async function sendWhatsAppTemplateFast2SMS(
   }
 }
 
+// ── Fast2SMS WhatsApp Template Sender v2 — Meta-format endpoint (2026-09-01) ──
+// Migrated OFF the "Simple" GET /dev/whatsapp API above (that one is kept,
+// unchanged, for internal/staff-only templates — see each caller) because
+// that endpoint has no real international support: a bare 10-digit
+// `numbers` value gets silently assumed Indian, and a properly
+// country-coded non-Indian number is rejected outright — confirmed via a
+// real send to a US customer (+15622091589) returning
+// `{"errors":{"numbers":["Mobile Number format is invalid: 15622091589"]}}`.
+// This function instead calls Fast2SMS's Meta Cloud API-compatible proxy
+// (same URL/JSON shape as Meta's own Graph API), which Fast2SMS's own docs
+// show accepting a full "Recipient Phone Number... with country code":
+// https://docs.fast2sms.com/reference/sendtemplatewithvariable
+//
+// Used ONLY for customer-facing sends: lib/lead-acknowledgment.ts,
+// lib/lifecycle-notifications.ts, lib/driver-details.ts,
+// lib/indemnity-notifications.ts. Every internal/staff-facing template
+// (new inquiry alert, sales follow-up / pickup / quote-pending reminders,
+// payment verification, confirmed & ongoing summary) stays on the GET
+// function above unchanged — those only ever reach Bagdrop's own Indian
+// numbers, so there's nothing to fix there and no reason to touch them.
+//
+// Templates are addressed by NAME + language code here (Meta's real
+// identifier), not Fast2SMS's numeric Message ID — that ID is a
+// convenience Fast2SMS's own "Simple" wrapper invented and this endpoint
+// has no concept of. Every name below was confirmed directly against the
+// account's live approved templates via
+// `GET /dev/dlt_manager/whatsapp?type=template` on 2026-09-01 — see each
+// caller's own TEMPLATE_BY_* map for the exact status/event → name
+// mapping, and confirm there against the same dump before changing one.
+export async function sendWhatsAppTemplateFast2SMSv2(
+  phone: string,
+  templateName: string,
+  variables: string[],
+  header?: { type: 'image' | 'document'; url: string; filename?: string }
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const apiKey        = process.env.FAST2SMS_API_KEY
+  const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
+
+  if (!apiKey || !phoneNumberId) {
+    return { success: false, error: 'Fast2SMS not configured (FAST2SMS_API_KEY / FAST2SMS_WHATSAPP_PHONE_NUMBER_ID missing)' }
+  }
+  if (!phone) {
+    return { success: false, error: 'No phone number provided' }
+  }
+  if (!templateName) {
+    return { success: false, error: 'No Fast2SMS template name provided' }
+  }
+
+  const recipient = buildInternationalRecipient(phone)
+
+  // Same real Meta/WhatsApp platform restriction documented on the GET
+  // sender above (error #132018) — a template parameter's VALUE can't
+  // contain a literal newline/carriage-return/tab, regardless of which
+  // endpoint carries it. The pipe-delimiter workaround is dropped here
+  // (it was only needed because the GET endpoint packed every variable
+  // into one "val1|val2|..." query string) — each variable is its own
+  // separate JSON object below, so a literal "|" inside one variable's
+  // text can never be misread as a value separator.
+  const sanitizedVariables = variables.map(v =>
+    v.replace(/\r\n|\r|\n/g, ' • ')
+     .replace(/\t/g, ' ')
+     .replace(/ {5,}/g, '    ')
+  )
+
+  const components: Array<Record<string, unknown>> = []
+  if (header) {
+    components.push({
+      type: 'header',
+      parameters: [{
+        type: header.type,
+        [header.type]: header.type === 'document'
+          ? { link: header.url, ...(header.filename ? { filename: header.filename } : {}) }
+          : { link: header.url },
+      }],
+    })
+  }
+  components.push({
+    type: 'body',
+    parameters: sanitizedVariables.map(text => ({ type: 'text', text })),
+  })
+
+  // Same per-send timeout rationale as the GET sender above.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const res = await fetch(`https://www.fast2sms.com/dev/whatsapp/v26.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: apiKey,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en' },
+          components,
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+
+    const errObj = data.error as { message?: string } | undefined
+    if (!res.ok || errObj) {
+      console.error('[Fast2SMS WhatsApp v2] FAILED', '| status:', res.status, '| error:', JSON.stringify(data))
+      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+    }
+
+    const messages = data.messages as Array<{ id?: string }> | undefined
+    const requestId = messages?.[0]?.id
+    console.log('[Fast2SMS WhatsApp v2] SENT', '| to:', recipient, '| template:', templateName, '| id:', requestId)
+    return { success: true, requestId }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    const msg = isAbort ? 'Timed out waiting for Fast2SMS (10s)' : (err instanceof Error ? err.message : String(err))
+    console.error('[Fast2SMS WhatsApp v2] EXCEPTION', msg)
+    return { success: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 export async function notifyBookingStatus(
   data: NotificationData
 ): Promise<void> {

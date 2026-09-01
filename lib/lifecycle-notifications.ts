@@ -14,7 +14,7 @@
 // one WhatsApp send, best-effort, logged either way, never thrown.
 
 import { supabaseAdmin } from './supabase'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
 import { formatCustomerName } from './constants'
 
 // STATUS_ORDER / ACTIVE_BOOKING_STATUSES / isForwardMove moved to
@@ -41,20 +41,36 @@ interface BookingLike {
   status_history:     Array<Record<string, unknown>> | null
 }
 
-// Maps a booking status to the Vercel env var holding that template's
-// approved Fast2SMS Message ID. Template bodies + variable order are in
-// FAST2SMS_TEMPLATES.md — keep both in sync if either changes.
-const ENV_VAR_BY_STATUS: Record<string, string> = {
-  quote_sent:       'FAST2SMS_QUOTE_SENT_MESSAGE_ID',
-  accepted:         'FAST2SMS_QUOTE_ACCEPTED_MESSAGE_ID',
-  rejected:         'FAST2SMS_QUOTE_REJECTED_MESSAGE_ID',
-  payment_pending:  'FAST2SMS_PAYMENT_REQUEST_MESSAGE_ID',
-  payment_received: 'FAST2SMS_PAYMENT_RECEIVED_MESSAGE_ID',
-  confirmed:        'FAST2SMS_BOOKING_CONFIRMED_MESSAGE_ID',
-  picked_up:        'FAST2SMS_BAGS_PICKED_UP_MESSAGE_ID',
-  in_transit:       'FAST2SMS_BAGS_IN_TRANSIT_MESSAGE_ID',
-  out_for_delivery: 'FAST2SMS_OUT_FOR_DELIVERY_MESSAGE_ID',
-  delivered:        'FAST2SMS_BAGS_DELIVERED_MESSAGE_ID',
+// Maps a booking status to its approved Fast2SMS/Meta template NAME.
+// Migrated 2026-09-01 off the old env-var → numeric Message ID indirection
+// (see sendWhatsAppTemplateFast2SMSv2's module comment in
+// lib/notifications.ts for why: the old GET endpoint these IDs pointed at
+// cannot reach non-Indian numbers at all). Hardcoded rather than re-routed
+// through new env vars — every name below was confirmed directly against
+// the account's live template list (GET /dev/dlt_manager/whatsapp?type=template)
+// on 2026-09-01; re-confirm there before changing one. Template bodies +
+// variable order are in FAST2SMS_TEMPLATES.md — keep both in sync.
+//
+// booking_confirmed_v2 and bags_delivered were picked deliberately over
+// other approved variants: booking_confirmed_v2 is the current version of
+// that template (v1 superseded); bags_delivered (plain UTILITY) was used
+// instead of bags_delivered_review (which bakes in a Google-review CTA)
+// because review requests are already handled separately by
+// components/admin/ReviewPanel.tsx's own manual flow — sending both would
+// double up. quote_sent_v2 (adds a Document header with the quote PDF) is
+// still "Pending" Meta approval, so plain quote_sent (no header, Approved)
+// is used for now; swap this one line once quote_sent_v2 is approved.
+const TEMPLATE_BY_STATUS: Record<string, string> = {
+  quote_sent:       'quote_sent',
+  accepted:         'quote_accepted',
+  rejected:         'quote_rejected',
+  payment_pending:  'payment_request',
+  payment_received: 'payment_received',
+  confirmed:        'booking_confirmed_v2',
+  picked_up:        'bags_picked_up',
+  in_transit:       'bags_in_transit',
+  out_for_delivery: 'out_for_delivery',
+  delivered:        'bags_delivered',
 }
 
 function fmtRs(n: number | null | undefined): string {
@@ -82,15 +98,14 @@ const PAYMENT_QR_MEDIA_URL = 'https://www.bagdrop.co/bagdrop_upi_qr.png'
  */
 export async function sendLifecycleWhatsApp(status: string, booking: BookingLike): Promise<void> {
   try {
-    const envVar = ENV_VAR_BY_STATUS[status]
-    if (!envVar) return // no template mapped for this status — nothing to do
+    const templateName = TEMPLATE_BY_STATUS[status]
+    if (!templateName) return // no template mapped for this status — nothing to do
 
     if (!booking.customer_phone) {
       console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — skipped (${status}): no phone on file`)
       return
     }
 
-    const templateId = process.env[envVar] ?? ''
     const name        = (formatCustomerName(booking.title, booking.customer_name) || booking.customer_name?.trim()) || 'Customer'
     const route       = [booking.from_city, booking.to_city].filter(Boolean).join(' → ')
 
@@ -137,10 +152,13 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     }
 
     // payment_pending is the only stage whose approved template has a media
-    // (Image) header — the QR code — so it's the only one that needs media_url.
-    const mediaUrl = status === 'payment_pending' ? PAYMENT_QR_MEDIA_URL : undefined
+    // (Image) header — the QR code — so it's the only one that needs a
+    // header param.
+    const header = status === 'payment_pending'
+      ? { type: 'image' as const, url: PAYMENT_QR_MEDIA_URL }
+      : undefined
 
-    const result = await sendWhatsAppTemplateFast2SMS(booking.customer_phone, templateId, variables, mediaUrl)
+    const result = await sendWhatsAppTemplateFast2SMSv2(booking.customer_phone, templateName, variables, header)
 
     const note = `WhatsApp (${status}) ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)
