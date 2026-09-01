@@ -30,7 +30,7 @@
 
 import { supabaseAdmin } from './supabase'
 import { sendInquiryAcknowledgmentEmail } from './email'
-import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
+import { sendWhatsAppTemplate } from './notifications'
 import { formatCustomerName } from './constants'
 
 export interface AcknowledgeableLead {
@@ -109,17 +109,17 @@ export async function sendLeadAcknowledgment(lead: AcknowledgeableLead): Promise
       })
     }
 
-    // ── WhatsApp (via Fast2SMS's Meta-format endpoint, using the approved
-    // "inquiry_acknowledgment" template — required because this is the
-    // first, business-initiated message to a customer who hasn't messaged
-    // us first). Migrated 2026-09-01 off the old GET-based sender, which
-    // could not reach non-Indian numbers (see sendWhatsAppTemplateFast2SMSv2's
-    // module comment in lib/notifications.ts for the full root cause —
-    // this exact template is what failed for Mr. Ameet's +1 US number).
-    // Template name confirmed via Fast2SMS's live template list
-    // (GET /dev/dlt_manager/whatsapp?type=template) on 2026-09-01.
+    // ── WhatsApp, using the approved "inquiry_acknowledgment" template —
+    // required because this is the first, business-initiated message to a
+    // customer who hasn't messaged us first. Routed via sendWhatsAppTemplate()
+    // (lib/notifications.ts), which sends Indian numbers through Fast2SMS
+    // and everyone else straight through Meta's own Cloud API — added
+    // 2026-09-01 after discovering Fast2SMS restricts ALL international
+    // WhatsApp sending account-wide (confirmed directly by their support:
+    // "we provide service in India only"), which is what failed for
+    // Mr. Ameet's +1 US number.
     if (lead.phone) {
-      const result = await sendWhatsAppTemplateFast2SMSv2(lead.phone, 'inquiry_acknowledgment', [displayName])
+      const result = await sendWhatsAppTemplate(lead.phone, 'inquiry_acknowledgment', [displayName])
       newEntries.push({
         type:      'acknowledgment',
         channel:   'whatsapp',

@@ -23,7 +23,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { sendWhatsAppTemplateFast2SMSv2 } from '@/lib/notifications'
+import { sendWhatsAppTemplate } from '@/lib/notifications'
 import { formatCustomerName } from '@/lib/constants'
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const name        = lead.name?.trim() || 'Customer'
   const displayName = formatCustomerName(lead.title, name) || name
 
-  const result = await sendWhatsAppTemplateFast2SMSv2(lead.phone, 'inquiry_acknowledgment', [displayName])
+  const result = await sendWhatsAppTemplate(lead.phone, 'inquiry_acknowledgment', [displayName])
 
   const existingLog = Array.isArray(lead.communication_log) ? lead.communication_log : []
   const entry = {
@@ -53,7 +53,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     channel:   'whatsapp',
     status:    result.success ? 'sent' : 'failed',
     timestamp: new Date().toISOString(),
-    detail:    (result.success ? `Manual resend by admin — request_id ${result.requestId ?? '—'}` : `Manual resend by admin — failed: ${result.error}`),
+    detail:    (result.success
+                  ? `Manual resend by admin via ${result.provider ?? '—'} — request_id ${result.requestId ?? '—'}`
+                  : `Manual resend by admin via ${result.provider ?? '—'} — failed: ${result.error}`),
   }
 
   const { error: logErr } = await supabaseAdmin

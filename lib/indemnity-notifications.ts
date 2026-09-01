@@ -14,7 +14,7 @@
 
 import crypto from 'crypto'
 import { supabaseAdmin } from './supabase'
-import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
+import { sendWhatsAppTemplate } from './notifications'
 
 const DEFAULT_EXPIRY_DAYS = 7
 
@@ -90,7 +90,10 @@ export async function sendIndemnityWhatsApp(
       console.log(`[IndemnityWhatsApp] Booking ${target.trackingId} — skipped (${event}): no phone on file`)
       return
     }
-    const result = await sendWhatsAppTemplateFast2SMSv2(target.customerPhone, templateName, variables)
+    // Routed via sendWhatsAppTemplate() — Indian numbers through Fast2SMS,
+    // everyone else through Meta's Cloud API directly (see that
+    // function's module comment in lib/notifications.ts).
+    const result = await sendWhatsAppTemplate(target.customerPhone, templateName, variables)
     console.log(`[IndemnityWhatsApp] Booking ${target.trackingId} — ${event} ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`))
   } catch (err) {

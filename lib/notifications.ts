@@ -488,6 +488,151 @@ export async function sendWhatsAppTemplateFast2SMSv2(
   }
 }
 
+// ── WhatsApp Template Sender — direct Meta Cloud API (2026-09-01) ──────────
+// Root cause discovered while migrating off Fast2SMS: Fast2SMS's own support
+// confirmed "we provide service in India only" — international WhatsApp
+// sending is a hard restriction on THEIR product tier, not a limitation of
+// Bagdrop's actual WhatsApp Business number. Confirmed directly: the phone
+// profile ID shown in Bagdrop's own Meta Business Manager
+// (business.facebook.com → WhatsApp accounts → Phone numbers →
+// +91 63571 15711) is 995935626929789 — the EXACT SAME id as
+// FAST2SMS_WHATSAPP_PHONE_NUMBER_ID. Fast2SMS has been a thin wrapper in
+// front of this same WABA the whole time, not a separate number. So this
+// function sends from that identical number, straight to Meta's own Graph
+// API, bypassing Fast2SMS (and its India-only restriction) entirely.
+//
+// Requires a System User access token generated in Meta Business Manager
+// (Business Settings → Users → System users) with whatsapp_business_
+// messaging + whatsapp_business_management permissions, assigned to the
+// Bagdrop Logistics Solutions Pvt Ltd WhatsApp account — set as
+// WHATSAPP_ACCESS_TOKEN in Vercel. WHATSAPP_PHONE_NUMBER_ID is the id
+// above (995935626929789) — same value already used for Fast2SMS, not a
+// secret (visible in the Meta Business Manager UI), safe to hardcode as
+// the default if the env var isn't set.
+//
+// Used only for INTERNATIONAL customer-facing sends — see
+// sendWhatsAppTemplate() below, the shared dispatcher every caller should
+// actually use. Indian numbers keep going through Fast2SMS (cheaper,
+// already working) via sendWhatsAppTemplateFast2SMSv2 above.
+export async function sendWhatsAppTemplateMeta(
+  phone: string,
+  templateName: string,
+  variables: string[],
+  header?: { type: 'image' | 'document'; url: string; filename?: string }
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const token   = process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '995935626929789'
+
+  if (!token) {
+    return { success: false, error: 'WhatsApp not configured (WHATSAPP_ACCESS_TOKEN missing — see System User token setup in Meta Business Manager)' }
+  }
+  if (!phone) {
+    return { success: false, error: 'No phone number provided' }
+  }
+  if (!templateName) {
+    return { success: false, error: 'No WhatsApp template name provided' }
+  }
+
+  const recipient = buildInternationalRecipient(phone)
+
+  // Same platform restriction as every other WhatsApp sender in this file
+  // (Meta error #132018) — a template parameter value can't contain a
+  // literal newline/carriage-return/tab.
+  const sanitizedVariables = variables.map(v =>
+    v.replace(/\r\n|\r|\n/g, ' • ')
+     .replace(/\t/g, ' ')
+     .replace(/ {5,}/g, '    ')
+  )
+
+  const components: Array<Record<string, unknown>> = []
+  if (header) {
+    components.push({
+      type: 'header',
+      parameters: [{
+        type: header.type,
+        [header.type]: header.type === 'document'
+          ? { link: header.url, ...(header.filename ? { filename: header.filename } : {}) }
+          : { link: header.url },
+      }],
+    })
+  }
+  components.push({
+    type: 'body',
+    parameters: sanitizedVariables.map(text => ({ type: 'text', text })),
+  })
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const res = await fetch(`https://graph.facebook.com/v26.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en' },
+          components,
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+
+    const errObj = data.error as { message?: string } | undefined
+    if (!res.ok || errObj) {
+      console.error('[Meta WhatsApp] FAILED', '| status:', res.status, '| error:', JSON.stringify(data))
+      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+    }
+
+    const messages = data.messages as Array<{ id?: string }> | undefined
+    const requestId = messages?.[0]?.id
+    console.log('[Meta WhatsApp] SENT', '| to:', recipient, '| template:', templateName, '| id:', requestId)
+    return { success: true, requestId }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    const msg = isAbort ? 'Timed out waiting for Meta (10s)' : (err instanceof Error ? err.message : String(err))
+    console.error('[Meta WhatsApp] EXCEPTION', msg)
+    return { success: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ── Shared dispatcher — every customer-facing WhatsApp template send should
+// call THIS, not either sender directly ─────────────────────────────────
+// Routes by the recipient's actual stored country code (via
+// parseStoredPhone, the same helper buildInternationalRecipient() uses):
+// Indian numbers → Fast2SMS (sendWhatsAppTemplateFast2SMSv2 — cheaper,
+// already working, unaffected by any of this). Every other country →
+// direct Meta Cloud API (sendWhatsAppTemplateMeta — bypasses Fast2SMS's
+// India-only restriction entirely, same underlying WABA/number). This
+// single choke point means every caller (lead-acknowledgment.ts,
+// lifecycle-notifications.ts, driver-details.ts, indemnity-notifications.ts,
+// the manual Resend Acknowledgment route) gets the right routing for free
+// and never has to know which provider is behind it.
+export async function sendWhatsAppTemplate(
+  phone: string,
+  templateName: string,
+  variables: string[],
+  header?: { type: 'image' | 'document'; url: string; filename?: string }
+): Promise<{ success: boolean; error?: string; requestId?: string; provider?: 'fast2sms' | 'meta' }> {
+  const { dialCode } = parseStoredPhone(phone)
+  if (dialCode === '91') {
+    const result = await sendWhatsAppTemplateFast2SMSv2(phone, templateName, variables, header)
+    return { ...result, provider: 'fast2sms' }
+  }
+  const result = await sendWhatsAppTemplateMeta(phone, templateName, variables, header)
+  return { ...result, provider: 'meta' }
+}
+
 export async function notifyBookingStatus(
   data: NotificationData
 ): Promise<void> {

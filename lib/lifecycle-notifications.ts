@@ -14,7 +14,7 @@
 // one WhatsApp send, best-effort, logged either way, never thrown.
 
 import { supabaseAdmin } from './supabase'
-import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
+import { sendWhatsAppTemplate } from './notifications'
 import { formatCustomerName } from './constants'
 
 // STATUS_ORDER / ACTIVE_BOOKING_STATUSES / isForwardMove moved to
@@ -158,7 +158,12 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       ? { type: 'image' as const, url: PAYMENT_QR_MEDIA_URL }
       : undefined
 
-    const result = await sendWhatsAppTemplateFast2SMSv2(booking.customer_phone, templateName, variables, header)
+    // Routed via sendWhatsAppTemplate() (lib/notifications.ts) — Indian
+    // numbers through Fast2SMS, everyone else straight through Meta's
+    // Cloud API (Fast2SMS restricts all international WhatsApp sending
+    // account-wide; see that function's module comment for the full
+    // 2026-09-01 root cause).
+    const result = await sendWhatsAppTemplate(booking.customer_phone, templateName, variables, header)
 
     const note = `WhatsApp (${status}) ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)
