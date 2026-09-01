@@ -1275,28 +1275,19 @@ function LeadsPageInner() {
                                 </span>
                               )}
 
-                              {/* Return Quote — was ONLY reachable by
-                                  manually editing the URL, since there was
-                                  no button anywhere once a lead has a
-                                  primary quote (2026-08-31 bug report:
-                                  "website inquiry has no return trip
-                                  option" — not source-specific, this
-                                  applies to every already-quoted lead the
-                                  same way). Server-side guards in
-                                  generate-quote/route.ts (isReturnQuote
-                                  block) enforce this can only ever write
-                                  return_quote_* — never the primary. */}
-                              {!l.return_quote_number ? (
-                                <Link href={`/admin/quotes/new?lead_id=${l.id}&add_return=true`}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:border-purple-300 transition-colors">
-                                  <Plus className="h-3 w-3" /> Return Quote
-                                </Link>
-                              ) : (
-                                <Link href={`/admin/quotes/view/${l.id}`}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:border-purple-300 transition-colors">
-                                  <ExternalLink className="h-3 w-3" /> {l.return_quote_number}
-                                </Link>
-                              )}
+                              {/* Return Quote button intentionally REMOVED from this
+                                  table (2026-08-31, founder request: "remove return
+                                  quote from lead tab... keep return quote only inside
+                                  of quote"). The capability itself is untouched —
+                                  still fully reachable from inside the quote itself
+                                  (app/(admin)/admin/quotes/view/[lead_id]/page.tsx's
+                                  "Add Return Quote" CTA card, shown once a lead has a
+                                  primary quote and no return quote yet), just no
+                                  longer duplicated as a second entry point here. Click
+                                  the quote number above (e.g. QT-2026-0137) to reach
+                                  it. l.return_quote_number itself is still read
+                                  elsewhere (effective_status, etc.) — only this row's
+                                  button was removed. */}
                               {/* Pending/Received payment toggle removed from this
                                   table per request — payment status is now only
                                   managed through the Booking Workflow / payment
