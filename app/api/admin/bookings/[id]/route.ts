@@ -505,27 +505,34 @@ export async function PATCH(
     await sendLifecycleWhatsApp(status, data)
   }
 
-  // ── Auto-advance to Confirmed once payment is received/approved ──
-  // Founder request (2026-08-24): a booking that just reached Payment
-  // Received (Step 6, "Mark Payment Received") or Payment Approved (Admin
-  // Approve bypass) should become Confirmed immediately — no separate
-  // manual "Confirm Booking" click needed. Mirrors the exact same
-  // auto-confirm pattern already used when Accounts approves an uploaded
-  // payment proof (see AUTO_CONFIRM_FROM_STATUSES in app/api/admin/
-  // payments/[id]/route.ts) — same status_history + notified_statuses +
-  // sendLifecycleWhatsApp shape, just triggered from this route too so
-  // both payment paths behave identically. The manual "Confirm Booking"
-  // button (Step 7 in the Booking Workflow UI) is left in place as a
-  // harmless fallback — it simply never appears in practice now, since the
-  // UI already hides it as soon as status reaches 'confirmed'.
-  if (data && (status === 'payment_received' || status === 'payment_approved')) {
+  // ── Auto-advance to Confirmed — Admin Approve (VIP/Credit) only ──
+  // Founder request (2026-08-24) originally auto-confirmed on BOTH
+  // 'payment_received' and 'payment_approved'. Narrowed (2026-09-02) to
+  // 'payment_approved' only: auto-confirming on plain 'payment_received'
+  // (Step 6, "Mark Payment Received" — a self-reported UTR, no proof)
+  // meant the booking jumped straight to Confirmed in the very same
+  // request, before the Account Department's "Payment Proof &
+  // Verification" card (app/(admin)/admin/quotes/view/[lead_id]/page.tsx,
+  // added 2026-08-13 — shows only while status is exactly
+  // 'payment_received'/'payment_approved') ever had a chance to render.
+  // That silently skipped Accounts review on every self-reported payment
+  // since 24 Aug. 'payment_approved' (the Admin Approve — Pay Later
+  // VIP/Credit bypass) still auto-confirms immediately here, since there's
+  // no payment to verify in that path. A plain 'payment_received' booking
+  // now stops there — the Account Department card can act on it, and
+  // Accounts' own approval still auto-confirms it via the identical
+  // AUTO_CONFIRM_FROM_STATUSES pattern in app/api/admin/payments/[id]/
+  // route.ts (unchanged) — or the manual "Confirm Booking" button (Step 7
+  // in the Booking Workflow UI) is available as a fallback the moment
+  // status reaches 'payment_received', exactly as it did before 24 Aug.
+  if (data && status === 'payment_approved') {
     const confirmHistory = Array.isArray(data.status_history) ? data.status_history as object[] : []
     confirmHistory.push({
       from:       data.status,
       to:         'confirmed',
       timestamp:  new Date().toISOString(),
       changed_by: 'system',
-      note:       'Auto-confirmed — payment received',
+      note:       'Auto-confirmed — Admin Approved (VIP/Credit, no payment verification required)',
     })
 
     const prevConfirmNotified = Array.isArray((data as { notified_statuses?: unknown }).notified_statuses)
