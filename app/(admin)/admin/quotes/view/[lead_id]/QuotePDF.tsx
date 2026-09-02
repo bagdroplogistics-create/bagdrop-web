@@ -2,6 +2,7 @@ import {
   Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line,
 } from '@react-pdf/renderer'
 import { fmtTimeLabel } from '@/lib/time-options'
+import { LOGO_FULL_WHITE_DATA_URI, SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
@@ -299,7 +300,7 @@ export default function QuotePDF(p: QuotePDFProps) {
         <View style={s.header}>
           <View>
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image style={s.logoFull} src="/logo-full-white.png" />
+            <Image style={s.logoFull} src={LOGO_FULL_WHITE_DATA_URI} />
             <Text style={s.logoSub}>India&apos;s First Digital Baggage Infrastructure</Text>
           </View>
           <View>
@@ -603,7 +604,7 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.ftLine}>Tel: 63 5711 5711 / 63 5733 5733  ·  info@bagdrop.co  ·  www.bagdrop.co</Text>
           </View>
           <View style={s.ftRight}>
-            <Image style={s.sigImage} src="/signature-stamp.png" />
+            <Image style={s.sigImage} src={SIGNATURE_STAMP_DATA_URI} />
             <View style={s.sigLine}>
               <Text style={s.sigText}>Authorized Signatory</Text>
               <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>
