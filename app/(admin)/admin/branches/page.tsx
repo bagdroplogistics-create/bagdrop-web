@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Pencil, ToggleLeft, ToggleRight, Building2, X, Copy, Check, RefreshCw, KeyRound,
-  FileText, Package, Clock, CheckCircle2, MapPinned, Loader2,
+  FileText, Package, Clock, CheckCircle2, MapPinned, Loader2, GitMerge,
 } from 'lucide-react'
 
 interface BranchLrSummary {
@@ -276,6 +276,7 @@ export default function BranchesPage() {
   const [lrSummary, setLrSummary] = useState<Record<string, BranchLrSummary>>({})
   const [summaryFy, setSummaryFy] = useState('')
   const [seeding, setSeeding] = useState(false)
+  const [merging, setMerging] = useState(false)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -371,6 +372,65 @@ export default function BranchesPage() {
     }
   }
 
+  // "Don't repeat city names ... keep only one branch for every location
+  // ... remove extra duplicate branches for same city" (2026-09-02).
+  // Preview-then-confirm, same convention as Fix Duplicate Payments and
+  // Add Locations from Inquiries. The survivor per city is the branch with
+  // the most LRs already issued under it (never guessed); losers are
+  // soft-deactivated and their LRs repointed to the survivor — see
+  // app/api/admin/branches/merge-duplicates/route.ts for exactly why this
+  // is a merge, not a delete.
+  async function mergeDuplicateBranches() {
+    setMerging(true)
+    try {
+      const previewRes = await fetch(`/api/admin/branches/merge-duplicates?key=${adminKey}`, {
+        headers: { 'x-admin-key': adminKey },
+      })
+      const preview = await previewRes.json().catch(() => ({}))
+      if (!previewRes.ok) { alert(preview.error ?? 'Scan failed'); return }
+
+      type PreviewGroup = {
+        cityKey: string
+        primary: { branch_name: string; branch_code: string }
+        duplicates: { branch_name: string; branch_code: string; lr_count: number }[]
+      }
+      const groups = (preview.groups ?? []) as PreviewGroup[]
+      if (groups.length === 0) {
+        alert('No duplicate branches found — every city already has just one active branch.')
+        return
+      }
+
+      const summary = groups.map(g =>
+        `• ${g.primary.branch_name} (${g.primary.branch_code}) keeps: ` +
+        g.duplicates.map(d => `${d.branch_name} (${d.branch_code}, ${d.lr_count} LR${d.lr_count === 1 ? '' : 's'})`).join(', ')
+      ).join('\n')
+      const confirmed = window.confirm(
+        `Found ${groups.length} city/cities with duplicate branches:\n\n${summary}\n\n` +
+        `Each duplicate will be deactivated and its LRs (if any) moved to the surviving branch. LR numbers already issued never change. Proceed?`
+      )
+      if (!confirmed) return
+
+      const res = await fetch('/api/admin/branches/merge-duplicates', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({}),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(result.error ?? 'Merge failed'); return }
+
+      alert(
+        `Merged ${(result.merged ?? []).length} city/cities — deactivated ${result.deactivatedCount ?? 0} duplicate branch(es), ` +
+        `moved ${result.reassignedLrCount ?? 0} LR(s) to the surviving branch.`
+      )
+      fetchBranches()
+      fetchLrSummary()
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setMerging(false)
+    }
+  }
+
   async function rotateKey(branch: Branch) {
     if (!confirm(`Generate a new access key for ${branch.branch_name}? The old key will stop working immediately.`)) return
     const res = await fetch(`/api/admin/branches/${branch.id}/rotate-key`, {
@@ -394,6 +454,12 @@ export default function BranchesPage() {
             <p className="mt-0.5 text-xs text-gray-400">Each branch gets its own independent LR numbering sequence and a scoped access key.</p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={mergeDuplicateBranches} disabled={merging}
+              title="Finds branches that share the same city (e.g. Mumbai + Mumbai Airport) and merges each duplicate into a single surviving branch"
+              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
+              {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+              Merge Duplicate Branches
+            </button>
             <button onClick={seedFromInquiries} disabled={seeding}
               title="Scans every inquiry's pickup city and adds a branch for any city that doesn't have one yet"
               className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">

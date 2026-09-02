@@ -9,6 +9,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getBranchAccess } from '@/lib/branch-auth'
 import { indianFinancialYear } from '@/lib/financial-year'
+import { citiesEqual } from '@/lib/city-normalize'
 
 // access_key is deliberately never included in list/detail selects below —
 // it's shown in full exactly once, at creation and at /rotate-key, same
@@ -63,6 +64,25 @@ export async function POST(req: NextRequest) {
   }
   if (!/^[A-Z0-9]{2,10}$/.test(branchCode)) {
     return NextResponse.json({ error: 'branch_code must be 2-10 letters/digits (e.g. MUM, DEL, AMD)' }, { status: 400 })
+  }
+
+  // Founder request (2026-09-02): "don't repeat city names ... keep only
+  // one branch for [each] city" — e.g. no separate "Mumbai" and "Mumbai
+  // Airport" branches. citiesEqual() (lib/city-normalize.ts) already
+  // strips "Airport"/terminal suffixes/parentheticals and resolves known
+  // aliases (Vadodara/Baroda, etc.), so this catches spelling/label
+  // variants of the same real city, not just an exact-text match. Only
+  // checked against ACTIVE branches — re-adding a city whose only branch
+  // was deliberately deactivated is allowed.
+  const { data: activeBranches } = await supabaseAdmin
+    .from('branches')
+    .select('branch_code, branch_name, city')
+    .eq('is_active', true)
+  const cityDup = (activeBranches ?? []).find(b => citiesEqual(b.city, city))
+  if (cityDup) {
+    return NextResponse.json({
+      error: `A branch for this city already exists: ${cityDup.branch_name} (${cityDup.branch_code}). Use that branch instead of creating a duplicate — or rename it first if "${city}" is genuinely a different location.`,
+    }, { status: 409 })
   }
 
   const lrSeriesPrefix = String(body.lr_series_prefix ?? branchCode).trim().toUpperCase() || branchCode

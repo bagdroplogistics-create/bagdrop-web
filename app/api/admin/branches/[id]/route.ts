@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/admin-auth'
 import { getBranchAccess, canAccessBranch } from '@/lib/branch-auth'
+import { citiesEqual } from '@/lib/city-normalize'
 
 const PUBLIC_COLUMNS = 'id, branch_code, branch_name, city, state, address, pincode, gst_number, contact_number, email, branch_manager, is_active, lr_series_prefix, lr_include_fy, lr_start_number, lr_padding, created_at, updated_at'
 
@@ -43,6 +44,26 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+
+  // Same "keep only one branch per city" guard as create (POST /api/admin/
+  // branches) — a rename that would collide with a DIFFERENT active
+  // branch's city is rejected, not silently allowed to create a duplicate
+  // pair. Excludes this branch itself and any inactive branch (a
+  // deliberately deactivated duplicate shouldn't block the survivor from
+  // being edited).
+  if (typeof updates.city === 'string' && updates.city.trim() && !citiesEqual(updates.city, existing.city)) {
+    const { data: activeBranches } = await supabaseAdmin
+      .from('branches')
+      .select('id, branch_code, branch_name, city')
+      .eq('is_active', true)
+      .neq('id', id)
+    const cityDup = (activeBranches ?? []).find(b => citiesEqual(b.city, updates.city as string))
+    if (cityDup) {
+      return NextResponse.json({
+        error: `A branch for this city already exists: ${cityDup.branch_name} (${cityDup.branch_code}). Merge into that branch instead of creating a duplicate.`,
+      }, { status: 409 })
+    }
   }
 
   // branch_code and lr_series_prefix are editable too, but changing either
