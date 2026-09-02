@@ -455,6 +455,44 @@ export default function NewLRPage() {
           ) : (
             <div className="p-6 space-y-4">
 
+              {/* ── Branch Information — spec sections 3 &amp; 7. Every LR
+                  needs an issuing branch; auto-suggested from the pickup
+                  city, always overridable. Rendered in both modes, and
+                  moved above Route/Auto-filled-from-Booking (founder
+                  request, 2026-09-02) so the issuing branch is decided
+                  before the route/consignor details below it. GST Number
+                  and Contact fields removed from this card the same day —
+                  most branches don't have those filled in yet and they
+                  aren't needed to generate the LR. ── */}
+              {(mode === 'manual' || (mode === 'select' && selected && !existingLr)) && (
+                <Card title="Branch Information" icon={<Building2 className="h-4 w-4 text-orange-400" />}>
+                  <div>
+                    <label className={lbl}>LR Issuing Branch *</label>
+                    <select value={branchId}
+                      onChange={e => { setBranchId(e.target.value); setBranchTouched(true) }}
+                      className={inp}>
+                      <option value="">— Select branch —</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>)}
+                    </select>
+                    {!branchId && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        {branches.length === 0
+                          ? 'No branches configured yet — this LR will use the shared global number until one is added.'
+                          : 'No branch could be auto-matched to the pickup city — select one, or leave blank to use the shared global number.'}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className={lbl}>Branch Code</label>
+                    <input className={inp} value={selectedBranch?.branch_code ?? '—'} disabled />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={lbl}>Branch Address</label>
+                    <input className={inp} value={selectedBranch?.address ?? '—'} disabled />
+                  </div>
+                </Card>
+              )}
+
               {/* ── 1. Route (manual mode only — first, as requested) ── */}
               {mode === 'manual' && (
                 <Card title="Route" icon={<MapPin className="h-4 w-4 text-orange-400" />} cols={4}>
@@ -499,46 +537,6 @@ export default function NewLRPage() {
                     View LR
                   </Link>
                 </div>
-              )}
-
-              {/* ── Branch Information — spec sections 3 &amp; 7. Every LR
-                  needs an issuing branch; auto-suggested from the pickup
-                  city, always overridable. Rendered in both modes. ── */}
-              {(mode === 'manual' || (mode === 'select' && selected && !existingLr)) && (
-                <Card title="Branch Information" icon={<Building2 className="h-4 w-4 text-orange-400" />}>
-                  <div>
-                    <label className={lbl}>LR Issuing Branch *</label>
-                    <select value={branchId}
-                      onChange={e => { setBranchId(e.target.value); setBranchTouched(true) }}
-                      className={inp}>
-                      <option value="">— Select branch —</option>
-                      {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>)}
-                    </select>
-                    {!branchId && (
-                      <p className="mt-1 text-xs text-gray-400">
-                        {branches.length === 0
-                          ? 'No branches configured yet — this LR will use the shared global number until one is added.'
-                          : 'No branch could be auto-matched to the pickup city — select one, or leave blank to use the shared global number.'}
-                      </p>
-                    )}
-                  </div>
-                  <div>
-                    <label className={lbl}>Branch Code</label>
-                    <input className={inp} value={selectedBranch?.branch_code ?? '—'} disabled />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className={lbl}>Branch Address</label>
-                    <input className={inp} value={selectedBranch?.address ?? '—'} disabled />
-                  </div>
-                  <div>
-                    <label className={lbl}>Branch GST Number</label>
-                    <input className={inp} value={selectedBranch?.gst_number ?? '—'} disabled />
-                  </div>
-                  <div>
-                    <label className={lbl}>Branch Contact</label>
-                    <input className={inp} value={selectedBranch?.contact_number ?? '—'} disabled />
-                  </div>
-                </Card>
               )}
 
               {/* ── 2. Consignor / Consignee — editable in both modes. In

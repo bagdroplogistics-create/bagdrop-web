@@ -16,7 +16,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Plus, Pencil, ToggleLeft, ToggleRight, Building2, X, Copy, Check, RefreshCw, KeyRound,
-  FileText, Package, Clock, CheckCircle2,
+  FileText, Package, Clock, CheckCircle2, MapPinned, Loader2,
 } from 'lucide-react'
 
 interface BranchLrSummary {
@@ -275,6 +275,7 @@ export default function BranchesPage() {
   // CRUD table from rendering.
   const [lrSummary, setLrSummary] = useState<Record<string, BranchLrSummary>>({})
   const [summaryFy, setSummaryFy] = useState('')
+  const [seeding, setSeeding] = useState(false)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -316,6 +317,60 @@ export default function BranchesPage() {
     fetchBranches()
   }
 
+  // "Add all branch location as per our all inquiry" (2026-09-02) — scans
+  // leads.from_city for every pickup city ever used across all inquiries
+  // (not just confirmed bookings) and creates a branch for each one that
+  // doesn't already have a match, so the LR form's branch dropdown covers
+  // every city Bagdrop has actually taken inquiries from. Preview-then-
+  // confirm, same convention as the Payments tab's Fix Duplicate Payments.
+  async function seedFromInquiries() {
+    setSeeding(true)
+    try {
+      const previewRes = await fetch(`/api/admin/branches/seed-from-inquiries?key=${adminKey}`, {
+        headers: { 'x-admin-key': adminKey },
+      })
+      const preview = await previewRes.json().catch(() => ({}))
+      if (!previewRes.ok) { alert(preview.error ?? 'Scan failed'); return }
+
+      type PreviewGroup = { key: string; label: string; count: number }
+      const groups = (preview.branches ?? []) as PreviewGroup[]
+      if (groups.length === 0) {
+        alert('Every city seen across your inquiries already has a matching branch — nothing to add.')
+        return
+      }
+
+      const summary = groups.map(g => `• ${g.label} (${g.count} inquir${g.count === 1 ? 'y' : 'ies'})`).join('\n')
+      const confirmed = window.confirm(
+        `Found ${groups.length} branch location(s) used in inquiries with no branch yet:\n\n${summary}\n\n` +
+        `Each will be added as an active branch (code + name + city only — address/GST/contact stay blank until you fill them in). Proceed?`
+      )
+      if (!confirmed) return
+
+      const res = await fetch('/api/admin/branches/seed-from-inquiries', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({}),
+      })
+      const result = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(result.error ?? 'Add failed'); return }
+
+      type CreatedRow = { branch_name: string }
+      type FailedRow  = { key: string; error: string }
+      const createdList = (result.created ?? []) as CreatedRow[]
+      const failedList  = (result.failed  ?? []) as FailedRow[]
+      alert(
+        `Added ${createdList.length} branch(es).` +
+        (failedList.length ? ` ${failedList.length} failed — check server logs.` : '')
+      )
+      fetchBranches()
+      fetchLrSummary()
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setSeeding(false)
+    }
+  }
+
   async function rotateKey(branch: Branch) {
     if (!confirm(`Generate a new access key for ${branch.branch_name}? The old key will stop working immediately.`)) return
     const res = await fetch(`/api/admin/branches/${branch.id}/rotate-key`, {
@@ -338,10 +393,18 @@ export default function BranchesPage() {
             <h1 className="text-lg font-bold text-gray-900">Branch Management</h1>
             <p className="mt-0.5 text-xs text-gray-400">Each branch gets its own independent LR numbering sequence and a scoped access key.</p>
           </div>
-          <button onClick={() => setModalBranch('new')}
-            className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
-            <Plus className="h-4 w-4" /> Add Branch
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={seedFromInquiries} disabled={seeding}
+              title="Scans every inquiry's pickup city and adds a branch for any city that doesn't have one yet"
+              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
+              {seeding ? <Loader2 className="h-4 w-4 animate-spin" /> : <MapPinned className="h-4 w-4" />}
+              Add Locations from Inquiries
+            </button>
+            <button onClick={() => setModalBranch('new')}
+              className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
+              <Plus className="h-4 w-4" /> Add Branch
+            </button>
+          </div>
         </div>
       </div>
 
