@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   CreditCard, Search, RefreshCw, ChevronDown,
@@ -86,6 +86,20 @@ function fmtDate(d: string | null) {
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 function fmtRs(n: number) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
+
+// Month-wise breakdown — groups by the payment's created_at (same field the
+// table's Date column and fmtDate above already use), not payment_date
+// (there's no such column on `payments`; the Record Payment modal's "Payment
+// Date" field isn't persisted separately today). "YYYY-MM" sorts correctly
+// as a plain string, so no numeric/Date parsing needed for the ordering.
+function monthKey(iso: string) {
+  const d = new Date(iso)
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+}
+function monthLabel(key: string) {
+  const [y, m] = key.split('-').map(Number)
+  return new Date(y, m - 1, 1).toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })
+}
 
 // ── Record Payment modal ────────────────────────────────────────
 // Zoho Books "Invoice Payment" / "Customer Advance" layout — Customer
@@ -781,6 +795,7 @@ export default function PaymentsPage() {
   const [loading,   setLoading]   = useState(false)
   const [filter,    setFilter]    = useState('all')
   const [search,    setSearch]    = useState('')
+  const [monthFilter, setMonthFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [modalPrefill, setModalPrefill] = useState<PaymentFormPrefill | undefined>(undefined)
   const [updating,  setUpdating]  = useState<string | null>(null)
@@ -901,17 +916,44 @@ export default function PaymentsPage() {
     fetchPayments()
   }
 
+  // Month-wise breakdown — built from the FULL (status/search-filtered but
+  // not month-filtered) list, so it always shows every month at a glance
+  // regardless of which month is currently selected below. Clicking a row
+  // sets monthFilter to drill into that month's transactions in the table.
+  const monthlySummary = useMemo(() => {
+    const map = new Map<string, { count: number; collected: number; pending: number }>()
+    for (const p of payments) {
+      const key = monthKey(p.created_at)
+      const cur = map.get(key) ?? { count: 0, collected: 0, pending: 0 }
+      cur.count += 1
+      if (countsTowardTotalPaid(p)) cur.collected += Number(p.amount)
+      if (p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded') cur.pending += Number(p.amount)
+      map.set(key, cur)
+    }
+    return Array.from(map.entries())
+      .map(([key, v]) => ({ key, label: monthLabel(key), ...v }))
+      .sort((a, b) => b.key.localeCompare(a.key))
+  }, [payments])
+
+  // Applies the month filter on top of whatever the server already
+  // returned for the status/search filters — every summary card and the
+  // table below read from this, so selecting a month narrows both
+  // consistently, same as the existing status filter already does.
+  const visiblePayments = monthFilter === 'all'
+    ? payments
+    : payments.filter(p => monthKey(p.created_at) === monthFilter)
+
   // countsTowardTotalPaid excludes payment_method === 'upload' rows — a
   // payment-proof screenshot is a verification record (proof a payment
   // already logged elsewhere happened), never its own ledger entry, even
   // once Accounts approves it (see lib/payment-ledger.ts, 2026-08-24 fix
   // for the BDA-2026-0124 double-count).
-  const totalPaid    = payments.filter(countsTowardTotalPaid).reduce((s, p) => s + Number(p.amount), 0)
+  const totalPaid    = visiblePayments.filter(countsTowardTotalPaid).reduce((s, p) => s + Number(p.amount), 0)
   // Pending = confirmed/logged payments not yet paid and not refunded
   // (pending + approved_pending) — same definition used by the Payment
   // report in Reports & Analytics, so the two numbers agree. Upload rows
   // excluded here too — they're a verification trail, not money owed.
-  const totalPending = payments.filter(p => p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
+  const totalPending = visiblePayments.filter(p => p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
 
   if (!authed) return null
 
@@ -931,7 +973,10 @@ export default function PaymentsPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Payments</h1>
-            <p className="mt-0.5 text-sm text-gray-400">{payments.length} transactions · {fmtRs(totalPaid)} collected</p>
+            <p className="mt-0.5 text-sm text-gray-400">
+              {visiblePayments.length} transactions · {fmtRs(totalPaid)} collected
+              {monthFilter !== 'all' && <span className="ml-1 font-semibold text-orange-500">— {monthLabel(monthFilter)}</span>}
+            </p>
           </div>
           <div className="flex items-center gap-2">
             <button onClick={fixDuplicatePayments} disabled={fixingDuplicates}
@@ -952,10 +997,10 @@ export default function PaymentsPage() {
         {/* Summary */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Total',         value: payments.length,                                             color: '#2563eb', bg: '#dbeafe' },
+            { label: 'Total',         value: visiblePayments.length,                                             color: '#2563eb', bg: '#dbeafe' },
             { label: 'Collected',     value: fmtRs(totalPaid),                                           color: '#16a34a', bg: '#dcfce7' },
             { label: 'Pending',       value: fmtRs(totalPending),                                        color: '#d97706', bg: '#fef3c7' },
-            { label: 'Refunded',      value: payments.filter(p => p.payment_status === 'refunded').length, color: '#7c3aed', bg: '#ede9fe' },
+            { label: 'Refunded',      value: visiblePayments.filter(p => p.payment_status === 'refunded').length, color: '#7c3aed', bg: '#ede9fe' },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
               <p className="text-xs font-medium text-gray-500">{c.label}</p>
@@ -963,6 +1008,47 @@ export default function PaymentsPage() {
             </div>
           ))}
         </div>
+
+        {/* Month-wise breakdown — spec: "month wise bifurcation for payment
+            received so I can check monthly payment easily". Always shows
+            every month regardless of the month filter below; clicking a
+            row (or Clear) sets/resets it. */}
+        {monthlySummary.length > 0 && (
+          <div className="mb-5 overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-gray-100 bg-gray-50/70 px-4 py-2.5">
+              <p className="text-xs font-bold uppercase tracking-wide text-gray-500">Monthly Breakdown</p>
+              {monthFilter !== 'all' && (
+                <button onClick={() => setMonthFilter('all')} className="text-xs font-semibold text-orange-500 hover:text-orange-600">
+                  Clear month filter
+                </button>
+              )}
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100 text-left text-xs font-semibold text-gray-500">
+                    <th className="px-4 py-2">Month</th>
+                    <th className="px-4 py-2">Transactions</th>
+                    <th className="px-4 py-2">Collected</th>
+                    <th className="px-4 py-2">Pending</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {monthlySummary.map(m => (
+                    <tr key={m.key}
+                      onClick={() => setMonthFilter(monthFilter === m.key ? 'all' : m.key)}
+                      className={`cursor-pointer transition-colors hover:bg-orange-50/40 ${monthFilter === m.key ? 'bg-orange-50' : ''}`}>
+                      <td className="px-4 py-2.5 font-semibold text-gray-900">{m.label}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{m.count}</td>
+                      <td className="px-4 py-2.5 font-semibold text-green-600">{fmtRs(m.collected)}</td>
+                      <td className="px-4 py-2.5 font-semibold text-amber-600">{m.pending > 0 ? fmtRs(m.pending) : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
 
         {/* Filters */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
@@ -980,6 +1066,14 @@ export default function PaymentsPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
           </div>
+          <div className="relative">
+            <select value={monthFilter} onChange={e => setMonthFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none">
+              <option value="all">All months</option>
+              {monthlySummary.map(m => <option key={m.key} value={m.key}>{m.label}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-gray-400" />
+          </div>
           <button onClick={fetchPayments} className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
@@ -989,10 +1083,12 @@ export default function PaymentsPage() {
         <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
           {loading ? (
             <div className="flex items-center justify-center py-16 text-sm text-gray-400">Loading payments…</div>
-          ) : payments.length === 0 ? (
+          ) : visiblePayments.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
               <CreditCard className="mb-3 h-10 w-10 text-gray-200" />
-              <p className="text-sm text-gray-400">No payments recorded yet.</p>
+              <p className="text-sm text-gray-400">
+                {monthFilter !== 'all' ? `No payments recorded for ${monthLabel(monthFilter)}.` : 'No payments recorded yet.'}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -1005,7 +1101,7 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {payments.map(p => (
+                  {visiblePayments.map(p => (
                     <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
                       <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(p.created_at)}</td>
                       <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">
