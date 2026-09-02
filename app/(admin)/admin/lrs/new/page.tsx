@@ -5,13 +5,20 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Search, Loader2, FileText, User, MapPin, Package,
-  IndianRupee, CheckCircle, Pencil, ChevronRight, AlertCircle, Receipt, ListChecks,
+  IndianRupee, CheckCircle, Pencil, ChevronRight, AlertCircle, Receipt, ListChecks, Building2,
 } from 'lucide-react'
 import {
   MODE_OPTIONS, LR_CHARGE_FIELDS, GST_PAYABLE_BY_OPTIONS, PAYMENT_TERMS_OPTIONS, LR_TYPE_OPTIONS,
   isValidTiTag,
 } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
+import { citiesEqual } from '@/lib/city-normalize'
+
+interface BranchOption {
+  id: string; branch_code: string; branch_name: string; city: string
+  address: string | null; gst_number: string | null; contact_number: string | null; email: string | null
+  is_active: boolean
+}
 
 interface BookingEntry {
   booking_id: string; tracking_id: string
@@ -153,6 +160,21 @@ export default function NewLRPage() {
   const [remarks, setRemarks] = useState('')
   const [preparedBy, setPreparedBy] = useState('admin')
 
+  // ── Branch Information (spec section 3/7) ───────────────────────────
+  // LR Issuing Branch — auto-suggested from the pickup city (booking's
+  // from_city in Select mode, the typed From field in Manual mode), but
+  // always overridable by the admin. branchTouched tracks whether the
+  // admin has manually picked a branch, so the auto-suggestion only ever
+  // runs BEFORE they've made their own choice — re-suggesting after an
+  // explicit override would silently undo it.
+  const [branches, setBranches] = useState<BranchOption[]>([])
+  const [branchId, setBranchId] = useState('')
+  const [branchTouched, setBranchTouched] = useState(false)
+  // Spec section 9 — 1 Booking → 1 Primary LR. Populated when the selected
+  // booking already has an LR, so the duplicate-guard banner can show
+  // *before* the admin clicks Generate rather than only as an error after.
+  const [existingLr, setExistingLr] = useState<{ id: string; lr_number: string } | null>(null)
+
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
     if (!key) { router.replace('/admin/login'); return }
@@ -191,6 +213,29 @@ export default function NewLRPage() {
 
   useEffect(() => { if (authed) fetchAll() }, [authed, fetchAll])
 
+  const fetchBranches = useCallback(async () => {
+    if (!adminKey) return
+    const res = await fetch(`/api/admin/branches?key=${adminKey}`)
+    if (res.ok) setBranches(((await res.json()).branches ?? []).filter((b: BranchOption) => b.is_active))
+  }, [adminKey])
+
+  useEffect(() => { if (authed) fetchBranches() }, [authed, fetchBranches])
+
+  // Auto-suggest the LR Issuing Branch from the pickup city — spec section
+  // 3. Runs whenever the relevant pickup city or the branch list changes,
+  // but only actually changes branchId if the admin hasn't manually
+  // picked one yet (branchTouched false) — matches "allow the admin to
+  // manually select" without that selection ever being silently
+  // overwritten by a later re-suggestion.
+  const pickupCityForSuggestion = mode === 'manual' ? fromCity : (selected?.from_city ?? '')
+  useEffect(() => {
+    if (branchTouched || !pickupCityForSuggestion.trim() || branches.length === 0) return
+    const matches = branches.filter(b => citiesEqual(b.city, pickupCityForSuggestion))
+    setBranchId(matches.length === 1 ? matches[0].id : '')
+  }, [pickupCityForSuggestion, branches, branchTouched])
+
+  const selectedBranch = branches.find(b => b.id === branchId) ?? null
+
   const filtered = entries.filter(e => {
     if (!search.trim()) return true
     const q = search.toLowerCase()
@@ -201,8 +246,14 @@ export default function NewLRPage() {
   // cards used in Create Manually mode (booking's own name/phone for both,
   // pickup address for Consignor, drop address for Consignee) — the admin
   // can still correct any of it before generating, same as manual mode.
-  function selectBooking(e: BookingEntry) {
+  async function selectBooking(e: BookingEntry) {
     setSelected(e)
+    setBranchTouched(false) // a newly-selected booking gets its own fresh auto-suggestion
+    setExistingLr(null)
+    fetch(`/api/admin/lrs?booking_id=${e.booking_id}&key=${adminKey}`)
+      .then(r => r.json())
+      .then(d => { if (d.lrs?.[0]) setExistingLr({ id: d.lrs[0].id, lr_number: d.lrs[0].lr_number }) })
+      .catch(() => {})
     const individualName = formatCustomerName(e.title, e.customer_name) || e.customer_name
     // Business Customer support: when Payment By = Business/Company was
     // set on this booking, the company name/GSTIN take the Consignor/
@@ -229,6 +280,7 @@ export default function NewLRPage() {
 
   async function create() {
     if (mode === 'select' && !selected) return
+    if (mode === 'select' && existingLr) return // duplicate guard — banner already shows View LR instead of a Generate button in this state
     if (mode === 'select' && selected && !selected.pickup_date) {
       setError('This booking has no pickup date set — add one on the booking before generating its LR'); return
     }
@@ -256,6 +308,8 @@ export default function NewLRPage() {
                 total_bags: Number(totalBags) || 1,
                 lr_date: lrDate || null,
               }),
+          branch_id: branchId || null,
+
           // Consignor/Consignee overrides — always sent. In manual mode
           // these are the only source; in select mode they start
           // pre-filled from the booking (see selectBooking()) but the
@@ -430,6 +484,61 @@ export default function NewLRPage() {
                     </p>
                   )}
                 </div>
+              )}
+
+              {/* ── Duplicate guard — spec section 9, "One Booking → One
+                  Primary LR." Shown as soon as a booking with an existing
+                  LR is selected, not just as an error after clicking
+                  Generate. ── */}
+              {mode === 'select' && selected && existingLr && (
+                <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5">
+                  <p className="text-sm font-bold text-amber-800">LR Already Created</p>
+                  <p className="mt-1 font-mono text-sm text-amber-700">LR Number: {existingLr.lr_number}</p>
+                  <Link href={`/admin/lrs/${existingLr.id}`}
+                    className="mt-3 inline-flex items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700">
+                    View LR
+                  </Link>
+                </div>
+              )}
+
+              {/* ── Branch Information — spec sections 3 &amp; 7. Every LR
+                  needs an issuing branch; auto-suggested from the pickup
+                  city, always overridable. Rendered in both modes. ── */}
+              {(mode === 'manual' || (mode === 'select' && selected && !existingLr)) && (
+                <Card title="Branch Information" icon={<Building2 className="h-4 w-4 text-orange-400" />}>
+                  <div>
+                    <label className={lbl}>LR Issuing Branch *</label>
+                    <select value={branchId}
+                      onChange={e => { setBranchId(e.target.value); setBranchTouched(true) }}
+                      className={inp}>
+                      <option value="">— Select branch —</option>
+                      {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>)}
+                    </select>
+                    {!branchId && (
+                      <p className="mt-1 text-xs text-gray-400">
+                        {branches.length === 0
+                          ? 'No branches configured yet — this LR will use the shared global number until one is added.'
+                          : 'No branch could be auto-matched to the pickup city — select one, or leave blank to use the shared global number.'}
+                      </p>
+                    )}
+                  </div>
+                  <div>
+                    <label className={lbl}>Branch Code</label>
+                    <input className={inp} value={selectedBranch?.branch_code ?? '—'} disabled />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className={lbl}>Branch Address</label>
+                    <input className={inp} value={selectedBranch?.address ?? '—'} disabled />
+                  </div>
+                  <div>
+                    <label className={lbl}>Branch GST Number</label>
+                    <input className={inp} value={selectedBranch?.gst_number ?? '—'} disabled />
+                  </div>
+                  <div>
+                    <label className={lbl}>Branch Contact</label>
+                    <input className={inp} value={selectedBranch?.contact_number ?? '—'} disabled />
+                  </div>
+                </Card>
               )}
 
               {/* ── 2. Consignor / Consignee — editable in both modes. In

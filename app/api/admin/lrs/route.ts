@@ -1,19 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth } from '@/lib/admin-auth'
 import { findRouteMatch } from '@/lib/city-normalize'
 import { computeLrCharges, isValidTiTag } from '@/lib/lr-constants'
-import { nextLrNumber, createOrGetLrForBooking } from '@/lib/lr-auto-create'
+import { nextLrNumber, createOrGetLrForBooking, resolveBranchForLr, nextBranchLrNumber, branchSnapshotFields } from '@/lib/lr-auto-create'
+import { indianFinancialYear } from '@/lib/financial-year'
+import { getBranchAccess } from '@/lib/branch-auth'
 
 export const runtime = 'nodejs'
 
 // ── GET /api/admin/lrs ────────────────────────────────────────
 export async function GET(req: NextRequest) {
-  if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await getBranchAccess(req)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
-  const status = searchParams.get('status')
-  const search = searchParams.get('search')
+  const status    = searchParams.get('status')
+  const search    = searchParams.get('search')
+  const branchId  = searchParams.get('branch_id')
+  const fy        = searchParams.get('financial_year')
+  const bookingId = searchParams.get('booking_id')
   const page   = parseInt(searchParams.get('page')  ?? '1',  10)
   const limit  = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset = (page - 1) * limit
@@ -24,10 +29,28 @@ export async function GET(req: NextRequest) {
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
+  // Branch-scoped keys only ever see their own branch's LRs — enforced
+  // here at the query level (spec section 11: "must be enforced at the
+  // backend/database level, not only by frontend filtering"), so this
+  // can't be bypassed by a crafted request that omits/changes branch_id.
+  // A super_admin (existing admin/staff key) can still additionally
+  // narrow by branch_id via the query param, same as any other filter.
+  if (access.role === 'branch') {
+    query = query.eq('branch_id', access.branchId)
+  } else if (branchId) {
+    query = query.eq('branch_id', branchId)
+  }
+  if (fy) query = query.eq('financial_year', fy)
+  // Used by the New LR form's "Select Booking" mode to proactively show
+  // "LR Already Created" before the admin even clicks Generate — spec
+  // section 9's 1-booking-to-1-LR duplicate guard, surfaced up front
+  // rather than only as a create-time error.
+  if (bookingId) query = query.eq('booking_id', bookingId)
+
   if (status && status !== 'all') query = query.eq('status', status)
   if (search) {
     query = query.or(
-      `lr_number.ilike.%${search}%,consignor_name.ilike.%${search}%,consignee_name.ilike.%${search}%,vehicle_number.ilike.%${search}%,eway_bill_number.ilike.%${search}%`
+      `lr_number.ilike.%${search}%,consignor_name.ilike.%${search}%,consignee_name.ilike.%${search}%,vehicle_number.ilike.%${search}%,eway_bill_number.ilike.%${search}%,consignor_mobile.ilike.%${search}%,branch_code.ilike.%${search}%`
     )
   }
 
@@ -49,12 +72,19 @@ export async function GET(req: NextRequest) {
 //      of creating a second (created: false in the response).
 //  (b) manual: true — no booking exists yet; all fields come from the body.
 export async function POST(req: NextRequest) {
-  if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await getBranchAccess(req)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const body = await req.json().catch(() => null)
   if (!body?.booking_id && !body?.manual) {
     return NextResponse.json({ error: 'booking_id is required (or set manual: true for a manual LR)' }, { status: 400 })
   }
+
+  // A branch-scoped key can only ever create LRs for its own branch —
+  // forcing this here (rather than validating-and-rejecting whatever the
+  // request sent) means it's impossible for a branch key to create an LR
+  // under a different branch even by an honest mistake in the request body.
+  if (access.role === 'branch') body.branch_id = access.branchId
 
   // Ti-Tag is optional — only validated (letters/digits only) if present,
   // for either creation path (booking-linked or manual).
@@ -109,7 +139,19 @@ export async function POST(req: NextRequest) {
   }
   const totals = computeLrCharges(charges, gstType)
 
-  const lrNumber = await nextLrNumber()
+  // Branch-Wise LR numbering — same resolution as the booking-linked path
+  // (lib/lr-auto-create.ts's createOrGetLrForBooking): explicit
+  // body.branch_id from the New LR form wins, otherwise auto-suggest from
+  // from_city, falling back to the legacy global series if nothing
+  // confidently matches.
+  const resolvedBranch = await resolveBranchForLr(fromCity, body.branch_id || null)
+  const lrNumber = resolvedBranch
+    ? (await nextBranchLrNumber(resolvedBranch)).lrNumber
+    : await nextLrNumber()
+  const branchFields = {
+    ...branchSnapshotFields(resolvedBranch),
+    financial_year: resolvedBranch ? indianFinancialYear().label : null,
+  }
 
   const consignorName    = body.consignor_name.trim()
   const consigneeName    = body.consignee_name.trim()
@@ -118,6 +160,7 @@ export async function POST(req: NextRequest) {
     lr_number:      lrNumber,
     booking_id:     null,
     route_id:       route?.id ?? null,
+    ...branchFields,
 
     // No booking — no pickup_date to inherit, so a manual LR's date comes
     // from the admin's own input (or today, as a last resort). The

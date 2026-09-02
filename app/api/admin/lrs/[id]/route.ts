@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth, getAdminRole } from '@/lib/admin-auth'
+import { getAdminRole } from '@/lib/admin-auth'
+import { getBranchAccess, canAccessBranch } from '@/lib/branch-auth'
 import { computeLrCharges, LR_CHARGE_FIELDS, isValidTiTag } from '@/lib/lr-constants'
 
 export const runtime = 'nodejs'
@@ -9,7 +10,8 @@ type Params = { params: Promise<{ id: string }> }
 
 // ── GET /api/admin/lrs/[id] ─────────────────────────────────
 export async function GET(req: NextRequest, { params }: Params) {
-  if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await getBranchAccess(req)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
 
   const { data, error } = await supabaseAdmin
@@ -19,14 +21,28 @@ export async function GET(req: NextRequest, { params }: Params) {
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+  // A branch-scoped key can only view LRs that belong to its own branch —
+  // an LR with branch_id null (legacy/ambiguous, no confident branch match
+  // at creation) is only visible to a super_admin, same reasoning as
+  // canAccessBranch() treats "no branch" as "not this branch's to see."
+  if (!canAccessBranch(access, data.branch_id)) {
+    return NextResponse.json({ error: 'This key does not have access to that LR' }, { status: 403 })
+  }
   return NextResponse.json({ lr: data })
 }
 
 // ── PATCH /api/admin/lrs/[id] ───────────────────────────────
 export async function PATCH(req: NextRequest, { params }: Params) {
-  if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  const access = await getBranchAccess(req)
+  if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await params
-  const role = getAdminRole(req)
+  const role = getAdminRole(req) ?? (access.role === 'branch' ? 'branch' : null)
+
+  const { data: target } = await supabaseAdmin.from('lrs').select('branch_id').eq('id', id).maybeSingle()
+  if (!target) return NextResponse.json({ error: 'LR not found' }, { status: 404 })
+  if (!canAccessBranch(access, target.branch_id)) {
+    return NextResponse.json({ error: 'This key does not have access to that LR' }, { status: 403 })
+  }
 
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
@@ -117,8 +133,10 @@ export async function PATCH(req: NextRequest, { params }: Params) {
 }
 
 // ── DELETE /api/admin/lrs/[id] ──────────────────────────────
+// Unchanged policy — admin (super_admin) only, same as before this
+// feature. Branch-scoped keys can never delete an LR, even their own
+// branch's — deletion stays a founder-level action.
 export async function DELETE(req: NextRequest, { params }: Params) {
-  if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const role = getAdminRole(req)
   if (role !== 'admin') return NextResponse.json({ error: 'Admin only' }, { status: 403 })
 

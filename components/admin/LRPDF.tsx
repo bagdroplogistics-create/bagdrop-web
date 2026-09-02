@@ -200,9 +200,31 @@ export interface LRPDFProps {
   deliveryAt:   string | null
   remarks:      string | null
   preparedBy:   string | null
+
+  // Branch-Wise LR letterhead — spec section 12: the issuing branch's own
+  // name/address/GST/contact, snapshotted onto the LR at creation time
+  // (see lib/lr-auto-create.ts's branchSnapshotFields). All optional and
+  // null for any LR created before this feature, or with no confident
+  // branch match — those fall back to the single company-wide LR_COMPANY
+  // letterhead exactly as before, so old LRs render unchanged.
+  branchName:          string | null
+  branchAddress:       string | null
+  branchGstNumber:     string | null
+  branchContactNumber: string | null
+  branchEmail:         string | null
 }
 
 export default function LRPDF(p: LRPDFProps) {
+  // Branch letterhead falls back field-by-field to LR_COMPANY — a branch
+  // missing just a phone or GST number (not yet filled in) still shows the
+  // rest of its own details rather than silently reverting the whole strip
+  // to the company default.
+  const coName    = p.branchName          || LR_COMPANY.name
+  const coAddress = p.branchAddress       || `${LR_COMPANY.addressLine1}, ${LR_COMPANY.addressLine2}`
+  const coGstin   = p.branchGstNumber     || LR_COMPANY.gstin
+  const coPhone   = p.branchContactNumber || LR_COMPANY.phone
+  const coEmail   = p.branchEmail         || LR_COMPANY.email
+
   return (
     <Document>
       <Page size="A4" style={s.page}>
@@ -234,16 +256,16 @@ export default function LRPDF(p: LRPDFProps) {
         {/* ── Company strip ── */}
         <View style={s.coStrip}>
           <View>
-            <Text style={s.coName}>{LR_COMPANY.name}</Text>
-            <Text style={s.coLineGap}>{LR_COMPANY.addressLine1}, {LR_COMPANY.addressLine2}</Text>
+            <Text style={s.coName}>{coName}</Text>
+            <Text style={s.coLineGap}>{coAddress}</Text>
           </View>
           <View style={s.coContactRow}>
             <View>
-              <Text style={s.coLine}>Tel: {LR_COMPANY.phone}</Text>
+              <Text style={s.coLine}>Tel: {coPhone}</Text>
             </View>
             <View>
-              <Text style={s.coLine}>{LR_COMPANY.phone2}</Text>
-              <Text style={s.coLineGap}>{LR_COMPANY.email}</Text>
+              {p.branchContactNumber ? null : <Text style={s.coLine}>{LR_COMPANY.phone2}</Text>}
+              <Text style={s.coLineGap}>{coEmail}</Text>
             </View>
             <View>
               <Text style={s.coLine}>{LR_COMPANY.web}</Text>
@@ -261,7 +283,7 @@ export default function LRPDF(p: LRPDFProps) {
               </View>
               <View style={[s.cell, { flex: 1.6 }]}>
                 <Text style={s.cellLbl}>GSTIN</Text>
-                <Text style={s.cellVal}>{LR_COMPANY.gstin}</Text>
+                <Text style={s.cellVal}>{coGstin}</Text>
               </View>
               <View style={[s.cell, { flex: 1.2 }]}>
                 <Text style={s.cellLbl}>GC Date</Text>
@@ -414,7 +436,7 @@ export default function LRPDF(p: LRPDFProps) {
         {/* ── Signature block ── */}
         <View style={s.sigBlock}>
           <View style={s.sigLeft}>
-            <Text style={s.sigCo}>For {LR_COMPANY.name}</Text>
+            <Text style={s.sigCo}>For {coName}</Text>
             <Text style={s.sigLine2}>Prepared By: {p.preparedBy ?? 'admin'}</Text>
           </View>
           <View style={s.sigRight}>

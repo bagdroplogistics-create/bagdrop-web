@@ -24,10 +24,18 @@
 //     inserting a second one.
 
 import { supabaseAdmin } from '@/lib/supabase'
-import { findRouteMatch } from '@/lib/city-normalize'
+import { findRouteMatch, citiesEqual } from '@/lib/city-normalize'
 import { computeLrCharges } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
+import { indianFinancialYear } from '@/lib/financial-year'
 
+// Legacy global numbering — kept unchanged (not the atomic
+// next_series_number/next_branch_lr_seq mechanism, still the original
+// MAX+1 query) as the fallback path for when no branch can be resolved
+// (see resolveBranchForLr() below) — e.g. before any branches are
+// configured, or a pickup city that doesn't map to one yet. Every LR
+// created through resolveBranchForLr() finding a real match instead gets
+// a proper branch-wise, race-safe number via nextBranchLrNumber().
 export async function nextLrNumber(): Promise<string> {
   const year   = new Date().getFullYear()
   const prefix = `BDLR-${year}-`
@@ -46,6 +54,112 @@ export async function nextLrNumber(): Promise<string> {
     if (!isNaN(last)) nextSeq = last + 1
   }
   return `${prefix}${String(nextSeq).padStart(4, '0')}`
+}
+
+// ── Branch-Wise LR numbering (2026-09-02) ───────────────────────────────
+// See supabase/migrations/20260902_branch_wise_lr.sql for the schema/RPC
+// this drives. Every field an LR needs to snapshot from its issuing
+// branch (per that migration's "immutable snapshot" design — a branch
+// rename/edit later must never retroactively change an already-issued
+// LR's letterhead) lives on ResolvedBranch.
+export interface ResolvedBranch {
+  id:                string
+  branch_code:       string
+  branch_name:       string
+  city:              string
+  address:           string | null
+  gst_number:        string | null
+  contact_number:    string | null
+  email:             string | null
+  lr_series_prefix:  string
+  lr_include_fy:     boolean
+  lr_padding:        number
+}
+
+const BRANCH_COLUMNS = 'id, branch_code, branch_name, city, address, gst_number, contact_number, email, lr_series_prefix, lr_include_fy, lr_padding'
+
+/**
+ * Resolves the LR Issuing Branch per spec section 3 ("Automatic Branch
+ * Selection"): an explicit branch_id (from the admin's own selection in
+ * the New LR form, or an override) always wins; otherwise the pickup city
+ * is matched against active branches' `city` via the same normalization
+ * used for route_pricing/lr_routes matching. Returns null — meaning "no
+ * confident match, fall back to the legacy global series" — if there are
+ * no active branches yet, no city to match on, or MORE THAN ONE active
+ * branch shares that city (spec: "If automatic branch mapping is
+ * unavailable or multiple branches are possible, allow the admin to
+ * manually select" — for the unattended automatic-on-Payment-Received
+ * trigger there's no admin present to ask, so it degrades to the legacy
+ * series rather than guessing; the LR module's manual "New LR" form
+ * always has an admin who can resolve the ambiguity by picking explicitly).
+ */
+export async function resolveBranchForLr(pickupCity: string | null, explicitBranchId?: string | null): Promise<ResolvedBranch | null> {
+  if (explicitBranchId) {
+    const { data } = await supabaseAdmin
+      .from('branches')
+      .select(BRANCH_COLUMNS)
+      .eq('id', explicitBranchId)
+      .eq('is_active', true)
+      .maybeSingle()
+    return data ?? null
+  }
+
+  if (!pickupCity) return null
+
+  const { data: branches } = await supabaseAdmin
+    .from('branches')
+    .select(BRANCH_COLUMNS)
+    .eq('is_active', true)
+  if (!branches || branches.length === 0) return null
+
+  const matches = branches.filter(b => citiesEqual(b.city, pickupCity))
+  return matches.length === 1 ? matches[0] : null
+}
+
+export interface BranchLrNumberResult {
+  lrNumber:      string
+  financialYear: string
+}
+
+/**
+ * Mints the next number in `branch`'s own independent sequence via the
+ * atomic next_branch_lr_seq() RPC (race-safe — see that function's
+ * comment in the migration for why the plain next_series_number() RPC
+ * used by BDA/BDL/BDQ isn't reused here: it hardcodes calendar-year
+ * rollover, which would fragment a single Indian Financial Year's
+ * sequence at the Jan 1 boundary). Format follows the branch's own
+ * lr_include_fy setting — spec section 5's two example formats
+ * (MUM-LR-000001 vs MUM/2026-27/LR/000001) are literally this same
+ * function with lr_include_fy false vs true.
+ */
+export async function nextBranchLrNumber(branch: ResolvedBranch): Promise<BranchLrNumberResult> {
+  const fy = indianFinancialYear()
+  const { data: seq, error } = await supabaseAdmin.rpc('next_branch_lr_seq', {
+    p_branch_code: branch.lr_series_prefix,
+    p_year:        fy.startYear,
+    p_width:       branch.lr_padding,
+  })
+  if (error || !seq) {
+    throw new Error(`Could not generate LR number for branch ${branch.branch_code}: ${error?.message ?? 'no value returned'}`)
+  }
+  const lrNumber = branch.lr_include_fy
+    ? `${branch.lr_series_prefix}/${fy.label}/LR/${seq}`
+    : `${branch.lr_series_prefix}-LR-${seq}`
+  return { lrNumber, financialYear: fy.label }
+}
+
+/** The 7 lrs columns snapshotting the issuing branch — null-filled when no branch resolved (legacy fallback). */
+export function branchSnapshotFields(branch: ResolvedBranch | null) {
+  return {
+    branch_id:             branch?.id ?? null,
+    branch_code:           branch?.branch_code ?? null,
+    branch_name:           branch?.branch_name ?? null,
+    branch_address:        branch?.address ?? null,
+    branch_gst_number:     branch?.gst_number ?? null,
+    branch_contact_number: branch?.contact_number ?? null,
+    branch_email:          branch?.email ?? null,
+    financial_year:        null as string | null, // filled in by the caller once the FY-aware number is minted
+  }
 }
 
 export interface CreateLrForBookingResult {
@@ -119,7 +233,21 @@ export async function createOrGetLrForBooking(
   }
   const totals = computeLrCharges(charges, gstType)
 
-  const lrNumber = await nextLrNumber()
+  // ── Branch-Wise LR numbering ────────────────────────────────────────
+  // ov.branch_id (an explicit admin selection from the New LR form) wins;
+  // otherwise auto-suggest from the booking's pickup city. Falls back to
+  // the legacy global BDLR- series if no confident branch match exists —
+  // see resolveBranchForLr()'s doc comment for exactly when that happens
+  // and why (never blocks automatic LR creation on Payment Received).
+  const ovBranchId = (overrides as Record<string, unknown>).branch_id as string | undefined
+  const resolvedBranch = await resolveBranchForLr(fromCity, ovBranchId ?? null)
+  const lrNumber = resolvedBranch
+    ? (await nextBranchLrNumber(resolvedBranch)).lrNumber
+    : await nextLrNumber()
+  const branchFields = {
+    ...branchSnapshotFields(resolvedBranch),
+    financial_year: resolvedBranch ? indianFinancialYear().label : null,
+  }
 
   const bookingDisplayName =
     formatCustomerName(booking.title as string | null, booking.customer_name as string)
@@ -140,6 +268,7 @@ export async function createOrGetLrForBooking(
     lr_number:      lrNumber,
     booking_id:     bookingId,
     route_id:       route?.id ?? null,
+    ...branchFields,
 
     lr_date:        lrDate,
     booking_office: (ov.booking_office as string) || route?.from_branch_code || null,

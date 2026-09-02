@@ -6,10 +6,11 @@ import Link from 'next/link'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Eye, Download, Loader2, Trash2, Truck, IndianRupee, Package,
-  User, MapPin, CheckCircle2, Pencil,
+  User, MapPin, CheckCircle2, Pencil, Building2,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
+import { indianFinancialYear } from '@/lib/financial-year'
 
 interface LR {
   id:              string
@@ -25,6 +26,25 @@ interface LR {
   total_bags:      number | null
   total_amount:    number
   created_at:      string
+  branch_code:     string | null
+  branch_name:     string | null
+  financial_year:  string | null
+}
+
+interface BranchOption {
+  id:          string
+  branch_code: string
+  branch_name: string
+}
+
+// Last 3 FY labels (current + 2 prior) — enough to cover any LR generated
+// since this feature shipped without hardcoding years that will go stale.
+function recentFinancialYears(): string[] {
+  const { startYear } = indianFinancialYear()
+  return [0, 1, 2].map(back => {
+    const y = startYear - back
+    return `${y}-${String((y + 1) % 100).padStart(2, '0')}`
+  })
 }
 
 // Confirmed bookings that don't have an LR yet — the queue of "confirmed
@@ -61,6 +81,16 @@ export default function LRsPage() {
   const [deleting, setDeleting] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
 
+  // Branch-Wise LR filters — spec section 10. "All Branches" (branchFilter
+  // === 'all') deliberately omits branch_id from the query entirely rather
+  // than sending it empty, so a branch-scoped key still only ever sees its
+  // own branch (enforced server-side regardless of what's sent — see
+  // app/api/admin/lrs/route.ts).
+  const [branches,     setBranches]     = useState<BranchOption[]>([])
+  const [branchFilter, setBranchFilter] = useState('all')
+  const [fyFilter,     setFyFilter]     = useState('all')
+  const fyOptions = recentFinancialYears()
+
   // Confirmed-bookings queue
   const [confirmedBookings, setConfirmedBookings] = useState<ConfirmedBooking[]>([])
   const [loadingQueue, setLoadingQueue] = useState(true)
@@ -81,10 +111,18 @@ export default function LRsPage() {
     let qs = '?key=' + adminKey
     if (filter !== 'all') qs += '&status=' + filter
     if (search) qs += '&search=' + encodeURIComponent(search)
+    if (branchFilter !== 'all') qs += '&branch_id=' + branchFilter
+    if (fyFilter !== 'all') qs += '&financial_year=' + encodeURIComponent(fyFilter)
     const res = await fetch('/api/admin/lrs' + qs)
     if (res.ok) setLrs((await res.json()).lrs ?? [])
     setLoading(false)
-  }, [adminKey, filter, search])
+  }, [adminKey, filter, search, branchFilter, fyFilter])
+
+  const fetchBranches = useCallback(async () => {
+    if (!adminKey) return
+    const res = await fetch(`/api/admin/branches?key=${adminKey}`)
+    if (res.ok) setBranches((await res.json()).branches ?? [])
+  }, [adminKey])
 
   // Confirmed bookings still waiting on an LR — cross-referenced against
   // every LR ever generated (not just the current filtered/searched view
@@ -118,7 +156,7 @@ export default function LRsPage() {
     setLoadingQueue(false)
   }, [adminKey])
 
-  useEffect(() => { if (authed) { fetchLrs(); fetchQueue() } }, [authed, fetchLrs, fetchQueue])
+  useEffect(() => { if (authed) { fetchLrs(); fetchQueue(); fetchBranches() } }, [authed, fetchLrs, fetchQueue, fetchBranches])
 
   async function generateLr(bookingId: string) {
     setGeneratingId(bookingId)
@@ -179,6 +217,9 @@ export default function LRsPage() {
           insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,
           paymentTerms: lr.payment_terms, lrType: lr.lr_type, deliveryAt: lr.delivery_at,
           remarks: lr.remarks, preparedBy: lr.prepared_by,
+          branchName: lr.branch_name ?? null, branchAddress: lr.branch_address ?? null,
+          branchGstNumber: lr.branch_gst_number ?? null, branchContactNumber: lr.branch_contact_number ?? null,
+          branchEmail: lr.branch_email ?? null,
         })
       ).toBlob()
 
@@ -311,6 +352,22 @@ export default function LRsPage() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
+          <div className="relative">
+            <select value={branchFilter} onChange={e => setBranchFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+              <option value="all">All branches</option>
+              {branches.map(b => <option key={b.id} value={b.id}>{b.branch_name} ({b.branch_code})</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
+          <div className="relative">
+            <select value={fyFilter} onChange={e => setFyFilter(e.target.value)}
+              className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+              <option value="all">All financial years</option>
+              {fyOptions.map(fy => <option key={fy} value={fy}>FY {fy}</option>)}
+            </select>
+            <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+          </div>
           <button onClick={fetchLrs}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
@@ -337,7 +394,7 @@ export default function LRsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['GC No.', 'Date', 'Consignor', 'Consignee', 'Route', 'Vehicle', 'Bags', 'Amount', 'Status', 'Actions'].map(h => (
+                    {['GC No.', 'Branch', 'Date', 'Consignor', 'Consignee', 'Route', 'Vehicle', 'Bags', 'Amount', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -351,6 +408,11 @@ export default function LRsPage() {
                           <Link href={`/admin/lrs/${l.id}`} className="font-mono text-xs font-bold text-orange-500 hover:text-orange-600">
                             {l.lr_number}
                           </Link>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
+                          {l.branch_code
+                            ? <div className="flex items-center gap-1"><Building2 className="h-3 w-3 text-gray-400" /> {l.branch_code}</div>
+                            : <span className="text-gray-300">—</span>}
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.lr_date)}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{l.consignor_name ?? '—'}</td>

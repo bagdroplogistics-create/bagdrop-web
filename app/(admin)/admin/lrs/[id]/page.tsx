@@ -27,6 +27,10 @@ interface LR {
   lr_type: string | null; delivery_at: string | null; remarks: string | null; prepared_by: string | null
   driver_name: string | null; driver_mobile: string | null; vehicle_type: string | null
   created_at: string
+  branch_id: string | null; branch_code: string | null; branch_name: string | null
+  branch_address: string | null; branch_gst_number: string | null
+  branch_contact_number: string | null; branch_email: string | null
+  financial_year: string | null
   [key: string]: unknown
 }
 
@@ -217,6 +221,9 @@ export default function LRDetailPage() {
           insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,
           paymentTerms: lr.payment_terms, lrType: lr.lr_type, deliveryAt: lr.delivery_at,
           remarks: lr.remarks, preparedBy: lr.prepared_by,
+          branchName: lr.branch_name, branchAddress: lr.branch_address,
+          branchGstNumber: lr.branch_gst_number, branchContactNumber: lr.branch_contact_number,
+          branchEmail: lr.branch_email,
         })
       ).toBlob()
       const url = URL.createObjectURL(blob)
@@ -327,6 +334,20 @@ export default function LRDetailPage() {
               <EField label="LR Date" k="lr_date" type="date" display={fmtDate(lr.lr_date)} />
               <EField label="Driver" k="driver_name" />
               <EField label="Driver Mobile" k="driver_mobile" />
+              {/* Read-only, not part of EDITABLE_TEXT_FIELDS — branch
+                  assignment is permanent once set (spec section 15: changing
+                  it after LR creation must not silently change the LR
+                  number, so it isn't exposed as a plain edit field here). */}
+              <div>
+                <p className="text-xs font-semibold text-gray-400">Issuing Branch</p>
+                <p className="mt-0.5 text-sm text-gray-800">
+                  {lr.branch_code ? `${lr.branch_name} (${lr.branch_code})` : '— (global series)'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-gray-400">Financial Year</p>
+                <p className="mt-0.5 text-sm text-gray-800">{lr.financial_year ?? '—'}</p>
+              </div>
             </div>
           </Card>
 
