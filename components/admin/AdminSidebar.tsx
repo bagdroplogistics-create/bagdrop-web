@@ -134,13 +134,15 @@ export function AdminSidebar() {
 
   return (
     <>
-      {/* Desktop sidebar */}
-      <aside className="hidden w-56 shrink-0 border-r border-gray-200 bg-white lg:flex lg:flex-col">
+      {/* Desktop sidebar — print:hidden so it never appears in printed/PDF
+          output from any /admin/* page (e.g. Leads "Print List", Quote
+          print page). Purely additive, screen behavior unchanged. */}
+      <aside className="hidden w-56 shrink-0 border-r border-gray-200 bg-white lg:flex lg:flex-col print:hidden">
         <SidebarContent />
       </aside>
 
       {/* Mobile: hamburger + drawer */}
-      <div className="lg:hidden">
+      <div className="lg:hidden print:hidden">
         <button
           onClick={() => setOpen(true)}
           className="fixed left-4 top-4 z-40 flex h-9 w-9 items-center justify-center rounded-lg border border-gray-200 bg-white shadow-sm"

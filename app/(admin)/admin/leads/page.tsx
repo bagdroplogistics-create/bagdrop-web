@@ -6,6 +6,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
+  Printer,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -1053,6 +1054,31 @@ function LeadsPageInner() {
     return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' })
   }
 
+  // ── Print Leads List ────────────────────────────────────────────
+  // Hands the *exact* rows currently on screen — same filter/search/sort/
+  // follow-up-filter/showDeleted state as the visible table, not a fresh
+  // server query — to a dedicated print view via sessionStorage, then opens
+  // it in a new tab. No separate list/database is created; this is purely a
+  // presentation snapshot of what the admin is already looking at. Opening
+  // sessionStorage.setItem synchronously before window.open (rather than
+  // after) keeps this inside the click's user-activation window so popup
+  // blockers don't interfere.
+  function openPrintView() {
+    const rows = sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam))
+    const filterParts: string[] = []
+    if (search.trim())        filterParts.push(`Search: "${search.trim()}"`)
+    if (filter !== 'all')     filterParts.push(`Status: ${STATUS_CONFIG[filter]?.label ?? filter}`)
+    if (sourceFilter !== 'all') filterParts.push(`Source: ${SOURCE_LABELS[sourceFilter] ?? sourceFilter}`)
+    if (followupParam)        filterParts.push(`Follow-up: ${followupParam.replace(/_/g, ' ')}`)
+    if (showDeleted)          filterParts.push('Deleted leads only')
+    sessionStorage.setItem('bagdrop_leads_print_data', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      filterSummary: filterParts.join('  ·  '),
+      rows,
+    }))
+    window.open('/admin/leads/print', '_blank')
+  }
+
   if (!authed) return null
 
   return (
@@ -1216,6 +1242,11 @@ function LeadsPageInner() {
           <button onClick={fetchLeads}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+          <button onClick={openPrintView} disabled={leads.length === 0}
+            title="Print the current Leads list (respects filters/search/sort above)"
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40">
+            <Printer className="h-3.5 w-3.5" /> Print
           </button>
           <button
             onClick={() => setShowDeleted(v => !v)}
