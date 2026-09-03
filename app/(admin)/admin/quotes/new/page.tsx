@@ -2066,6 +2066,7 @@ function QuotePageInner() {
                 <p className="text-xs font-semibold text-gray-500">Return Journey Items</p>
                 {returnPriceLoading && <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-400" />}
               </div>
+              <div className="overflow-x-auto">
               <table className="w-full min-w-0 text-sm mb-2">
                 <thead>
                   <tr className="border-b border-gray-200 text-left text-xs font-semibold uppercase text-gray-500">
@@ -2105,6 +2106,7 @@ function QuotePageInner() {
                   )}
                 </tbody>
               </table>
+              </div>
               <button type="button" onClick={addReturnRow} className="flex items-center gap-1 text-xs font-semibold text-purple-600 hover:text-purple-700">
                 <Plus className="h-3.5 w-3.5" /> Add Row
               </button>

@@ -467,7 +467,8 @@ export default function NewInvoicePage() {
         <div className="mb-4">
           <p className="mb-2 text-sm font-bold text-gray-800">Item Table</p>
           <div className="overflow-hidden rounded-lg border border-gray-200">
-            <table className="w-full text-xs">
+            <div className="overflow-x-auto">
+            <table className="w-full min-w-[640px] text-xs">
               <thead>
                 <tr className="bg-gray-50 text-left text-gray-500">
                   <th className="px-3 py-2 font-semibold">Item Details</th>
@@ -518,6 +519,7 @@ export default function NewInvoicePage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
           <button onClick={addRow} className="mt-2 flex items-center gap-1.5 text-xs font-semibold text-orange-600 hover:text-orange-700">
             <Plus className="h-3.5 w-3.5" /> Add New Row

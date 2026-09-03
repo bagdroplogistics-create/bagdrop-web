@@ -428,6 +428,7 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
             <div className="mt-6">
               <p className="mb-2 text-sm font-bold text-gray-800">Unpaid Invoices</p>
               <div className="overflow-hidden rounded-lg border border-gray-200">
+                <div className="overflow-x-auto">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-gray-50 text-left text-gray-500">
@@ -463,6 +464,7 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
                     ))}
                   </tbody>
                 </table>
+                </div>
               </div>
 
               <div className="mt-3 flex flex-col items-end gap-1 text-xs">
@@ -664,6 +666,7 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
               <div className="mt-8">
                 <p className="mb-2 text-sm font-bold text-gray-800">Payment for</p>
                 <div className="overflow-hidden rounded-lg border border-gray-200">
+                  <div className="overflow-x-auto">
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="bg-gray-50 text-left text-gray-500">
@@ -690,6 +693,7 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
                       )}
                     </tbody>
                   </table>
+                  </div>
                 </div>
                 {detail.unused_amount > 0 && (
                   <p className="mt-1.5 text-right text-xs font-semibold text-amber-600">Unused Amount: {fmtRs2(detail.unused_amount)}</p>
