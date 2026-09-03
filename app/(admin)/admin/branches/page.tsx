@@ -258,6 +258,74 @@ function KeyRevealModal({ branchName, accessKey, onClose }: { branchName: string
   )
 }
 
+// ── Manual merge modal ──────────────────────────────────────────────
+// For duplicates the automatic scanner can't infer are the same place on
+// its own — a landmark-style city value ("Banglore airport arrivals
+// terminal"), a misspelling with no alias entry, a station name ("Mumbai
+// CST") normalizeCity() doesn't recognize as the city it's in. The admin
+// selects branches directly on the page (checkboxes below) and picks which
+// one survives here; this hits the exact same merge endpoint/logic as the
+// automatic button (LR reassignment + soft-deactivate, never a hard
+// delete, never a renumber).
+function ManualMergeModal({
+  branches, adminKey, onClose, onMerged,
+}: {
+  branches: Branch[]; adminKey: string; onClose: () => void; onMerged: () => void
+}) {
+  const [primaryId, setPrimaryId] = useState(branches[0]?.id ?? '')
+  const [merging, setMerging] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function merge() {
+    if (!primaryId) return
+    setMerging(true); setErr('')
+    const duplicateIds = branches.map(b => b.id).filter(id => id !== primaryId)
+    const res = await fetch('/api/admin/branches/merge-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ primaryId, duplicateIds }),
+    })
+    const d = await res.json().catch(() => ({}))
+    if (!res.ok) { setErr(d.error ?? 'Merge failed'); setMerging(false); return }
+    onMerged()
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <h3 className="text-base font-bold text-gray-900">Merge {branches.length} Branches</h3>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X className="h-4 w-4" /></button>
+        </div>
+        <p className="mb-4 text-xs text-gray-500">
+          Pick which branch survives. The others are deactivated and any LRs already issued under them are moved to the survivor — LR numbers already issued never change.
+        </p>
+        <div className="space-y-2">
+          {branches.map(b => (
+            <label key={b.id}
+              className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 ${primaryId === b.id ? 'border-orange-300 bg-orange-50' : 'border-gray-200 hover:bg-gray-50'}`}>
+              <input type="radio" name="primary" checked={primaryId === b.id} onChange={() => setPrimaryId(b.id)} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-gray-900">{b.branch_name} <span className="font-mono text-xs text-gray-400">({b.branch_code})</span></p>
+                <p className="truncate text-xs text-gray-500">{b.city}</p>
+              </div>
+              {primaryId === b.id && <span className="shrink-0 rounded-full bg-orange-500 px-2 py-0.5 text-[10px] font-bold text-white">KEEP</span>}
+            </label>
+          ))}
+        </div>
+        {err && <p className="mt-3 text-xs text-red-500">{err}</p>}
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} className="rounded-lg border border-gray-200 px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50">Cancel</button>
+          <button onClick={merge} disabled={merging}
+            className="rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+            {merging ? 'Merging…' : `Merge into selected branch`}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ── Main page ─────────────────────────────────────────────────────
 export default function BranchesPage() {
   const router = useRouter()
@@ -277,6 +345,21 @@ export default function BranchesPage() {
   const [summaryFy, setSummaryFy] = useState('')
   const [seeding, setSeeding] = useState(false)
   const [merging, setMerging] = useState(false)
+
+  // Manual merge selection — see ManualMergeModal above for why this
+  // exists alongside the automatic scanner.
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [showManualMerge, setShowManualMerge] = useState(false)
+
+  function toggleSelected(id: string) {
+    setSelectedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id); else next.add(id)
+      return next
+    })
+  }
+  function exitSelectMode() { setSelectMode(false); setSelectedIds(new Set()) }
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -454,12 +537,33 @@ export default function BranchesPage() {
             <p className="mt-0.5 text-xs text-gray-400">Each branch gets its own independent LR numbering sequence and a scoped access key.</p>
           </div>
           <div className="flex items-center gap-2">
-            <button onClick={mergeDuplicateBranches} disabled={merging}
-              title="Finds branches that share the same city (e.g. Mumbai + Mumbai Airport) and merges each duplicate into a single surviving branch"
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
-              {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
-              Merge Duplicate Branches
-            </button>
+            {selectMode ? (
+              <>
+                <span className="text-xs font-semibold text-gray-500">{selectedIds.size} selected</span>
+                <button onClick={() => setShowManualMerge(true)} disabled={selectedIds.size < 2}
+                  className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-40">
+                  <GitMerge className="h-4 w-4" /> Merge Selected
+                </button>
+                <button onClick={exitSelectMode}
+                  className="rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 transition-colors">
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <button onClick={() => setSelectMode(true)}
+                  title="Manually pick two or more branches to merge — for duplicates that aren't an exact city-name match (e.g. 'Mumbai Airport' + 'Mumbai CST')"
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors">
+                  <GitMerge className="h-4 w-4" /> Select Branches to Merge
+                </button>
+                <button onClick={mergeDuplicateBranches} disabled={merging}
+                  title="Finds branches that share the same city (e.g. Mumbai + Mumbai Airport) and merges each duplicate into a single surviving branch"
+                  className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
+                  {merging ? <Loader2 className="h-4 w-4 animate-spin" /> : <GitMerge className="h-4 w-4" />}
+                  Auto-Merge Exact City Matches
+                </button>
+              </>
+            )}
             <button onClick={seedFromInquiries} disabled={seeding}
               title="Scans every inquiry's pickup city and adds a branch for any city that doesn't have one yet"
               className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
@@ -492,6 +596,7 @@ export default function BranchesPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50/70">
+                    {selectMode && <th className="w-8 px-4 py-3"></th>}
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Code</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">Branch</th>
                     <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-gray-400">City</th>
@@ -504,7 +609,15 @@ export default function BranchesPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {branches.map(b => (
-                    <tr key={b.id} className={`transition-colors hover:bg-gray-50/60 ${!b.is_active ? 'opacity-50' : ''}`}>
+                    <tr key={b.id} className={`transition-colors hover:bg-gray-50/60 ${!b.is_active ? 'opacity-50' : ''} ${selectedIds.has(b.id) ? 'bg-orange-50' : ''}`}>
+                      {selectMode && (
+                        <td className="px-4 py-3.5">
+                          {b.is_active && (
+                            <input type="checkbox" checked={selectedIds.has(b.id)} onChange={() => toggleSelected(b.id)}
+                              className="h-4 w-4 rounded border-gray-300 text-orange-500 focus:ring-orange-400" />
+                          )}
+                        </td>
+                      )}
                       <td className="px-4 py-3.5 font-mono font-bold text-orange-600">{b.branch_code}</td>
                       <td className="px-4 py-3.5 font-semibold text-gray-900">{b.branch_name}</td>
                       <td className="px-4 py-3.5 text-gray-600">{b.city}</td>
@@ -571,6 +684,20 @@ export default function BranchesPage() {
 
       {keyReveal && (
         <KeyRevealModal branchName={keyReveal.branchName} accessKey={keyReveal.key} onClose={() => setKeyReveal(null)} />
+      )}
+
+      {showManualMerge && (
+        <ManualMergeModal
+          branches={branches.filter(b => selectedIds.has(b.id))}
+          adminKey={adminKey}
+          onClose={() => setShowManualMerge(false)}
+          onMerged={() => {
+            setShowManualMerge(false)
+            exitSelectMode()
+            fetchBranches()
+            fetchLrSummary()
+          }}
+        />
       )}
     </>
   )

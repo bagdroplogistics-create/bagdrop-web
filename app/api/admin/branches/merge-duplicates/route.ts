@@ -112,12 +112,82 @@ export async function GET(req: NextRequest) {
   }
 }
 
+// Shared execution step for both the auto-detected and manual merge paths
+// below — reassigns every LR on `duplicateIds` to `primaryId`, then
+// deactivates those branches. Never touches lr_number, never hard-deletes.
+async function executeMerge(primaryId: string, duplicateIds: string[]): Promise<{ reassignedCount: number; error?: string }> {
+  if (duplicateIds.length === 0) return { reassignedCount: 0 }
+
+  const { data: reassigned, error: reassignErr } = await supabaseAdmin
+    .from('lrs')
+    .update({ branch_id: primaryId })
+    .in('branch_id', duplicateIds)
+    .select('id')
+  if (reassignErr) return { reassignedCount: 0, error: reassignErr.message }
+
+  const { error: deactivateErr } = await supabaseAdmin
+    .from('branches')
+    .update({ is_active: false })
+    .in('id', duplicateIds)
+  if (deactivateErr) return { reassignedCount: 0, error: deactivateErr.message }
+
+  return { reassignedCount: reassigned?.length ?? 0 }
+}
+
 export async function POST(req: NextRequest) {
   if (!requireAdmin(req)) {
     return NextResponse.json({ error: 'Unauthorized — branch management requires an admin key' }, { status: 401 })
   }
-  const body = await req.json().catch(() => ({})) as { cityKeys?: string[] }
+  const body = await req.json().catch(() => ({})) as {
+    cityKeys?: string[]
+    // Manual merge (2026-09-02) — for the cases normalizeCity() genuinely
+    // can't infer are the same place on its own (a landmark-style city
+    // value like "Banglore airport arrivals terminal", a misspelling with
+    // no alias entry, a station name like "Mumbai CST" that isn't
+    // recognized as Mumbai). The admin picks the branches directly on the
+    // Branches page instead of relying on auto-detection; this executes
+    // through the exact same executeMerge() as the automatic path, so the
+    // safety guarantees (LR reassignment, soft-deactivate, never hard
+    // delete, never renumber) are identical either way.
+    primaryId?: string
+    duplicateIds?: string[]
+  }
 
+  // ── Manual merge ──────────────────────────────────────────────────
+  if (body.primaryId && Array.isArray(body.duplicateIds) && body.duplicateIds.length > 0) {
+    const primaryId = body.primaryId
+    const duplicateIds = body.duplicateIds.filter(id => id !== primaryId)
+    if (duplicateIds.length === 0) {
+      return NextResponse.json({ error: 'Select at least one other branch to merge into the primary.' }, { status: 400 })
+    }
+
+    const { data: rows, error: fetchErr } = await supabaseAdmin
+      .from('branches')
+      .select('id, branch_code, branch_name, is_active')
+      .in('id', [primaryId, ...duplicateIds])
+    if (fetchErr) return NextResponse.json({ error: fetchErr.message }, { status: 500 })
+
+    const primary = rows?.find(r => r.id === primaryId)
+    if (!primary) return NextResponse.json({ error: 'Primary branch not found.' }, { status: 404 })
+    if (!primary.is_active) return NextResponse.json({ error: 'The branch you chose to keep must be active.' }, { status: 400 })
+
+    const foundDupIds = (rows ?? []).filter(r => duplicateIds.includes(r.id)).map(r => r.id)
+    const { reassignedCount, error } = await executeMerge(primaryId, foundDupIds)
+    if (error) return NextResponse.json({ error }, { status: 500 })
+
+    return NextResponse.json({
+      merged: [{
+        cityKey: 'manual',
+        primary: `${primary.branch_name} (${primary.branch_code})`,
+        deactivated: (rows ?? []).filter(r => foundDupIds.includes(r.id)).map(r => `${r.branch_name} (${r.branch_code})`),
+        reassignedLrCount: reassignedCount,
+      }],
+      reassignedLrCount: reassignedCount,
+      deactivatedCount: foundDupIds.length,
+    })
+  }
+
+  // ── Automatic (normalizeCity-matched) merge ─────────────────────────
   let groups: MergeGroup[]
   try {
     groups = await buildMergeGroups()
@@ -138,28 +208,11 @@ export async function POST(req: NextRequest) {
 
   for (const g of groups) {
     const dupIds = g.duplicates.map(d => d.id)
-    if (dupIds.length === 0) continue
-
-    const { data: reassigned, error: reassignErr } = await supabaseAdmin
-      .from('lrs')
-      .update({ branch_id: g.primary.id })
-      .in('branch_id', dupIds)
-      .select('id')
-    if (reassignErr) {
-      console.error(`[branches merge-duplicates] LR reassign failed for city "${g.cityKey}":`, reassignErr.message)
+    const { reassignedCount, error } = await executeMerge(g.primary.id, dupIds)
+    if (error) {
+      console.error(`[branches merge-duplicates] merge failed for city "${g.cityKey}":`, error)
       continue
     }
-
-    const { error: deactivateErr } = await supabaseAdmin
-      .from('branches')
-      .update({ is_active: false })
-      .in('id', dupIds)
-    if (deactivateErr) {
-      console.error(`[branches merge-duplicates] Deactivate failed for city "${g.cityKey}":`, deactivateErr.message)
-      continue
-    }
-
-    const reassignedCount = reassigned?.length ?? 0
     totalReassigned  += reassignedCount
     totalDeactivated += dupIds.length
     merged.push({
