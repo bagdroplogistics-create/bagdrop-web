@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { nextBagId } from '@/lib/number-series'
+import { syncBagCountToBooking } from '@/lib/group-booking'
 
 // Mints `count` bag IDs with bounded concurrency — next_series_number() is
 // individually race-safe (atomic Postgres UPSERT, see lib/number-series.ts),
@@ -107,6 +108,10 @@ export async function POST(
         }, { status: 207 })
       }
       bags = newBags ?? []
+      // Keep the linked lead/booking's bag count (what the quote builder
+      // actually prices off) in sync with the manifest — see lib/
+      // group-booking.ts's doc comment.
+      await syncBagCountToBooking(id)
     } catch (err) {
       return NextResponse.json({
         guest, bags: [],

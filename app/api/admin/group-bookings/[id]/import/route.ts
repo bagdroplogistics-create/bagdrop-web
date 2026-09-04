@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { nextBagId } from '@/lib/number-series'
+import { syncBagCountToBooking } from '@/lib/group-booking'
 import * as XLSX from 'xlsx'
 
 // Accepts the template downloaded from GET .../template (or a plain CSV
@@ -189,6 +190,10 @@ export async function POST(
       failed.push({ row: r.row, guest_name: r.guest_name, error: `guest created, bag ID generation failed: ${err instanceof Error ? err.message : 'unknown'}` })
       created.push({ guest, bags: [] })
     }
+  }
+
+  if (created.some(c => c.bags.length > 0)) {
+    await syncBagCountToBooking(id)
   }
 
   return NextResponse.json({

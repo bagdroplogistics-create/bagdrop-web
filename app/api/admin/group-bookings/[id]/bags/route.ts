@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { nextBagId } from '@/lib/number-series'
+import { syncBagCountToBooking } from '@/lib/group-booking'
 
 // Manually add ONE bag (guest_id optional — a bag can exist before it's
 // assigned to a guest; the manifest UI can reassign it later). For adding
@@ -51,5 +52,6 @@ export async function POST(
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await syncBagCountToBooking(id)
   return NextResponse.json({ bag: data }, { status: 201 })
 }

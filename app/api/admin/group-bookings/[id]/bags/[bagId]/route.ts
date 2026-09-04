@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { syncBagCountToBooking } from '@/lib/group-booking'
 
 const VALID_STATUSES = [
   'pending', 'picked_up', 'received', 'tagged', 'in_transit', 'out_for_delivery', 'delivered',
@@ -70,5 +71,6 @@ export async function DELETE(
     .eq('id', bagId)
     .eq('booking_id', id)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  await syncBagCountToBooking(id)
   return NextResponse.json({ success: true })
 }
