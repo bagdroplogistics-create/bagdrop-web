@@ -6,7 +6,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
-  Printer,
+  Printer, Mail, MessageCircle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -68,6 +68,15 @@ interface Lead {
   // lib/sales-followup-reminders.ts / app/api/admin/sales-followup-summary/route.ts.
   quote_number?:           string | null
   quote_date?:             string | null
+  // Final quotation amount for the primary quote (leads.quote_total —
+  // already returned by GET /api/admin/leads' `select('*')`, just not
+  // previously read on this page). Used by the new "Quote Amount" column
+  // and the Send Quote via Email/WhatsApp row actions below. Deliberately
+  // NOT return_quote_total — the Leads table only ever surfaces the
+  // primary quote (see the 2026-08-31 "Return Quote button intentionally
+  // REMOVED from this table" comment further down), so Quote Amount
+  // mirrors that same scope.
+  quote_total?:            number | null
   // Set only once a Return Journey quote has been generated for this lead
   // (see app/api/admin/zoho/generate-quote/route.ts's is_return_quote
   // auto-detect — calling that route again for a lead that already has
@@ -1079,6 +1088,114 @@ function LeadsPageInner() {
     window.open('/admin/leads/print', '_blank')
   }
 
+  // ── Send Quote via Email / WhatsApp — directly from the Leads table ──
+  // Reuses the EXACT same endpoints/behavior as the "Send Quote Email →"
+  // and "Send Quote via WhatsApp" buttons already on the full quote page
+  // (app/(admin)/admin/quotes/view/[lead_id]/page.tsx's doSendQuote /
+  // doSendQuoteWhatsApp) — same PATCH payload to
+  // /api/admin/bookings/[id] (which server-side attaches the freshly
+  // generated Quote PDF and sends via Resend — see send_quote_email in
+  // app/api/admin/bookings/[id]/route.ts) and the same
+  // /api/admin/leads/[id]/quote-pdf → WhatsApp Web compose-link flow. No
+  // new quote/record is created and no status logic changes — this just
+  // calls the existing side effects without navigating off the Leads page.
+  const [sendingEmail, setSendingEmail]         = useState<string | null>(null)
+  const [sendingWhatsApp, setSendingWhatsApp]   = useState<string | null>(null)
+  const [justSent, setJustSent] = useState<{ id: string; channel: 'email' | 'whatsapp' } | null>(null)
+
+  function flashSent(id: string, channel: 'email' | 'whatsapp') {
+    setJustSent({ id, channel })
+    setTimeout(() => setJustSent(prev => (prev?.id === id && prev.channel === channel ? null : prev)), 3000)
+  }
+
+  async function sendQuoteEmailFromTable(l: Lead) {
+    if (!l.booking_id || !adminKey || sendingEmail) return
+    setSendingEmail(l.id)
+    try {
+      const res = await fetch(`/api/admin/bookings/${l.booking_id}?key=${encodeURIComponent(adminKey)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'quote_sent', send_quote_email: true }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert('Could not send quote email: ' + (err.error ?? 'Unknown error'))
+        return
+      }
+      flashSent(l.id, 'email')
+      fetchLeads()
+    } catch (e) {
+      alert('Could not send quote email: ' + (e instanceof Error ? e.message : 'Network error'))
+    } finally {
+      setSendingEmail(null)
+    }
+  }
+
+  async function sendQuoteWhatsAppFromTable(l: Lead) {
+    if (!l.booking_id || !adminKey || sendingWhatsApp) return
+    setSendingWhatsApp(l.id)
+    try {
+      // Always regenerates fresh off the lead's CURRENT saved quote (same
+      // route the full quote page uses) — never attaches a stale PDF.
+      let pdfUrl: string
+      try {
+        const r = await fetch(`/api/admin/leads/${l.id}/quote-pdf?key=${encodeURIComponent(adminKey)}`, {
+          method: 'POST',
+          headers: { 'x-admin-key': adminKey },
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
+        pdfUrl = d.url
+      } catch {
+        alert('Unable to attach Quote PDF. Please try again.')
+        return
+      }
+
+      const name  = formatCustomerName(l.title, l.name) || l.name || 'Customer'
+      const qnum  = l.quote_number ?? l.zoho_estimate_number ?? ''
+      const from  = l.from_city ?? ''
+      const to    = l.to_city ?? ''
+      const bags  = l.bags_count ?? 1
+      const total = l.quote_total ?? 0
+      const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
+      const phoneDigits = (l.phone ?? '').replace(/\D/g, '')
+      const e164  = phoneDigits.startsWith('91') ? phoneDigits : '91' + phoneDigits
+      const msg = [
+        `Hi ${name}! 👋`,
+        '',
+        `Your Bagdrop quote is ready. Here's the summary:`,
+        '',
+        `👤 Customer Name: ${name}`,
+        `📋 Quote No: ${qnum}`,
+        `🗺️ Route: ${from} → ${to}`,
+        `🧳 No. of Bags: ${bags}`,
+        `💰 Total Amount: ${fmt(Number(total))}`,
+        '',
+        `📄 Download your quote PDF:`, pdfUrl, '',
+        'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
+        '',
+        '— Team Bagdrop',
+      ].join('\n')
+
+      // Mark as sent (same status bump doSendQuoteWhatsApp performs), then
+      // open WhatsApp Web with the message pre-filled.
+      const res = await fetch(`/api/admin/bookings/${l.booking_id}?key=${encodeURIComponent(adminKey)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: 'quote_sent' }),
+      })
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        alert('Quote PDF was generated, but the status update failed: ' + (err.error ?? 'Unknown error'))
+      }
+      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
+      flashSent(l.id, 'whatsapp')
+      fetchLeads()
+    } finally {
+      setSendingWhatsApp(null)
+    }
+  }
+
   if (!authed) return null
 
   return (
@@ -1295,7 +1412,7 @@ function LeadsPageInner() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['Quote #', 'Customer', 'Service', 'Route', 'Pickup Date', 'Bags', 'Source', 'Status', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
+                    {['Quote #', 'Customer', 'Service', 'Route', 'Pickup Date', 'Bags', 'Source', 'Status', 'Quote Amount', 'Booking / Estimate', 'Date', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -1375,6 +1492,9 @@ function LeadsPageInner() {
                             </span>
                           )
                         })()}
+                      </td>
+                      <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                        {l.quote_total != null ? '₹' + Math.round(Number(l.quote_total)).toLocaleString('en-IN') : <span className="text-gray-400 font-normal">—</span>}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">
@@ -1492,9 +1612,42 @@ function LeadsPageInner() {
                           ) : (
                             <>
                               <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
+                                title="Edit"
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
                               </button>
+                              {/* Send Quote via Email / WhatsApp — only once a quote actually
+                                  exists for this lead (zoho_estimate_number set) and it has a
+                                  linked booking (both endpoints below key off booking_id). Sends
+                                  the existing, already-generated quote — no new quote/record is
+                                  created. See sendQuoteEmailFromTable/sendQuoteWhatsAppFromTable
+                                  above for the exact reused endpoints. */}
+                              {l.zoho_estimate_number && l.booking_id && (
+                                <>
+                                  <button
+                                    onClick={() => sendQuoteEmailFromTable(l)}
+                                    disabled={sendingEmail === l.id}
+                                    title="Send Quote via Email"
+                                    className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors disabled:opacity-40">
+                                    {sendingEmail === l.id
+                                      ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                                      : justSent?.id === l.id && justSent.channel === 'email'
+                                        ? <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                                        : <Mail className="h-3.5 w-3.5" />}
+                                  </button>
+                                  <button
+                                    onClick={() => sendQuoteWhatsAppFromTable(l)}
+                                    disabled={sendingWhatsApp === l.id}
+                                    title="Send Quote via WhatsApp"
+                                    className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-green-600 transition-colors disabled:opacity-40">
+                                    {sendingWhatsApp === l.id
+                                      ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-400 border-t-transparent" />
+                                      : justSent?.id === l.id && justSent.channel === 'whatsapp'
+                                        ? <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                                        : <MessageCircle className="h-3.5 w-3.5" />}
+                                  </button>
+                                </>
+                              )}
                               {/* Communication Log — see logLead state comment above.
                                   Read-only: shows every acknowledgment/notification send
                                   attempt (email + WhatsApp) for this lead, with the exact
@@ -1505,6 +1658,7 @@ function LeadsPageInner() {
                                 <History className="h-3.5 w-3.5" />
                               </button>
                               <button onClick={() => setDeleteConfirm(l)} disabled={deleting === l.id}
+                                title="Delete"
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
                                 <Trash2 className="h-3.5 w-3.5" />
                               </button>
