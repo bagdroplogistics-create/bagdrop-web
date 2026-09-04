@@ -1,24 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { nextBagId } from '@/lib/number-series'
-import { syncBagCountToBooking } from '@/lib/group-booking'
-
-// Mints `count` bag IDs with bounded concurrency — next_series_number() is
-// individually race-safe (atomic Postgres UPSERT, see lib/number-series.ts),
-// so parallel calls never collide, but firing 150 RPC calls fully in
-// parallel would still hammer the connection pool. 10-at-a-time keeps this
-// fast for a 150-bag wedding without doing that.
-async function mintBagIds(count: number): Promise<string[]> {
-  const ids: string[] = []
-  const CHUNK = 10
-  for (let i = 0; i < count; i += CHUNK) {
-    const n = Math.min(CHUNK, count - i)
-    const chunk = await Promise.all(Array.from({ length: n }, () => nextBagId()))
-    ids.push(...chunk)
-  }
-  return ids
-}
+import { syncBagCountToBooking, mintBagIds } from '@/lib/group-booking'
 
 export async function GET(
   req: NextRequest,

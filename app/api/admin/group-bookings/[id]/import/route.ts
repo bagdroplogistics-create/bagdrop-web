@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { nextBagId } from '@/lib/number-series'
-import { syncBagCountToBooking } from '@/lib/group-booking'
+import { syncBagCountToBooking, mintBagIds } from '@/lib/group-booking'
 import * as XLSX from 'xlsx'
 
 // Accepts the template downloaded from GET .../template (or a plain CSV
@@ -42,16 +41,6 @@ interface ParsedRow {
   remarks: string | null
   errors: string[]
   status: 'ok' | 'skipped_duplicate' | 'error'
-}
-
-async function mintBagIds(count: number): Promise<string[]> {
-  const ids: string[] = []
-  const CHUNK = 10
-  for (let i = 0; i < count; i += CHUNK) {
-    const n = Math.min(CHUNK, count - i)
-    ids.push(...(await Promise.all(Array.from({ length: n }, () => nextBagId()))))
-  }
-  return ids
 }
 
 export async function POST(

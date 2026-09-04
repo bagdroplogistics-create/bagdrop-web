@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { nextInquiryNumberPair, nextGroupBookingNumber } from '@/lib/number-series'
+import { mintBagIds } from '@/lib/group-booking'
 
 // ── Group / Wedding Booking module — Phase 1 ─────────────────────────────
 // A Group Booking is a `bookings` row (booking_type = 'group') plus a 1:1
@@ -217,6 +218,56 @@ async function handleCreate(req: NextRequest): Promise<NextResponse> {
   if (detailsErr) {
     console.error('[group-bookings POST] group_booking_details insert failed:', detailsErr.message)
     return NextResponse.json({ error: detailsErr.message }, { status: 500 })
+  }
+
+  // Auto-add the Primary Contact as the FIRST guest in the manifest, with
+  // their own bags — otherwise the bags they're personally bringing exist
+  // only as a top-level "estimate" number that a real guest/bag record
+  // never backs, and get silently superseded the moment any OTHER guest is
+  // added to the manifest (the manifest becomes the real source of truth —
+  // see lib/group-booking.ts's syncBagCountToBooking). Founder-reported,
+  // 2026-09-04: "main Monali Patel who has created group booking with 5
+  // bags... this 5 bags is not count in total" — she was Primary Contact
+  // but never a Guest row. This makes every new Group Booking start with
+  // that guest already in place instead. Admin can still edit/remove her
+  // like any other guest afterward.
+  if (totalBagsForBooking > 0) {
+    try {
+      const { data: primaryGuest, error: primaryGuestErr } = await supabaseAdmin
+        .from('group_guests')
+        .insert({
+          booking_id:  booking.id,
+          guest_name:  body.primary_contact_name.trim(),
+          mobile_number: body.primary_contact_number.trim(),
+          email:       nullStr(body.email),
+          hotel_name:  nullStr(body.hotel_name),
+          delivery_location: nullStr(body.delivery_address),
+        })
+        .select('id')
+        .single()
+
+      if (primaryGuestErr || !primaryGuest) {
+        console.error('[group-bookings POST] primary-contact guest insert failed:', primaryGuestErr?.message)
+      } else {
+        const bagNumbers = await mintBagIds(totalBagsForBooking)
+        const { error: bagsErr } = await supabaseAdmin
+          .from('group_bags')
+          .insert(bagNumbers.map(bag_number => ({
+            booking_id: booking.id,
+            guest_id:   primaryGuest.id,
+            bag_number,
+            status:     'pending',
+            hotel_name: nullStr(body.hotel_name),
+            delivery_location: nullStr(body.delivery_address),
+          })))
+        if (bagsErr) console.error('[group-bookings POST] primary-contact bag insert failed:', bagsErr.message)
+      }
+    } catch (err) {
+      // Non-fatal — the group booking itself is already created and valid;
+      // the admin can still add the primary contact as a guest manually
+      // from the manifest if this step failed.
+      console.error('[group-bookings POST] primary-contact guest/bags step failed:', err instanceof Error ? err.message : err)
+    }
   }
 
   return NextResponse.json({ group_booking: { ...details, booking } }, { status: 201 })

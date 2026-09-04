@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '@/lib/supabase'
+import { nextBagId } from '@/lib/number-series'
 
 // Keeps the EXISTING pricing engine's input (leads.bags_count, which the
 // New Quote builder — app/(admin)/admin/quotes/new/page.tsx — reads to
@@ -40,4 +41,23 @@ export async function syncBagCountToBooking(bookingId: string): Promise<number> 
   }
 
   return bagCount
+}
+
+// Mints `count` bag IDs with bounded concurrency (10 at a time) —
+// next_series_number() is individually race-safe (atomic Postgres UPSERT,
+// see lib/number-series.ts), so parallel calls never collide, but firing
+// e.g. 150 RPC calls fully in parallel would still hammer the connection
+// pool. Shared by every bulk bag-creation path: POST .../guests (a new
+// guest's bags_count), the primary-contact auto-guest created alongside a
+// new Group Booking (POST /api/admin/group-bookings), and the Excel/CSV
+// import commit.
+export async function mintBagIds(count: number): Promise<string[]> {
+  const ids: string[] = []
+  const CHUNK = 10
+  for (let i = 0; i < count; i += CHUNK) {
+    const n = Math.min(CHUNK, count - i)
+    const chunk = await Promise.all(Array.from({ length: n }, () => nextBagId()))
+    ids.push(...chunk)
+  }
+  return ids
 }
