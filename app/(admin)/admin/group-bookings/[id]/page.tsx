@@ -12,11 +12,11 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Users2, Plus, Search, RefreshCw, Pencil, Trash2, X, Save,
-  Luggage, Upload, Download, Tag, FileText, ExternalLink, ChevronDown,
+  Luggage, Upload, Download, Tag, FileText, ExternalLink, ChevronDown, AlertTriangle,
 } from 'lucide-react'
 
 interface Booking {
-  id: string; tracking_id: string; status: string; payment_status: string | null; total_amount: number | null
+  id: string; tracking_id: string; status: string; payment_status: string | null; total_amount: number | null; is_test?: boolean
 }
 interface Lead {
   id: string; quote_number: string | null; quote_total: number | null; status: string
@@ -220,6 +220,22 @@ export default function GroupBookingDetailPage() {
     await load()
   }
 
+  const [deleting, setDeleting] = useState(false)
+  async function deleteTestBooking() {
+    if (!booking?.is_test) return
+    if (!confirm(`Permanently delete this TEST group booking (${group?.group_booking_number}) and everything under it — guests, bags, quote, payments, LR, tripsheets, invoices? This cannot be undone.`)) return
+    setDeleting(true)
+    try {
+      const res = await fetch(`/api/admin/group-bookings/${id}?key=${adminKey}`, { method: 'DELETE', headers: { 'x-admin-key': adminKey } })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(j.error ?? 'Could not delete this booking'); setDeleting(false); return }
+      router.push('/admin/group-bookings')
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'Network error')
+      setDeleting(false)
+    }
+  }
+
   if (!authed) return null
   if (loading) return <div className="flex min-h-[60vh] items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" /></div>
   if (error || !group) return (
@@ -263,9 +279,21 @@ export default function GroupBookingDetailPage() {
               className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors">
               <Tag className="h-4 w-4" /> Bag Tags
             </button>
+            {booking?.is_test && (
+              <button onClick={deleteTestBooking} disabled={deleting}
+                className="flex items-center gap-1.5 rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-semibold text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
+                <Trash2 className="h-4 w-4" /> {deleting ? 'Deleting…' : 'Delete Test Booking'}
+              </button>
+            )}
           </div>
         </div>
       </div>
+
+      {booking?.is_test && (
+        <div className="flex items-center gap-2 border-b border-amber-200 bg-amber-50 px-6 py-2 text-sm font-semibold text-amber-800">
+          <AlertTriangle className="h-4 w-4" /> TEST MODE — this booking does not count toward Dashboard totals or revenue reports. Delete it when you're done testing.
+        </div>
+      )}
 
       <main className="mx-auto max-w-[1600px] px-4 py-6 sm:px-6">
         {/* Event summary */}

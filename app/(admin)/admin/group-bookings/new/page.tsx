@@ -33,12 +33,14 @@ interface FormState {
   pickup_window_end: string
   special_instructions: string
   remarks: string
+  is_test: boolean
 }
 
 const EMPTY: FormState = {
   event_name: '', event_type: 'Wedding', primary_contact_name: '', primary_contact_number: '', email: '',
   event_date: '', pickup_city: '', pickup_address: '', delivery_city: '', delivery_address: '', hotel_name: '',
   estimated_total_bags: '', pickup_window_start: '', pickup_window_end: '', special_instructions: '', remarks: '',
+  is_test: false,
 }
 
 export default function NewGroupBookingPage() {
@@ -97,6 +99,17 @@ export default function NewGroupBookingPage() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6">
+        <label className="mb-4 flex items-start gap-3 rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 cursor-pointer">
+          <input type="checkbox" checked={form.is_test} onChange={e => setForm(f => ({ ...f, is_test: e.target.checked }))}
+            className="mt-0.5 h-4 w-4 accent-amber-600" />
+          <span>
+            <span className="block text-sm font-bold text-amber-800">Test Mode</span>
+            <span className="block text-xs text-amber-700">
+              Creates a fully working Group Booking for testing on the live site, but it won&apos;t count toward Dashboard totals or revenue reports. It&apos;s clearly marked TEST everywhere, and you&apos;ll get a permanent Delete button on its detail page once you&apos;re done checking it — that button only works on Test Mode bookings.
+            </span>
+          </span>
+        </label>
+
         <div className="rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
           <div className="grid grid-cols-2 gap-4">
             <div className="col-span-2">

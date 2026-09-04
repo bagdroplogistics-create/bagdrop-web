@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
   // query (avoids an N+1 fetch per group booking).
   let query = supabaseAdmin
     .from('group_booking_details')
-    .select('*, booking:bookings(id, tracking_id, status, payment_status, total_amount, from_city, to_city, created_at)')
+    .select('*, booking:bookings(id, tracking_id, status, payment_status, total_amount, from_city, to_city, created_at, is_test)')
     .order('created_at', { ascending: false })
 
   if (search) {
@@ -95,6 +95,7 @@ async function handleCreate(req: NextRequest): Promise<NextResponse> {
   const estimatedBags = Number(body.estimated_total_bags) || 0
   const finalBags      = body.final_total_bags != null ? Number(body.final_total_bags) : null
   const totalBagsForBooking = finalBags || estimatedBags || 1
+  const isTest = body.is_test === true
 
   const nullStr  = (v: unknown) => (typeof v === 'string' ? v.trim() : '') || null
   const nullDate = (v: unknown) => (typeof v === 'string' ? v.trim() : '') || null
@@ -112,6 +113,7 @@ async function handleCreate(req: NextRequest): Promise<NextResponse> {
   const bookingPayload = {
     tracking_id:    trackingId,
     booking_type:   'group',
+    is_test:        isTest,
     title:          'Mr.',
     customer_name:  body.primary_contact_name.trim(),
     customer_phone: body.primary_contact_number.trim(),
@@ -160,6 +162,7 @@ async function handleCreate(req: NextRequest): Promise<NextResponse> {
       lead_number:      leadNumber,
       booking_id:       booking.id,
       booking_type:     'group',
+      is_test:          isTest,
       title:            'Mr.',
       name:             body.primary_contact_name.trim(),
       phone:            body.primary_contact_number.trim(),

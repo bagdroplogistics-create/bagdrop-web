@@ -40,6 +40,7 @@ interface GroupBookingRow {
     status: string
     payment_status: string | null
     total_amount: number | null
+    is_test?: boolean
   } | null
 }
 
@@ -154,7 +155,12 @@ export default function GroupBookingsPage() {
                           <div className="text-[11px] text-gray-400">{g.booking?.tracking_id}</div>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-gray-900">{g.event_name}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-gray-900">{g.event_name}</p>
+                            {g.booking?.is_test && (
+                              <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700">Test</span>
+                            )}
+                          </div>
                           {g.event_type && <p className="text-xs text-gray-400">{g.event_type}</p>}
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600">

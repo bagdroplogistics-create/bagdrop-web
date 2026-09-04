@@ -148,6 +148,21 @@ CREATE INDEX IF NOT EXISTS idx_group_bags_status     ON group_bags(status);
 COMMENT ON TABLE group_bags IS
   'One row per PHYSICAL bag in a Group/Wedding Booking. bag_number + QR code are the primary identifiers — never guest name alone (multiple guests can share a name).';
 
+-- ── 4b. Test Mode ─────────────────────────────────────────────────
+-- Lets an admin create a real, fully-working Group Booking on
+-- production to test the flow (quote engine, manifest, tags, etc.)
+-- without it counting toward real dashboard/revenue numbers. Marked
+-- bookings are excluded from app/api/admin/dashboard-analytics/
+-- route.ts's counts and can be permanently removed afterward via
+-- DELETE /api/admin/group-bookings/[id] — which deliberately refuses
+-- to run unless is_test = true (see that route), so this can never be
+-- used to delete a real booking.
+ALTER TABLE bookings ADD COLUMN IF NOT EXISTS is_test boolean NOT NULL DEFAULT false;
+ALTER TABLE leads    ADD COLUMN IF NOT EXISTS is_test boolean NOT NULL DEFAULT false;
+
+COMMENT ON COLUMN bookings.is_test IS 'true = created purely to test a flow (e.g. Group Booking module) — excluded from dashboard analytics, permanently deletable.';
+COMMENT ON COLUMN leads.is_test    IS 'Mirrors the linked bookings.is_test.';
+
 -- ── 5. Seed the GBL/GBAG number-series counters ──────────────────
 -- Same atomic mechanism as BDA/BDL/BDQ (see 20260817_atomic_number_
 -- series.sql's next_series_number()) — no new function needed, just

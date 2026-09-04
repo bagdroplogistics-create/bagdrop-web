@@ -153,23 +153,45 @@ export async function GET(req: NextRequest) {
   // that case deletedAtSupported is reported in `debug` below so it's
   // visible when a "deleted" lead isn't actually dropping out of the count
   // (the column silently isn't there to write deleted_at to at all).
+  // is_test (supabase/migrations/20260904_group_bookings.sql — Group
+  // Booking module's Test Mode) excludes bookings/leads created purely to
+  // test a flow on production from every count below. Probed the same
+  // defensive way as deleted_at/completed_month_override further down —
+  // this route must keep working unmodified on any database that hasn't
+  // run that migration yet. Both bookings.is_test and leads.is_test are
+  // added by the SAME migration, so one probe (via the leads query) covers
+  // both — reused for the bookings query further below too.
+  let isTestSupported = true
   let deletedAtSupported = true
   let leadsRes = await supabaseAdmin
     .from('leads')
     .select('id, created_at, booking_id, quote_number, status')
     .is('deleted_at', null)
+    .eq('is_test', false)
     .limit(20000)
+  if (leadsRes.error?.message?.includes('is_test')) {
+    isTestSupported = false
+    leadsRes = await supabaseAdmin
+      .from('leads')
+      .select('id, created_at, booking_id, quote_number, status')
+      .is('deleted_at', null)
+      .limit(20000)
+  }
   if (leadsRes.error?.message?.includes('deleted_at')) {
     deletedAtSupported = false
-    leadsRes = await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number, status').limit(20000)
+    leadsRes = isTestSupported
+      ? await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number, status').eq('is_test', false).limit(20000)
+      : await supabaseAdmin.from('leads').select('id, created_at, booking_id, quote_number, status').limit(20000)
   }
   if (leadsRes.error) return NextResponse.json({ error: leadsRes.error.message }, { status: 500 })
 
   // Unfiltered count, for comparison against the deleted_at-filtered count
   // above — the gap between the two is exactly how many leads are
   // currently soft-deleted (should shrink every time one is deleted via
-  // the Leads tab).
-  const leadsAllRes = await supabaseAdmin.from('leads').select('*', { count: 'exact', head: true })
+  // the Leads tab). Still excludes Test Mode leads, same as leadsRes.
+  const leadsAllRes = isTestSupported
+    ? await supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).eq('is_test', false)
+    : await supabaseAdmin.from('leads').select('*', { count: 'exact', head: true })
 
   // Excludes any row without a tracking_id — same guard the Dashboard's own
   // bookings list uses (app/api/admin/bookings/route.ts) to keep out
@@ -185,18 +207,20 @@ export async function GET(req: NextRequest) {
   let completedOverrideSupported = true
   let bookingsData: BookingRow[] = []
   {
-    const primary = await supabaseAdmin
+    let primaryQuery = supabaseAdmin
       .from('bookings')
       .select('id, status, pickup_date, completed_month_override')
       .not('tracking_id', 'is', null)
-      .limit(20000)
+    if (isTestSupported) primaryQuery = primaryQuery.eq('is_test', false)
+    const primary = await primaryQuery.limit(20000)
     if (primary.error?.message?.includes('completed_month_override')) {
       completedOverrideSupported = false
-      const fallback = await supabaseAdmin
+      let fallbackQuery = supabaseAdmin
         .from('bookings')
         .select('id, status, pickup_date')
         .not('tracking_id', 'is', null)
-        .limit(20000)
+      if (isTestSupported) fallbackQuery = fallbackQuery.eq('is_test', false)
+      const fallback = await fallbackQuery.limit(20000)
       if (fallback.error) return NextResponse.json({ error: fallback.error.message }, { status: 500 })
       bookingsData = (fallback.data ?? []).map(b => ({ ...b, completed_month_override: null }))
     } else {
