@@ -313,18 +313,37 @@ export async function PATCH(
     // and WIPE status_history (history = existing?.status_history ?? [])
     // instead of appending to it. Same fallback pattern as
     // deletedAtSupported in app/api/admin/dashboard-analytics/route.ts.
+    // is_test likewise may not exist yet if supabase/migrations/
+    // 20260904_group_bookings.sql hasn't been run — same fallback shape,
+    // stacked on top of the notified_statuses one above. Falls back to
+    // treating is_test as absent (undefined, i.e. not Test Mode) rather
+    // than failing the whole request, which matches reality: if the
+    // column doesn't exist, no booking can be Test Mode yet.
     let existingRes = await supabaseAdmin
       .from('bookings')
-      .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+      .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type, is_test')
       .eq('id', id)
       .single()
     if (existingRes.error?.message?.includes('notified_statuses')) {
       notifiedStatusesSupported = false
       existingRes = await supabaseAdmin
         .from('bookings')
-        .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+        .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type, is_test')
         .eq('id', id)
         .single()
+    }
+    if (existingRes.error?.message?.includes('is_test')) {
+      existingRes = notifiedStatusesSupported
+        ? await supabaseAdmin
+            .from('bookings')
+            .select('status, status_history, notified_statuses, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+            .eq('id', id)
+            .single()
+        : await supabaseAdmin
+            .from('bookings')
+            .select('status, status_history, title, customer_name, customer_phone, customer_email, tracking_id, from_city, to_city, total_amount, total_bags, payment_status, payment_method, payment_reference, service_type')
+            .eq('id', id)
+            .single()
     }
     const existing = existingRes.data
 
@@ -461,6 +480,7 @@ export async function PATCH(
           status:        status as BookingStatus,
           fromCity:      existing.from_city,
           toCity:        existing.to_city,
+          isTest:        existing.is_test,
         }).catch(err => console.error('[booking patch] notification error:', err))
       }
     }

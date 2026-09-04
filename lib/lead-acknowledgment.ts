@@ -34,11 +34,12 @@ import { sendWhatsAppTemplate } from './notifications'
 import { formatCustomerName } from './constants'
 
 export interface AcknowledgeableLead {
-  id:     string
-  title?: string | null
-  name:   string
-  phone?: string | null
-  email?: string | null
+  id:      string
+  title?:  string | null
+  name:    string
+  phone?:  string | null
+  email?:  string | null
+  isTest?: boolean | null
 }
 
 interface CommunicationLogEntry {
@@ -91,6 +92,23 @@ export async function sendLeadAcknowledgment(lead: AcknowledgeableLead): Promise
 
     const name = lead.name?.trim() || 'Customer'
     const displayName = (formatCustomerName(lead.title, name) || name)
+
+    // Test Mode leads (Group Booking "Test Mode" checkbox) must never
+    // trigger a real customer-facing send. Still claim
+    // acknowledgment_sent_at above (so a later real send can't double-fire
+    // once Test Mode is turned off/re-tested) and still write a log entry
+    // per channel — just marked 'skipped' instead of actually calling
+    // Resend/Fast2SMS/Meta. Founder request 2026-09-04: "this is dummy
+    // test inquiry so dont send any message through fast2sms for this."
+    if (lead.isTest) {
+      const skipEntries: CommunicationLogEntry[] = [
+        { type: 'acknowledgment', channel: 'email',    status: 'skipped', timestamp: new Date().toISOString(), detail: 'Test Mode — no real message sent' },
+        { type: 'acknowledgment', channel: 'whatsapp', status: 'skipped', timestamp: new Date().toISOString(), detail: 'Test Mode — no real message sent' },
+      ]
+      await supabaseAdmin.from('leads').update({ communication_log: [...existingLog, ...skipEntries] }).eq('id', lead.id)
+      console.log(`[LeadAck] Lead ${lead.id} — skipped (Test Mode), no real messages sent`)
+      return
+    }
 
     // ── Email ───────────────────────────────────────────────────────
     if (lead.email) {

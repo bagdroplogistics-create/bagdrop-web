@@ -34,7 +34,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { data: lead, error: fetchErr } = await supabaseAdmin
     .from('leads')
-    .select('id, lead_number, title, name, phone, communication_log')
+    .select('id, lead_number, title, name, phone, communication_log, is_test')
     .eq('id', id)
     .maybeSingle()
 
@@ -45,17 +45,25 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const name        = lead.name?.trim() || 'Customer'
   const displayName = formatCustomerName(lead.title, name) || name
 
-  const result = await sendWhatsAppTemplate(lead.phone, 'inquiry_acknowledgment', [displayName])
+  // Test Mode leads must never trigger a real send, even via this manual
+  // admin button — see lib/lead-acknowledgment.ts's matching guard.
+  // Founder request 2026-09-04: "this is dummy test inquiry so dont send
+  // any message through fast2sms for this."
+  const result = lead.is_test
+    ? { success: true as const, error: undefined, requestId: undefined, provider: undefined }
+    : await sendWhatsAppTemplate(lead.phone, 'inquiry_acknowledgment', [displayName])
 
   const existingLog = Array.isArray(lead.communication_log) ? lead.communication_log : []
   const entry = {
     type:      'acknowledgment',
     channel:   'whatsapp',
-    status:    result.success ? 'sent' : 'failed',
+    status:    lead.is_test ? 'skipped' : (result.success ? 'sent' : 'failed'),
     timestamp: new Date().toISOString(),
-    detail:    (result.success
-                  ? `Manual resend by admin via ${result.provider ?? '—'} — request_id ${result.requestId ?? '—'}`
-                  : `Manual resend by admin via ${result.provider ?? '—'} — failed: ${result.error}`),
+    detail:    lead.is_test
+                  ? 'Test Mode — manual resend skipped, no real message sent'
+                  : (result.success
+                      ? `Manual resend by admin via ${result.provider ?? '—'} — request_id ${result.requestId ?? '—'}`
+                      : `Manual resend by admin via ${result.provider ?? '—'} — failed: ${result.error}`),
   }
 
   const { error: logErr } = await supabaseAdmin

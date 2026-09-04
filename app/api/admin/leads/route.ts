@@ -768,11 +768,12 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
     // the admin mobile app, and any partner/API integration that creates
     // leads through this endpoint. See lib/lead-acknowledgment.ts.
     sendLeadAcknowledgment({
-      id:    lead.id,
-      title: lead.title,
-      name:  lead.name,
-      phone: lead.phone,
-      email: lead.email,
+      id:     lead.id,
+      title:  lead.title,
+      name:   lead.name,
+      phone:  lead.phone,
+      email:  lead.email,
+      isTest: lead.is_test,
     }),
   ]).catch(err => console.error('[leads POST] email notification error:', err))
 

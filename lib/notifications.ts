@@ -31,6 +31,7 @@ interface NotificationData {
   status: BookingStatus
   fromCity: string
   toCity: string
+  isTest?: boolean | null
 }
 
 const STATUS_MESSAGES: Record<
@@ -636,6 +637,16 @@ export async function sendWhatsAppTemplate(
 export async function notifyBookingStatus(
   data: NotificationData
 ): Promise<void> {
+  // Test Mode bookings must never trigger a real customer-facing send —
+  // see the matching guard in lib/lifecycle-notifications.ts for the full
+  // rationale. This is the older/simpler notifier (STATUS_MESSAGES-based,
+  // still used by app/api/admin/bookings/[id]/route.ts's generic status
+  // block) — same rule applies here.
+  if (data.isTest) {
+    console.log(`[Notify] Booking ${data.trackingId} — skipped (${data.status}): Test Mode`)
+    return
+  }
+
   const msg = STATUS_MESSAGES[data.status]
   if (!msg) return
 

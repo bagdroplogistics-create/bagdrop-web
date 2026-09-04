@@ -40,6 +40,7 @@ interface BookingLike {
   service_label:      string | null
   service_type:       string | null
   status_history:     Array<Record<string, unknown>> | null
+  is_test?:           boolean | null
 }
 
 // Maps a booking status to its approved Fast2SMS/Meta template NAME.
@@ -104,6 +105,24 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
   try {
     const templateName = TEMPLATE_BY_STATUS[status]
     if (!templateName) return // no template mapped for this status — nothing to do
+
+    // Test Mode bookings (Group Booking "Test Mode" checkbox — see
+    // supabase/migrations/20260904_group_bookings.sql's is_test columns)
+    // must never trigger a real customer-facing WhatsApp send. Log the
+    // skip in status_history (same shape a real send would use) so it's
+    // still visible in the booking's timeline, without ever calling
+    // Fast2SMS/Meta. Founder request 2026-09-04: "this is dummy test
+    // inquiry so dont send any message through fast2sms for this."
+    if (booking.is_test) {
+      const history = Array.isArray(booking.status_history) ? booking.status_history : []
+      history.push({
+        from: status, to: status, timestamp: new Date().toISOString(), changed_by: 'system',
+        note: `WhatsApp (${status}) skipped — Test Mode booking, no real message sent`,
+      })
+      await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
+      console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — skipped (${status}): Test Mode`)
+      return
+    }
 
     if (!booking.customer_phone) {
       console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — skipped (${status}): no phone on file`)
