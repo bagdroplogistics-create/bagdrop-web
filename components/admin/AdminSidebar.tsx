@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -31,6 +31,12 @@ const NAV = [
     group: 'Workflow',
     items: [
       { label: 'Lead',            href: '/admin/leads',      icon: Users      },
+      // Group / Wedding Booking module (supabase/migrations/20260904_
+      // group_bookings.sql) — separate from the Lead entry above since a
+      // 50-150 bag group booking doesn't fit the single-guest Lead flow;
+      // it still produces a normal linked Lead/Quote/Payment/LR/Tripsheet/
+      // Invoice underneath, just with its own Guest & Bag manifest UI.
+      { label: 'Group Bookings',  href: '/admin/group-bookings', icon: Users2 },
       { label: 'Payment Received', href: '/admin/payments',  icon: CreditCard },
       { label: 'LR',               href: '/admin/lrs',       icon: FileText   },
       { label: 'Tripsheet',        href: '/admin/trip-sheets', icon: Truck    },

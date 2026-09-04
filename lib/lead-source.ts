@@ -41,6 +41,11 @@ export const SOURCE_LABELS: Record<string, string> = {
   b2b:            'B2B',
   'walk-in':      'Walk-in',
   skybird:        'Skybird',
+  // Group / Wedding Booking module (supabase/migrations/20260904_group_
+  // bookings.sql) — the linked lead behind every Group Booking is tagged
+  // with this source so it's identifiable in the Leads table / reports
+  // without needing a join to group_booking_details.
+  'group-wedding': 'Group/Wedding',
 }
 
 // Display color for the Dashboard's Source pill, keyed by the *label*
@@ -55,6 +60,7 @@ export const SOURCE_LABEL_COLORS: Record<string, { color: string; bg: string }> 
   B2B:           { color: '#7c3aed', bg: '#ede9fe' },
   'Walk-in':     { color: '#6b7280', bg: '#f3f4f6' },
   Skybird:       { color: '#0369a1', bg: '#e0f2fe' },
+  'Group/Wedding': { color: '#be185d', bg: '#fce7f3' },
 }
 
 const UNRESOLVED = { label: 'Website', color: '#16a34a', bg: '#dcfce7' }

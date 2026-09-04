@@ -1547,6 +1547,19 @@ export default function AdminDashboard() {
 
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
 
+        {/* Group / Wedding Booking module — standalone link card,
+            deliberately NOT wired into the Dashboard Analytics KPI grid
+            below (that grid is driven by app/api/admin/dashboard-analytics/
+            route.ts's per-lead counts; a Group Booking is one lead/booking
+            regardless of its guest/bag count, so it's already included in
+            every number there — this card is purely a visibility/shortcut
+            addition, touching none of that existing logic). */}
+        <a href="/admin/group-bookings"
+          className="mb-6 flex items-center justify-between rounded-xl border border-pink-100 bg-pink-50 px-5 py-3.5 text-sm shadow-sm hover:bg-pink-100 transition-colors">
+          <span className="font-semibold text-pink-800">Group / Wedding Bookings — large multi-guest bookings with individual bag tracking</span>
+          <span className="font-bold text-pink-700">Open →</span>
+        </a>
+
         {/* Dashboard Analytics — unified inquiry KPIs. Single source of truth:
             app/api/admin/dashboard-analytics/route.ts counts each lead once
             (the Dashboard and Leads tabs describe the same inquiries — a

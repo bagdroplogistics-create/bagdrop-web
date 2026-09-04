@@ -12,7 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 // tracking ID, a new lead needing a lead number) — never call it again for
 // an existing record. Editing an existing lead/quote/booking, previewing,
 // or resending must all reuse the number already stored on that row.
-async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ'): Promise<string> {
+async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ' | 'GBL' | 'GBAG'): Promise<string> {
   const { data, error } = await supabaseAdmin.rpc('next_series_number', { p_series: series })
   if (error || !data) {
     throw new Error(
@@ -85,4 +85,29 @@ export interface InquiryNumberPair {
 export async function nextInquiryNumberPair(): Promise<InquiryNumberPair> {
   const trackingId = await nextSeriesNumber('BDA')
   return { trackingId, leadNumber: trackingId.replace(/^BDA-/, 'BDL-') }
+}
+
+// ── Group / Wedding Booking numbering (see supabase/migrations/
+// 20260904_group_bookings.sql) ──────────────────────────────────────────
+
+// GBL-YYYY-NNNN — Group Booking ID. One per genuinely new Group/Wedding
+// Booking, minted exactly once at creation, never derived from or reused
+// off another booking. Deliberately its own series (not paired with BDA/
+// BDL the way an individual inquiry's tracking ID/lead number are) — a
+// Group Booking still gets its own bookings.tracking_id (BDA-...) AND its
+// own linked leads.lead_number (BDL-...) for full compatibility with every
+// existing quote/payment/LR/invoice route that keys off those, PLUS this
+// separate GBL number as the customer/operations-facing group identifier.
+export function nextGroupBookingNumber(): Promise<string> {
+  return nextSeriesNumber('GBL')
+}
+
+// GBAG-YYYY-NNNN — individual physical Bag ID. One per genuinely new bag
+// record (group_bags row), globally sequential across ALL group bookings
+// per calendar year (same pattern as BDA/BDL/BDQ) — which group/guest it
+// belongs to is carried by group_bags.booking_id/guest_id, not encoded in
+// the number itself. Never reused: a removed bag is soft-deleted
+// (group_bags.deleted_at), its bag_number is never reissued.
+export function nextBagId(): Promise<string> {
+  return nextSeriesNumber('GBAG')
 }

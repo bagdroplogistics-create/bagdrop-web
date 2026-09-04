@@ -1316,10 +1316,25 @@ function LeadsPageInner() {
             <h1 className="text-xl font-bold text-gray-900">Quote Management</h1>
             <p className="mt-0.5 text-sm text-gray-400">Capture prospects — send a quote to convert to a booking</p>
           </div>
-          <button onClick={() => router.push('/admin/quotes/new')}
-            className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
-            <Plus className="h-4 w-4" /> New Quote
-          </button>
+          {/* Booking Type entry point (spec: "Add Booking Type... to the
+              existing Create Inquiry/Create Quote form"). Deliberately a
+              second button here rather than a change inside the New Quote
+              form itself (app/(admin)/admin/quotes/new/page.tsx) — that
+              form's entire structure (single customer, single quote) isn't
+              a fit for a 50-150 bag group, and this page is the same
+              "Create Quote" entry point admins already use, so Individual
+              vs Group is decided right here before either flow starts. */}
+          <div className="flex gap-2">
+            <button onClick={() => router.push('/admin/quotes/new')}
+              className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
+              <Plus className="h-4 w-4" /> New Quote
+            </button>
+            <button onClick={() => router.push('/admin/group-bookings/new')}
+              title="Wedding, event, corporate, family, or other large group booking"
+              className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-600 shadow-sm hover:bg-orange-50 transition-colors">
+              <Plus className="h-4 w-4" /> New Group Booking
+            </button>
+          </div>
         </div>
       </div>
 
