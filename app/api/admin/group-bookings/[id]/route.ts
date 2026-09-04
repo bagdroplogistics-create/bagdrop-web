@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { syncBagCountToBooking } from '@/lib/group-booking'
 
 // `id` here is the SAME id as the underlying bookings.id (see the schema
 // comment in supabase/migrations/20260904_group_bookings.sql — group_
@@ -23,6 +24,14 @@ export async function GET(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   if (!details) return NextResponse.json({ error: 'Group booking not found' }, { status: 404 })
+
+  // Belt-and-braces resync on every load — every guest/bag mutation route
+  // already calls this too (see lib/group-booking.ts), but re-running it
+  // here as well means the linked lead's bags_count (what the quote
+  // builder actually prices off) can never drift out of sync with the
+  // manifest for any reason, on a page the admin is about to open the
+  // quote builder from anyway.
+  await syncBagCountToBooking(id)
 
   const { data: lead } = await supabaseAdmin
     .from('leads')
