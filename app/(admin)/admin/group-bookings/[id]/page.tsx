@@ -270,7 +270,13 @@ export default function GroupBookingDetailPage() {
           </div>
           <div className="flex gap-2">
             {lead && (
-              <button onClick={() => router.push(`/admin/quotes/view/${lead.id}`)}
+              // No quote yet → the quote BUILDER (route pricing / discount /
+              // line items are actually calculated and saved here — this is
+              // the same "Generate Quote" link the Leads table uses for an
+              // unquoted lead). Once a quote exists → the quote VIEW/
+              // workflow page (send/accept/payment/etc.) — that page reads
+              // an already-saved quote, it doesn't generate one.
+              <button onClick={() => router.push(lead.quote_number ? `/admin/quotes/view/${lead.id}` : `/admin/quotes/new?lead_id=${lead.id}`)}
                 className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors">
                 <FileText className="h-4 w-4" /> {lead.quote_number ? 'Open Quote / Workflow' : 'Generate Quote'} <ExternalLink className="h-3.5 w-3.5" />
               </button>
