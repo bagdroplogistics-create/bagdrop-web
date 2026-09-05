@@ -133,14 +133,22 @@ const s = StyleSheet.create({
   pickupItemVal:{ fontFamily: 'Helvetica-Bold', color: DARK },
 
   // T&C
-  tcSection: { margin: '0 28 6', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 6 },
-  tcTitle:   { color: '#374151', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
+  // Font sizes trimmed (8.5/8/7.5 -> 7/6.5/6.5) and spacing tightened per
+  // founder feedback 2026-09-05 ("terms and conditions section font make
+  // little small") — this section is reference text, not something a
+  // customer needs to read at the same size as the quote itself, and the
+  // smaller footprint also helps the whole quote keep fitting one page as
+  // more line items (e.g. an Additional Bag(s) surcharge row) are added —
+  // see the `compact` mode applied throughout this file for the rest of
+  // that fix.
+  tcSection: { margin: '0 28 5', borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 5 },
+  tcTitle:   { color: '#374151', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
   tcGrid:    { flexDirection: 'row', flexWrap: 'wrap', gap: '2 12' },
   tcItem:    { flexDirection: 'row', gap: 3, width: '48%' },
   // width widened from 10 → 16 so two-digit numbers ("10.") don't wrap/hyphenate
   // onto a second line the way "1." through "9." fit fine at the old width.
-  tcNum:     { color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold', width: 16 },
-  tcText:    { color: GREY, fontSize: 7.5, flex: 1, lineHeight: 1.3 },
+  tcNum:     { color: ORANGE, fontSize: 7, fontFamily: 'Helvetica-Bold', width: 16 },
+  tcText:    { color: GREY, fontSize: 6.5, flex: 1, lineHeight: 1.25 },
 
   // Return Trip — Journey 1 / Journey 2 labels + combined summary. Only
   // rendered when returnLineItems is passed (Trip Type = Return Trip);
@@ -156,10 +164,17 @@ const s = StyleSheet.create({
   // dark-on-dark (white/rgba-white) for that old background and are now
   // swapped to the same DARK/GREY tones used on every other white surface
   // in this doc, so the footer still reads clearly on white.
-  footer:    { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '12 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  ftLeft:    { flex: 1 },
-  ftCo:      { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 1 },
-  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 0.5, lineHeight: 1.2 },
+  // alignItems switched flex-end -> center: the left address block (4
+  // lines, ~46px tall) and the right seal+line+text block (~68px tall)
+  // are different heights, so bottom-aligning them left a visibly uneven
+  // top edge (the seal sat noticeably higher than the address text) —
+  // centering both blocks on the row's midline reads as a single tidy
+  // footer band instead. Founder feedback 2026-09-05: "footer is not
+  // looking perfect."
+  footer:    { backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '10 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  ftLeft:    { flex: 1, justifyContent: 'center' },
+  ftCo:      { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 1, lineHeight: 1.3 },
   // Widened 120->170 — narrower than this clipped "For Bagdrop Logistics
   // Solutions Pvt. Ltd." (sigSub, below) onto two lines / made it overflow
   // sigLine's width. alignItems:'center' centers every child (image, the
@@ -284,6 +299,33 @@ export interface QuotePDFProps {
 
 export default function QuotePDF(p: QuotePDFProps) {
   const hasReturn = !!(p.returnLineItems && p.returnLineItems.length > 0)
+
+  // ── Compact mode ─────────────────────────────────────────────────────
+  // The base spacing throughout this file was tuned to fit a single line
+  // item (e.g. just "Base fare — up to 2 bags") onto one A4 page. The
+  // moment a customer has extra bags, generate-quote adds a second row
+  // ("Additional Bag(s)"), and a Return Trip quote adds a whole second
+  // table + summary on top of that — both push the total content height
+  // past one page with the original spacing. Rather than shrinking
+  // everything unconditionally (which would leave a plain one-line quote
+  // looking oddly sparse), padding/margins tighten progressively only as
+  // more rows are actually present, so a single-line quote still looks
+  // exactly as before, while a multi-bag or return-trip quote compresses
+  // just enough to keep everything on one page. Founder feedback
+  // 2026-09-05: "if customer has additional bag then it is also come this
+  // quote in single one page so adjust accordingly."
+  const rowCount = p.lineItems.length + (p.returnLineItems?.length ?? 0)
+  const compact  = rowCount > 1 || hasReturn
+
+  const bodyStyle    = compact ? { ...s.body, padding: '8 28 0' }               : s.body
+  const row2Style    = compact ? { ...s.row2, marginBottom: 5 }                  : s.row2
+  const tableRowStyle= compact ? { ...s.tableRow, padding: '4 10' }              : s.tableRow
+  const tpRowStyle   = compact ? { ...s.tpRow, padding: '5 28 8' }               : s.tpRow
+  const notesBoxStyle= compact ? { ...s.notesBox, margin: '0 28 4', padding: '4 12' } : s.notesBox
+  const pickupBoxStyle = compact ? { ...s.pickupBox, margin: '0 28 4', padding: '4 12' } : s.pickupBox
+  const tcSectionStyle = compact ? { ...s.tcSection, margin: '0 28 3', paddingTop: 3 } : s.tcSection
+  const footerStyle  = compact ? { ...s.footer, padding: '7 28' }               : s.footer
+
   const meta = [
     { label: 'GSTIN',      value: '24AAACC9320N2ZL' },
     { label: 'SAC Code',   value: '996511' },
@@ -328,8 +370,8 @@ export default function QuotePDF(p: QuotePDFProps) {
         </View>
 
         {/* ── Bill To + Journey ── */}
-        <View style={[s.body, { marginBottom: 0 }]}>
-          <View style={s.row2}>
+        <View style={[bodyStyle, { marginBottom: 0 }]}>
+          <View style={row2Style}>
             {/* Bill To — Business/Company name (when set) takes the
                 prominent slot, with the individual contact underneath;
                 otherwise unchanged from before. */}
@@ -387,7 +429,7 @@ export default function QuotePDF(p: QuotePDFProps) {
 
           {/* Addresses */}
           {(p.pickupAddress || p.dropAddress) ? (
-            <View style={[s.row2, { marginBottom: 6 }]}>
+            <View style={[row2Style, { marginBottom: compact ? 4 : 6 }]}>
               {p.pickupAddress ? (
                 <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '6 10' }}>
                   <Text style={[s.cardLbl, { marginBottom: 2 }]}>Pickup Address</Text>
@@ -410,7 +452,7 @@ export default function QuotePDF(p: QuotePDFProps) {
               stored as a 24-hour "HH:MM" value and needs converting to a
               readable 12-hour label. Default doc palette — no blue. ── */}
         {p.pickupDate ? (
-          <View style={s.pickupBox}>
+          <View style={pickupBoxStyle}>
             <Text style={s.pickupItem}>PICK UP DATE: <Text style={s.pickupItemVal}>{fmtDate(p.pickupDate)}</Text></Text>
             {p.pickupTime ? (
               <Text style={s.pickupItem}>TIME: <Text style={s.pickupItemVal}>{fmtTimeLabel(p.pickupTime)}</Text></Text>
@@ -439,7 +481,7 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={[s.tableHcell, s.cellAmt, { color: '#fff' }]}>Amount</Text>
           </View>
           {p.lineItems.map((li, idx) => (
-            <View key={idx} style={s.tableRow}>
+            <View key={idx} style={tableRowStyle}>
               <Text style={[s.tableCell, s.cellIdx, { color: GREY }]}>{idx + 1}</Text>
               <View style={s.cellDesc}>
                 <Text style={[s.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{li.name}</Text>
@@ -454,7 +496,7 @@ export default function QuotePDF(p: QuotePDFProps) {
         </View>
 
         {/* ── Payment + Totals ── */}
-        <View style={s.tpRow}>
+        <View style={tpRowStyle}>
           {/* Payment */}
           <View style={s.payBox}>
             <Text style={s.payLbl}>Payment Details</Text>
@@ -524,7 +566,7 @@ export default function QuotePDF(p: QuotePDFProps) {
                 <Text style={[s.tableHcell, s.cellAmt, { color: '#fff' }]}>Amount</Text>
               </View>
               {(p.returnLineItems ?? []).map((li, idx) => (
-                <View key={idx} style={s.tableRow}>
+                <View key={idx} style={tableRowStyle}>
                   <Text style={[s.tableCell, s.cellIdx, { color: GREY }]}>{idx + 1}</Text>
                   <View style={s.cellDesc}>
                     <Text style={[s.tableCell, { fontFamily: 'Helvetica-Bold' }]}>{li.name}</Text>
@@ -565,14 +607,14 @@ export default function QuotePDF(p: QuotePDFProps) {
               (quote_subject from the New Quote form), unchanged
               functionality; only the label was renamed from "Notes". ── */}
         {p.subject ? (
-          <View style={s.notesBox}>
+          <View style={notesBoxStyle}>
             <Text style={s.notesLbl}>Subject Text</Text>
             <Text style={s.notesText}>{p.subject}</Text>
           </View>
         ) : null}
 
         {/* ── T&C ── */}
-        <View style={s.tcSection}>
+        <View style={tcSectionStyle}>
           <Text style={s.tcTitle}>Terms &amp; Conditions</Text>
           <View style={s.tcGrid}>
             {(p.terms
@@ -592,7 +634,7 @@ export default function QuotePDF(p: QuotePDFProps) {
         </View>
 
         {/* ── Footer ── */}
-        <View style={s.footer}>
+        <View style={footerStyle}>
           <View style={s.ftLeft}>
             <Text style={s.ftCo}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</Text>
             <Text style={s.ftLine}>TF-302, Ananta Stallion, Gotri Sevasi Road, Vadodara – 391101</Text>
