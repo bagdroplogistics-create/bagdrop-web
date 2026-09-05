@@ -9,9 +9,8 @@
 // represented as an airline-issued baggage tag. The QR encodes only the
 // bag's own BagDrop tracking URL (see lib/bag-tags.ts's bagTrackingUrl)
 // — no customer name/phone/address is ever put inside the QR payload.
-import { pdf, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
+import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Circle } from '@react-pdf/renderer'
 import React from 'react'
-import { LOGO_ICON_DATA_URI } from '@/lib/invoice-logo'
 import { bagTrackingUrl } from '@/lib/bag-tags'
 
 const ORANGE = '#f97316'
@@ -38,7 +37,14 @@ const s = StyleSheet.create({
   // small-but-legible sizes.
   tag:   { width: '48.5%', height: 168, borderWidth: 1.2, borderStyle: 'dashed', borderColor: '#9ca3af', borderRadius: 6, overflow: 'hidden' },
   head:  { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', padding: '4 8', gap: 5 },
-  headLogo: { width: 16, height: 16 },
+  // Hand-drawn white monogram (Svg circle + orange "B") instead of the
+  // existing LOGO_ICON_DATA_URI asset — that asset is an ORANGE mark
+  // meant for white backgrounds (invoices/quotes' white body), so it was
+  // invisible against this orange header. Vector avoids needing a new
+  // white-icon image asset. Founder feedback 2026-09-05: "logo should be
+  // white...right now its not visible so keep white logo."
+  headLogoWrap: { width: 14, height: 14, position: 'relative' },
+  headLogoLetter: { position: 'absolute', top: 1.5, left: 0, width: 14, textAlign: 'center', color: ORANGE, fontSize: 8, fontFamily: 'Helvetica-Bold' },
   headText: { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
   headSub:  { color: 'rgba(255,255,255,0.9)', fontSize: 6.5, marginLeft: 'auto' },
 
@@ -72,8 +78,12 @@ function BagTagCard({ b }: { b: BagTagInput }) {
   return (
     <View style={s.tag} wrap={false}>
       <View style={s.head}>
-        {/* eslint-disable-next-line jsx-a11y/alt-text */}
-        <Image style={s.headLogo} src={LOGO_ICON_DATA_URI} />
+        <View style={s.headLogoWrap}>
+          <Svg width={14} height={14} viewBox="0 0 14 14">
+            <Circle cx={7} cy={7} r={7} fill="#fff" />
+          </Svg>
+          <Text style={s.headLogoLetter}>B</Text>
+        </View>
         <Text style={s.headText}>BAGDROP</Text>
         <Text style={s.headSub}>Operational Tag</Text>
       </View>
