@@ -12,7 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 // tracking ID, a new lead needing a lead number) — never call it again for
 // an existing record. Editing an existing lead/quote/booking, previewing,
 // or resending must all reuse the number already stored on that row.
-async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ' | 'GBL' | 'GBAG'): Promise<string> {
+async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ' | 'BDP' | 'GBL' | 'GBAG'): Promise<string> {
   const { data, error } = await supabaseAdmin.rpc('next_series_number', { p_series: series })
   if (error || !data) {
     throw new Error(
@@ -42,6 +42,26 @@ export function nextLeadNumber(): Promise<string> {
 // condition-prone pattern this file replaced everywhere else.
 export function nextQuoteNumber(): Promise<string> {
   return nextSeriesNumber('BDQ')
+}
+
+// BDP-YYYY-NNNN — payment ID for a new `payments` row. Consolidated here
+// 2026-09-05 (founder-reported: "duplicate key value violates unique
+// constraint 'payments_payment_id_key'" on a live payment-proof upload,
+// BDA-2026-0143) — app/api/admin/payments/route.ts and app/api/admin/
+// bookings/[id]/payment-proof/route.ts each had their OWN local
+// `nextPaymentId()`, both using the exact "SELECT COUNT(*) WHERE payment_id
+// LIKE 'BDP-YYYY-%', then +1" pattern this file exists to replace
+// everywhere else — not even atomic against each other, let alone safe
+// against a gap (e.g. a rejected/deleted payment) making COUNT(*) undercount
+// the real highest number in use. Two payments created close together (or
+// any pre-existing gap) could compute the same "next" id and collide on
+// insert, exactly as happened live. See supabase/migrations/
+// 20260905_seed_bdp_counter.sql for the one-time seed that moved the BDP
+// counter up to match the real highest payment_id already in use before
+// this switched to the atomic path — without that seed, this would start
+// back at BDP-YYYY-0001 and immediately collide with real existing rows.
+export function nextPaymentId(): Promise<string> {
+  return nextSeriesNumber('BDP')
 }
 
 // ── Paired inquiry numbering ─────────────────────────────────────────────

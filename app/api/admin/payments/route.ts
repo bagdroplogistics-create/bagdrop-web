@@ -4,6 +4,7 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { resolveCustomerTitle, DEFAULT_TITLE } from '@/lib/constants'
+import { nextPaymentId } from '@/lib/number-series'
 
 // Confirmed-or-later bookings that have no matching row in `payments` at all
 // show up here as "no payment logged" — same slice used by
@@ -27,14 +28,6 @@ interface PaymentRecord {
   unused_amount?: number
 }
 
-async function nextPaymentId(): Promise<string> {
-  const year = new Date().getFullYear()
-  const { count } = await supabaseAdmin
-    .from('payments')
-    .select('*', { count: 'exact', head: true })
-    .like('payment_id', `BDP-${year}-%`)
-  return `BDP-${year}-${String((count ?? 0) + 1).padStart(4, '0')}`
-}
 
 // Bookings can reach a confirmed/paid state (e.g. "Mark Payment Received" in
 // the quote view page, or the Skybird "approved without payment" path)

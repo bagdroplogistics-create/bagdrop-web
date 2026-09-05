@@ -5,6 +5,7 @@ import { SITE, resolveCustomerTitle } from '@/lib/constants'
 import { sendPaymentVerificationRequest } from '@/lib/payment-verification-notification'
 import { generateVerificationToken, VERIFICATION_TOKEN_VALID_DAYS } from '@/lib/payment-verification-token'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
+import { nextPaymentId } from '@/lib/number-series'
 
 // Payment Screenshot / PDF Upload + Payment Verification Request
 // (Booking Workflow spec items 1 & 2).
@@ -26,14 +27,6 @@ const ALLOWED_MIME = new Set([
 ])
 const MAX_BYTES = 10 * 1024 * 1024 // 10MB
 
-async function nextPaymentId(): Promise<string> {
-  const year = new Date().getFullYear()
-  const { count } = await supabaseAdmin
-    .from('payments')
-    .select('*', { count: 'exact', head: true })
-    .like('payment_id', `BDP-${year}-%`)
-  return `BDP-${year}-${String((count ?? 0) + 1).padStart(4, '0')}`
-}
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   if (!requireAdminAuth(req)) {

@@ -39,6 +39,12 @@ const SERIES_CONFIG: Record<string, { table: string; column: string }> = {
   BDA: { table: 'bookings', column: 'tracking_id' },
   BDL: { table: 'leads', column: 'lead_number' },
   BDQ: { table: 'quotes', column: 'quote_number' },
+  // Added 2026-09-05 alongside the BDP series moving onto the same atomic
+  // next_series_number() path (see lib/number-series.ts's nextPaymentId
+  // comment) — lets a future gap (a rejected/deleted payment) be resynced
+  // the same safe way as BDA/BDL/BDQ instead of ever needing another
+  // manual SQL fix.
+  BDP: { table: 'payments', column: 'payment_id' },
 }
 
 export async function POST(req: NextRequest) {
