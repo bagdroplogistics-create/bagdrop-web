@@ -48,7 +48,14 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
         </label>
       )}
       <div className="bag-tag-head">
-        <span className="bag-tag-mark">B</span>
+        <svg className="bag-tag-mark" viewBox="0 0 24 24" width="15" height="15">
+          <rect x="5" y="8" width="14" height="13" rx="2" stroke="#fff" strokeWidth="2" fill="none" />
+          <rect x="9.5" y="4" width="5" height="4.5" rx="1" stroke="#fff" strokeWidth="2" fill="none" />
+          <line x1="9.5" y1="8" x2="9.5" y2="21" stroke="#fff" strokeWidth="1.3" />
+          <line x1="14.5" y1="8" x2="14.5" y2="21" stroke="#fff" strokeWidth="1.3" />
+          <line x1="8" y1="23" x2="8" y2="24" stroke="#fff" strokeWidth="2" />
+          <line x1="16" y1="23" x2="16" y2="24" stroke="#fff" strokeWidth="2" />
+        </svg>
         <span className="bag-tag-brand">BAGDROP</span>
         <span className="bag-tag-sub">Operational Tag</span>
       </div>
@@ -93,11 +100,7 @@ export const BAG_TAG_CARD_STYLES = `
     background: #f97316; color: #fff; padding: 5px 10px; display: flex;
     align-items: center; justify-content: space-between;
   }
-  .bag-tag-mark {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 16px; height: 16px; border-radius: 50%; background: #fff;
-    color: #f97316; font-size: 10px; font-weight: 900; flex-shrink: 0;
-  }
+  .bag-tag-mark { flex-shrink: 0; }
   .bag-tag-brand { font-size: 12px; font-weight: 900; letter-spacing: 0.5px; }
   .bag-tag-sub { font-size: 8.5px; opacity: 0.9; }
   .bag-tag-body { display: flex; padding: 8px 10px; gap: 8px; }
