@@ -76,6 +76,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (key in body) updates[key] = body[key]
   }
 
+  // Payment Date correction (founder-reported 2026-09-05: Dinesh Patel's
+  // August payment — completed and paid in August — wasn't showing up in
+  // the Payments tab's August bucket. Root cause: the Payments page's
+  // Monthly Breakdown groups by created_at, and while POST /api/admin/
+  // payments does sync created_at to an admin-entered Payment Date, there
+  // was previously no way to CORRECT that date after the fact — the Record
+  // Payment form's date defaults to "today," so any payment logged even a
+  // few days late for a job that actually happened earlier silently lands
+  // in the wrong month with no fix available. Handled separately from the
+  // generic `allowed` loop above because, like the POST route, changing
+  // payment_date must also re-sync created_at — every existing read path
+  // (the Payments table's Date column, the Monthly Breakdown, the Payment
+  // Receipt's "Payment Date" field) still reads created_at, not payment_date,
+  // for display/grouping.
+  if (typeof body.payment_date === 'string' && body.payment_date.trim()) {
+    updates.payment_date = body.payment_date.trim()
+    updates.created_at   = new Date(body.payment_date.trim() + 'T12:00:00').toISOString()
+  }
+
   if (body.payment_status === 'paid') {
     updates.verified_by = role
     updates.verified_at = new Date().toISOString()

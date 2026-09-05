@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import {
   CreditCard, Search, RefreshCw, ChevronDown,
   CheckCircle, XCircle, Clock, AlertCircle, Plus, X, Save, FileText, Loader2,
-  Paperclip, Trash2, Upload, Download, GitMerge,
+  Paperclip, Trash2, Upload, Download, GitMerge, Pencil, Check,
 } from 'lucide-react'
 import { getRoleFromSession, can } from '@/lib/roles'
 import type { AdminRole } from '@/lib/admin-auth'
@@ -84,6 +84,12 @@ function Badge({ status }: { status: string }) {
 function fmtDate(d: string | null) {
   if (!d) return '—'
   return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+// For the <input type="date"> value attribute — local YYYY-MM-DD, not the
+// UTC-shifted result toISOString().slice(0,10) would give near midnight IST.
+function toDateInputValue(d: string) {
+  const dt = new Date(d)
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`
 }
 function fmtRs(n: number) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
 
@@ -808,6 +814,15 @@ export default function PaymentsPage() {
   // fetch a receipt for.
   const [viewingPaymentId, setViewingPaymentId] = useState<string | null>(null)
   const [fixingDuplicates, setFixingDuplicates] = useState(false)
+  // Inline Payment Date correction — founder-reported 2026-09-05: a real
+  // payment (Dinesh Patel, completed in August) had been logged a few days
+  // late, so its created_at defaulted to today instead of the actual
+  // payment date and it silently landed in the wrong month's bucket below,
+  // with no way to fix it. editingDateId is a real payments.id (never set
+  // for synthetic rows — see Payment.is_synthetic).
+  const [editingDateId, setEditingDateId] = useState<string | null>(null)
+  const [editingDateValue, setEditingDateValue] = useState('')
+  const [savingDate, setSavingDate] = useState(false)
 
   // One-time cleanup utility (2026-08-26, founder-reported: BDP-2026-0008/
   // 0009, BDP-2026-0006/0007 showing as separate "Paid" rows for the same
@@ -917,6 +932,24 @@ export default function PaymentsPage() {
       body: JSON.stringify({ payment_status: 'refunded', refund_reason: reason }),
     })
     setUpdating(null)
+    fetchPayments()
+  }
+
+  function startEditDate(p: Payment) {
+    setEditingDateId(p.id)
+    setEditingDateValue(toDateInputValue(p.created_at))
+  }
+
+  async function saveEditDate(id: string) {
+    if (!editingDateValue) return
+    setSavingDate(true)
+    await fetch(`/api/admin/payments/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ payment_date: editingDateValue }),
+    })
+    setSavingDate(false)
+    setEditingDateId(null)
     fetchPayments()
   }
 
@@ -1107,7 +1140,34 @@ export default function PaymentsPage() {
                 <tbody className="divide-y divide-gray-50">
                   {visiblePayments.map(p => (
                     <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
-                      <td className="px-4 py-3 text-xs text-gray-500">{fmtDate(p.created_at)}</td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {editingDateId === p.id ? (
+                          <div className="flex items-center gap-1">
+                            <input type="date" value={editingDateValue} onChange={e => setEditingDateValue(e.target.value)}
+                              className="rounded border border-gray-200 px-1.5 py-0.5 text-xs" autoFocus />
+                            <button onClick={() => saveEditDate(p.id)} disabled={savingDate}
+                              className="rounded bg-green-50 p-1 text-green-600 hover:bg-green-100 disabled:opacity-40" title="Save date">
+                              <Check className="h-3 w-3" />
+                            </button>
+                            <button onClick={() => setEditingDateId(null)} disabled={savingDate}
+                              className="rounded bg-gray-50 p-1 text-gray-400 hover:bg-gray-100" title="Cancel">
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="group inline-flex items-center gap-1">
+                            {fmtDate(p.created_at)}
+                            {/* Edit affordance only for real payments — a synthetic row has no
+                                payments.id to PATCH a date onto (see openLogPaymentModal instead). */}
+                            {!p.is_synthetic && (
+                              <button onClick={() => startEditDate(p)} title="Correct payment date"
+                                className="text-gray-300 opacity-0 hover:text-orange-500 group-hover:opacity-100">
+                                <Pencil className="h-3 w-3" />
+                              </button>
+                            )}
+                          </span>
+                        )}
+                      </td>
                       <td className="px-4 py-3 font-mono text-xs font-bold text-orange-600">
                         {/* Synthetic (booking-derived, no payment logged yet) rows have no
                             real payments.id, so there's no receipt to fetch — clicking opens

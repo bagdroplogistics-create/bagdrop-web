@@ -120,6 +120,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const paymentId = await nextPaymentId()
   const verificationToken = generateVerificationToken()
   const verificationTokenExpiresAt = new Date(Date.now() + VERIFICATION_TOKEN_VALID_DAYS * 24 * 60 * 60 * 1000).toISOString()
+  // Persist the Payment Date the caller supplied (form field 'payment_date',
+  // already parsed into paymentDate above for the Accounts notification) --
+  // previously computed but never actually written onto the row, so every
+  // proof-upload payment's created_at silently defaulted to upload time
+  // instead of the real payment date, and it could land in the wrong
+  // month's bucket on the Payments tab (founder-reported 2026-09-05, same
+  // root cause as the fix to POST /api/admin/payments and the new date-edit
+  // control on the Payments page). Only overrides created_at when the
+  // caller actually supplied a date (paymentDateRaw), not the "now()"
+  // fallback the notification uses -- an admin/customer who didn't specify
+  // one should still get today's actual upload time, same as before.
+  const explicitPaymentDate = typeof paymentDateRaw === 'string' && paymentDateRaw ? paymentDateRaw.slice(0, 10) : null
   const { data: payment, error: paymentErr } = await supabaseAdmin
     .from('payments')
     .insert({
@@ -136,6 +148,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       notes:          `Payment proof uploaded ${new Date().toLocaleString('en-IN')}`,
       verification_token:            verificationToken,
       verification_token_expires_at: verificationTokenExpiresAt,
+      ...(explicitPaymentDate ? { payment_date: explicitPaymentDate, created_at: new Date(explicitPaymentDate + 'T12:00:00').toISOString() } : {}),
     })
     .select()
     .single()
