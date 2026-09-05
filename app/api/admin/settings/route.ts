@@ -39,6 +39,10 @@ export async function PUT(req: NextRequest) {
     'sales_followup_whatsapp', 'sales_followup_email',
     'sales_followup_quote_reminder_hours', 'sales_followup_response_reminder_hours',
     'sales_followup_escalation_enabled',
+    // Client-facing Quote Follow-up (2h) — sends directly to the customer,
+    // separate from the internal-staff reminders above. See
+    // supabase/migrations/20260905_client_quote_followup.sql.
+    'client_quote_followup_enabled', 'client_quote_followup_hours',
   ]
 
   const upserts = Object.entries(body as Record<string, string>)

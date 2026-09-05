@@ -37,6 +37,7 @@
 import { supabaseAdmin } from './supabase'
 import { sendEmail } from './email'
 import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
+import { sendWhatsAppTemplateFast2SMS } from './notifications'
 
 // NOTE: "24" here is a fixed internal tier KEY (matches the
 // quote_pending_24h/response_24h reminder_type values already locked into
@@ -74,6 +75,13 @@ export interface FollowupSettings {
   quoteReminderHours: number
   responseReminderHours: number
   escalationEnabled: boolean
+  // Client-facing Quote Follow-up (2h) — separate from every field above,
+  // which are all for the internal-staff reminder tracks. See
+  // supabase/migrations/20260905_client_quote_followup.sql. Defaults to
+  // disabled — the Fast2SMS template was still pending approval when this
+  // was added; flip client_quote_followup_enabled to 'true' once approved.
+  clientFollowupEnabled: boolean
+  clientFollowupHours: number
 }
 
 // Exported so the Dashboard "Sales Follow-up" summary endpoint can reuse
@@ -87,6 +95,7 @@ export async function getFollowupSettings(): Promise<FollowupSettings> {
       'sales_followup_whatsapp', 'sales_followup_email',
       'sales_followup_quote_reminder_hours', 'sales_followup_response_reminder_hours',
       'sales_followup_escalation_enabled',
+      'client_quote_followup_enabled', 'client_quote_followup_hours',
     ])
   const map: Record<string, string> = Object.fromEntries((data ?? []).map(r => [r.key as string, r.value as string]))
   return {
@@ -106,6 +115,8 @@ export async function getFollowupSettings(): Promise<FollowupSettings> {
     quoteReminderHours:     Number(map.sales_followup_quote_reminder_hours) || 24,
     responseReminderHours:  Number(map.sales_followup_response_reminder_hours) || 24,
     escalationEnabled:      map.sales_followup_escalation_enabled === 'true', // default off
+    clientFollowupEnabled:  map.client_quote_followup_enabled === 'true',     // default off — see module comment
+    clientFollowupHours:    Number(map.client_quote_followup_hours) || 2,
   }
 }
 
@@ -127,9 +138,10 @@ interface LeadRow {
   quote_number: string | null; quote_date: string | null
   customer_responded_at: string | null
   booking_id: string | null
+  is_test?: boolean | null
 }
 
-const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, customer_responded_at, booking_id'
+const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, customer_responded_at, booking_id, is_test'
 
 async function appendCommunicationLog(leadId: string, entry: Record<string, unknown>): Promise<void> {
   const { data } = await supabaseAdmin.from('leads').select('communication_log').eq('id', leadId).maybeSingle()
@@ -226,6 +238,37 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
         }
       }
     }
+
+    // ── Track 3: client-facing 2h quote follow-up ────────────────────
+    // Sent DIRECTLY TO THE CUSTOMER (lead.phone) — never staff. Entirely
+    // separate from Track 2 above (which only ever notifies internal
+    // staff and is completely unchanged by this addition), reusing the
+    // same awaitingResponseLeads/bookingStatusById eligibility computed
+    // above since "quote sent, no reply yet" is the same condition either
+    // way. Disabled by default (client_quote_followup_enabled) until the
+    // founder confirms the Fast2SMS template is approved. Test Mode leads
+    // are never scheduled here — a dummy inquiry must never reach a real
+    // customer, same rule already applied to every other customer-facing
+    // send in this codebase (lib/lifecycle-notifications.ts,
+    // lib/lead-acknowledgment.ts).
+    if (settings.clientFollowupEnabled) {
+      for (const lead of (awaitingResponseLeads ?? []) as LeadRow[]) {
+        if (lead.is_test) continue
+        const bStatus = lead.booking_id ? bookingStatusById.get(lead.booking_id) : undefined
+        if (bStatus && bStatus !== 'quote_sent' && bStatus !== 'quote_created' && bStatus !== 'inquiry') continue
+        if (!hoursAgo(lead.quote_date as string, settings.clientFollowupHours)) continue
+        const scheduledFor = new Date(new Date(lead.quote_date as string).getTime() + settings.clientFollowupHours * 3600000).toISOString()
+        const { error } = await supabaseAdmin.from('lead_followups').upsert(
+          {
+            lead_id: lead.id, reminder_type: 'client_quote_followup_2h', channel: 'whatsapp',
+            scheduled_for: scheduledFor, status: 'pending', sent_at: null, delivery_status: null,
+            recipient: lead.phone, detail: null,
+          },
+          { onConflict: 'lead_id,reminder_type,channel', ignoreDuplicates: true }
+        )
+        if (!error) scheduled++
+      }
+    }
   } catch (err) {
     console.error('[sales-followup] scheduleDueTiers error (non-fatal):', err)
   }
@@ -309,6 +352,45 @@ async function sendDuePending(): Promise<{ processed: number }> {
       const settings = await getFollowupSettings()
       const route = [lead.from_city, lead.to_city].filter(Boolean).join(' → ') || '—'
       const stageLabel = STAGE_LABEL[tier]
+
+      // ── Track 3: client-facing 2h quote follow-up — sent directly to
+      // the lead's own phone, using the founder's 'quote_follow_up_2_hours'
+      // Fast2SMS template (2 placeholders: {{1}} Customer name, {{2}}
+      // Quotation/Inquiry number — confirmed from the template preview).
+      // Handled as its own branch, entirely separate from the internal-
+      // staff quote_pending_*/response_* branch below, since the
+      // recipient, template, and variables are all different. Never sent
+      // for a Test Mode lead — same rule as every other customer-facing
+      // notification in this codebase.
+      if (row.reminder_type === 'client_quote_followup_2h') {
+        if (lead.is_test) {
+          await supabaseAdmin.from('lead_followups').update({
+            status: 'sent',
+            delivery_status: 'Skipped — Test Mode lead, no real message sent',
+            recipient: lead.phone,
+            detail: `Client quote follow-up (2h) skipped — Test Mode lead ${lead.lead_number}`,
+          }).eq('id', row.id)
+          await appendCommunicationLog(lead.id, {
+            channel: 'whatsapp', status: 'skipped', timestamp: nowIso,
+            detail: `Client quote follow-up (${row.reminder_type}) skipped — Test Mode lead, no real message sent`,
+          })
+        } else {
+          const templateId = process.env.FAST2SMS_CLIENT_QUOTE_FOLLOWUP_MESSAGE_ID ?? ''
+          const variables = [lead.name || 'Customer', lead.quote_number || lead.lead_number]
+          const result = await sendWhatsAppTemplateFast2SMS(lead.phone, templateId, variables)
+          await supabaseAdmin.from('lead_followups').update({
+            status: result.success ? 'sent' : 'failed',
+            delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),
+            recipient: lead.phone,
+            detail: `Client quote follow-up (2h) for ${lead.lead_number}`,
+          }).eq('id', row.id)
+          await appendCommunicationLog(lead.id, {
+            channel: 'whatsapp', status: result.success ? 'sent' : 'failed', timestamp: nowIso,
+            detail: `Client quote follow-up reminder (${row.reminder_type}) sent to customer` + (result.success ? '' : ` — ${result.error ?? 'unknown error'}`),
+          })
+        }
+        continue
+      }
 
       if (row.channel === 'whatsapp') {
         const templateId = isQuoteTrack
