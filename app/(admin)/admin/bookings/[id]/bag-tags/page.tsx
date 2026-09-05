@@ -1,36 +1,30 @@
 'use client'
 
-// BAGDROP — Operational Baggage Tag System (Phase 1) — Group bookings.
-// Upgraded 2026-09-05 to the shared professional tag design + Print All/
-// Print Selected/Reprint/Download PDF actions (founder spec), now backed
-// by the generic app/api/admin/bookings/[id]/bag-tags API (same one the
-// Individual booking tags page uses) instead of duplicating fetch/print
-// logic here.
+// BAGDROP — Operational Baggage Tag System (Phase 1) — Individual bookings.
+// Mirrors app/(admin)/admin/group-bookings/[id]/tags/page.tsx's design and
+// actions (Print All / Print Selected / Reprint / Download PDF), driven by
+// the generic app/api/admin/bookings/[id]/bag-tags API so both booking
+// types share one backend.
 
 import { useCallback, useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { BagTagPrintCard, BAG_TAG_CARD_STYLES, type BagTagCardData } from '@/components/admin/BagTagPrintCard'
+import { formatCustomerName } from '@/lib/constants'
 
 interface Booking {
-  id: string; tracking_id: string; status: string
+  id: string; tracking_id: string; title: string | null; customer_name: string | null
+  from_city: string | null; to_city: string | null; service_label: string | null; service_type: string | null
+  pickup_date: string | null; drop_address: string | null; status: string
 }
-interface GroupDetails {
-  group_booking_number: string; event_name: string
-  pickup_city: string | null; delivery_city: string | null
-  pickup_window_start: string | null; delivery_address: string | null
-}
-interface Guest { id: string; guest_name: string }
 interface Bag {
-  id: string; guest_id: string | null; bag_label: string | null; delivery_location: string | null
+  id: string; bag_label: string | null; delivery_location: string | null; tag_printed_at: string | null
 }
 
-export default function GroupBagTagsPage() {
+export default function IndividualBagTagsPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [adminKey, setAdminKey] = useState('')
   const [booking, setBooking]   = useState<Booking | null>(null)
-  const [group, setGroup]       = useState<GroupDetails | null>(null)
-  const [guests, setGuests]     = useState<Guest[]>([])
   const [bags, setBags]         = useState<Bag[]>([])
   const [canGenerate, setCanGenerate] = useState(false)
   const [loading, setLoading]   = useState(true)
@@ -43,9 +37,8 @@ export default function GroupBagTagsPage() {
     const res = await fetch(`/api/admin/bookings/${id}/bag-tags?key=${key}`, { headers: { 'x-admin-key': key } })
     const j = await res.json().catch(() => ({}))
     if (!res.ok) { setError(j.error ?? 'Failed to load'); setLoading(false); return }
-    setBooking(j.booking); setGroup(j.group_booking ?? null); setGuests(j.guests ?? []); setBags(j.bags ?? [])
-    setCanGenerate(!!j.can_generate)
-    setSelected(new Set((j.bags ?? []).filter((b: Bag) => b.bag_label).map((b: Bag) => b.id)))
+    setBooking(j.booking); setBags(j.bags ?? []); setCanGenerate(!!j.can_generate)
+    setSelected(new Set((j.bags ?? []).map((b: Bag) => b.id)))
     setLoading(false)
   }, [id])
 
@@ -78,8 +71,8 @@ export default function GroupBagTagsPage() {
     setTimeout(() => window.print(), 200)
   }
 
-  function handleDownloadPdf(ids: string[], total: number) {
-    const qs = ids.length < total ? `&bag_ids=${ids.join(',')}` : ''
+  function handleDownloadPdf(ids: string[]) {
+    const qs = ids.length < bags.length ? `&bag_ids=${ids.join(',')}` : ''
     window.open(`/api/admin/bookings/${id}/bag-tags/pdf?key=${adminKey}${qs}`, '_blank')
     markPrinted(ids)
   }
@@ -93,25 +86,25 @@ export default function GroupBagTagsPage() {
   }
 
   if (loading) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#9ca3af', fontFamily: 'sans-serif' }}>Loading tags…</div>
-  if (error && !group) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#ef4444', fontFamily: 'sans-serif' }}>{error}</div>
-  if (!booking || !group) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#ef4444', fontFamily: 'sans-serif' }}>Group booking not found</div>
+  if (error && !booking) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', color: '#ef4444', fontFamily: 'sans-serif' }}>{error}</div>
+  if (!booking) return null
 
-  const guestById = new Map(guests.map(g => [g.id, g]))
-  const route = [group.pickup_city, group.delivery_city].filter(Boolean).join(' → ')
-  const withLabels = bags.filter(b => b.bag_label)
-  const bagTotal = withLabels.length
+  const bagTotal = bags.length
+  const customerName = formatCustomerName(booking.title, booking.customer_name) || booking.customer_name || 'Customer'
+  const route = [booking.from_city, booking.to_city].filter(Boolean).join(' → ')
+  const serviceLabel = booking.service_label || booking.service_type || 'Baggage Delivery'
 
-  const tagData: BagTagCardData[] = withLabels.map((b, i) => ({
+  const tagData: BagTagCardData[] = bags.filter(b => b.bag_label).map((b, i) => ({
     id: b.id,
     bagLabel: b.bag_label as string,
-    customerName: (b.guest_id && guestById.get(b.guest_id)?.guest_name) || 'Guest',
-    bookingId: group.group_booking_number,
+    customerName,
+    bookingId: booking.tracking_id,
     route,
-    serviceLabel: 'Group / Wedding Booking',
+    serviceLabel,
     bagNumber: i + 1,
     bagTotal,
-    pickupDate: group.pickup_window_start,
-    deliveryLocation: b.delivery_location || group.delivery_address,
+    pickupDate: booking.pickup_date,
+    deliveryLocation: b.delivery_location || booking.drop_address,
   }))
 
   const selectedIds = tagData.filter(t => selected.has(t.id)).map(t => t.id)
@@ -141,15 +134,16 @@ export default function GroupBagTagsPage() {
       `}</style>
 
       <div className="toolbar no-print">
-        <p>BAGDROP — {group.event_name} — {bagTotal} Bag Tag{bagTotal !== 1 ? 's' : ''}</p>
+        <p>BAGDROP — {booking.tracking_id} — {bagTotal} Bag Tag{bagTotal !== 1 ? 's' : ''}</p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-back" onClick={() => router.back()}>← Back</button>
-          {canGenerate && withLabels.length < bags.length ? (
-            <button className="btn-print" disabled={generating} onClick={generateTags}>{generating ? 'Generating…' : 'Generate Tags'}</button>
-          ) : null}
-          {tagData.length > 0 && (
+          {tagData.length === 0 ? (
+            <button className="btn-print" disabled={!canGenerate || generating} onClick={generateTags}>
+              {generating ? 'Generating…' : canGenerate ? 'Generate Tags' : 'Confirm booking first'}
+            </button>
+          ) : (
             <>
-              <button className="btn-secondary" onClick={() => handleDownloadPdf(selectedIds.length ? selectedIds : tagData.map(t => t.id), tagData.length)}>Download PDF</button>
+              <button className="btn-secondary" onClick={() => handleDownloadPdf(selectedIds.length ? selectedIds : tagData.map(t => t.id))}>Download PDF</button>
               <button className="btn-secondary" onClick={() => handlePrint(selectedIds)}>Print Selected ({selectedIds.length})</button>
               <button className="btn-print" onClick={() => handlePrint(tagData.map(t => t.id))}>Print All</button>
             </>
@@ -161,11 +155,7 @@ export default function GroupBagTagsPage() {
 
       {tagData.length === 0 ? (
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '60vh', color: '#9ca3af' }}>
-          {!canGenerate
-            ? 'This booking must reach Confirmed status before tags can be generated.'
-            : bags.length === 0
-              ? 'No bags to tag yet — add guests/bags first.'
-              : 'Click "Generate Tags" above.'}
+          {canGenerate ? 'No tags yet — click "Generate Tags" above.' : 'This booking must reach Confirmed status before tags can be generated.'}
         </div>
       ) : (
         <div className="sheet">

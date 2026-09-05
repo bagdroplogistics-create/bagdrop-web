@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { syncBagCountToBooking, mintBagIds } from '@/lib/group-booking'
+import { nextGroupBagLabels } from '@/lib/bag-tags'
 
 export async function GET(
   req: NextRequest,
@@ -43,6 +44,9 @@ export async function POST(
   const { data: booking } = await supabaseAdmin.from('bookings').select('id').eq('id', id).eq('booking_type', 'group').maybeSingle()
   if (!booking) return NextResponse.json({ error: 'Group booking not found' }, { status: 404 })
 
+  const { data: groupDetails } = await supabaseAdmin
+    .from('group_booking_details').select('group_booking_number').eq('booking_id', id).maybeSingle()
+
   const nullStr = (v: unknown) => (typeof v === 'string' ? v.trim() : '') || null
 
   const { data: guest, error: guestErr } = await supabaseAdmin
@@ -68,14 +72,17 @@ export async function POST(
   let bags: unknown[] = []
   if (bagsCount > 0) {
     try {
-      const bagNumbers = await mintBagIds(bagsCount)
+      const [bagNumbers, bagLabels] = await Promise.all([
+        mintBagIds(bagsCount),
+        nextGroupBagLabels(id, groupDetails?.group_booking_number ?? 'GBL', bagsCount),
+      ])
       const { data: newBags, error: bagsErr } = await supabaseAdmin
         .from('group_bags')
-        .insert(bagNumbers.map(bag_number => ({
+        .insert(bagNumbers.map((bag_number, i) => ({
           booking_id:        id,
           guest_id:          guest.id,
           bag_number,
-          status:            'pending',
+          bag_label:         bagLabels[i],
           hotel_name:        nullStr(body.hotel_name),
           room_number:       nullStr(body.room_number),
           delivery_location: nullStr(body.delivery_location),

@@ -2037,6 +2037,17 @@ export default function QuoteViewPage() {
                         Previous Step
                       </button>
                     )}
+                    {/* BagDrop Operational Baggage Tag System (Phase 1) —
+                        tags only actually generate once status reaches
+                        Confirmed (enforced server-side); the page itself
+                        shows a clear message if it's opened earlier. */}
+                    <button
+                      onClick={() => window.open(`/admin/bookings/${booking.id}/bag-tags`, '_blank')}
+                      title="Generate/print BagDrop operational bag tags — available once this booking is Confirmed"
+                      className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-semibold text-gray-500 hover:border-gray-300 hover:text-gray-700 transition-colors"
+                    >
+                      Bag Tags
+                    </button>
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${STATUS_COLOR[booking.status] ?? 'bg-gray-100 text-gray-600'}`}>
                       {STATUS_LABEL[booking.status] ?? booking.status}
                     </span>

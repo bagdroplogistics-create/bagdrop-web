@@ -9,6 +9,7 @@ import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/go
 import { syncBookingReminders } from '@/lib/ops-reminders'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { createOrGetLrForBooking } from '@/lib/lr-auto-create'
+import { ensureBagsForBooking } from '@/lib/bag-tags'
 import type { BookingStatus } from '@/lib/supabase'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import { buildQuotePdfBuffer, quotePdfFilename, type LeadRowForPdf } from '@/lib/quote-pdf'
@@ -495,6 +496,21 @@ export async function PATCH(
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
+  // BagDrop Operational Baggage Tag System (Phase 1) — "Only generate
+  // baggage tags after a booking is confirmed." Individual bookings have
+  // no manifest UI, so this is the one place their per-bag rows get
+  // created — mirrors the existing auto-create-LR-on-payment_received
+  // pattern: best-effort, idempotent (ensureBagsForBooking no-ops if bags
+  // already exist), never blocks or fails the status update itself.
+  // Group bookings' bags already exist from the manifest — this no-ops
+  // for them (see ensureBagsForBooking's booking_type check).
+  if (status === 'confirmed' && data) {
+    ensureBagsForBooking(id).then(result => {
+      if (result.error) console.error('[booking patch] ensureBagsForBooking error:', result.error)
+      else if (result.created) console.log(`[booking patch] auto-generated ${result.created} bag tag(s) for booking ${id}`)
+    }).catch(err => console.error('[booking patch] ensureBagsForBooking error:', err))
+  }
+
   // Recompute the derived payment_status whenever something that feeds its
   // calculation changed: the VIP/Admin-Approve flag, or the booking's total
   // (which shifts the partially_paid/paid boundary). Best-effort — a
@@ -582,6 +598,13 @@ export async function PATCH(
       if (shouldNotifyConfirm) {
         await sendLifecycleWhatsApp('confirmed', confirmedBooking)
       }
+      // Same Bag Tag auto-generation as the main status branch above —
+      // this VIP/Admin-Approve path sets status straight to 'confirmed'
+      // without ever passing through that block, so it needs its own call.
+      ensureBagsForBooking(id).then(result => {
+        if (result.error) console.error('[booking patch] ensureBagsForBooking (auto-confirm) error:', result.error)
+        else if (result.created) console.log(`[booking patch] auto-generated ${result.created} bag tag(s) for booking ${id} (auto-confirm)`)
+      }).catch(err => console.error('[booking patch] ensureBagsForBooking (auto-confirm) error:', err))
     }
   }
 

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { nextInquiryNumberPair, nextGroupBookingNumber } from '@/lib/number-series'
 import { mintBagIds } from '@/lib/group-booking'
+import { nextGroupBagLabels } from '@/lib/bag-tags'
 
 // ── Group / Wedding Booking module — Phase 1 ─────────────────────────────
 // A Group Booking is a `bookings` row (booking_type = 'group') plus a 1:1
@@ -249,14 +250,17 @@ async function handleCreate(req: NextRequest): Promise<NextResponse> {
       if (primaryGuestErr || !primaryGuest) {
         console.error('[group-bookings POST] primary-contact guest insert failed:', primaryGuestErr?.message)
       } else {
-        const bagNumbers = await mintBagIds(totalBagsForBooking)
+        const [bagNumbers, bagLabels] = await Promise.all([
+          mintBagIds(totalBagsForBooking),
+          nextGroupBagLabels(booking.id, groupBookingNumber, totalBagsForBooking),
+        ])
         const { error: bagsErr } = await supabaseAdmin
           .from('group_bags')
-          .insert(bagNumbers.map(bag_number => ({
+          .insert(bagNumbers.map((bag_number, i) => ({
             booking_id: booking.id,
             guest_id:   primaryGuest.id,
             bag_number,
-            status:     'pending',
+            bag_label:  bagLabels[i],
             hotel_name: nullStr(body.hotel_name),
             delivery_location: nullStr(body.delivery_address),
           })))

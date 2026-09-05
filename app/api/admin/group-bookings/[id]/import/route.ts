@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { syncBagCountToBooking, mintBagIds } from '@/lib/group-booking'
+import { nextGroupBagLabels } from '@/lib/bag-tags'
 import * as XLSX from 'xlsx'
 
 // Accepts the template downloaded from GET .../template (or a plain CSV
@@ -142,6 +143,10 @@ export async function POST(
   }
 
   // ── commit ──────────────────────────────────────────────────────────
+  const { data: groupDetails } = await supabaseAdmin
+    .from('group_booking_details').select('group_booking_number').eq('booking_id', id).maybeSingle()
+  const groupBookingNumber = groupDetails?.group_booking_number ?? 'GBL'
+
   const created: { guest: unknown; bags: unknown[] }[] = []
   const failed: { row: number; guest_name: string; error: string }[] = []
 
@@ -161,11 +166,14 @@ export async function POST(
     }
 
     try {
-      const bagNumbers = await mintBagIds(r.bags_count)
+      const [bagNumbers, bagLabels] = await Promise.all([
+        mintBagIds(r.bags_count),
+        nextGroupBagLabels(id, groupBookingNumber, r.bags_count),
+      ])
       const { data: bags, error: bagsErr } = await supabaseAdmin
         .from('group_bags')
-        .insert(bagNumbers.map(bag_number => ({
-          booking_id: id, guest_id: guest.id, bag_number, status: 'pending',
+        .insert(bagNumbers.map((bag_number, i) => ({
+          booking_id: id, guest_id: guest.id, bag_number, bag_label: bagLabels[i],
           hotel_name: r.hotel_name, room_number: r.room_number, delivery_location: r.delivery_location,
         })))
         .select('*')
