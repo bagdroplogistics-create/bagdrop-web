@@ -323,7 +323,7 @@ export default function TripSheetPDF(p: TripSheetPDFProps) {
                   <Text style={[s.tableCell, s.cellType]}>{e.expense_type}{e.mode ? ` (${e.mode})` : ''}</Text>
                   <View style={s.cellRoute}>
                     {(e.from_location || e.to_location) ? (
-                      <Text style={s.tableCell}>{e.from_location ?? '—'} → {e.to_location ?? '—'}</Text>
+                      <Text style={s.tableCell}>{e.from_location ?? '—'}-to-{e.to_location ?? '—'}</Text>
                     ) : null}
                     {e.description ? <Text style={[s.tableCell, { fontSize: 7.5, color: GREY }]}>{e.description}</Text> : null}
                   </View>

@@ -45,6 +45,12 @@ const s = StyleSheet.create({
   // quote pdf." Sized small to fit the compact tag header, but it's the
   // real brand asset, not a redrawn icon.
   headLogo: { width: 15, height: 22 },
+  // The "BAGDROP" wordmark baked into the logo image above is illegible
+  // at this small size — a separate, large, crisp vector text label next
+  // to it stays readable regardless of print/scan quality. Founder
+  // feedback 2026-09-05: "Add BAGDROP text near logo in big font in bag
+  // tag bcoz logo bagdrop text is not visible."
+  headText: { color: '#fff', fontSize: 11, fontFamily: 'Helvetica-Bold', letterSpacing: 0.4 },
   headSub:  { color: 'rgba(255,255,255,0.9)', fontSize: 6.5, marginLeft: 'auto' },
 
   body:  { flexDirection: 'row', flex: 1, padding: '6 8' },
@@ -79,6 +85,7 @@ function BagTagCard({ b }: { b: BagTagInput }) {
       <View style={s.head}>
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
         <Image style={s.headLogo} src={LOGO_FULL_WHITE_DATA_URI} />
+        <Text style={s.headText}>BAGDROP</Text>
         <Text style={s.headSub}>Operational Tag</Text>
       </View>
       <View style={s.body}>

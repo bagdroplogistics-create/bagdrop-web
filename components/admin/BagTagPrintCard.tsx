@@ -50,11 +50,19 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
         </label>
       )}
       <div className="bag-tag-head">
-        {/* Same brand asset used in the Quote PDF's header (icon +
-            "BAGDROP" wordmark + tagline baked into one image) — founder
-            feedback 2026-09-05: "i need this logo in tag design which you
-            have already added in quote pdf." */}
-        <img className="bag-tag-logo" src={LOGO_FULL_WHITE_DATA_URI} alt="BAGDROP" />
+        <div className="bag-tag-brand-group">
+          {/* Same brand asset used in the Quote PDF's header (icon +
+              "BAGDROP" wordmark + tagline baked into one image) — founder
+              feedback 2026-09-05: "i need this logo in tag design which you
+              have already added in quote pdf." */}
+          <img className="bag-tag-logo" src={LOGO_FULL_WHITE_DATA_URI} alt="BAGDROP" />
+          {/* The wordmark baked into the logo image is illegible at this
+              small size — a separate, large, crisp text label stays
+              readable. Founder feedback 2026-09-05: "Add BAGDROP text near
+              logo in big font in bag tag bcoz logo bagdrop text is not
+              visible." */}
+          <span className="bag-tag-brand">BAGDROP</span>
+        </div>
         <span className="bag-tag-sub">Operational Tag</span>
       </div>
       <div className="bag-tag-body">
@@ -99,6 +107,8 @@ export const BAG_TAG_CARD_STYLES = `
     align-items: center; justify-content: space-between;
   }
   .bag-tag-logo { height: 26px; width: auto; display: block; flex-shrink: 0; }
+  .bag-tag-brand-group { display: flex; align-items: center; gap: 6px; }
+  .bag-tag-brand { font-size: 15px; font-weight: 900; color: #fff; letter-spacing: 0.4px; }
   .bag-tag-sub { font-size: 8.5px; opacity: 0.9; }
   .bag-tag-body { display: flex; padding: 8px 10px; gap: 8px; }
   .bag-tag-info { flex: 1; min-width: 0; }

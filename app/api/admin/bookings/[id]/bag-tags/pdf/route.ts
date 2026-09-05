@@ -63,9 +63,12 @@ export async function GET(
   const bagTotal = totalCount ?? bags.length
 
   const bookingIdentifier = isGroup ? (groupDetails?.group_booking_number ?? booking.tracking_id) : booking.tracking_id
+  // "-to-" instead of a "→" arrow glyph — react-pdf's base Helvetica font
+  // has no arrow glyph, so it was rendering as a garbled character
+  // (e.g. "Vadodara ’ Udaipur" instead of "Vadodara → Udaipur").
   const route = isGroup
-    ? [groupDetails?.pickup_city, groupDetails?.delivery_city].filter(Boolean).join(' → ')
-    : [booking.from_city, booking.to_city].filter(Boolean).join(' → ')
+    ? [groupDetails?.pickup_city, groupDetails?.delivery_city].filter(Boolean).join('-to-')
+    : [booking.from_city, booking.to_city].filter(Boolean).join('-to-')
   const pickupDate = isGroup ? (groupDetails?.pickup_window_start ?? null) : booking.pickup_date
   const serviceLabel = booking.service_label || booking.service_type || (isGroup ? 'Group / Wedding Booking' : 'Baggage Delivery')
 

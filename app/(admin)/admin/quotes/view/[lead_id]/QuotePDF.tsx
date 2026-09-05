@@ -464,7 +464,7 @@ export default function QuotePDF(p: QuotePDFProps) {
         {hasReturn && (
           <View style={{ margin: '0 28 4' }}>
             <Text style={s.journeyLabel}>
-              Journey 1 — Onward  ·  {p.fromCity ?? '—'} → {p.toCity ?? '—'}{p.pickupDate ? `  ·  ${fmtDate(p.pickupDate)}` : ''}
+              Journey 1 — Onward  ·  {p.fromCity ?? '—'}-to-{p.toCity ?? '—'}{p.pickupDate ? `  ·  ${fmtDate(p.pickupDate)}` : ''}
             </Text>
           </View>
         )}
@@ -552,7 +552,7 @@ export default function QuotePDF(p: QuotePDFProps) {
           <>
             <View style={{ margin: '4 28 4' }}>
               <Text style={s.journeyLabel}>
-                Journey 2 — Return  ·  {p.returnFromCity ?? '—'} → {p.returnToCity ?? '—'}{p.returnPickupDate ? `  ·  ${fmtDate(p.returnPickupDate)}` : ''}{p.returnBagsCount ? `  ·  ${p.returnBagsCount} bag${p.returnBagsCount !== 1 ? 's' : ''}` : ''}
+                Journey 2 — Return  ·  {p.returnFromCity ?? '—'}-to-{p.returnToCity ?? '—'}{p.returnPickupDate ? `  ·  ${fmtDate(p.returnPickupDate)}` : ''}{p.returnBagsCount ? `  ·  ${p.returnBagsCount} bag${p.returnBagsCount !== 1 ? 's' : ''}` : ''}
               </Text>
             </View>
 
