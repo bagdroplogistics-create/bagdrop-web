@@ -9,9 +9,10 @@
 // represented as an airline-issued baggage tag. The QR encodes only the
 // bag's own BagDrop tracking URL (see lib/bag-tags.ts's bagTrackingUrl)
 // — no customer name/phone/address is ever put inside the QR payload.
-import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line } from '@react-pdf/renderer'
+import { pdf, Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import React from 'react'
 import { bagTrackingUrl } from '@/lib/bag-tags'
+import { LOGO_FULL_WHITE_DATA_URI } from '@/lib/quote-pdf-images'
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
@@ -36,8 +37,14 @@ const s = StyleSheet.create({
   // width ~567pt minus gaps), tall enough to fit every required field at
   // small-but-legible sizes.
   tag:   { width: '48.5%', height: 168, borderWidth: 1.2, borderStyle: 'dashed', borderColor: '#9ca3af', borderRadius: 6, overflow: 'hidden' },
-  head:  { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', padding: '4 8', gap: 5 },
-  headText: { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', letterSpacing: 0.5 },
+  head:  { backgroundColor: ORANGE, flexDirection: 'row', alignItems: 'center', padding: '3 8', gap: 5 },
+  // Same LOGO_FULL_WHITE_DATA_URI asset QuotePDF.tsx uses in its own
+  // orange header (icon + "BAGDROP" wordmark + tagline all baked into one
+  // image, native ~40:59 aspect ratio) — founder feedback 2026-09-05:
+  // "i need this logo in tag design which you have already added in
+  // quote pdf." Sized small to fit the compact tag header, but it's the
+  // real brand asset, not a redrawn icon.
+  headLogo: { width: 15, height: 22 },
   headSub:  { color: 'rgba(255,255,255,0.9)', fontSize: 6.5, marginLeft: 'auto' },
 
   body:  { flexDirection: 'row', flex: 1, padding: '6 8' },
@@ -70,21 +77,8 @@ function BagTagCard({ b }: { b: BagTagInput }) {
   return (
     <View style={s.tag} wrap={false}>
       <View style={s.head}>
-        {/* Hand-drawn white luggage icon (same shape as the Journey
-            section's trolley-bag icon in QuotePDF.tsx, just white) —
-            replaces both the old orange LOGO_ICON_DATA_URI asset (which
-            was invisible on this orange header) and the earlier "B in a
-            circle" monogram. Founder feedback 2026-09-05: "Need only Bag
-            icon in white instead of B in the circle." */}
-        <Svg width={13} height={13} viewBox="0 0 24 24">
-          <Rect x={5} y={8} width={14} height={13} rx={2} stroke="#fff" strokeWidth={2} fill="none" />
-          <Rect x={9.5} y={4} width={5} height={4.5} rx={1} stroke="#fff" strokeWidth={2} fill="none" />
-          <Line x1={9.5} y1={8} x2={9.5} y2={21} stroke="#fff" strokeWidth={1.3} />
-          <Line x1={14.5} y1={8} x2={14.5} y2={21} stroke="#fff" strokeWidth={1.3} />
-          <Line x1={8} y1={23} x2={8} y2={24} stroke="#fff" strokeWidth={2} />
-          <Line x1={16} y1={23} x2={16} y2={24} stroke="#fff" strokeWidth={2} />
-        </Svg>
-        <Text style={s.headText}>BAGDROP</Text>
+        {/* eslint-disable-next-line jsx-a11y/alt-text */}
+        <Image style={s.headLogo} src={LOGO_FULL_WHITE_DATA_URI} />
         <Text style={s.headSub}>Operational Tag</Text>
       </View>
       <View style={s.body}>

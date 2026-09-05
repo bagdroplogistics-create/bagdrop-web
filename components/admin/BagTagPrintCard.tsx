@@ -1,5 +1,7 @@
 'use client'
 
+import { LOGO_FULL_WHITE_DATA_URI } from '@/lib/quote-pdf-images'
+
 // BAGDROP — Operational Baggage Tag System (Phase 1)
 //
 // Shared browser-print tag card — used by BOTH the Individual booking
@@ -48,15 +50,11 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
         </label>
       )}
       <div className="bag-tag-head">
-        <svg className="bag-tag-mark" viewBox="0 0 24 24" width="15" height="15">
-          <rect x="5" y="8" width="14" height="13" rx="2" stroke="#fff" strokeWidth="2" fill="none" />
-          <rect x="9.5" y="4" width="5" height="4.5" rx="1" stroke="#fff" strokeWidth="2" fill="none" />
-          <line x1="9.5" y1="8" x2="9.5" y2="21" stroke="#fff" strokeWidth="1.3" />
-          <line x1="14.5" y1="8" x2="14.5" y2="21" stroke="#fff" strokeWidth="1.3" />
-          <line x1="8" y1="23" x2="8" y2="24" stroke="#fff" strokeWidth="2" />
-          <line x1="16" y1="23" x2="16" y2="24" stroke="#fff" strokeWidth="2" />
-        </svg>
-        <span className="bag-tag-brand">BAGDROP</span>
+        {/* Same brand asset used in the Quote PDF's header (icon +
+            "BAGDROP" wordmark + tagline baked into one image) — founder
+            feedback 2026-09-05: "i need this logo in tag design which you
+            have already added in quote pdf." */}
+        <img className="bag-tag-logo" src={LOGO_FULL_WHITE_DATA_URI} alt="BAGDROP" />
         <span className="bag-tag-sub">Operational Tag</span>
       </div>
       <div className="bag-tag-body">
@@ -97,11 +95,10 @@ export const BAG_TAG_CARD_STYLES = `
   .bag-tag-check { position: absolute; top: 6px; right: 6px; z-index: 2; }
   .bag-tag-check input { width: 16px; height: 16px; cursor: pointer; }
   .bag-tag-head {
-    background: #f97316; color: #fff; padding: 5px 10px; display: flex;
+    background: #f97316; color: #fff; padding: 4px 10px; display: flex;
     align-items: center; justify-content: space-between;
   }
-  .bag-tag-mark { flex-shrink: 0; }
-  .bag-tag-brand { font-size: 12px; font-weight: 900; letter-spacing: 0.5px; }
+  .bag-tag-logo { height: 26px; width: auto; display: block; flex-shrink: 0; }
   .bag-tag-sub { font-size: 8.5px; opacity: 0.9; }
   .bag-tag-body { display: flex; padding: 8px 10px; gap: 8px; }
   .bag-tag-info { flex: 1; min-width: 0; }
