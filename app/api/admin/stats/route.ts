@@ -7,23 +7,26 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
+  // Test Mode bookings (dummy inquiries created only to test a feature)
+  // never count toward the live Dashboard KPI bar — founder-reported
+  // 2026-09-05: a dummy test booking's amount was inflating Revenue.
   const [total, newInquiries, inProgress, inTransit, completedRes, revenueRes] = await Promise.all([
-    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }),
+    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }).eq('is_test', false),
     // New inquiries: all stages before payment is collected
     // Includes quote_created + quote_sent so lead-generated inquiries are always counted
-    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
+    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }).eq('is_test', false)
       .in('status', ['pending', 'inquiry', 'quote_created', 'quote_sent', 'document_collection', 'review']),
     // In progress: accepted through pickup stages
-    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
+    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }).eq('is_test', false)
       .in('status', ['accepted', 'payment_pending', 'payment_approved', 'confirmed', 'pickup_scheduled', 'picked_up']),
     // In transit / out for delivery
-    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
+    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }).eq('is_test', false)
       .in('status', ['in_transit', 'out_for_delivery']),
     // Delivered + Completed
-    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true })
+    supabaseAdmin.from('bookings').select('*', { count: 'exact', head: true }).eq('is_test', false)
       .in('status', ['delivered', 'completed']),
     // Revenue from delivered + completed bookings
-    supabaseAdmin.from('bookings').select('total_amount')
+    supabaseAdmin.from('bookings').select('total_amount').eq('is_test', false)
       .in('status', ['delivered', 'completed']),
   ])
 

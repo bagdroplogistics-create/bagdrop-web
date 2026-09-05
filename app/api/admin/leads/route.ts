@@ -167,6 +167,9 @@ export async function GET(req: NextRequest) {
   let query = supabaseAdmin
     .from('leads')
     .select('*', { count: 'exact' })
+    // Test Mode leads (e.g. a dummy inquiry created only to test a feature)
+    // never appear in the live Leads tab — founder-reported 2026-09-05.
+    .eq('is_test', false)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 
@@ -274,6 +277,7 @@ export async function GET(req: NextRequest) {
     let fallbackQuery = supabaseAdmin
       .from('leads')
       .select('*', { count: 'exact' })
+      .eq('is_test', false)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
     if (!deleted && status && status !== 'all') {

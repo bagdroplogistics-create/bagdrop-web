@@ -56,10 +56,18 @@ export async function GET(req: NextRequest) {
   // handler below) is driven by a database sequence keyed off the highest
   // existing invoice number, not by this display order, so reversing it
   // here doesn't risk numbers being assigned out of chronological order.
-  const { data: allInvoices, error: invErr } = await supabaseAdmin
-    .from('invoices')
-    .select('*')
+  const [{ data: allInvoicesRaw, error: invErr }, { data: testBookingRows }] = await Promise.all([
+    supabaseAdmin.from('invoices').select('*'),
+    supabaseAdmin.from('bookings').select('id').eq('is_test', true),
+  ])
   if (invErr) return NextResponse.json({ error: invErr.message }, { status: 500 })
+
+  // `invoices` has no is_test column of its own — a real invoice tied to a
+  // Test Mode booking is only excludable by cross-referencing booking_id.
+  // Founder-reported 2026-09-05: a dummy test booking (Monali Patel,
+  // GBL-2026-0001) must never show up here.
+  const testBookingIds = new Set((testBookingRows ?? []).map(b => b.id as string))
+  const allInvoices = (allInvoicesRaw ?? []).filter(i => !i.booking_id || !testBookingIds.has(i.booking_id))
 
   const invoicedBookingIds = new Set((allInvoices ?? []).map(i => i.booking_id).filter(Boolean))
 
@@ -67,6 +75,7 @@ export async function GET(req: NextRequest) {
     .from('bookings')
     .select('*')
     .in('status', DONE_STATUSES)
+    .eq('is_test', false)
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 })
 
   const placeholders = (doneBookings ?? [])

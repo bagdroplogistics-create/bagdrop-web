@@ -38,13 +38,16 @@ export async function GET(req: NextRequest) {
   const periodFrom = req.nextUrl.searchParams.get('date_from')
   const periodTo   = req.nextUrl.searchParams.get('date_to')
 
+  // Test Mode leads/bookings (dummy inquiries created only to test a
+  // feature) never count toward these live CRM figures — founder-reported
+  // 2026-09-05.
   const [leadsRes, unbookedLeadsRes, quotesRes, revenueRes, dispatchRes] = await Promise.all([
     // Total leads count
-    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }),
+    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).eq('is_test', false),
 
     // Leads with no booking created yet at all — true "not even quoted"
     // inquiries, still needing action right now.
-    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).is('booking_id', null),
+    supabaseAdmin.from('leads').select('*', { count: 'exact', head: true }).eq('is_test', false).is('booking_id', null),
 
     // Pending quotes (draft or sent)
     supabaseAdmin
@@ -74,6 +77,7 @@ export async function GET(req: NextRequest) {
       .from('bookings')
       .select('total_amount')
       .eq('payment_status', 'paid')
+      .eq('is_test', false)
       .gte('created_at', monthStart),
 
     // Today's dispatch: bookings with pickup_date = today, not cancelled/completed
@@ -81,6 +85,7 @@ export async function GET(req: NextRequest) {
       .from('bookings')
       .select('*', { count: 'exact', head: true })
       .eq('pickup_date', today)
+      .eq('is_test', false)
       .not('status', 'in', '(cancelled,completed)'),
   ])
 
@@ -103,7 +108,7 @@ export async function GET(req: NextRequest) {
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    const [realPaidRes, bookingsPaidRes] = await Promise.all([
+    const [realPaidRes, bookingsPaidRes, testBookingRowsRes] = await Promise.all([
       supabaseAdmin
         .from('payments')
         .select('amount, created_at, booking_id, payment_method, payment_status')
@@ -112,16 +117,23 @@ export async function GET(req: NextRequest) {
         .from('bookings')
         .select('id, total_amount, created_at')
         .in('status', CONFIRMED_ONWARD_STATUSES)
-        .eq('payment_status', 'paid'),
+        .eq('payment_status', 'paid')
+        .eq('is_test', false),
+      // `payments` has no is_test column of its own — cross-reference
+      // booking_id against Test Mode bookings to exclude their payments too.
+      supabaseAdmin.from('bookings').select('id').eq('is_test', true),
     ])
 
     if (!realPaidRes.error && !bookingsPaidRes.error) {
+      const testBookingIds = new Set((testBookingRowsRes.data ?? []).map(b => b.id as string))
       // countsTowardTotalPaid excludes payment_method === 'upload' rows —
       // a payment-proof screenshot is a verification record, never its own
       // ledger entry (see lib/payment-ledger.ts, 2026-08-24 fix). Without
       // this, an approved proof for an already-paid booking would double
       // its contribution to Revenue Report.
-      const realPayments   = (realPaidRes.data ?? []).filter(countsTowardTotalPaid)
+      const realPayments   = (realPaidRes.data ?? [])
+        .filter(countsTowardTotalPaid)
+        .filter(p => !p.booking_id || !testBookingIds.has(p.booking_id))
       const paidBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
       // Only bookings without a real payments row — avoids double-counting
       // a booking that has both a logged payment AND payment_status='paid'.

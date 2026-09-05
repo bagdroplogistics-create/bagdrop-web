@@ -104,6 +104,12 @@ export async function GET(req: NextRequest) {
     // Only show rows that are real bookings — must have a tracking_id (BD-XXXXXX)
     // This prevents any accidentally trigger-created rows from showing up
     .not('tracking_id', 'is', null)
+    // Test Mode bookings (dummy inquiries created only to test a feature,
+    // e.g. Monali Patel / GBL-2026-0001) never appear in the live Dashboard
+    // Bookings list / Workflow Phase tabs — founder-reported 2026-09-05.
+    // They're still fully manageable from their own dedicated screen
+    // (Group Bookings admin list intentionally does NOT apply this filter).
+    .eq('is_test', false)
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
 

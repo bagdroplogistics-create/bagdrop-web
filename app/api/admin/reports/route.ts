@@ -27,16 +27,19 @@ export async function GET(req: NextRequest) {
     fromDate = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
   }
 
-  const [bookingsRes, paymentsRes, allBookingsRes] = await Promise.all([
+  // Test Mode bookings (dummy inquiries created only to test a feature)
+  // never count toward these live reports — founder-reported 2026-09-05.
+  const [bookingsRes, paymentsRes, allBookingsRes, testBookingRowsRes] = await Promise.all([
     supabaseAdmin
       .from('bookings')
       .select('status, total_amount, from_city, to_city, created_at')
       .gte('created_at', fromDate)
-      .lte('created_at', toDate),
+      .lte('created_at', toDate)
+      .eq('is_test', false),
 
     supabaseAdmin
       .from('payments')
-      .select('payment_status, amount, created_at')
+      .select('payment_status, amount, created_at, booking_id')
       .gte('created_at', fromDate)
       .lte('created_at', toDate),
 
@@ -45,11 +48,17 @@ export async function GET(req: NextRequest) {
       .from('bookings')
       .select('created_at, total_amount, status')
       .gte('created_at', new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString())
+      .eq('is_test', false)
       .order('created_at', { ascending: true }),
+
+    // `payments` has no is_test column of its own — cross-reference
+    // booking_id against Test Mode bookings to exclude their payments too.
+    supabaseAdmin.from('bookings').select('id').eq('is_test', true),
   ])
 
+  const testBookingIds = new Set((testBookingRowsRes.data ?? []).map(b => b.id as string))
   const bookings  = bookingsRes.data  ?? []
-  const payments  = paymentsRes.data  ?? []
+  const payments  = (paymentsRes.data ?? []).filter(p => !p.booking_id || !testBookingIds.has(p.booking_id))
   const allBks    = allBookingsRes.data ?? []
 
   // Summary stats

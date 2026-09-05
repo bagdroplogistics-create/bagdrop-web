@@ -52,6 +52,11 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
     .from('bookings')
     .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at')
     .in('status', CONFIRMED_ONWARD_STATUSES)
+    // Test Mode bookings must never surface as a synthetic "no payment
+    // logged yet" row — founder-reported 2026-09-05: a dummy test group
+    // booking (Monali Patel, GBL-2026-0001) was showing up here with its
+    // full amount as an "Approved (Unpaid)" line item.
+    .eq('is_test', false)
     .limit(5000)
   if (error) {
     console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', error.message)
@@ -113,8 +118,15 @@ export async function GET(req: NextRequest) {
   if (status && status !== 'all') query = query.eq('payment_status', status)
   if (search) query = query.or(`customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,payment_id.ilike.%${search}%`)
 
-  const { data, error } = await query
+  // `payments` has no is_test column of its own — a payment tied to a Test
+  // Mode booking is only excludable by cross-referencing booking_id, so
+  // fetch the set of test booking ids up front and filter against it below.
+  const [{ data, error }, { data: testBookingRows }] = await Promise.all([
+    query,
+    supabaseAdmin.from('bookings').select('id').eq('is_test', true),
+  ])
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  const testBookingIds = new Set((testBookingRows ?? []).map(b => b.id as string))
 
   // ── Hide a redundant payment-proof upload once a real payment also
   // exists for the same booking (2026-08-26, founder-reported: an approved
@@ -135,7 +147,8 @@ export async function GET(req: NextRequest) {
   // full history stay intact in the database and reachable from the
   // Booking Workflow page; it just never appears as a second line item
   // here once a real payment covers it.
-  const rawPayments = (data ?? []) as unknown as PaymentRecord[]
+  const rawPayments = ((data ?? []) as unknown as PaymentRecord[])
+    .filter(p => !p.booking_id || !testBookingIds.has(p.booking_id))
   const byBookingId = new Map<string, PaymentRecord[]>()
   for (const p of rawPayments) {
     if (!p.booking_id) continue

@@ -172,6 +172,9 @@ export async function GET(req: NextRequest) {
     .select(BOOKING_SELECT)
     .gte('pickup_date', upcomingFrom)
     .in('status', OPS_ACTIVE_STATUSES)
+    // Test Mode bookings never appear in the live Operations Center —
+    // founder-reported 2026-09-05.
+    .eq('is_test', false)
   if (upcomingTo) upcomingQueryBuilder = upcomingQueryBuilder.lte('pickup_date', upcomingTo)
   upcomingQueryBuilder = upcomingQueryBuilder.order('pickup_date', { ascending: true })
 
@@ -192,7 +195,8 @@ export async function GET(req: NextRequest) {
       .select('id', { count: 'exact', head: true })
       .gte('pickup_date', todayStr)
       .lte('pickup_date', in7DaysStr)
-      .in('status', OPS_ACTIVE_STATUSES),
+      .in('status', OPS_ACTIVE_STATUSES)
+      .eq('is_test', false),
 
     // Confirmed+ (minus completed) bookings regardless of pickup date —
     // Needs Attention and the Today's Pickups/Deliveries widgets all derive
@@ -204,6 +208,7 @@ export async function GET(req: NextRequest) {
       .from('bookings')
       .select(BOOKING_SELECT)
       .in('status', OPS_ACTIVE_STATUSES)
+      .eq('is_test', false)
       .order('pickup_date', { ascending: true })
       .limit(2000),
 

@@ -99,7 +99,9 @@ const INDEMNITY_SELECT = 'id, booking_id, document_status, submitted_at, reviewe
 // the same via a shared builder function instead of duplicating the filter
 // wiring twice.
 function buildLeadsQuery(f: Filters) {
-  let q = supabaseAdmin.from('leads').select(LEAD_SELECT)
+  // Test Mode leads never count toward any of the 9 detailed reports —
+  // founder-reported 2026-09-05.
+  let q = supabaseAdmin.from('leads').select(LEAD_SELECT).eq('is_test', false)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
   if (f.source) q = q.eq('source', f.source)
@@ -124,7 +126,9 @@ async function fetchLeads(f: Filters, warnings: string[]): Promise<LeadRow[]> {
 }
 
 async function fetchBookings(f: Filters, warnings: string[]): Promise<BookingRow[]> {
-  let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT)
+  // Test Mode bookings never count toward any of the 9 detailed reports —
+  // founder-reported 2026-09-05.
+  let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT).eq('is_test', false)
   if (f.from) q = q.gte('created_at', f.from)
   if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
   if (f.service) q = q.eq('service_type', f.service)
