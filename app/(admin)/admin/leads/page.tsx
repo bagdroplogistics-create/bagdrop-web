@@ -272,6 +272,11 @@ interface LeadForm {
   pnr: string; flight_number: string; flight_time: string; flight_ticket_url: string
   // Status / notes
   status: string; notes: string
+  // Backdated Inquiry (founder request, 2026-09-05) — new-lead-only, see
+  // save()'s branch below and lib/backdated-inquiry.ts's module comment
+  // for why this needs its own endpoint rather than a flag on the normal
+  // create call.
+  backdate: boolean; inquiry_date: string
 }
 
 const EMPTY_FORM: LeadForm = {
@@ -282,6 +287,7 @@ const EMPTY_FORM: LeadForm = {
   bags_count: '1',
   pnr: '', flight_number: '', flight_time: '', flight_ticket_url: '',
   status: 'new', notes: '',
+  backdate: false, inquiry_date: '',
 }
 
 // ── Lead Modal ───────────────────────────────────────────────────
@@ -322,6 +328,8 @@ function LeadModal({
           flight_ticket_url: lead.flight_ticket_url ?? '',
           status:            lead.status,
           notes:             lead.notes ?? '',
+          backdate:          false,
+          inquiry_date:      '',
         }
       : { ...EMPTY_FORM }
   )
@@ -368,6 +376,9 @@ function LeadModal({
     if (!form.delivery_date)                     return 'Delivery date is required'
     if (!form.pickup_time)                       return 'Pickup time slot is required'
     if (!Number(form.bags_count) || Number(form.bags_count) < 1) return 'Number of bags must be at least 1'
+    if (form.backdate && !form.inquiry_date)     return 'Inquiry Date is required when backdating this inquiry'
+    if (form.backdate && form.inquiry_date > new Date().toISOString().slice(0, 10))
+      return 'Inquiry Date cannot be in the future'
     return null
   }
 
@@ -376,7 +387,11 @@ function LeadModal({
     if (validationErr) { setErr(validationErr); return }
     setSaving(true); setErr(''); setDupWarning(null)
 
-    const url    = lead ? `/api/admin/leads/${lead.id}` : '/api/admin/leads'
+    // Backdated Inquiry (2026-09-05) — entirely separate endpoint, only
+    // ever reachable for a brand-new lead (the toggle never renders while
+    // editing). Every other save path below is completely unchanged.
+    const backdating = !lead && form.backdate
+    const url    = backdating ? '/api/admin/leads/backdated' : lead ? `/api/admin/leads/${lead.id}` : '/api/admin/leads'
     const method = lead ? 'PATCH' : 'POST'
     const res = await fetch(url, {
       method,
@@ -400,6 +415,8 @@ function LeadModal({
         flight_ticket_url: requiresFlight ? (form.flight_ticket_url.trim() || null) : null,
         // Duplicate override
         ...(forceDuplicate ? { force_duplicate: true } : {}),
+        // Backdated Inquiry — see the url/method branch above.
+        ...(backdating ? { inquiry_date: form.inquiry_date } : {}),
       }),
     })
     const j = await res.json().catch(() => ({}))
@@ -407,6 +424,14 @@ function LeadModal({
       // Duplicate phone detected — show inline warning instead of error
       if (res.status === 409 && j.code === 'DUPLICATE_PHONE' && j.duplicate_lead) {
         setDupWarning(j.duplicate_lead)
+        setSaving(false)
+        return
+      }
+      // Backdated Inquiry number collision (see lib/backdated-inquiry.ts) —
+      // name the specific conflicting record so the admin isn't left
+      // guessing why the "obvious" next number didn't work.
+      if (backdating && res.status === 409 && j.conflict) {
+        setErr(`${j.message} (conflicting record: ${j.conflicting_record?.number} — ${j.conflicting_record?.customer_name ?? 'unknown customer'})`)
         setSaving(false)
         return
       }
@@ -524,6 +549,40 @@ function LeadModal({
                 {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </div>
+
+            {/* ── Backdated Inquiry (admin only, new leads only) ──────────
+                Founder request 2026-09-05: manually record an inquiry that
+                really happened in a past month. When enabled, save()
+                routes to POST /api/admin/leads/backdated instead of the
+                normal create call — everything else about this form is
+                unchanged, and this section never renders while editing an
+                existing lead. */}
+            {!lead && (
+              <div className="col-span-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                <label className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+                  <input type="checkbox" checked={form.backdate}
+                    onChange={e => setForm(f => ({ ...f, backdate: e.target.checked }))}
+                    className="h-3.5 w-3.5 rounded border-amber-300" />
+                  Backdate this inquiry — it really happened on a past date
+                </label>
+                {form.backdate && (
+                  <div className="mt-2">
+                    <label className="mb-1.5 block text-xs font-semibold text-gray-600">
+                      Inquiry Date<span className="ml-0.5 text-orange-500">*</span>
+                    </label>
+                    <input type="date" value={form.inquiry_date}
+                      max={new Date().toISOString().slice(0, 10)}
+                      onChange={e => setForm(f => ({ ...f, inquiry_date: e.target.value }))}
+                      className={sel} />
+                    <p className="mt-1.5 text-[11px] leading-snug text-amber-700">
+                      Continues that month&apos;s own tracking-ID sequence and counts toward that month&apos;s stats — not today&apos;s.
+                      Only works if no inquiry has been created yet for the number right after that month&apos;s last one; you&apos;ll see a
+                      clear error naming the conflicting record if it&apos;s already taken.
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
           </Section>
 
           {/* ── Service Details ── */}
