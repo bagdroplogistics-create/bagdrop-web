@@ -26,9 +26,30 @@ export const BOOKING_FUNNEL: StatusMeta[] = [
   // hasn't actually been paid.
   { key: 'payment_approved', label: 'Admin Approved (VIP)', color: '#d97706', bg: '#fef3c7' },
   { key: 'confirmed', label: 'Booking Confirmed', color: '#2563eb', bg: '#dbeafe' },
+  // Added 2026-09-05 (founder request: full booking-workflow parity on
+  // mobile) — these 8 stages exist in the website's canonical STATUS_ORDER
+  // (lib/booking-status.ts) but were missing here entirely, so the mobile
+  // status picker could never even select them. Colors/labels mirror the
+  // website's STATUS_META (app/(admin)/admin/page.tsx) and STATUS_LABELS
+  // (app/(admin)/admin/quotes/view/[lead_id]/page.tsx) exactly.
+  { key: 'indemnity_bond_sent', label: 'Indemnity Bond Sent', color: '#7c3aed', bg: '#ede9fe' },
+  { key: 'indemnity_bond_signed', label: 'Indemnity Bond Signed', color: '#7c3aed', bg: '#ede9fe' },
+  // Legacy — no current booking's `status` ever actually equals these two
+  // (invoicing was decoupled from the status machine); kept selectable
+  // only so an old, pre-decoupling booking that still carries one of these
+  // values isn't stuck unselectable in the picker.
+  { key: 'invoice_generated', label: 'Invoice Generated', color: '#0891b2', bg: '#cffafe' },
+  { key: 'invoice_sent', label: 'Invoice Sent', color: '#0891b2', bg: '#cffafe' },
+  { key: 'pickup_scheduled', label: 'Pickup Scheduled', color: '#2563eb', bg: '#dbeafe' },
+  { key: 'picked_up', label: 'Picked Up', color: '#0891b2', bg: '#cffafe' },
   { key: 'in_transit', label: 'In Transit', color: '#0891b2', bg: '#cffafe' },
   { key: 'out_for_delivery', label: 'Out for Delivery', color: '#ea580c', bg: '#ffedd5' },
+  // Airport-destination service types only (see shouldShowDriverDetailsStep
+  // on the website, lib/service-type.ts) — inserted between Out for
+  // Delivery and Delivered.
+  { key: 'driver_details_shared', label: 'Driver Details Shared', color: '#ea580c', bg: '#ffedd5' },
   { key: 'delivered', label: 'Delivered', color: '#16a34a', bg: '#dcfce7' },
+  { key: 'trip_created', label: 'Trip Sheet Created', color: '#16a34a', bg: '#dcfce7' },
   { key: 'completed', label: 'Completed', color: '#14532d', bg: '#bbf7d0' },
 ]
 

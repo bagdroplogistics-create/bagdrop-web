@@ -10,13 +10,26 @@ import { TextField } from '@/components/TextField'
 import { SelectField } from '@/components/SelectField'
 import { Button } from '@/components/Button'
 import { BackHeader } from '@/components/BackHeader'
+import { PhoneInput } from '@/components/PhoneInput'
 import { colors, radius } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
-import { fetchAdminBooking, updateBooking, updatePayment, uploadPaymentProof, fetchPayments, fetchInvoices, AdminBooking } from '@/lib/api'
+import {
+  fetchAdminBooking, updateBooking, updatePayment, uploadPaymentProof, fetchPayments, fetchInvoices,
+  sendIndemnityBond, fetchIndemnityDocs, reviewIndemnity, createTripSheet,
+  AdminBooking, IndemnityBond,
+} from '@/lib/api'
 import { BOOKING_FUNNEL, statusLabel } from '@/shared/statuses'
 import { rupees } from '@/shared/quotes'
 import { formatDateTime, formatCustomerName } from '@/shared/format'
+import { toE164, parseStoredPhone } from '@/shared/phone-format'
+import { shouldShowDriverDetailsStep } from '@/shared/service-type'
+
+// Statuses where the Indemnity Bond card is relevant — mirrors the
+// website's combined "Send Indemnity Bond" (Step 7b) + "Awaiting Signed"
+// (7c) + "Indemnity Bond Documents" review cards, folded into one card here
+// for a single small-screen flow.
+const INDEMNITY_CARD_STATUSES = ['confirmed', 'indemnity_bond_sent', 'indemnity_bond_signed']
 
 // Statuses from which the Payment Proof & Verification card is shown —
 // mirrors atStatus('payment_received', 'payment_approved') in
@@ -73,6 +86,37 @@ export default function BookingDetail() {
   // eligible statuses are ever checked, matching DONE_STATUSES on web).
   const [invoiceId, setInvoiceId] = useState<string | null>(null)
 
+  // Indemnity Bond — mirrors Steps 7b/7c + the Indemnity Bond Documents
+  // review card on the website.
+  const [bond, setBond] = useState<IndemnityBond | null>(null)
+  const [bondLoading, setBondLoading] = useState(false)
+  const [bondSending, setBondSending] = useState(false)
+  const [bondReviewing, setBondReviewing] = useState<'approve' | 'reject' | 'request_resubmission' | null>(null)
+  const [bondMsg, setBondMsg] = useState('')
+  const [bondErr, setBondErr] = useState('')
+  const [markingSignedOffline, setMarkingSignedOffline] = useState(false)
+
+  // Driver Assignment & Share — mirrors doSaveDriverDetails/
+  // doShareDriverDetails. "Assigned" is derived from booking.driver_name/
+  // driver_phone directly (not local draft state) — same fix the website
+  // already applied (see its comment near doSaveDriverDetails).
+  const [driverName, setDriverName] = useState('')
+  const [driverPhoneNational, setDriverPhoneNational] = useState('')
+  const [driverPhoneIso2, setDriverPhoneIso2] = useState('IN')
+  const [driverSaving, setDriverSaving] = useState(false)
+  const [driverSharing, setDriverSharing] = useState(false)
+  const [driverMsg, setDriverMsg] = useState('')
+  const [driverErr, setDriverErr] = useState('')
+
+  // Create Trip Sheet — one-tap for the common case (just booking_id);
+  // optional driver/vehicle fields for anyone who wants to fill them in
+  // now rather than later on the website's Trip Sheets tab.
+  const [tripDriverName, setTripDriverName] = useState('')
+  const [tripVehicleNumber, setTripVehicleNumber] = useState('')
+  const [tripCreating, setTripCreating] = useState(false)
+  const [tripMsg, setTripMsg] = useState('')
+  const [tripErr, setTripErr] = useState('')
+
   const load = useCallback(async () => {
     if (!adminKey || !id) return
     setError('')
@@ -82,6 +126,10 @@ export default function BookingDetail() {
       setStatusValue(b.status)
       setPaymentStatusValue(b.payment_status ?? 'pending')
       setPaymentReference(b.payment_reference ?? '')
+      const parsedDriverPhone = parseStoredPhone((b.driver_phone as string | null) ?? '')
+      setDriverName((b.driver_name as string | null) ?? '')
+      setDriverPhoneNational(parsedDriverPhone.nationalNumber)
+      setDriverPhoneIso2(parsedDriverPhone.nationalNumber ? parsedDriverPhone.iso2 : 'IN')
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not load this booking.')
     } finally {
@@ -96,6 +144,22 @@ export default function BookingDetail() {
       .catch(() => setInvoiceId(null))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [adminKey, id, booking?.status])
+
+  const loadBond = useCallback(async () => {
+    if (!adminKey || !id || !booking || !INDEMNITY_CARD_STATUSES.includes(booking.status)) return
+    setBondLoading(true)
+    try {
+      const res = await fetchIndemnityDocs(adminKey, id)
+      setBond(res.bond)
+    } catch {
+      setBond(null) // non-fatal — card still shows the Send/Resend action
+    } finally {
+      setBondLoading(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [adminKey, id, booking?.status])
+
+  useEffect(() => { loadBond() }, [loadBond])
 
   const loadPaidTotal = useCallback(async () => {
     if (!adminKey || !id) return
@@ -163,6 +227,117 @@ export default function BookingDetail() {
       setProofError(e instanceof Error ? e.message : 'Could not update payment.')
     } finally {
       setVerifying(null)
+    }
+  }
+
+  // ── Indemnity Bond ────────────────────────────────────────────────────
+  async function doSendIndemnityBond() {
+    if (!adminKey || !id) return
+    setBondSending(true); setBondErr(''); setBondMsg('')
+    try {
+      await sendIndemnityBond(adminKey, id)
+      setBondMsg('✅ Signing link sent to the customer (email + WhatsApp).')
+      await load()
+      await loadBond()
+    } catch (e) {
+      setBondErr(e instanceof Error ? e.message : 'Could not send the indemnity bond.')
+    } finally {
+      setBondSending(false)
+    }
+  }
+
+  async function doMarkIndemnitySignedOffline() {
+    if (!adminKey || !id) return
+    setMarkingSignedOffline(true); setBondErr(''); setBondMsg('')
+    try {
+      const { booking: b } = await updateBooking(adminKey, id, { status: 'indemnity_bond_signed' })
+      setBooking(b)
+      setBondMsg('✅ Marked as signed offline (paper bond collected in person).')
+    } catch (e) {
+      setBondErr(e instanceof Error ? e.message : 'Could not update status.')
+    } finally {
+      setMarkingSignedOffline(false)
+    }
+  }
+
+  async function doReviewIndemnity(action: 'approve' | 'reject' | 'request_resubmission') {
+    if (!adminKey || !id) return
+    setBondReviewing(action); setBondErr(''); setBondMsg('')
+    try {
+      const res = await reviewIndemnity(adminKey, id, action)
+      setBond(res.bond)
+      setBondMsg(
+        action === 'approve' ? '✅ Documents approved.'
+        : action === 'reject' ? 'Documents rejected.'
+        : 'Resubmission requested — the customer has a fresh signing link.'
+      )
+      await load()
+    } catch (e) {
+      setBondErr(e instanceof Error ? e.message : 'Could not update the review.')
+    } finally {
+      setBondReviewing(null)
+    }
+  }
+
+  // ── Driver Assignment & Share ────────────────────────────────────────
+  async function doSaveDriverDetails() {
+    if (!adminKey || !id) return
+    setDriverSaving(true); setDriverErr(''); setDriverMsg('')
+    try {
+      const { booking: b } = await updateBooking(adminKey, id, {
+        driver_name: driverName.trim(),
+        driver_phone: toE164(driverPhoneNational, driverPhoneIso2),
+        driver_phone_country_code: driverPhoneIso2,
+        driver_phone_national: driverPhoneNational,
+      })
+      setBooking(b)
+      setDriverMsg('✅ Driver details saved.')
+    } catch (e) {
+      setDriverErr(e instanceof Error ? e.message : 'Could not save driver details.')
+    } finally {
+      setDriverSaving(false)
+    }
+  }
+
+  async function doShareDriverDetails() {
+    if (!adminKey || !id || !driverName.trim() || !driverPhoneNational.trim()) {
+      setDriverErr('Driver name and phone are required before sharing with the customer.')
+      return
+    }
+    setDriverSharing(true); setDriverErr(''); setDriverMsg('')
+    try {
+      const { booking: b } = await updateBooking(adminKey, id, {
+        status: 'driver_details_shared',
+        driver_name: driverName.trim(),
+        driver_phone: toE164(driverPhoneNational, driverPhoneIso2),
+        driver_phone_country_code: driverPhoneIso2,
+        driver_phone_national: driverPhoneNational,
+      })
+      setBooking(b)
+      setDriverMsg('✅ Driver details shared with the customer.')
+    } catch (e) {
+      setDriverErr(e instanceof Error ? e.message : 'Could not share driver details.')
+    } finally {
+      setDriverSharing(false)
+    }
+  }
+
+  // ── Create Trip Sheet ─────────────────────────────────────────────────
+  async function doCreateTripSheet() {
+    if (!adminKey || !id) return
+    setTripCreating(true); setTripErr(''); setTripMsg('')
+    try {
+      const res = await createTripSheet(adminKey, {
+        booking_id: id,
+        driver_name: tripDriverName.trim() || undefined,
+        vehicle_number: tripVehicleNumber.trim() || undefined,
+      })
+      setTripMsg(`✅ Trip sheet ${res.trip_number} created.`)
+      await load()
+    } catch (e) {
+      setTripErr(e instanceof Error ? e.message : 'Could not create the trip sheet.')
+    } finally {
+      setTripCreating(false)
     }
   }
 
@@ -347,6 +522,93 @@ export default function BookingDetail() {
 
           {proofMsg ? <Text style={[styles.notesText, { color: '#0d9488', marginTop: 8 }]}>{proofMsg}</Text> : null}
           {proofError ? <Text style={styles.errorText}>{proofError}</Text> : null}
+        </Card>
+      )}
+
+      {/* ── Indemnity Bond — Steps 7b/7c + document review, combined ── */}
+      {INDEMNITY_CARD_STATUSES.includes(booking.status) && (
+        <Card style={{ marginBottom: 12, backgroundColor: '#faf5ff', borderColor: '#e9d5ff' }}>
+          <Text style={[styles.sectionTitle, { color: '#7c3aed' }]}>Indemnity Bond</Text>
+
+          {booking.status === 'confirmed' && (
+            <>
+              <Text style={styles.notesText}>Not sent yet — send the secure signing link to the customer.</Text>
+              <Button label="Send Indemnity Bond" onPress={doSendIndemnityBond} loading={bondSending} style={{ marginTop: 10 }} />
+            </>
+          )}
+
+          {booking.status === 'indemnity_bond_sent' && (
+            <>
+              <Text style={styles.notesText}>Link sent — waiting for the customer to verify by OTP and sign.</Text>
+              <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                <Button label="Resend Link" variant="outline" onPress={doSendIndemnityBond} loading={bondSending} style={{ flex: 1 }} />
+                <Button label="Mark Signed Offline" variant="outline" onPress={doMarkIndemnitySignedOffline} loading={markingSignedOffline} style={{ flex: 1 }} />
+              </View>
+            </>
+          )}
+
+          {booking.status === 'indemnity_bond_signed' && (
+            <>
+              <Text style={[styles.notesText, { color: '#15803d', fontWeight: '700' }]}>✅ Bond signed.</Text>
+              {bondLoading ? <ActivityIndicator color={colors.brand} style={{ marginTop: 8 }} /> : null}
+              {bond && (
+                <View style={{ marginTop: 8 }}>
+                  <View style={styles.kv}><Text style={styles.k}>Document Status</Text><Text style={styles.v}>{bond.document_status}</Text></View>
+                  {bond.aadhaar_number ? <View style={styles.kv}><Text style={styles.k}>Aadhaar</Text><Text style={styles.v}>{bond.aadhaar_number}</Text></View> : null}
+                  {bond.passport_number ? <View style={styles.kv}><Text style={styles.k}>Passport</Text><Text style={styles.v}>{bond.passport_number}</Text></View> : null}
+                </View>
+              )}
+              {(!bond || bond.document_status === 'submitted') && (
+                <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                  <Button label="Approve" onPress={() => doReviewIndemnity('approve')} loading={bondReviewing === 'approve'} disabled={!!bondReviewing} style={{ flex: 1 }} />
+                  <Button label="Reject" variant="outline" onPress={() => doReviewIndemnity('reject')} loading={bondReviewing === 'reject'} disabled={!!bondReviewing} style={{ flex: 1 }} />
+                </View>
+              )}
+              <Pressable onPress={() => doReviewIndemnity('request_resubmission')} disabled={!!bondReviewing} style={{ marginTop: 8 }}>
+                <Text style={[styles.notesText, { color: colors.brand, fontWeight: '700' }]}>
+                  {bondReviewing === 'request_resubmission' ? 'Requesting…' : 'Request Resubmission'}
+                </Text>
+              </Pressable>
+            </>
+          )}
+
+          {bondMsg ? <Text style={[styles.notesText, { color: '#7c3aed', marginTop: 8 }]}>{bondMsg}</Text> : null}
+          {bondErr ? <Text style={styles.errorText}>{bondErr}</Text> : null}
+        </Card>
+      )}
+
+      {/* ── Driver Assignment & Share — destination-airport bookings only ── */}
+      {booking.status === 'out_for_delivery' && shouldShowDriverDetailsStep(booking.service_type) && !booking.driver_details_sent_at && (
+        <Card style={{ marginBottom: 12, backgroundColor: '#fff7ed', borderColor: '#fed7aa' }}>
+          <Text style={[styles.sectionTitle, { color: '#ea580c' }]}>Driver Assignment</Text>
+          <TextField label="Driver Name" value={driverName} onChangeText={setDriverName} placeholder="Driver's full name" />
+          <PhoneInput
+            label="Driver Phone"
+            countryIso2={driverPhoneIso2}
+            nationalNumber={driverPhoneNational}
+            onCountryChange={setDriverPhoneIso2}
+            onNumberChange={setDriverPhoneNational}
+            placeholder="9876543210"
+          />
+          <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+            <Button label="Save" variant="outline" onPress={doSaveDriverDetails} loading={driverSaving} style={{ flex: 1 }} />
+            <Button label="Save & Share" onPress={doShareDriverDetails} loading={driverSharing} style={{ flex: 1 }} />
+          </View>
+          {driverMsg ? <Text style={[styles.notesText, { color: '#ea580c', marginTop: 8 }]}>{driverMsg}</Text> : null}
+          {driverErr ? <Text style={styles.errorText}>{driverErr}</Text> : null}
+        </Card>
+      )}
+
+      {/* ── Create Trip Sheet — Step 15 ── */}
+      {booking.status === 'delivered' && (
+        <Card style={{ marginBottom: 12, backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
+          <Text style={[styles.sectionTitle, { color: '#15803d' }]}>Create Trip Sheet</Text>
+          <Text style={styles.notesText}>Driver/vehicle are optional here — add or edit them later on the Trip Sheets tab if you'd rather do this in one tap.</Text>
+          <TextField label="Driver Name (optional)" value={tripDriverName} onChangeText={setTripDriverName} placeholder="Driver's full name" />
+          <TextField label="Vehicle Number (optional)" value={tripVehicleNumber} onChangeText={setTripVehicleNumber} placeholder="e.g. GJ-01-AB-1234" />
+          <Button label="Create Trip Sheet" onPress={doCreateTripSheet} loading={tripCreating} style={{ marginTop: 6 }} />
+          {tripMsg ? <Text style={[styles.notesText, { color: '#15803d', marginTop: 8 }]}>{tripMsg}</Text> : null}
+          {tripErr ? <Text style={styles.errorText}>{tripErr}</Text> : null}
         </Card>
       )}
 

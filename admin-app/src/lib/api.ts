@@ -186,6 +186,19 @@ export interface BookingPatch {
   // role gate and writes approved_by/status='payment_approved' when this
   // exact field is present. Sending payment_status directly skips both.
   approved_without_payment?: boolean
+  // Driver Assignment & Share (destination-airport service types only) —
+  // mirrors doSaveDriverDetails()/doShareDriverDetails() in app/(admin)/
+  // admin/quotes/view/[lead_id]/page.tsx exactly (same PATCH endpoint,
+  // same field names). Saving alone (no `status`) just records the
+  // driver's name/phone; including status: 'driver_details_shared' also
+  // notifies the customer. Note: there is no vehicle_number field on the
+  // website's own form either — deliberately simplified to name+phone.
+  driver_name?: string
+  driver_phone?: string
+  driver_phone_country_code?: string
+  driver_phone_national?: string
+  // Historical/migration escape hatch — mirrors doMarkHistoricalComplete().
+  mark_historical?: boolean
 }
 
 export function updateBooking(key: string, id: string, patch: BookingPatch) {
@@ -283,7 +296,7 @@ export function createLead(key: string, payload: CreateLeadPayload) {
   )
 }
 
-export function updateLead(key: string, id: string, patch: Partial<CreateLeadPayload> & { status?: string; deleted_at?: string | null }) {
+export function updateLead(key: string, id: string, patch: Partial<CreateLeadPayload> & { status?: string; deleted_at?: string | null; customer_responded_at?: string }) {
   return adminRequest<{ lead: AdminLead }>(key, `/api/admin/leads/${id}`, {
     method: 'PATCH',
     body: JSON.stringify(patch),
@@ -693,5 +706,96 @@ export function fetchCustomers(key: string, params: { search?: string } = {}) {
   if (params.search) qs.set('search', params.search)
   return adminRequest<{ customers: AdminCustomer[]; total: number }>(
     key, `/api/admin/customers?${qs.toString()}`
+  )
+}
+
+// ── Indemnity Bond ───────────────────────────────────────────────────────
+// Added 2026-09-05 (full booking-workflow parity on mobile). Mirrors
+// app/api/admin/bookings/[id]/indemnity/{send,route,review}.ts exactly —
+// the signing itself is customer self-service (a secure link the customer
+// opens, verifies by OTP, and submits — app/api/indemnity/[token]/*), not
+// something either surface can do on the customer's behalf. What staff CAN
+// do from here: send/resend the link, mark it signed offline (a paper bond
+// collected in person), and review the customer's submitted documents.
+export interface IndemnityBond {
+  id: string
+  booking_id: string
+  document_status: string // 'pending' | 'submitted' | 'approved' | 'rejected' | 'resubmission_requested'
+  otp_verified: boolean | null
+  submitted_at: string | null
+  reviewed_at: string | null
+  reviewed_by: string | null
+  aadhaar_number: string | null
+  passport_number: string | null
+  [key: string]: unknown
+}
+
+export interface IndemnityDocsResult {
+  bond: IndemnityBond | null
+  urls: {
+    signed_bond_url?: string | null
+    aadhaar_url?: string | null
+    passport_url?: string | null
+    flight_ticket_url?: string | null
+    extra_doc_url?: string | null
+  }
+}
+
+// Sends (or resends) the secure signing link via email + best-effort
+// WhatsApp, and flips the booking to 'indemnity_bond_sent' server-side —
+// same as clicking "Send Indemnity Bond" on the website. A 429 means the
+// 2-minute resend cooldown hasn't elapsed yet.
+export function sendIndemnityBond(key: string, bookingId: string) {
+  return adminRequest<{ success: boolean; secure_link: string; expires_at: string }>(
+    key, `/api/admin/bookings/${bookingId}/indemnity/send`, { method: 'POST' }
+  )
+}
+
+export function fetchIndemnityDocs(key: string, bookingId: string) {
+  return adminRequest<IndemnityDocsResult>(key, `/api/admin/bookings/${bookingId}/indemnity`)
+}
+
+// Approve/reject/request-resubmission of the customer's submitted
+// documents. 'request_resubmission' reopens the customer's signing link
+// with a fresh token (booking status effectively reverts to awaiting
+// signature).
+export function reviewIndemnity(key: string, bookingId: string, action: 'approve' | 'reject' | 'request_resubmission', note?: string) {
+  return adminRequest<{ success: boolean; bond: IndemnityBond }>(
+    key, `/api/admin/bookings/${bookingId}/indemnity/review`,
+    { method: 'POST', body: JSON.stringify({ action, ...(note ? { note } : {}) }) }
+  )
+}
+
+// ── Trip Sheets ──────────────────────────────────────────────────────────
+// Mirrors app/api/admin/trip-sheets/route.ts's booking-linked branch only
+// (booking_id set) — the manual, no-booking entry form is website-only for
+// now, out of scope for this pass (same "New Invoice" precedent above).
+// Every field beyond booking_id is optional; the server auto-fills
+// customer/route/amount straight from the booking. NOTE (pre-existing
+// website behavior, not something this call changes): the server only
+// auto-advances the booking to 'trip_created' when its status is
+// 'confirmed' or 'payment_approved' — NOT 'delivered', even though the
+// website's own "Create Trip Sheet" button only appears once a booking is
+// already 'delivered'. That mismatch already exists on the website; ported
+// here as-is rather than silently "fixed" on just one surface.
+export interface CreateTripSheetPayload {
+  booking_id: string
+  driver_name?: string
+  vehicle_number?: string
+  notes?: string
+  force?: boolean // bypasses the duplicate-trip-sheet guard
+}
+
+export interface AdminTripSheet {
+  id: string
+  trip_number: string
+  booking_id: string | null
+  status: string
+  [key: string]: unknown
+}
+
+export function createTripSheet(key: string, payload: CreateTripSheetPayload) {
+  return adminRequest<{ trip_sheet: AdminTripSheet; trip_number: string }>(
+    key, '/api/admin/trip-sheets', { method: 'POST', body: JSON.stringify(payload) }
   )
 }
