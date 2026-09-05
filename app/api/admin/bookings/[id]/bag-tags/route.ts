@@ -22,7 +22,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { ensureBagsForBooking, trackBagEvent } from '@/lib/bag-tags'
+import { ensureBagsForBooking, trackBagEvent, generateBagLabel } from '@/lib/bag-tags'
 import { STATUS_ORDER } from '@/lib/booking-status'
 
 const CONFIRMED_ONWARD = new Set(STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed')))
@@ -106,27 +106,47 @@ export async function POST(
     return NextResponse.json({ generated: result.created })
   }
 
-  // Group booking — bags already exist from the manifest; just stamp
-  // tag_generated_at on whichever ones don't have it yet.
-  const { data: pending, error: pendingErr } = await supabaseAdmin
+  // Group booking — bags already exist from the manifest. Two things can
+  // need backfilling here, not just tag_generated_at: any bag created
+  // BEFORE this Bag Tag System shipped (2026-09-05) has bag_label = NULL
+  // too, since bag_label didn't exist as a column yet when it was
+  // inserted — every guest/import bag-creation path going forward sets it
+  // at creation time, but pre-existing manifests (e.g. a Group Booking
+  // built while only testing Phase 1's foundation) need it computed here
+  // once, retroactively, in creation order.
+  const { data: allBags, error: allBagsErr } = await supabaseAdmin
     .from('group_bags')
-    .select('id')
+    .select('id, bag_label, tag_generated_at')
     .eq('booking_id', id)
     .is('deleted_at', null)
-    .is('tag_generated_at', null)
-  if (pendingErr) return NextResponse.json({ error: pendingErr.message }, { status: 500 })
+    .order('created_at', { ascending: true })
+  if (allBagsErr) return NextResponse.json({ error: allBagsErr.message }, { status: 500 })
+  if (!allBags || allBags.length === 0) return NextResponse.json({ generated: 0 })
 
-  if (!pending || pending.length === 0) return NextResponse.json({ generated: 0 })
+  const { data: groupDetails } = await supabaseAdmin
+    .from('group_booking_details').select('group_booking_number').eq('booking_id', id).maybeSingle()
+  const groupBookingNumber = groupDetails?.group_booking_number ?? 'GBL'
 
   const now = new Date().toISOString()
-  const ids = pending.map(b => b.id)
-  const { error: updateErr } = await supabaseAdmin
-    .from('group_bags').update({ tag_generated_at: now }).in('id', ids)
-  if (updateErr) return NextResponse.json({ error: updateErr.message }, { status: 500 })
+  let generated = 0
 
-  await Promise.all(ids.map(bagId => trackBagEvent(bagId, 'tag_generated', { note: 'Tag generated', changedBy: 'admin' })))
+  await Promise.all(allBags.map(async (bag, i) => {
+    const needsLabel = !bag.bag_label
+    const needsStamp = !bag.tag_generated_at
+    if (!needsLabel && !needsStamp) return
 
-  return NextResponse.json({ generated: ids.length })
+    const updates: Record<string, unknown> = {}
+    if (needsLabel) updates.bag_label = generateBagLabel(groupBookingNumber, i + 1, true)
+    if (needsStamp) updates.tag_generated_at = now
+
+    const { error: updateErr } = await supabaseAdmin.from('group_bags').update(updates).eq('id', bag.id)
+    if (!updateErr) {
+      generated++
+      await trackBagEvent(bag.id, 'tag_generated', { note: needsLabel ? 'Tag generated (label backfilled)' : 'Tag generated', changedBy: 'admin' })
+    }
+  }))
+
+  return NextResponse.json({ generated })
 }
 
 export async function PATCH(
