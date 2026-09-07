@@ -232,7 +232,7 @@ Thank you for choosing Bagdrop.
 
 ---
 
-## 10. Bags Delivered — `bags_delivered`
+## 10. Bags Delivered — `bags_delivered` (SUPERSEDED — see 10b)
 
 **Variables:** {{1}} customer name · {{2}} booking ID · {{3}} delivery date · {{4}} delivered-to address
 
@@ -248,6 +248,58 @@ Delivered To: {{4}}
 Thank you for choosing Bagdrop. We hope you had a smooth experience — your feedback means a lot to us.
 
 Team Bagdrop
+```
+
+No longer sent automatically as of 2026-09-07 — replaced by 10b
+(`bags_delivered_review`) once that template was Meta-approved, so a
+delivered booking gets exactly one WhatsApp message instead of a plain
+confirmation now followed by a separate manual review ask. Left
+documented here (not deleted) in case a booking's history references
+this template name.
+
+---
+
+## 10b. Bags Delivered + Review Request — `bags_delivered_review`
+
+**APPROVED (Meta, confirmed 2026-09-07). Category: Marketing.** Fires
+automatically the moment a booking's status reaches `delivered` — see
+`TEMPLATE_BY_STATUS` in `lib/lifecycle-notifications.ts`. Replaces
+`bags_delivered` above (was UTILITY, delivery confirmation only); this one
+bakes the Google-review ask into the same message, so nothing else needs to
+send separately for a normal delivery. `components/admin/ReviewPanel.tsx`'s
+manual send-review-request button (a freeform `wa.me` link, not this
+template) is still available as a manual backup/resend.
+
+**Variables:** {{1}} customer name · {{2}} booking ID · {{3}} route · {{4}} delivered-on date
+
+Note the variable ORDER differs from the old `bags_delivered` template
+above — route is now {{3}} (was delivery date) and the date moved to {{4}}
+(was the delivered-to address, which this template doesn't include at all).
+
+```
+Dear {{1}},
+
+Your baggage has been delivered successfully.
+
+Booking ID: {{2}}
+Route: {{3}}
+Delivered On: {{4}}
+
+Thank you for choosing BagDrop.
+
+We hope you enjoyed our Excess baggage delivery service.
+
+⭐ We'd love to hear about your experience.
+
+Please leave us a Google review:
+
+https://g.page/r/CbN8qgu-fMB-EBM/review
+
+Your feedback helps us improve and assists other travellers in choosing BagDrop.
+
+Thank you and we look forward to serving you again.
+
+- Team BagDrop
 ```
 
 ---

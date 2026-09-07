@@ -53,18 +53,26 @@ interface BookingLike {
 // on 2026-09-01; re-confirm there before changing one. Template bodies +
 // variable order are in FAST2SMS_TEMPLATES.md — keep both in sync.
 //
-// booking_confirmed_v2 and bags_delivered were picked deliberately over
-// other approved variants: booking_confirmed_v2 is the current version of
-// that template (v1 superseded); bags_delivered (plain UTILITY) was used
-// instead of bags_delivered_review (which bakes in a Google-review CTA)
-// because review requests are already handled separately by
-// components/admin/ReviewPanel.tsx's own manual flow — sending both would
-// double up. quote_sent_v2 (adds a Document header with the quote PDF) was
-// "Pending" Meta approval as of 2026-09-01 — now Approved (confirmed via
-// Fast2SMS's template dashboard), so it's used here instead of the plain
-// quote_sent (no header) template. Same body/variable order as the plain
-// version — only the header is new. See the quote_sent branch below for
-// the PDF-header wiring.
+// booking_confirmed_v2 and bags_delivered_review were picked deliberately
+// over other approved variants: booking_confirmed_v2 is the current version
+// of that template (v1 superseded). quote_sent_v2 (adds a Document header
+// with the quote PDF) was "Pending" Meta approval as of 2026-09-01 — now
+// Approved (confirmed via Fast2SMS's template dashboard), so it's used here
+// instead of the plain quote_sent (no header) template. Same body/variable
+// order as the plain version — only the header is new. See the quote_sent
+// branch below for the PDF-header wiring.
+//
+// delivered: bags_delivered_review (2026-09-07, founder-approved on Meta)
+// — was plain bags_delivered (delivery confirmation only) until this
+// template was approved. bags_delivered_review's body is delivery
+// confirmation PLUS a Google-review ask/link in the SAME message (see
+// FAST2SMS_TEMPLATES.md), so it fully replaces bags_delivered here rather
+// than sending both — a customer marked Delivered now gets exactly one
+// WhatsApp message, not two. components/admin/ReviewPanel.tsx's manual
+// send-review-request flow (a freeform wa.me link, unrelated to this
+// template) is untouched and still available as a manual backup/resend —
+// e.g. for a booking delivered before this template existed, or a customer
+// who wants a second nudge.
 const TEMPLATE_BY_STATUS: Record<string, string> = {
   quote_sent:       'quote_sent_v2',
   accepted:         'quote_accepted',
@@ -75,7 +83,7 @@ const TEMPLATE_BY_STATUS: Record<string, string> = {
   picked_up:        'bags_picked_up',
   in_transit:       'bags_in_transit',
   out_for_delivery: 'out_for_delivery',
-  delivered:        'bags_delivered',
+  delivered:        'bags_delivered_review',
 }
 
 function fmtRs(n: number | null | undefined): string {
@@ -187,7 +195,13 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     } else if (status === 'in_transit' || status === 'out_for_delivery') {
       variables = [name, booking.tracking_id]
     } else if (status === 'delivered') {
-      variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), booking.drop_address || route || '—']
+      // bags_delivered_review's approved variable order (confirmed from the
+      // Fast2SMS template preview, 2026-09-07): {{1}} Name, {{2}} Booking
+      // ID, {{3}} Route, {{4}} Delivered On — differs from the old
+      // bags_delivered template this replaced, which had delivery date in
+      // {{3}} and the delivered-to address in {{4}}. Route (not address) is
+      // now {{3}}, and the date moves to {{4}}.
+      variables = [name, booking.tracking_id, route || '—', fmtDate(new Date().toISOString())]
     }
 
     // payment_pending's template has an Image header (the QR code);
