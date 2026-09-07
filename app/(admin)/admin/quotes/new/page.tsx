@@ -927,6 +927,17 @@ function QuotePageInner() {
   async function saveLeadChanges() {
     if (!custName.trim()) { setErr('Customer name is required.'); return }
     if (!custPhone.trim()) { setErr('Customer phone is required.'); return }
+    // Founder request (2026-09-07): WhatsApp delivery for non-Indian
+    // numbers goes through Meta's Cloud API rather than Fast2SMS (see
+    // sendWhatsAppTemplate's routing in lib/notifications.ts), which is
+    // less reliable end-to-end for a first-contact quote — email is the
+    // dependable fallback channel for an international customer, so it's
+    // required whenever the selected country isn't India, even though it
+    // stays optional for domestic (+91) customers.
+    if (custCountryIso2 !== 'IN' && !custEmail.trim()) {
+      setErr('Email is required for international phone numbers.')
+      return
+    }
     setSaving(true); setErr('')
 
     // Only touch saved quote/pricing fields if this lead actually has a quote
@@ -1056,6 +1067,14 @@ function QuotePageInner() {
     const effectivePhoneNational    = lead?.phone_national     ?? custPhone.trim()
     if (!effectiveName)  { setErr('Customer name is required.'); return }
     if (!effectivePhone) { setErr('Customer phone is required.'); return }
+    // See the matching check + comment in saveLeadChanges() above — email
+    // is required for international (non-+91) numbers so there's a
+    // reliable channel to reach the customer even if the Meta-routed
+    // WhatsApp send doesn't land.
+    if (effectivePhoneCountryCode !== 'IN' && !custEmail.trim()) {
+      setErr('Email is required for international phone numbers.')
+      return
+    }
     if (!pickupAddr.trim()) { setErr('Pickup address is required.'); return }
     const validItems = lineItems.filter(r => r.name.trim() && r.rate > 0)
     if (validItems.length === 0) { setErr('Add at least one item with a name and rate.'); return }
@@ -1585,14 +1604,28 @@ function QuotePageInner() {
                 />
               </div>
               <div>
-                <label className={lbl}>Email</label>
+                <label className={lbl}>
+                  Email
+                  {custCountryIso2 !== 'IN' && <span className="text-red-400"> *</span>}
+                </label>
                 <div className="relative">
                   <Mail className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
                   <input type="email" value={custEmail} onChange={e => setCustEmail(e.target.value)}
                     readOnly={!!lead && !isEdit}
+                    required={custCountryIso2 !== 'IN'}
                     placeholder="customer@email.com"
                     className={(!!lead && !isEdit ? inpRO : inp) + ' pl-7'} />
                 </div>
+                {/* Founder request 2026-09-07: email becomes mandatory for
+                    international (non-+91) numbers — WhatsApp reliability
+                    for those goes through a different, less certain path
+                    (Meta Cloud API, not Fast2SMS), so email is the
+                    dependable fallback. Purely informational text; the
+                    real gate is the validation in saveLeadChanges()/
+                    generate() above. */}
+                {custCountryIso2 !== 'IN' && (
+                  <p className="mt-1 text-[10px] text-amber-600">Required for international phone numbers.</p>
+                )}
               </div>
 
               {/* Live existing-inquiry warning (2026-08-25) — see
