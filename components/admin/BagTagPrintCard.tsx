@@ -1,6 +1,6 @@
 'use client'
 
-import { LOGO_FULL_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
+import { LOGO_FULL_COLOR_DATA_URI, LOGO_ICON_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
 // Deliberately from lib/bag-tag-display.ts, NOT lib/bag-tags.ts — this is
 // a 'use client' component, and lib/bag-tags.ts imports supabaseAdmin
 // (the server-only, service-role Supabase client) at module scope. See
@@ -19,18 +19,33 @@ import { cityCode, barcodeStripes } from '@/lib/bag-tag-display'
 // Redesigned 2026-09-07 (founder spec: "airport type tag design") from a
 // single vertical digital-card layout into a 4-part airline-style claim
 // tag — barcode spine, main coupon, FROM/TO flight panel, tear-off claim
-// stub — using the real horizontal BagDrop logo lock-up (lib/bag-tag-
-// logo.ts) everywhere, including a small white chip on the dark flight
-// panel (the existing LOGO_FULL_WHITE_DATA_URI asset turned out to be a
-// tall STACKED lock-up, not a horizontal one — unsuited to a short wide
-// header bar, so the chip approach reuses the one horizontal asset
-// instead), rather than a redrawn circular mark.
+// stub — using the real BagDrop logo lock-up (lib/bag-tag-logo.ts).
+//
+// Two follow-up fixes the same day, both from founder screenshots:
+// 1. The vertical spine barcode was invisible in the browser (though it
+//    rendered fine in the PDF) — CSS `padding: 6% 10%` on `.bag-tag-
+//    spine` resolves BOTH the vertical and horizontal percentages
+//    against the FLEX CONTAINER'S WIDTH (a real CSS quirk — percentage
+//    padding is always relative to the containing block's width, never
+//    its own height, and browsers apply that even for a narrow flex
+//    child). The spine is only 8% of the card's width, but the padding
+//    asked for 20% of that same full card width just on its left+right
+//    — more than the column had room for, squeezing its content to
+//    nothing. Every percentage padding/margin/gap in this file's CSS is
+//    now a fixed px value instead, which doesn't have this failure mode.
+// 2. The flight-panel header and claim-stub logo looked "stretched"/
+//    smeared at ~11-15px tall — that's the full lock-up's two lines of
+//    text (wordmark + tagline) collapsing into mush once shrunk that
+//    far, not an actual aspect-ratio stretch. Both spots now use
+//    LOGO_ICON_COLOR_DATA_URI (icon only, no baked-in text) paired with
+//    a separately-set crisp "BAGDROP" text label — the exact lesson this
+//    component's pre-2026-09-07 history already documents once before.
 //
 // IMPORTANT: this is still BagDrop's own OPERATIONAL tracking tag — never
 // represented as an airline-issued baggage tag. The FROM/TO codes are a
-// decorative styling touch (see lib/bag-tags.ts's cityCode) and the QR
-// encodes only the bag's own tracking URL, never customer name/phone/
-// address.
+// decorative styling touch (see lib/bag-tag-display.ts's cityCode) and
+// the QR encodes only the bag's own tracking URL, never customer name/
+// phone/address.
 
 export interface BagTagCardData {
   id:               string
@@ -69,6 +84,17 @@ function Barcode({ seed, vertical }: { seed: string; vertical?: boolean }) {
         <span key={i} style={{ [vertical ? 'height' : 'width']: `${s.pct}%`, background: s.bar ? '#111827' : 'transparent' }} />
       ))}
     </div>
+  )
+}
+
+// Small lock-up for tight spaces: the plain icon (no baked-in text, so it
+// never loses legibility when shrunk) plus a real, crisp text label.
+function MiniBrand({ dark }: { dark?: boolean }) {
+  return (
+    <span className={`bag-tag-minibrand${dark ? ' on-dark' : ''}`}>
+      <img src={LOGO_ICON_COLOR_DATA_URI} alt="" />
+      <b>BAGDROP</b>
+    </span>
   )
 }
 
@@ -115,7 +141,7 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
       {/* ── Flight-style FROM / TO panel ─────────────────────────────── */}
       <div className="bag-tag-col bag-tag-flight">
         <div className="bag-tag-flight-head">
-          <span className="bag-tag-flight-chip"><img src={LOGO_FULL_COLOR_DATA_URI} alt="BAGDROP" /></span>
+          <MiniBrand dark />
           <span>BAG TAG</span>
         </div>
         <div className="bag-tag-flight-body">
@@ -139,8 +165,10 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
 
       {/* ── Tear-off claim stub ──────────────────────────────────────── */}
       <div className="bag-tag-col bag-tag-stub">
-        <img className="bag-tag-logo-color bag-tag-logo-small" src={LOGO_FULL_COLOR_DATA_URI} alt="BAGDROP" />
-        <span className="bag-tag-stub-label">CLAIM STUB</span>
+        <div className="bag-tag-stub-head">
+          <MiniBrand />
+          <span className="bag-tag-stub-label">CLAIM STUB</span>
+        </div>
         <Barcode seed={tag.bagLabel} />
         <div className="bag-tag-stub-fields">
           <div className="bag-tag-field"><span>ROUTE</span><b>{fromCode} → {toCode}</b></div>
@@ -158,6 +186,11 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
 // into their own print stylesheet block alongside their toolbar/layout
 // styles, matching this codebase's existing print-page convention
 // (inline <style> in the page component, no CSS module imports).
+//
+// Every spacing value (padding/margin/gap) below is a FIXED px number —
+// see the module comment above for why percentages broke the spine.
+// Column widths use percentage flex-basis, which is fine (that resolves
+// against the flex container's main-axis size, exactly as expected).
 export const BAG_TAG_CARD_STYLES = `
   .bag-tag {
     position: relative; display: flex; flex-direction: row;
@@ -172,53 +205,56 @@ export const BAG_TAG_CARD_STYLES = `
 
   .bag-tag-col { position: relative; display: flex; flex-direction: column; height: 100%; }
 
+  .bag-tag-minibrand { display: inline-flex; align-items: center; gap: 4px; line-height: 1; }
+  .bag-tag-minibrand img { height: 12px; width: auto; display: block; }
+  .bag-tag-minibrand b { font-size: 8.5px; font-weight: 800; letter-spacing: 0.3px; color: #111827; }
+  .bag-tag-minibrand.on-dark b { color: #fff; }
+
   /* Spine */
-  .bag-tag-spine { flex: 0 0 8%; padding: 6% 10%; border-right: 1.5px dashed #d4cfc6; background: #fff; }
+  .bag-tag-spine { flex: 0 0 8%; padding: 10px 8px; border-right: 1.5px dashed #d4cfc6; background: #fff; }
   .bag-tag-barcode { display: flex; width: 100%; height: 100%; }
   .bag-tag-barcode.vertical { flex-direction: column; }
   .bag-tag-barcode:not(.vertical) { flex-direction: row; }
   .bag-tag-barcode span { flex: 0 0 auto; }
 
   /* Main coupon */
-  .bag-tag-main { flex: 0 0 41%; padding: 4% 3%; border-right: 1.5px dashed #d4cfc6; }
+  .bag-tag-main { flex: 0 0 41%; padding: 8px 10px; border-right: 1.5px dashed #d4cfc6; }
   .bag-tag-main-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .bag-tag-logo-color { height: 22px; width: auto; display: block; }
-  .bag-tag-logo-small { height: 15px; }
   .bag-tag-pill { border: 1.5px solid #f97316; color: #c74f0f; border-radius: 999px; padding: 2px 8px; font-size: 6.2px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
-  .bag-tag-divider { height: 1px; background: #e5e0d8; margin: 5% 0 4%; }
-  .bag-tag-fields { display: grid; grid-template-columns: 1fr 1fr; row-gap: 5%; column-gap: 8px; flex: 1; }
+  .bag-tag-divider { height: 1px; background: #e5e0d8; margin: 8px 0 6px; }
+  .bag-tag-fields { display: grid; grid-template-columns: 1fr 1fr; row-gap: 7px; column-gap: 8px; flex: 1; }
   .bag-tag-field { display: flex; flex-direction: column; min-width: 0; }
   .bag-tag-field span { font-size: 6px; font-weight: 700; letter-spacing: 0.5px; color: #918b81; }
   .bag-tag-field b { font-size: 9px; font-weight: 800; color: #111827; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .bag-tag-mono { font-family: monospace; font-size: 8px !important; }
-  .bag-tag-qr-wrap { position: absolute; right: 3%; bottom: 4%; display: flex; align-items: flex-end; gap: 6px; }
+  .bag-tag-qr-wrap { position: absolute; right: 10px; bottom: 8px; display: flex; align-items: flex-end; gap: 6px; }
   .bag-tag-qr-cap { font-size: 5.5px; font-weight: 700; color: #111827; text-align: right; line-height: 1.35; }
   .bag-tag-qr-cap span { display: block; font-weight: 400; color: #918b81; font-size: 5px; margin-top: 1px; }
   .bag-tag-qr-wrap img { width: 15%; min-width: 34px; max-width: 46px; height: auto; display: block; border: 1px solid #e5e0d8; border-radius: 3px; }
 
   /* Flight panel */
   .bag-tag-flight { flex: 0 0 24%; border-right: 1.5px dashed #d4cfc6; background: #fff; }
-  .bag-tag-flight-head { background: #111827; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 4% 6%; }
-  .bag-tag-flight-chip { background: #fff; border-radius: 4px; padding: 2px 6px; display: flex; align-items: center; }
-  .bag-tag-flight-chip img { height: 11px; width: auto; display: block; }
+  .bag-tag-flight-head { background: #111827; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; }
   .bag-tag-flight-head > span:last-child { font-size: 6.5px; font-weight: 800; letter-spacing: 1.2px; color: #f97316; }
-  .bag-tag-flight-body { flex: 1; padding: 5% 8%; display: flex; flex-direction: column; justify-content: center; gap: 4%; }
+  .bag-tag-flight-body { flex: 1; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
   .bag-tag-fromto { display: flex; flex-direction: column; line-height: 1; }
   .bag-tag-fromto-label { font-size: 5.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
   .bag-tag-fromto-code { font-size: 17px; font-weight: 800; color: #111827; margin-top: 1px; }
   .bag-tag-fromto-code-orange { color: #c74f0f; }
   .bag-tag-fromto-city { font-size: 6px; font-weight: 600; letter-spacing: 0.4px; color: #918b81; text-transform: uppercase; margin-top: 1px; }
-  .bag-tag-flight-divider { height: 1px; background: #e5e0d8; margin: 2% 0; }
+  .bag-tag-flight-divider { height: 1px; background: #e5e0d8; margin: 3px 0; }
   .bag-tag-bagno { display: flex; align-items: baseline; gap: 6px; }
   .bag-tag-bagno span { font-size: 5.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
   .bag-tag-bagno b { font-size: 10px; font-weight: 800; color: #111827; }
-  .bag-tag-care { background: #111827; color: #fff; padding: 4% 8%; font-size: 6.5px; font-weight: 800; letter-spacing: 0.8px; text-align: center; }
+  .bag-tag-care { background: #111827; color: #fff; padding: 5px 8px; font-size: 6.5px; font-weight: 800; letter-spacing: 0.8px; text-align: center; }
 
   /* Claim stub */
-  .bag-tag-stub { flex: 0 0 27%; padding: 4% 4%; gap: 4%; }
-  .bag-tag-stub-label { font-size: 5.5px; font-weight: 700; letter-spacing: 0.8px; color: #918b81; margin-top: -2%; }
-  .bag-tag-stub .bag-tag-barcode { height: 20%; }
-  .bag-tag-stub-fields { display: flex; flex-direction: column; gap: 3%; flex: 1; }
+  .bag-tag-stub { flex: 0 0 27%; padding: 8px 8px; gap: 6px; }
+  .bag-tag-stub-head { display: flex; align-items: center; justify-content: space-between; }
+  .bag-tag-stub-label { font-size: 5.2px; font-weight: 700; letter-spacing: 0.6px; color: #918b81; }
+  .bag-tag-stub .bag-tag-barcode { height: 18px; }
+  .bag-tag-stub-fields { display: flex; flex-direction: column; gap: 5px; flex: 1; }
   .bag-tag-stub-fields .bag-tag-field b { font-size: 8px; }
-  .bag-tag-stub-qr { position: absolute; right: 4%; bottom: 4%; width: 20%; min-width: 32px; max-width: 42px; height: auto; border: 1px solid #e5e0d8; border-radius: 3px; }
+  .bag-tag-stub-qr { position: absolute; right: 8px; bottom: 8px; width: 20%; min-width: 32px; max-width: 42px; height: auto; border: 1px solid #e5e0d8; border-radius: 3px; }
 `

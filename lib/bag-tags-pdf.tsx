@@ -19,7 +19,7 @@
 import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Line, Polygon } from '@react-pdf/renderer'
 import React from 'react'
 import { bagTrackingUrl, cityCode, barcodeStripes } from '@/lib/bag-tags'
-import { LOGO_FULL_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
+import { LOGO_FULL_COLOR_DATA_URI, LOGO_ICON_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
 
 const ORANGE = '#f97316'
 const ORANGE_DK = '#c74f0f'
@@ -63,8 +63,6 @@ const s = StyleSheet.create({
 
   flight: { width: COL_FLIGHT, height: '100%', borderRightWidth: 1, borderColor: '#d4cfc6', borderStyle: 'dashed' },
   flightHead: { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '5 8' },
-  flightChip: { backgroundColor: '#fff', borderRadius: 3, paddingHorizontal: 5, paddingVertical: 2 },
-  logoColorTiny: { width: 24, height: 11.6 },
   flightHeadTxt: { fontSize: 5.3, fontFamily: 'Helvetica-Bold', color: ORANGE, letterSpacing: 1 },
   flightBody: { flex: 1, padding: '6 9', justifyContent: 'center' },
   ftLabel: { fontSize: 4.8, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8 },
@@ -80,8 +78,16 @@ const s = StyleSheet.create({
 
   stub: { width: COL_STUB, height: '100%', padding: '8 8' },
   stubHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logoColorSmall: { width: 54, height: 13 },
   stubLabel: { fontSize: 4.6, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.5 },
+
+  // Small lock-up for the flight header + claim stub: plain icon (no
+  // baked-in wordmark, so it never turns to mush when this small) plus a
+  // real, crisp Text label. See this file's module comment for why the
+  // full LOGO_FULL_COLOR_DATA_URI lock-up doesn't work at this size.
+  miniBrand: { flexDirection: 'row', alignItems: 'center' },
+  miniBrandIcon: { width: 7, height: 12, marginRight: 4 },
+  miniBrandTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK, letterSpacing: 0.3 },
+  miniBrandTxtDark: { color: '#fff' },
   stubBarcodeWrap: { height: 20, marginTop: 6, marginBottom: 6 },
   stubRouteRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
   stubRouteTxt: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK },
@@ -112,6 +118,20 @@ function Barcode({ seed, size, vertical }: { seed: string; size: number; vertica
           />
         )
       })}
+    </View>
+  )
+}
+
+// Small lock-up for the flight header + claim stub — plain icon (no
+// baked-in wordmark, so it never turns to mush when shrunk this far)
+// plus a real, crisp Text label. See this file's module comment for why
+// the full LOGO_FULL_COLOR_DATA_URI lock-up doesn't work at this size.
+function MiniBrand({ dark }: { dark?: boolean }) {
+  return (
+    <View style={s.miniBrand}>
+      {/* eslint-disable-next-line jsx-a11y/alt-text */}
+      <Image style={s.miniBrandIcon} src={LOGO_ICON_COLOR_DATA_URI} />
+      <Text style={[s.miniBrandTxt, ...(dark ? [s.miniBrandTxtDark] : [])]}>BAGDROP</Text>
     </View>
   )
 }
@@ -180,10 +200,7 @@ function BagTagCard({ b }: { b: BagTagInput }) {
       {/* Flight-style FROM / TO panel */}
       <View style={s.flight}>
         <View style={s.flightHead}>
-          <View style={s.flightChip}>
-            {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <Image style={s.logoColorTiny} src={LOGO_FULL_COLOR_DATA_URI} />
-          </View>
+          <MiniBrand dark />
           <Text style={s.flightHeadTxt}>BAG TAG</Text>
         </View>
         <View style={s.flightBody}>
@@ -206,10 +223,9 @@ function BagTagCard({ b }: { b: BagTagInput }) {
       {/* Tear-off claim stub */}
       <View style={s.stub}>
         <View style={s.stubHead}>
-          {/* eslint-disable-next-line jsx-a11y/alt-text */}
-          <Image style={s.logoColorSmall} src={LOGO_FULL_COLOR_DATA_URI} />
+          <MiniBrand />
+          <Text style={s.stubLabel}>CLAIM STUB</Text>
         </View>
-        <Text style={s.stubLabel}>CLAIM STUB</Text>
         <View style={s.stubBarcodeWrap}>
           <Barcode seed={b.bagLabel} size={COL_STUB - 16} />
         </View>
