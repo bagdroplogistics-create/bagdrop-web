@@ -10,6 +10,28 @@ import { nextPaymentId } from '@/lib/number-series'
 // show up here as "no payment logged" — same slice used by
 // app/api/admin/reports/operations/route.ts and the Payment report.
 const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
+const CONFIRMED_ONWARD_LIST = CONFIRMED_ONWARD_STATUSES.join(',')
+
+// Founder-reported 2026-09-07: Sachin Patel's ₹7,140 inquiry was missing
+// from the Payments tab in EVERY month, not just misfiled into the wrong
+// one — root cause was here, not in resolveReportingMonthDate(). "Admin
+// Approve" (doAdminApprove() in the Booking Workflow page) sets
+// status='payment_approved' + approved_without_payment=true and NEVER
+// creates a `payments` row — that's the literal "Skybird approved without
+// payment" case this function's header comment already describes. But
+// 'payment_approved' sits BEFORE 'confirmed' in STATUS_ORDER, so the old
+// `.in('status', CONFIRMED_ONWARD_STATUSES)` filter excluded it from even
+// being a *candidate* for synthesis — no real payment row, not eligible for
+// a synthetic one either, so the booking simply never appeared, in any
+// month, until someone manually advanced it to 'confirmed'. Booking-
+// workflow status and payment status are deliberately independent in this
+// codebase (see lib/payment-status.ts's module comment) — a booking whose
+// payment_status already reflects real money movement ('paid') or an
+// explicit no-payment approval ('approved_pending') belongs on the Payments
+// tab regardless of which workflow step it's stalled at. This OR's that in
+// alongside the original confirmed-onward slice rather than replacing it,
+// so nothing that worked before stops working.
+const PAID_WITHOUT_LEDGER_ROW_STATUSES = ['paid', 'approved_pending']
 
 interface PaymentRecord {
   id: string; payment_id: string; booking_id: string | null
@@ -74,7 +96,7 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
     const primary = await supabaseAdmin
       .from('bookings')
       .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date, completed_month_override')
-      .in('status', CONFIRMED_ONWARD_STATUSES)
+      .or(`status.in.(${CONFIRMED_ONWARD_LIST}),payment_status.in.(${PAID_WITHOUT_LEDGER_ROW_STATUSES.join(',')})`)
       // Test Mode bookings must never surface as a synthetic "no payment
       // logged yet" row — founder-reported 2026-09-05: a dummy test group
       // booking (Monali Patel, GBL-2026-0001) was showing up here with its
@@ -85,7 +107,7 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
       const fallback = await supabaseAdmin
         .from('bookings')
         .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date')
-        .in('status', CONFIRMED_ONWARD_STATUSES)
+        .or(`status.in.(${CONFIRMED_ONWARD_LIST}),payment_status.in.(${PAID_WITHOUT_LEDGER_ROW_STATUSES.join(',')})`)
         .eq('is_test', false)
         .limit(5000)
       if (fallback.error) {

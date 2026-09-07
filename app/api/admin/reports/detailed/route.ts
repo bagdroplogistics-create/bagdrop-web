@@ -86,6 +86,7 @@ const BOOKING_SELECT = 'id, tracking_id, status, status_history, customer_name, 
 // committed to; a quote still sitting at quote_sent/payment_pending isn't
 // a "confirmed booking" yet even though money may already be moving.
 const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
+const CONFIRMED_ONWARD_LIST = CONFIRMED_ONWARD_STATUSES.join(',')
 const INDEMNITY_SELECT = 'id, booking_id, document_status, submitted_at, reviewed_at, reviewed_by, aadhaar_number, passport_number, created_at'
 
 // Builds a fresh leads query builder every time it's called — deliberately
@@ -362,7 +363,16 @@ async function buildPayment(f: Filters): Promise<ReportResult> {
   // approved_pending/refunded) — distinct from the booking lifecycle status
   // used by every other report, per the Payment tab's own filter options.
   if (f.status) q = q.eq('payment_status', f.status)
-  q = q.in('status', CONFIRMED_ONWARD_STATUSES)
+  // Founder-reported 2026-09-07: a booking can already be 'paid' or
+  // 'approved_pending' (money accounted for, per lib/payment-status.ts)
+  // while its workflow `status` is still stuck before 'confirmed' — e.g.
+  // "Admin Approve" sets status='payment_approved' + payment_status=
+  // 'approved_pending' and never advances status further on its own. The
+  // old `.in('status', CONFIRMED_ONWARD_STATUSES)`-only filter dropped that
+  // booking from the Payment report entirely. OR in "payment_status is
+  // anything other than the untouched default" so real payment activity is
+  // never gated behind a separate, unrelated workflow-stage requirement.
+  q = q.or(`status.in.(${CONFIRMED_ONWARD_LIST}),payment_status.neq.pending`)
   const { data, error } = await q.order('pickup_date', { ascending: false }).limit(5000)
   if (error) {
     console.warn('[reports/detailed] payment (bookings) query failed:', error.message)

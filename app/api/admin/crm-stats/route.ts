@@ -1,13 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { countsTowardTotalPaid } from '@/lib/payment-ledger'
-
-// Same slice used by app/api/admin/payments/route.ts to decide which
-// bookings can have a "payment" at all (confirmed or later in the
-// lifecycle) — kept in sync with that file's CONFIRMED_ONWARD_STATUSES.
-const CONFIRMED_ONWARD_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'))
 
 // NOTE: the "which inquiries have we actually got" and "how many are
 // completed/active/pending/cancelled" questions now live in
@@ -117,7 +111,17 @@ export async function GET(req: NextRequest) {
       supabaseAdmin
         .from('bookings')
         .select(bookingsPaidSelect)
-        .in('status', CONFIRMED_ONWARD_STATUSES)
+        // Founder-reported 2026-09-07: a booking can reach
+        // payment_status='paid' (lib/payment-status.ts derives this purely
+        // from the real `payments` ledger summing to >= total_amount) while
+        // its workflow `status` is still stuck at e.g. 'payment_received' —
+        // nobody has clicked "Confirm Booking" yet. The old
+        // `.in('status', CONFIRMED_ONWARD_STATUSES)` filter here excluded
+        // that booking from revenue entirely, even though the money has
+        // genuinely, fully arrived. payment_status='paid' is already the
+        // strict condition (below) — a workflow-stage gate on top of it is
+        // an unrelated, incorrect second requirement, not a safeguard.
+        // Removed rather than OR'd in, since 'paid' alone is sufficient.
         .eq('payment_status', 'paid')
         .eq('is_test', false),
       // `payments` has no is_test column of its own — cross-reference
@@ -136,7 +140,6 @@ export async function GET(req: NextRequest) {
       bookingsPaidRes = await supabaseAdmin
         .from('bookings')
         .select('id, total_amount, created_at, pickup_date')
-        .in('status', CONFIRMED_ONWARD_STATUSES)
         .eq('payment_status', 'paid')
         .eq('is_test', false)
     }
