@@ -1147,6 +1147,24 @@ function LeadsPageInner() {
     window.open('/admin/leads/print', '_blank')
   }
 
+  // ── Print single Inquiry/Booking record ─────────────────────────
+  // Same pattern as openPrintView() above (sessionStorage hand-off to a
+  // dedicated print route, opened in a new tab) but for exactly ONE row —
+  // the record the admin clicked Print on in the Actions column, not the
+  // whole table. Hands the full lead object already in memory (the exact
+  // same data rendered in this table row) straight through, so there's no
+  // extra fetch, no risk of drifting from what's on screen, and nothing
+  // new is created — works identically for website-sourced and manually
+  // created inquiries since both are plain rows in the same `leads` table.
+  // See app/(admin)/admin/leads/[id]/print/page.tsx for the render side.
+  function openLeadPrintView(l: Lead) {
+    sessionStorage.setItem('bagdrop_lead_print_data', JSON.stringify({
+      generatedAt: new Date().toISOString(),
+      lead: l,
+    }))
+    window.open(`/admin/leads/${l.id}/print`, '_blank')
+  }
+
   // ── Send Quote via Email / WhatsApp — directly from the Leads table ──
   // Reuses the EXACT same endpoints/behavior as the "Send Quote Email →"
   // and "Send Quote via WhatsApp" buttons already on the full quote page
@@ -1677,12 +1695,23 @@ function LeadsPageInner() {
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-2">
                           {showDeleted ? (
-                            <button
-                              onClick={() => restoreLead(l.id)}
-                              disabled={deleting === l.id}
-                              className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40">
-                              {deleting === l.id ? 'Restoring…' : '↩ Restore'}
-                            </button>
+                            <>
+                              <button
+                                onClick={() => restoreLead(l.id)}
+                                disabled={deleting === l.id}
+                                className="rounded-lg border border-green-200 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors disabled:opacity-40">
+                                {deleting === l.id ? 'Restoring…' : '↩ Restore'}
+                              </button>
+                              {/* Print still available for a soft-deleted lead — a
+                                  record's own printable detail isn't a "restore"
+                                  action, and staff may still need a copy for their
+                                  files. See openLeadPrintView() above. */}
+                              <button onClick={() => openLeadPrintView(l)}
+                                title="Print Inquiry"
+                                className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
+                                <Printer className="h-3.5 w-3.5" />
+                              </button>
+                            </>
                           ) : (
                             <>
                               <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
@@ -1735,6 +1764,16 @@ function LeadsPageInner() {
                                 title="Delete"
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
                                 <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                              {/* Print this single inquiry/booking record — opens a
+                                  dedicated A4 print view in a new tab (see
+                                  openLeadPrintView() above and
+                                  app/(admin)/admin/leads/[id]/print/page.tsx). Purely
+                                  additive: doesn't touch any action already here. */}
+                              <button onClick={() => openLeadPrintView(l)}
+                                title="Print Inquiry"
+                                className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
+                                <Printer className="h-3.5 w-3.5" />
                               </button>
                             </>
                           )}
