@@ -3,15 +3,125 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Plus, RefreshCw, Search, AlertTriangle, Pencil } from 'lucide-react'
+import { Plus, RefreshCw, Search, AlertTriangle, Pencil, Lock, ChevronDown } from 'lucide-react'
 import { formatCustomerName } from '@/lib/constants'
 
+// Lead funnel status (new/contacted/.../lost) — separate concept from the
+// booking workflow status below. Not part of the SKYBIRD-BOOKING-WORKFLOW-001
+// spec; left exactly as-is.
 const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }> = {
   new:       { label: 'New',       color: '#0369a1', bg: '#e0f2fe' },
   contacted: { label: 'Contacted', color: '#d97706', bg: '#fef3c7' },
   qualified: { label: 'Qualified', color: '#7c3aed', bg: '#ede9fe' },
   converted: { label: 'Converted', color: '#16a34a', bg: '#dcfce7' },
   lost:      { label: 'Lost',      color: '#dc2626', bg: '#fee2e2' },
+}
+
+// ── Booking workflow status — kept in sync with STATUS_CONFIG in
+// app/(admin)/admin/page.tsx (the canonical Bagdrop Admin Dashboard status
+// vocabulary). Labels/order only — Skybird has no need for the admin's
+// lucide icons here. If a status is ever added/renamed there, mirror it
+// here too. See SKYBIRD-BOOKING-WORKFLOW-001 spec: "Inspect the actual
+// Bagdrop Admin code/database/API and use the statuses currently
+// implemented there."
+const BOOKING_STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; locked?: boolean }> = {
+  inquiry:               { label: 'New Inquiry',          color: '#92400e', bg: '#fef3c7' },
+  quote_created:         { label: 'Quote Created',        color: '#4f46e5', bg: '#eef2ff' },
+  quote_sent:            { label: 'Quote Sent',           color: '#6d28d9', bg: '#ede9fe' },
+  accepted:              { label: 'Quote Accepted',       color: '#0891b2', bg: '#cffafe' },
+  rejected:              { label: 'Quote Rejected',       color: '#dc2626', bg: '#fee2e2' },
+  closed:                { label: 'Inquiry Closed',       color: '#6b7280', bg: '#f3f4f6' },
+  payment_pending:       { label: 'Payment Requested',    color: '#d97706', bg: '#fef3c7' },
+  payment_received:      { label: 'Payment Received',     color: '#059669', bg: '#d1fae5' },
+  payment_approved:      { label: 'Admin Approved',       color: '#059669', bg: '#d1fae5' },
+  confirmed:             { label: 'Booking Confirmed',    color: '#2563eb', bg: '#dbeafe' },
+  invoice_generated:     { label: 'Invoice Generated',    color: '#7c3aed', bg: '#ede9fe' },
+  invoice_sent:          { label: 'Invoice Sent',         color: '#6d28d9', bg: '#ede9fe' },
+  pickup_scheduled:      { label: 'Pickup Scheduled',     color: '#7c3aed', bg: '#ede9fe' },
+  picked_up:             { label: 'Bags Picked Up',       color: '#7c3aed', bg: '#ede9fe' },
+  in_transit:            { label: 'In Transit',           color: '#0891b2', bg: '#cffafe' },
+  out_for_delivery:      { label: 'Out for Delivery',     color: '#ea580c', bg: '#ffedd5' },
+  driver_details_shared: { label: 'Driver Details Shared', color: '#0369a1', bg: '#e0f2fe' },
+  indemnity_bond_sent:   { label: 'Indemnity Bond Sent',  color: '#b45309', bg: '#fef3c7' },
+  indemnity_bond_signed: { label: 'Indemnity Bond Signed', color: '#65a30d', bg: '#ecfccb' },
+  delivered:             { label: 'Delivered',            color: '#16a34a', bg: '#dcfce7' },
+  trip_created:          { label: 'Trip Sheet Created',   color: '#0891b2', bg: '#cffafe' },
+  completed:             { label: 'Completed',            color: '#14532d', bg: '#bbf7d0', locked: true },
+  cancelled:             { label: 'Cancelled',            color: '#dc2626', bg: '#fee2e2' },
+}
+
+// Mirrors PRE_QUOTE_STATUSES in app/(admin)/admin/page.tsx's StatusSelect —
+// a booking still at 'inquiry' has no quote yet, so there's nothing
+// meaningful for Skybird to advance it to; enforced again server-side in
+// app/api/skybird/bookings/[id]/status/route.ts.
+const PRE_QUOTE_STATUSES = ['inquiry', 'pending']
+
+function BookingStatusSelect({ bookingId, current, skybirdKey, onUpdate }: {
+  bookingId: string; current: string; skybirdKey: string; onUpdate: () => void
+}) {
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const cfg = BOOKING_STATUS_CONFIG[current]
+  const isLocked   = cfg?.locked === true
+  const isPreQuote = PRE_QUOTE_STATUSES.includes(current)
+
+  if (isLocked) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-full bg-green-50 border border-green-200 px-2.5 py-1 text-xs font-semibold text-green-800">
+        <Lock className="h-3 w-3" /> Completed
+      </span>
+    )
+  }
+
+  if (isPreQuote) {
+    return (
+      <div className="space-y-0.5">
+        <span className="inline-flex items-center gap-1 rounded-full border border-amber-200 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 cursor-not-allowed select-none">
+          <Lock className="h-3 w-3" />
+          {cfg?.label ?? current}
+        </span>
+        <p className="text-[10px] text-amber-600 leading-tight max-w-[150px]">Awaiting quote from Bagdrop</p>
+      </div>
+    )
+  }
+
+  async function change(next: string) {
+    if (next === current || loading) return
+    setLoading(true)
+    setError('')
+    try {
+      const res = await fetch(`/api/skybird/bookings/${bookingId}/status`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-skybird-key': skybirdKey },
+        body: JSON.stringify({ status: next }),
+      })
+      const d = await res.json().catch(() => null)
+      if (!res.ok) setError(d?.error ?? 'Failed to update status')
+    } catch {
+      setError('Network error while updating status')
+    }
+    setLoading(false)
+    onUpdate()
+  }
+
+  return (
+    <div>
+      <div className="relative inline-block">
+        <select
+          value={current}
+          onChange={e => change(e.target.value)}
+          disabled={loading}
+          className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-2.5 pr-7 text-xs font-medium text-gray-700 shadow-sm focus:border-sky-400 focus:outline-none focus:ring-1 focus:ring-sky-400 disabled:opacity-50 cursor-pointer"
+        >
+          {Object.entries(BOOKING_STATUS_CONFIG).map(([val, c]) => (
+            <option key={val} value={val}>{c.label}</option>
+          ))}
+        </select>
+        <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+      </div>
+      {error && <p className="mt-1 text-[10px] text-red-500 max-w-[150px]">{error}</p>}
+    </div>
+  )
 }
 
 interface SkybirdLead {
@@ -160,10 +270,15 @@ export default function SkybirdDashboardPage() {
                   <td className="px-4 py-3 text-gray-700">{l.bags_count}</td>
                   <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
                   <td className="px-4 py-3 text-gray-700">
-                    {l.bookings ? (
-                      <div>
+                    {l.bookings && l.booking_id ? (
+                      <div className="space-y-1">
                         <div className="font-mono text-xs">{l.bookings.tracking_id}</div>
-                        <div className="text-xs text-gray-500 capitalize">{l.bookings.status?.replace(/-/g, ' ')}</div>
+                        <BookingStatusSelect
+                          bookingId={l.booking_id}
+                          current={l.bookings.status}
+                          skybirdKey={skybirdKey}
+                          onUpdate={fetchLeads}
+                        />
                       </div>
                     ) : '—'}
                   </td>
