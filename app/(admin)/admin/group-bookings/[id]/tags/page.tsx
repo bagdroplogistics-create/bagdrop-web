@@ -107,6 +107,8 @@ export default function GroupBagTagsPage() {
     customerName: (b.guest_id && guestById.get(b.guest_id)?.guest_name) || 'Guest',
     bookingId: group.group_booking_number,
     route,
+    fromCity: group.pickup_city,
+    toCity: group.delivery_city,
     serviceLabel: 'Group / Wedding Booking',
     bagNumber: i + 1,
     bagTotal,
@@ -128,8 +130,8 @@ export default function GroupBagTagsPage() {
         .btn-secondary { border: 1px solid #f97316; background: #fff; color: #f97316; }
         .btn-print { border: none; background: #f97316; color: #fff; }
         .btn-print:disabled { opacity: 0.5; cursor: not-allowed; }
-        .sheet { max-width: 820px; margin: 20px auto; }
-        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        .sheet { max-width: 900px; margin: 20px auto; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
         .err { color: #ef4444; font-size: 13px; padding: 8px 24px; }
         ${BAG_TAG_CARD_STYLES}
         @media print {

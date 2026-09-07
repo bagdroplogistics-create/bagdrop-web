@@ -63,12 +63,15 @@ export async function GET(
   const bagTotal = totalCount ?? bags.length
 
   const bookingIdentifier = isGroup ? (groupDetails?.group_booking_number ?? booking.tracking_id) : booking.tracking_id
+  const fromCity = isGroup ? (groupDetails?.pickup_city ?? null) : booking.from_city
+  const toCity   = isGroup ? (groupDetails?.delivery_city ?? null) : booking.to_city
   // "-to-" instead of a "→" arrow glyph — react-pdf's base Helvetica font
   // has no arrow glyph, so it was rendering as a garbled character
-  // (e.g. "Vadodara ’ Udaipur" instead of "Vadodara → Udaipur").
-  const route = isGroup
-    ? [groupDetails?.pickup_city, groupDetails?.delivery_city].filter(Boolean).join('-to-')
-    : [booking.from_city, booking.to_city].filter(Boolean).join('-to-')
+  // (e.g. "Vadodara ’ Udaipur" instead of "Vadodara → Udaipur"). Only used
+  // for the plain-text route summary now — the redesigned tag's FROM/TO
+  // flight panel draws fromCity/toCity as two separate blocks with a
+  // vector arrow (lib/bag-tags-pdf.tsx), so it never needs this glyph.
+  const route = [fromCity, toCity].filter(Boolean).join('-to-')
   const pickupDate = isGroup ? (groupDetails?.pickup_window_start ?? null) : booking.pickup_date
   const serviceLabel = booking.service_label || booking.service_type || (isGroup ? 'Group / Wedding Booking' : 'Baggage Delivery')
 
@@ -77,6 +80,8 @@ export async function GET(
     customerName:    isGroup ? (b.guest_id && guestsById.get(b.guest_id)?.guest_name) || 'Guest' : (formatCustomerName(booking.title, booking.customer_name) || booking.customer_name || 'Customer'),
     bookingId:       bookingIdentifier,
     route,
+    fromCity,
+    toCity,
     serviceLabel,
     bagNumber:       Number((b.bag_label as string).split('-').pop()) || i + 1,
     bagTotal,

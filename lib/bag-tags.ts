@@ -173,3 +173,75 @@ export async function trackBagEvent(
 export function bagTrackingUrl(bagLabel: string): string {
   return `https://www.bagdrop.co/track-bag/${encodeURIComponent(bagLabel)}`
 }
+
+// ── Airport-tag styling helpers (2026-09-07 redesign) ──────────────────
+// Shared by BOTH renderers of the bag tag — components/admin/
+// BagTagPrintCard.tsx (browser HTML/CSS, "Print"/"Print Selected") and
+// lib/bag-tags-pdf.tsx (@react-pdf/renderer, "Download PDF") — so the two
+// stay visually identical, same reasoning as BAG_TAG_CARD_STYLES already
+// being shared. Founder feedback 2026-09-07: redo the tag in an
+// airport-baggage-tag layout (barcode spine, FROM/TO flight-style panel,
+// tear-off claim stub) instead of the plain digital-card look.
+//
+// cityCode() is a purely DECORATIVE 3-letter mark for the FROM/TO panel —
+// it is never the bag's real transport routing (BagDrop is not an
+// airline; see this file's own module comment). Known BagDrop operating
+// cities map to their real public airport code as a nice touch; anything
+// else falls back to its own first three letters so the panel never goes
+// blank for a city we don't have hardcoded.
+const KNOWN_CITY_CODES: Record<string, string> = {
+  mumbai: 'BOM', 'mumbai airport': 'BOM',
+  delhi: 'DEL', 'new delhi': 'DEL',
+  ahmedabad: 'AMD',
+  vadodara: 'BDQ', baroda: 'BDQ',
+  udaipur: 'UDR',
+  surat: 'STV',
+  rajkot: 'RAJ',
+  goa: 'GOI', dabolim: 'GOI', mopa: 'GOX',
+  pune: 'PNQ',
+  jaipur: 'JAI',
+  bengaluru: 'BLR', bangalore: 'BLR',
+  hyderabad: 'HYD',
+  indore: 'IDR',
+  nagpur: 'NAG',
+  bhopal: 'BHO',
+  chennai: 'MAA',
+  kolkata: 'CCU',
+}
+
+export function cityCode(cityRaw: string | null | undefined): string {
+  if (!cityRaw || !cityRaw.trim()) return '—'
+  const key = cityRaw.trim().toLowerCase().replace(/\s*(airport|terminal|t1|t2|t3)\b.*$/i, '').trim()
+  if (KNOWN_CITY_CODES[key]) return KNOWN_CITY_CODES[key]
+  const letters = cityRaw.replace(/[^a-zA-Z]/g, '').toUpperCase()
+  return letters.slice(0, 3) || '—'
+}
+
+// Deterministic, purely decorative "barcode" pattern — the real scan
+// mechanism for a bag tag has always been the QR code above (encodes
+// bagTrackingUrl(); see this file's module comment on why nothing else
+// goes in the payload). This never claims to be scannable — it exists so
+// the tag reads visually as an airport baggage tag. Seeded from the bag's
+// own label so the same tag always renders the same "barcode" (stable
+// across re-prints/re-downloads) without needing a real barcode library
+// or an extra network request per tag (unlike the QR, which already goes
+// through api.qrserver.com).
+export interface BarcodeStripe { pct: number; bar: boolean }
+export function barcodeStripes(seed: string, count = 44): BarcodeStripe[] {
+  let state = 0
+  for (let i = 0; i < seed.length; i++) state = (state * 31 + seed.charCodeAt(i)) >>> 0
+  if (state === 0) state = 1
+  function rand(): number {
+    state = (state + 0x6d2b79f5) | 0
+    let t = Math.imul(state ^ (state >>> 15), 1 | state)
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296
+  }
+  const widths: number[] = []
+  for (let i = 0; i < count; i++) {
+    const r = rand()
+    widths.push(r < 0.18 ? 3 : r < 0.5 ? 2 : 1)
+  }
+  const sum = widths.reduce((a, b) => a + b, 0)
+  return widths.map((w, i) => ({ pct: (w / sum) * 100, bar: i % 2 === 0 }))
+}
