@@ -347,8 +347,15 @@ async function buildCustomer(f: Filters): Promise<ReportResult> {
 async function buildPayment(f: Filters): Promise<ReportResult> {
   const warnings: string[] = []
   let q = supabaseAdmin.from('bookings').select(BOOKING_SELECT)
-  if (f.from) q = q.gte('created_at', f.from)
-  if (f.to) q = q.lte('created_at', toDateTimeEnd(f.to))
+  // Filtered by pickup_date, not created_at — same convention already used
+  // by buildDriverOps below (Ops cares about the job's own date, not the
+  // inquiry/creation date). A "Payment" report scoped by a month/date range
+  // means "bookings whose job falls in that window," not "bookings created
+  // in that window" — founder-reported 2026-09-05: a booking inquired in
+  // one month but picked up/delivered in another must report under the
+  // pickup month here, matching the Payments tab and Operations report.
+  if (f.from) q = q.gte('pickup_date', f.from)
+  if (f.to) q = q.lte('pickup_date', f.to)
   if (f.service) q = q.eq('service_type', f.service)
   if (f.partner) q = q.eq('partner_name', f.partner)
   // `status` filter on this tab means payment_status (paid/pending/
@@ -356,7 +363,7 @@ async function buildPayment(f: Filters): Promise<ReportResult> {
   // used by every other report, per the Payment tab's own filter options.
   if (f.status) q = q.eq('payment_status', f.status)
   q = q.in('status', CONFIRMED_ONWARD_STATUSES)
-  const { data, error } = await q.order('created_at', { ascending: false }).limit(5000)
+  const { data, error } = await q.order('pickup_date', { ascending: false }).limit(5000)
   if (error) {
     console.warn('[reports/detailed] payment (bookings) query failed:', error.message)
     warnings.push(`Bookings query failed: ${error.message}`)

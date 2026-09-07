@@ -522,7 +522,13 @@ export default function InvoicesPage() {
   const fetchInvoices = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    const qs = `?key=${adminKey}${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
+    // limit=5000 — same fix/reasoning as the Payments tab (founder-reported
+    // 2026-09-05): with no explicit limit, GET /api/admin/invoices defaults
+    // to 50, and this page has no pagination controls to reach anything
+    // older — so once total (real + placeholder) invoice-list volume passed
+    // 50, older completed bookings simply vanished from the Invoices tab
+    // entirely.
+    const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
     const res = await fetch('/api/admin/invoices' + qs)
     if (res.ok) setInvoices((await res.json()).invoices ?? [])
     setLoading(false)

@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
         .eq('payment_status', 'paid'),
       supabaseAdmin
         .from('bookings')
-        .select('id, total_amount, created_at')
+        .select('id, total_amount, created_at, pickup_date, delivery_date')
         .in('status', CONFIRMED_ONWARD_STATUSES)
         .eq('payment_status', 'paid')
         .eq('is_test', false),
@@ -137,9 +137,16 @@ export async function GET(req: NextRequest) {
       const paidBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
       // Only bookings without a real payments row — avoids double-counting
       // a booking that has both a logged payment AND payment_status='paid'.
+      // Dated by delivery_date (falling back to pickup_date, then created_at
+      // only if both are missing) rather than created_at — same fix as
+      // fetchUnloggedBookingPayments in app/api/admin/payments/route.ts:
+      // a booking with no logged `payments` row has no real transaction
+      // date to go by, and the job's own date is a far better proxy for
+      // "when this payment period counts toward" than when the inquiry/
+      // booking record was created (founder-reported 2026-09-05).
       const syntheticEntries = (bookingsPaidRes.data ?? [])
         .filter(b => !paidBookingIds.has(b.id))
-        .map(b => ({ amount: Number(b.total_amount) || 0, created_at: b.created_at as string | null }))
+        .map(b => ({ amount: Number(b.total_amount) || 0, created_at: (b.delivery_date ?? b.pickup_date ?? b.created_at) as string | null }))
 
       const allPaid = [
         ...realPayments.map(p => ({ amount: Number(p.amount) || 0, created_at: p.created_at as string | null })),

@@ -104,7 +104,21 @@ export async function GET(req: NextRequest) {
         payment_reference: b.payment_reference ?? null,
         sent_email:        false,
         sent_whatsapp:     false,
-        invoice_date:      b.updated_at,
+        // Matches the mandatory rule already applied when a REAL invoice is
+        // generated below (POST handler, "Invoice Date = booking's Delivery
+        // Date"): delivery_date, falling back to pickup_date, only falling
+        // back further to updated_at for the rare booking missing both.
+        // Previously this placeholder row (shown for a completed booking
+        // nobody has generated a real invoice for yet) used updated_at —
+        // essentially "whenever this booking record was last touched," e.g.
+        // when its status flipped to Completed — which is a proxy for
+        // INQUIRY/workflow activity, not the actual job date. Founder-
+        // reported 2026-09-05 (Jaydev Patel missing from August): a booking
+        // inquired/updated in one month but delivered in another showed up
+        // under the wrong month here, inconsistent with how the SAME
+        // booking's invoice_date would read the moment "Generate Invoice"
+        // was clicked.
+        invoice_date:      b.delivery_date ?? b.pickup_date ?? b.updated_at,
         created_at:        b.updated_at,
         generated:         false,
       }

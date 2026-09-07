@@ -903,7 +903,20 @@ export default function PaymentsPage() {
   const fetchPayments = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    const qs = `?key=${adminKey}${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
+    // limit=5000 — matches the ceiling GET /api/admin/payments already
+    // fetches internally (admin-tool volumes only). Without an explicit
+    // limit here, the API's own default of 50 silently truncated this page
+    // to only the 50 most-recent payment/booking records (real + synthetic
+    // combined, sorted newest-first) with NO pagination controls anywhere
+    // on this page to reach anything older — so once total volume passed
+    // 50, older real records (founder-reported 2026-09-05: Anuj Shah,
+    // Jaydev Patel, Sachin Patel's ₹7,140 inquiry) simply vanished from the
+    // Payments tab entirely, in every month, not just misfiled into the
+    // wrong one. The Monthly Breakdown/month filter below only ever
+    // operates on whatever's in `payments` state, so this was the true
+    // root cause of records "disappearing," independent of the separate
+    // created_at-vs-business-date fix above.
+    const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
     const res = await fetch('/api/admin/payments' + qs)
     if (res.ok) setPayments((await res.json()).payments ?? [])
     setLoading(false)

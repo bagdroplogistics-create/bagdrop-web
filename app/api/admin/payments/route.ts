@@ -43,7 +43,7 @@ interface PaymentRecord {
 async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Promise<PaymentRecord[]> {
   const { data, error } = await supabaseAdmin
     .from('bookings')
-    .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at')
+    .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date, delivery_date')
     .in('status', CONFIRMED_ONWARD_STATUSES)
     // Test Mode bookings must never surface as a synthetic "no payment
     // logged yet" row — founder-reported 2026-09-05: a dummy test group
@@ -55,7 +55,7 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
     console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', error.message)
     return []
   }
-  type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string }
+  type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string; pickup_date: string | null; delivery_date: string | null }
   return ((data ?? []) as unknown as Row[])
     .filter(b => !existingBookingIds.has(b.id))
     .map(b => ({
@@ -73,7 +73,22 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
       verified_by:       null,
       verified_at:       null,
       refund_amount:     null,
-      created_at:        b.created_at,
+      // This row has no real logged transaction (no `payments` record at
+      // all — that's the whole reason it's synthesized here), so there is
+      // no real payment_date/created_at to reflect a payment event. Founder-
+      // reported 2026-09-05 (Anuj Shah / Jaydev Patel / Sachin Patel's
+      // ₹7,140 inquiry): these bookings were using the booking's own
+      // created_at (i.e. the INQUIRY date) for the Payments tab's Date
+      // column and Monthly Breakdown, which silently misfiled any booking
+      // whose pickup/delivery fell in a different month than its inquiry
+      // (e.g. inquired in August, picked up/delivered in September) — the
+      // exact "created_at as a substitute for the business date" mistake
+      // the founder flagged. The correct business date for an operational
+      // booking's payment reporting is when the job happened, not when it
+      // was inquired about — delivery_date if the job is finished,
+      // otherwise pickup_date, otherwise (only for a booking missing both,
+      // extremely rare) the actual created_at as a last resort.
+      created_at:        b.delivery_date ?? b.pickup_date ?? b.created_at,
       is_synthetic:      true,
     }))
 }
