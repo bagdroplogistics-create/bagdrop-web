@@ -25,6 +25,29 @@ const STAMP_URL = '/legal/bagdrop-stamp.png'
 // (react-pdf has no native <table>) rather than a pixel copy, using
 // Bagdrop's existing orange/dark palette (see TripSheetPDF.tsx, QuotePDF.tsx)
 // for brand consistency with every other generated document.
+//
+// Landscape layout (2026-09-07, founder request: "Horizontal view layout
+// design instead of vertical A4 size"). Real consignment/GC notes are
+// conventionally landscape, and simply flipping the page orientation
+// without re-flowing the content left the page mostly empty on the right
+// and, worse, risked overflowing onto a second page — A4 landscape is only
+// 595pt tall vs. portrait's 842pt, and the original design already used
+// most of that portrait height. So beyond the orientation flip, the
+// Consignor/Consignee, Billed To/Delivery Address, Invoice/Value/E-way/
+// Mode, Package table, and Insurance/GST/Payment Terms/LR Type sections —
+// previously each a separate FULL-WIDTH row stacked below the Charges
+// ledger — are now nested together into one left-hand column that runs
+// alongside the Charges ledger as a right-hand sidebar spanning their
+// combined height, the same way Consignor/Consignee already sat beside
+// Charges before. This uses the extra width landscape provides instead of
+// leaving it blank, and saves roughly 120pt of vertical height (those
+// sections no longer stack an extra time below the ledger), which is what
+// makes everything fit on one page in landscape. The Delivery At/Remarks
+// bar and the signature block are similarly merged into one footer row
+// instead of two separate full-width rows — in landscape, "For Bagdrop..."
+// stretching alone across a nearly-800pt-wide row left an awkward, mostly
+// empty gap before the stamp; putting Delivery At/Remarks in the same row
+// fills that space with useful content instead.
 
 const ORANGE = '#f97316'
 const DARK   = '#111827'
@@ -98,15 +121,19 @@ const s = StyleSheet.create({
   // treatment for Pickup/Delivery Address values.
   addressVal: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1.5 },
 
+  // Value column widened from 46 to 58 — landscape's wider Charges sidebar
+  // (roughly 220pt vs. portrait's ~160pt, see the file-header comment)
+  // leaves comfortable room for a wider figure column without cramping the
+  // label column.
   chargeRow:  { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#e5e7eb', padding: '2.5 6' },
   chargeLbl:  { fontSize: 7, color: '#4b5563', flex: 1 },
-  chargeVal:  { fontSize: 7, color: DARK, width: 46, textAlign: 'right' },
+  chargeVal:  { fontSize: 7, color: DARK, width: 58, textAlign: 'right' },
   chargeTotalRow: { flexDirection: 'row', padding: '4 6', backgroundColor: LIGHT, borderTopWidth: 1, borderColor: BORDER },
   chargeTotalLbl: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', flex: 1 },
-  chargeTotalVal: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
+  chargeTotalVal: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', width: 58, textAlign: 'right' },
   grandTotalRow:  { flexDirection: 'row', padding: '5 6', backgroundColor: ORANGE },
   grandTotalLbl:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', flex: 1 },
-  grandTotalVal:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
+  grandTotalVal:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', width: 58, textAlign: 'right' },
 
   // Package table
   pkgHead:  { flexDirection: 'row', backgroundColor: DARK, borderRightWidth: 1, borderColor: BORDER },
@@ -120,19 +147,28 @@ const s = StyleSheet.create({
   footLbl:  { fontSize: 6.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
   footVal:  { fontSize: 8, color: DARK, fontFamily: 'Helvetica-Bold' },
 
-  sigBlock: { margin: '14 24 0', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  sigLeft:  { flex: 1 },
-  sigCo:    { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
-  sigLine2: { fontSize: 7, color: GREY, marginBottom: 1 },
-  sigRight: { alignItems: 'center', width: 130 },
-  stampImg: { width: 72, height: 72, marginBottom: 2 },
-  sigBox:   { borderTopWidth: 1, borderColor: DARK, paddingTop: 4, width: 120, textAlign: 'center' },
-  sigTxt:   { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: DARK },
-  sigSub:   { fontSize: 6.5, color: GREY, marginTop: 2 },
-
-  bottomBar: { margin: '10 24 0', flexDirection: 'row', borderWidth: 1, borderColor: BORDER },
-  bbCell:    { flex: 1, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
-  bbCellLast:{ flex: 2, padding: '4 6' },
+  // Footer band — Delivery At / Remarks / "For {company}" / stamp+signature
+  // all in ONE bordered row (landscape redesign; previously two separate
+  // full-width rows — see file-header comment). bbCell reused for the
+  // Delivery At/Remarks segments (same look as the rest of the grid's
+  // labelled cells); the signature segments get their own treatment since
+  // they need centered/stacked content rather than a label-over-value pair.
+  footerBand: { margin: '10 24 0', flexDirection: 'row', borderWidth: 1, borderColor: BORDER, alignItems: 'stretch' },
+  // Rebalanced from an even 1 / 1.7 / 1.3 split — the long registered
+  // company name ("For Bagdrop Logistics Solutions Private Limited") was
+  // wrapping to two lines in sigCoCell at 1.3. Delivery At rarely needs
+  // more than a short "Door Dly" (0.8 is plenty); the extra share goes to
+  // sigCoCell so the company line fits on one line.
+  bbCell:     { flex: 0.8, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
+  bbCellWide: { flex: 1.4, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
+  sigCoCell:  { flex: 1.6, padding: '6 8', borderRightWidth: 1, borderColor: BORDER, justifyContent: 'center' },
+  sigCo:      { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
+  sigLine2:   { fontSize: 7, color: GREY, marginBottom: 1 },
+  sigStampCell: { width: 150, padding: '6 8', alignItems: 'center', justifyContent: 'center' },
+  stampImg:   { width: 46, height: 46, marginBottom: 2 },
+  sigBox:     { borderTopWidth: 1, borderColor: DARK, paddingTop: 3, width: 130, textAlign: 'center' },
+  sigTxt:     { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: DARK },
+  sigSub:     { fontSize: 6.5, color: GREY, marginTop: 2 },
 })
 
 function fmtRs(n: number | null | undefined) {
@@ -227,7 +263,7 @@ export default function LRPDF(p: LRPDFProps) {
 
   return (
     <Document>
-      <Page size="A4" style={s.page}>
+      <Page size="A4" orientation="landscape" style={s.page}>
 
         {/* ── Header ── */}
         <View style={s.header}>
@@ -303,9 +339,13 @@ export default function LRPDF(p: LRPDFProps) {
               </View>
             </View>
 
-            {/* ── Consignor / Consignee + Charges ledger ── */}
+            {/* ── Left column (Consignor/Consignee through Insurance/LR
+                 Type) beside a full-height Charges sidebar — see the
+                 file-header comment for why these were pulled together
+                 out of separate full-width rows for the landscape layout. ── */}
             <View style={s.row}>
               <View style={{ flex: 2.4 }}>
+                {/* Consignor / Consignee */}
                 <View style={s.row}>
                   <View style={[s.sectionHead, { flex: 1 }]}><Text style={s.sectionHeadTxt}>Consignor&apos;s Name &amp; Address</Text></View>
                   <View style={[s.sectionHead, { flex: 1, borderRightWidth: 0 }]}><Text style={s.sectionHeadTxt}>Consignee&apos;s Name &amp; Address</Text></View>
@@ -324,9 +364,87 @@ export default function LRPDF(p: LRPDFProps) {
                     <Text style={s.partyLine}>GSTIN: {p.consigneeGstin ?? '—'}</Text>
                   </View>
                 </View>
+
+                {/* Billed To / Delivery Address */}
+                <View style={s.row}>
+                  <View style={[s.sectionHead, { flex: 1 }]}><Text style={s.sectionHeadTxt}>Billed To (Service Receiver)</Text></View>
+                  <View style={[s.sectionHead, { flex: 1, borderRightWidth: 0 }]}><Text style={s.sectionHeadTxt}>Delivery Address</Text></View>
+                </View>
+                <View style={s.row}>
+                  <View style={[s.partyBox, { flex: 1 }]}>
+                    <Text style={s.partyName}>{p.billedToName ?? '—'}</Text>
+                    <Text style={s.partyLine}>GSTIN: {p.billedToGstin ?? '—'}</Text>
+                  </View>
+                  <View style={[s.partyBox, { flex: 1, borderRightWidth: 0 }]}>
+                    <Text style={s.addressVal}>{p.deliveryAddress ?? '—'}</Text>
+                  </View>
+                </View>
+
+                {/* Invoice / Value / E-way / Mode */}
+                <View style={s.row}>
+                  <View style={[s.cell, { flex: 1 }]}>
+                    <Text style={s.cellLbl}>Invoice No.</Text>
+                    <Text style={s.cellVal}>{p.invoiceNumber ?? '—'}</Text>
+                  </View>
+                  <View style={[s.cell, { flex: 1 }]}>
+                    <Text style={s.cellLbl}>Value</Text>
+                    <Text style={s.cellVal}>{p.invoiceValue != null ? 'Rs. ' + fmtRs(p.invoiceValue) : '—'}</Text>
+                  </View>
+                  <View style={[s.cell, { flex: 1.4 }]}>
+                    <Text style={s.cellLbl}>E-way Bill No.</Text>
+                    <Text style={s.cellVal}>{p.ewayBillNumber ?? '—'}</Text>
+                  </View>
+                  <View style={[s.cell, { flex: 1, borderRightWidth: 1 }]}>
+                    <Text style={s.cellLbl}>Mode</Text>
+                    <Text style={s.cellVal}>{p.mode ?? '—'}</Text>
+                  </View>
+                </View>
+
+                {/* Packages table */}
+                <View style={s.pkgHead}>
+                  <Text style={[s.pkgHcell, { flex: 0.7 }]}>Pkgs</Text>
+                  <Text style={[s.pkgHcell, { flex: 1.6 }]}>Content</Text>
+                  <Text style={[s.pkgHcell, { flex: 0.9 }]}>A Weight</Text>
+                  <Text style={[s.pkgHcell, { flex: 0.9 }]}>C Weight</Text>
+                  <Text style={[s.pkgHcell, { flex: 1.3 }]}>Size (L×W×H)</Text>
+                  <Text style={[s.pkgHcell, { flex: 1.1 }]}>Private Mark</Text>
+                  <Text style={[s.pkgHcell, { flex: 1, borderRightWidth: 0 }]}>Ti-Tag</Text>
+                </View>
+                <View style={s.pkgRow}>
+                  <Text style={[s.pkgCell, { flex: 0.7 }]}>{p.totalBags ?? 1}</Text>
+                  <Text style={[s.pkgCell, { flex: 1.6 }]}>{p.contentDescription ?? '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.actualWeight != null ? `${p.actualWeight} kg` : '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.chargeableWeight != null ? `${p.chargeableWeight} kg` : '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 1.3 }]}>
+                    {p.sizeL != null && p.sizeW != null && p.sizeH != null ? `${p.sizeL} × ${p.sizeW} × ${p.sizeH}` : '—'}
+                  </Text>
+                  <Text style={[s.pkgCell, { flex: 1.1 }]}>{p.privateMark ?? '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 1, borderRightWidth: 0 }]}>{p.tiTag ?? '—'}</Text>
+                </View>
+
+                {/* Insurance / GST Payable / Payment Terms / LR Type */}
+                <View style={s.footRow}>
+                  <View style={s.footCell}>
+                    <Text style={s.footLbl}>Material Insured By Customer</Text>
+                    <Text style={s.footVal}>{p.insuranceByCustomer ? 'Yes' : 'No'}</Text>
+                  </View>
+                  <View style={s.footCell}>
+                    <Text style={s.footLbl}>GST Payable By</Text>
+                    <Text style={s.footVal}>{p.gstPayableBy ?? '—'}</Text>
+                  </View>
+                  <View style={s.footCell}>
+                    <Text style={s.footLbl}>Payment Terms</Text>
+                    <Text style={s.footVal}>{p.paymentTerms ?? '—'}</Text>
+                  </View>
+                  <View style={[s.footCell, { borderRightWidth: 1 }]}>
+                    <Text style={s.footLbl}>LR Type</Text>
+                    <Text style={s.footVal}>{p.lrType ?? '—'}</Text>
+                  </View>
+                </View>
               </View>
 
-              {/* Charges ledger */}
+              {/* Charges ledger — full-height sidebar alongside the whole
+                  left column above, not just the Consignor/Consignee row */}
               <View style={{ flex: 1, borderRightWidth: 1, borderColor: BORDER }}>
                 <View style={[s.sectionHead, { borderRightWidth: 0 }]}><Text style={s.sectionHeadTxt}>Charges</Text></View>
                 {LR_CHARGE_FIELDS.map(f => (
@@ -353,110 +471,30 @@ export default function LRPDF(p: LRPDFProps) {
                 </View>
               </View>
             </View>
-
-            {/* ── Billed To / Delivery Address ── */}
-            <View style={s.row}>
-              <View style={[s.sectionHead, { flex: 1 }]}><Text style={s.sectionHeadTxt}>Billed To (Service Receiver)</Text></View>
-              <View style={[s.sectionHead, { flex: 1, borderRightWidth: 0 }]}><Text style={s.sectionHeadTxt}>Delivery Address</Text></View>
-            </View>
-            <View style={s.row}>
-              <View style={[s.partyBox, { flex: 1 }]}>
-                <Text style={s.partyName}>{p.billedToName ?? '—'}</Text>
-                <Text style={s.partyLine}>GSTIN: {p.billedToGstin ?? '—'}</Text>
-              </View>
-              <View style={[s.partyBox, { flex: 1, borderRightWidth: 0 }]}>
-                <Text style={s.addressVal}>{p.deliveryAddress ?? '—'}</Text>
-              </View>
-            </View>
-
-            {/* ── Invoice / Value / E-way / Mode ── */}
-            <View style={s.row}>
-              <View style={[s.cell, { flex: 1 }]}>
-                <Text style={s.cellLbl}>Invoice No.</Text>
-                <Text style={s.cellVal}>{p.invoiceNumber ?? '—'}</Text>
-              </View>
-              <View style={[s.cell, { flex: 1 }]}>
-                <Text style={s.cellLbl}>Value</Text>
-                <Text style={s.cellVal}>{p.invoiceValue != null ? 'Rs. ' + fmtRs(p.invoiceValue) : '—'}</Text>
-              </View>
-              <View style={[s.cell, { flex: 1.4 }]}>
-                <Text style={s.cellLbl}>E-way Bill No.</Text>
-                <Text style={s.cellVal}>{p.ewayBillNumber ?? '—'}</Text>
-              </View>
-              <View style={[s.cell, { flex: 1, borderRightWidth: 1 }]}>
-                <Text style={s.cellLbl}>Mode</Text>
-                <Text style={s.cellVal}>{p.mode ?? '—'}</Text>
-              </View>
-            </View>
-
-            {/* ── Packages table ── */}
-            <View style={s.pkgHead}>
-              <Text style={[s.pkgHcell, { flex: 0.7 }]}>Pkgs</Text>
-              <Text style={[s.pkgHcell, { flex: 1.6 }]}>Content</Text>
-              <Text style={[s.pkgHcell, { flex: 0.9 }]}>A Weight</Text>
-              <Text style={[s.pkgHcell, { flex: 0.9 }]}>C Weight</Text>
-              <Text style={[s.pkgHcell, { flex: 1.3 }]}>Size (L×W×H)</Text>
-              <Text style={[s.pkgHcell, { flex: 1.1 }]}>Private Mark</Text>
-              <Text style={[s.pkgHcell, { flex: 1, borderRightWidth: 0 }]}>Ti-Tag</Text>
-            </View>
-            <View style={s.pkgRow}>
-              <Text style={[s.pkgCell, { flex: 0.7 }]}>{p.totalBags ?? 1}</Text>
-              <Text style={[s.pkgCell, { flex: 1.6 }]}>{p.contentDescription ?? '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.actualWeight != null ? `${p.actualWeight} kg` : '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.chargeableWeight != null ? `${p.chargeableWeight} kg` : '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 1.3 }]}>
-                {p.sizeL != null && p.sizeW != null && p.sizeH != null ? `${p.sizeL} × ${p.sizeW} × ${p.sizeH}` : '—'}
-              </Text>
-              <Text style={[s.pkgCell, { flex: 1.1 }]}>{p.privateMark ?? '—'}</Text>
-              <Text style={[s.pkgCell, { flex: 1, borderRightWidth: 0 }]}>{p.tiTag ?? '—'}</Text>
-            </View>
-
-            {/* ── Insurance / GST Payable / Payment Terms / LR Type ── */}
-            <View style={s.footRow}>
-              <View style={s.footCell}>
-                <Text style={s.footLbl}>Material Insured By Customer</Text>
-                <Text style={s.footVal}>{p.insuranceByCustomer ? 'Yes' : 'No'}</Text>
-              </View>
-              <View style={s.footCell}>
-                <Text style={s.footLbl}>GST Payable By</Text>
-                <Text style={s.footVal}>{p.gstPayableBy ?? '—'}</Text>
-              </View>
-              <View style={s.footCell}>
-                <Text style={s.footLbl}>Payment Terms</Text>
-                <Text style={s.footVal}>{p.paymentTerms ?? '—'}</Text>
-              </View>
-              <View style={[s.footCell, { borderRightWidth: 1 }]}>
-                <Text style={s.footLbl}>LR Type</Text>
-                <Text style={s.footVal}>{p.lrType ?? '—'}</Text>
-              </View>
-            </View>
           </View>
         </View>
 
-        {/* ── Signature block ── */}
-        <View style={s.sigBlock}>
-          <View style={s.sigLeft}>
+        {/* ── Footer band: Delivery At / Remarks / Signature — merged into
+             one row for landscape (see file-header comment) ── */}
+        <View style={s.footerBand}>
+          <View style={s.bbCell}>
+            <Text style={s.footLbl}>Delivery At</Text>
+            <Text style={s.footVal}>{p.deliveryAt ?? '—'}</Text>
+          </View>
+          <View style={s.bbCellWide}>
+            <Text style={s.footLbl}>Remarks</Text>
+            <Text style={s.footVal}>{p.remarks ?? '—'}</Text>
+          </View>
+          <View style={s.sigCoCell}>
             <Text style={s.sigCo}>For {coName}</Text>
             <Text style={s.sigLine2}>Prepared By: {p.preparedBy ?? 'admin'}</Text>
           </View>
-          <View style={s.sigRight}>
+          <View style={s.sigStampCell}>
             <Image style={s.stampImg} src={STAMP_URL} />
             <View style={s.sigBox}>
               <Text style={s.sigTxt}>Authorized Signatory</Text>
               <Text style={s.sigSub}>For {LR_COMPANY.shortName}</Text>
             </View>
-          </View>
-        </View>
-
-        {/* ── Delivery At / Remarks ── */}
-        <View style={s.bottomBar}>
-          <View style={s.bbCell}>
-            <Text style={s.footLbl}>Delivery At</Text>
-            <Text style={s.footVal}>{p.deliveryAt ?? '—'}</Text>
-          </View>
-          <View style={s.bbCellLast}>
-            <Text style={s.footLbl}>Remarks</Text>
-            <Text style={s.footVal}>{p.remarks ?? '—'}</Text>
           </View>
         </View>
 
