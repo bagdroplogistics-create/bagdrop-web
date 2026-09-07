@@ -40,23 +40,68 @@ interface PaymentRecord {
 // confirmed booking, not just the ones formally logged via Record Payment.
 // Synthetic rows are display-only -- see the frontend for why Verify/Refund
 // are disabled for them (there's no real payments.id to act on yet).
+// Resolves which real column a booking's operational "reporting month"
+// comes from — completed_month_override (a nullable manual escape hatch,
+// see COMPLETED_MONTH_OVERRIDE_MIGRATION.sql) if an admin has explicitly
+// set one, otherwise pickup_date. Falls back to created_at only if a
+// booking is missing pickup_date too (extremely rare — pickup_date is
+// always present on a real booking).
+//
+// IMPORTANT — delivery_date is deliberately NOT used here, even though an
+// earlier version of this fix used it. Founder-reported 2026-09-07: Hetals
+// Homemade Pvt Ltd (picked up 29 Jul, delivered 1 Aug) showed up in August
+// instead of July once delivery_date was consulted first — the exact
+// regression app/api/admin/dashboard-analytics/route.ts already documents
+// hitting and reverting for the same reason ("a booking belongs to the
+// month it was picked up/actioned, not whichever month delivery happened
+// to land in"). pickup_date is this codebase's established source of truth
+// for which month a completed/operational booking counts toward; keep this
+// in sync with that file's logic rather than re-deriving it differently
+// here.
+function resolveReportingMonthDate(b: { pickup_date: string | null; delivery_date?: string | null; completed_month_override?: string | null; created_at: string }): string {
+  return b.completed_month_override ?? b.pickup_date ?? b.created_at
+}
+
 async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Promise<PaymentRecord[]> {
-  const { data, error } = await supabaseAdmin
-    .from('bookings')
-    .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date, delivery_date')
-    .in('status', CONFIRMED_ONWARD_STATUSES)
-    // Test Mode bookings must never surface as a synthetic "no payment
-    // logged yet" row — founder-reported 2026-09-05: a dummy test group
-    // booking (Monali Patel, GBL-2026-0001) was showing up here with its
-    // full amount as an "Approved (Unpaid)" line item.
-    .eq('is_test', false)
-    .limit(5000)
-  if (error) {
-    console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', error.message)
-    return []
+  type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string; pickup_date: string | null; completed_month_override: string | null }
+
+  // completed_month_override may not exist yet on this database — see
+  // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql and the identical defensive
+  // pattern in app/api/admin/dashboard-analytics/route.ts. Falls back to a
+  // query without it (pickup_date-only bucketing) rather than erroring.
+  let rows: Row[] = []
+  {
+    const primary = await supabaseAdmin
+      .from('bookings')
+      .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date, completed_month_override')
+      .in('status', CONFIRMED_ONWARD_STATUSES)
+      // Test Mode bookings must never surface as a synthetic "no payment
+      // logged yet" row — founder-reported 2026-09-05: a dummy test group
+      // booking (Monali Patel, GBL-2026-0001) was showing up here with its
+      // full amount as an "Approved (Unpaid)" line item.
+      .eq('is_test', false)
+      .limit(5000)
+    if (primary.error?.message?.includes('completed_month_override')) {
+      const fallback = await supabaseAdmin
+        .from('bookings')
+        .select('id, tracking_id, status, title, customer_name, customer_phone, total_amount, payment_status, payment_method, created_at, pickup_date')
+        .in('status', CONFIRMED_ONWARD_STATUSES)
+        .eq('is_test', false)
+        .limit(5000)
+      if (fallback.error) {
+        console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', fallback.error.message)
+        return []
+      }
+      rows = (fallback.data ?? []).map(b => ({ ...b, completed_month_override: null })) as unknown as Row[]
+    } else if (primary.error) {
+      console.warn('[admin/payments] unlogged-booking-payments query failed (non-fatal):', primary.error.message)
+      return []
+    } else {
+      rows = (primary.data ?? []) as unknown as Row[]
+    }
   }
-  type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string; pickup_date: string | null; delivery_date: string | null }
-  return ((data ?? []) as unknown as Row[])
+
+  return rows
     .filter(b => !existingBookingIds.has(b.id))
     .map(b => ({
       id:                `booking:${b.id}`,
@@ -78,17 +123,11 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
       // no real payment_date/created_at to reflect a payment event. Founder-
       // reported 2026-09-05 (Anuj Shah / Jaydev Patel / Sachin Patel's
       // ₹7,140 inquiry): these bookings were using the booking's own
-      // created_at (i.e. the INQUIRY date) for the Payments tab's Date
-      // column and Monthly Breakdown, which silently misfiled any booking
-      // whose pickup/delivery fell in a different month than its inquiry
-      // (e.g. inquired in August, picked up/delivered in September) — the
-      // exact "created_at as a substitute for the business date" mistake
-      // the founder flagged. The correct business date for an operational
-      // booking's payment reporting is when the job happened, not when it
-      // was inquired about — delivery_date if the job is finished,
-      // otherwise pickup_date, otherwise (only for a booking missing both,
-      // extremely rare) the actual created_at as a last resort.
-      created_at:        b.delivery_date ?? b.pickup_date ?? b.created_at,
+      // created_at (i.e. the INQUIRY date), which silently misfiled any
+      // booking whose pickup fell in a different month than its inquiry.
+      // See resolveReportingMonthDate() above for why this is pickup_date/
+      // completed_month_override, not delivery_date.
+      created_at:        resolveReportingMonthDate(b),
       is_synthetic:      true,
     }))
 }

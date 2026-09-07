@@ -108,14 +108,15 @@ export async function GET(req: NextRequest) {
   let periodAmount: number | undefined
   let periodCount: number | undefined
   if (periodFrom) {
-    const [realPaidRes, bookingsPaidRes, testBookingRowsRes] = await Promise.all([
+    const bookingsPaidSelect = 'id, total_amount, created_at, pickup_date, completed_month_override'
+    const [realPaidRes, bookingsPaidPrimary, testBookingRowsRes] = await Promise.all([
       supabaseAdmin
         .from('payments')
         .select('amount, created_at, booking_id, payment_method, payment_status')
         .eq('payment_status', 'paid'),
       supabaseAdmin
         .from('bookings')
-        .select('id, total_amount, created_at, pickup_date, delivery_date')
+        .select(bookingsPaidSelect)
         .in('status', CONFIRMED_ONWARD_STATUSES)
         .eq('payment_status', 'paid')
         .eq('is_test', false),
@@ -123,6 +124,22 @@ export async function GET(req: NextRequest) {
       // booking_id against Test Mode bookings to exclude their payments too.
       supabaseAdmin.from('bookings').select('id').eq('is_test', true),
     ])
+
+    // completed_month_override may not exist yet on this database — see
+    // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql and the identical defensive
+    // pattern in app/api/admin/dashboard-analytics/route.ts. Falls back to
+    // pickup_date-only bucketing rather than erroring. Typed loosely (not
+    // reusing bookingsPaidPrimary's narrower inferred row type) since the
+    // fallback branch's select omits a column the primary branch has.
+    let bookingsPaidRes: { data: Record<string, unknown>[] | null; error: { message: string } | null } = bookingsPaidPrimary
+    if (bookingsPaidPrimary.error?.message?.includes('completed_month_override')) {
+      bookingsPaidRes = await supabaseAdmin
+        .from('bookings')
+        .select('id, total_amount, created_at, pickup_date')
+        .in('status', CONFIRMED_ONWARD_STATUSES)
+        .eq('payment_status', 'paid')
+        .eq('is_test', false)
+    }
 
     if (!realPaidRes.error && !bookingsPaidRes.error) {
       const testBookingIds = new Set((testBookingRowsRes.data ?? []).map(b => b.id as string))
@@ -137,16 +154,20 @@ export async function GET(req: NextRequest) {
       const paidBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
       // Only bookings without a real payments row — avoids double-counting
       // a booking that has both a logged payment AND payment_status='paid'.
-      // Dated by delivery_date (falling back to pickup_date, then created_at
-      // only if both are missing) rather than created_at — same fix as
-      // fetchUnloggedBookingPayments in app/api/admin/payments/route.ts:
-      // a booking with no logged `payments` row has no real transaction
-      // date to go by, and the job's own date is a far better proxy for
-      // "when this payment period counts toward" than when the inquiry/
-      // booking record was created (founder-reported 2026-09-05).
+      // Dated by completed_month_override (if an admin has set one) falling
+      // back to pickup_date, then created_at only if both are missing —
+      // same fix as fetchUnloggedBookingPayments in app/api/admin/
+      // payments/route.ts, and NOT delivery_date: founder-reported
+      // 2026-09-07, Hetals Homemade Pvt Ltd (picked up 29 Jul, delivered 1
+      // Aug) landed in August once a first attempt at this fix consulted
+      // delivery_date first — the exact regression
+      // app/api/admin/dashboard-analytics/route.ts already documents and
+      // deliberately avoids. pickup_date is this codebase's established
+      // source of truth for a completed booking's reporting month.
       const syntheticEntries = (bookingsPaidRes.data ?? [])
-        .filter(b => !paidBookingIds.has(b.id))
-        .map(b => ({ amount: Number(b.total_amount) || 0, created_at: (b.delivery_date ?? b.pickup_date ?? b.created_at) as string | null }))
+        .map(b => b as { id: string; total_amount: number | null; created_at: string; pickup_date: string | null; completed_month_override?: string | null })
+        .filter(row => !paidBookingIds.has(row.id))
+        .map(row => ({ amount: Number(row.total_amount) || 0, created_at: (row.completed_month_override ?? row.pickup_date ?? row.created_at) as string | null }))
 
       const allPaid = [
         ...realPayments.map(p => ({ amount: Number(p.amount) || 0, created_at: p.created_at as string | null })),
