@@ -1,7 +1,12 @@
 'use client'
 
 import { LOGO_FULL_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
-import { cityCode, barcodeStripes } from '@/lib/bag-tags'
+// Deliberately from lib/bag-tag-display.ts, NOT lib/bag-tags.ts — this is
+// a 'use client' component, and lib/bag-tags.ts imports supabaseAdmin
+// (the server-only, service-role Supabase client) at module scope. See
+// lib/bag-tag-display.ts's module comment for the production incident
+// that importing these two functions from lib/bag-tags.ts caused.
+import { cityCode, barcodeStripes } from '@/lib/bag-tag-display'
 
 // BAGDROP — Operational Baggage Tag System (Phase 1)
 //
