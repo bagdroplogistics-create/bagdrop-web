@@ -1155,13 +1155,15 @@ export default function PaymentsPage() {
                             </button>
                           </div>
                         ) : (
-                          <span className="group inline-flex items-center gap-1">
+                          <span className="inline-flex items-center gap-1">
                             {fmtDate(p.created_at)}
                             {/* Edit affordance only for real payments — a synthetic row has no
-                                payments.id to PATCH a date onto (see openLogPaymentModal instead). */}
+                                payments.id to PATCH a date onto (see openLogPaymentModal instead).
+                                Always visible (not hover-only) — a hover-reveal icon here was easy
+                                to miss entirely, per founder feedback 2026-09-07. */}
                             {!p.is_synthetic && (
                               <button onClick={() => startEditDate(p)} title="Correct payment date"
-                                className="text-gray-300 opacity-0 hover:text-orange-500 group-hover:opacity-100">
+                                className="text-gray-400 hover:text-orange-500">
                                 <Pencil className="h-3 w-3" />
                               </button>
                             )}
