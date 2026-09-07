@@ -80,6 +80,11 @@ export default function LRsPage() {
   const [filter,   setFilter]   = useState('all')
   const [deleting, setDeleting] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
+  // "View LR" (the eye icon below) — opens the actual generated Lorry
+  // Receipt document in a new tab, same PDF viewLr()/downloadLr() below
+  // both build. Separate loading flag from `downloading` so the two
+  // buttons' spinners never get confused about which row is busy.
+  const [viewingLr, setViewingLr] = useState<string | null>(null)
 
   // Branch-Wise LR filters — spec section 10. "All Branches" (branchFilter
   // === 'all') deliberately omits branch_id from the query entirely rather
@@ -184,45 +189,56 @@ export default function LRsPage() {
     fetchQueue()
   }
 
+  // Shared by downloadLr() and viewLr() below — fetches the full LR row and
+  // renders it through the exact same LRPDF component both actions use, so
+  // "View" and "Download" can never show two different documents for the
+  // same LR. Returns the built blob plus the LR row (viewLr needs
+  // lr.lr_number too, for the tab's fallback filename).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function buildLrPdfBlob(id: string): Promise<{ blob: Blob; lr: any }> {
+    const res = await fetch(`/api/admin/lrs/${id}?key=${encodeURIComponent(adminKey)}`)
+    if (!res.ok) throw new Error('Could not load LR')
+    const { lr } = await res.json()
+
+    const { pdf } = await import('@react-pdf/renderer')
+    const { default: LRPDF } = await import('@/components/admin/LRPDF')
+
+    const charges: Record<string, number> = {}
+    for (const f of LR_CHARGE_FIELDS) charges[f.key] = lr[f.key] ?? 0
+
+    const blob = await pdf(
+      LRPDF({
+        lrNumber: lr.lr_number, lrDate: lr.lr_date, status: lr.status,
+        bookingOffice: lr.booking_office, vehicleNumber: lr.vehicle_number,
+        fromCity: lr.from_city, toCity: lr.to_city, mode: lr.mode,
+        consignorName: lr.consignor_name, consignorAddress: lr.consignor_address,
+        consignorMobile: lr.consignor_mobile, consignorGstin: lr.consignor_gstin,
+        consigneeName: lr.consignee_name, consigneeAddress: lr.consignee_address,
+        consigneeMobile: lr.consignee_mobile, consigneeGstin: lr.consignee_gstin,
+        billedToName: lr.billed_to_name, billedToGstin: lr.billed_to_gstin,
+        deliveryAddress: lr.delivery_address,
+        invoiceNumber: lr.invoice_number, invoiceValue: lr.invoice_value, ewayBillNumber: lr.eway_bill_number,
+        totalBags: lr.total_bags, contentDescription: lr.content_description,
+        actualWeight: lr.actual_weight, chargeableWeight: lr.chargeable_weight,
+        sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark, tiTag: lr.ti_tag,
+        charges, subTotal: lr.sub_total, igstAmount: lr.igst_amount,
+        cgstAmount: lr.cgst_amount, sgstAmount: lr.sgst_amount, totalAmount: lr.total_amount,
+        insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,
+        paymentTerms: lr.payment_terms, lrType: lr.lr_type, deliveryAt: lr.delivery_at,
+        remarks: lr.remarks, preparedBy: lr.prepared_by,
+        branchName: lr.branch_name ?? null, branchAddress: lr.branch_address ?? null,
+        branchGstNumber: lr.branch_gst_number ?? null, branchContactNumber: lr.branch_contact_number ?? null,
+        branchEmail: lr.branch_email ?? null,
+      })
+    ).toBlob()
+
+    return { blob, lr }
+  }
+
   async function downloadLr(id: string) {
     setDownloading(id)
     try {
-      const res = await fetch(`/api/admin/lrs/${id}?key=${encodeURIComponent(adminKey)}`)
-      if (!res.ok) throw new Error('Could not load LR')
-      const { lr } = await res.json()
-
-      const { pdf } = await import('@react-pdf/renderer')
-      const { default: LRPDF } = await import('@/components/admin/LRPDF')
-
-      const charges: Record<string, number> = {}
-      for (const f of LR_CHARGE_FIELDS) charges[f.key] = lr[f.key] ?? 0
-
-      const blob = await pdf(
-        LRPDF({
-          lrNumber: lr.lr_number, lrDate: lr.lr_date, status: lr.status,
-          bookingOffice: lr.booking_office, vehicleNumber: lr.vehicle_number,
-          fromCity: lr.from_city, toCity: lr.to_city, mode: lr.mode,
-          consignorName: lr.consignor_name, consignorAddress: lr.consignor_address,
-          consignorMobile: lr.consignor_mobile, consignorGstin: lr.consignor_gstin,
-          consigneeName: lr.consignee_name, consigneeAddress: lr.consignee_address,
-          consigneeMobile: lr.consignee_mobile, consigneeGstin: lr.consignee_gstin,
-          billedToName: lr.billed_to_name, billedToGstin: lr.billed_to_gstin,
-          deliveryAddress: lr.delivery_address,
-          invoiceNumber: lr.invoice_number, invoiceValue: lr.invoice_value, ewayBillNumber: lr.eway_bill_number,
-          totalBags: lr.total_bags, contentDescription: lr.content_description,
-          actualWeight: lr.actual_weight, chargeableWeight: lr.chargeable_weight,
-          sizeL: lr.size_l, sizeW: lr.size_w, sizeH: lr.size_h, privateMark: lr.private_mark, tiTag: lr.ti_tag,
-          charges, subTotal: lr.sub_total, igstAmount: lr.igst_amount,
-          cgstAmount: lr.cgst_amount, sgstAmount: lr.sgst_amount, totalAmount: lr.total_amount,
-          insuranceByCustomer: lr.insurance_by_customer, gstPayableBy: lr.gst_payable_by,
-          paymentTerms: lr.payment_terms, lrType: lr.lr_type, deliveryAt: lr.delivery_at,
-          remarks: lr.remarks, preparedBy: lr.prepared_by,
-          branchName: lr.branch_name ?? null, branchAddress: lr.branch_address ?? null,
-          branchGstNumber: lr.branch_gst_number ?? null, branchContactNumber: lr.branch_contact_number ?? null,
-          branchEmail: lr.branch_email ?? null,
-        })
-      ).toBlob()
-
+      const { blob, lr } = await buildLrPdfBlob(id)
       const url  = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -236,6 +252,49 @@ export default function LRsPage() {
       alert('Could not generate the LR PDF. Please try again.')
     } finally {
       setDownloading(null)
+    }
+  }
+
+  // "View LR" — opens the actual Lorry Receipt PDF in a new tab, instead of
+  // the "Edit LR" details/form page (Pencil icon, unchanged, still links to
+  // /admin/lrs/[id]). Founder-reported 2026-09-07: clicking the eye icon
+  // should open the LR document itself.
+  //
+  // Opens a blank tab SYNCHRONOUSLY on click, then navigates it to the
+  // blob URL once the PDF is built — building the PDF is async (a fetch +
+  // a react-pdf render), and calling window.open() only after an await
+  // would no longer be seen as a direct result of the user's click, so
+  // most browsers' popup blockers would silently swallow it. Opening the
+  // tab first (still inside the synchronous click handler) and filling it
+  // in afterward avoids that entirely.
+  async function viewLr(id: string) {
+    const win = window.open('', '_blank')
+    setViewingLr(id)
+    try {
+      const { blob } = await buildLrPdfBlob(id)
+      const url = URL.createObjectURL(blob)
+      if (win) {
+        win.location.href = url
+      } else {
+        // Popup blocked even before the PDF existed (rare — usually means
+        // the browser blocks ALL popups from this site) — fall back to a
+        // normal download so the admin still gets the document somehow.
+        const link = document.createElement('a')
+        link.href = url
+        link.download = 'LR.pdf'
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+      }
+      // Revoked later, not immediately — the new tab still needs to load
+      // this blob: URL after we hand it the address.
+      setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    } catch (e) {
+      win?.close()
+      console.error('LR PDF generation failed:', e)
+      alert('Could not open the LR PDF. Please try again.')
+    } finally {
+      setViewingLr(null)
     }
   }
 
@@ -433,11 +492,11 @@ export default function LRsPage() {
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex items-center gap-1.5">
-                            <Link href={`/admin/lrs/${l.id}`}
+                            <button onClick={() => viewLr(l.id)} disabled={viewingLr === l.id}
                               title="View LR"
-                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors">
-                              <Eye className="h-3.5 w-3.5" />
-                            </Link>
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 transition-colors disabled:opacity-40">
+                              {viewingLr === l.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eye className="h-3.5 w-3.5" />}
+                            </button>
                             <Link href={`/admin/lrs/${l.id}`}
                               title="Edit LR"
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors">
