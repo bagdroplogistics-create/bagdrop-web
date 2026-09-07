@@ -158,6 +158,16 @@ async function fetchConfirmedOngoingBookings(): Promise<BookingSummaryRow[]> {
     .from('bookings')
     .select(BOOKING_SELECT)
     .in('status', INCLUDED_STATUSES)
+    // Test Mode bookings (Group Booking "Test Mode" checkbox — see
+    // supabase/migrations/20260904_group_bookings.sql's is_test columns)
+    // must never trigger a real WhatsApp send to the ops numbers, same
+    // rule every other automated notifier in this codebase already
+    // follows (lib/lifecycle-notifications.ts, lib/lead-acknowledgment.ts,
+    // GET /api/admin/leads). This query never excluded them — founder-
+    // reported 2026-09-07: a dummy test inquiry (Monali Patel) kept
+    // appearing in this report. `is_test` is NOT NULL DEFAULT false, so a
+    // plain .eq is safe (no legacy NULL rows to worry about).
+    .eq('is_test', false)
     .order('pickup_date', { ascending: true, nullsFirst: false })
     .limit(1000)
   if (error) {
