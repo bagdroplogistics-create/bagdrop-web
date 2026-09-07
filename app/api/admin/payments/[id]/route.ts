@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole } from '@/lib/admin-auth'
 import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
+import { sendPaymentReceiptAcknowledgment } from '@/lib/payment-receipt-notification'
 
 // Booking statuses from which an approved payment verification should
 // auto-advance the workflow to 'confirmed'. Matches the gate the Payment
@@ -148,6 +149,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           .from('bookings')
           .update({ payment_verification_status: verificationStatus })
           .eq('id', data.booking_id)
+      }
+
+      // ── Payment Acknowledgement + Payment Receipt (customer-facing) ──
+      // Fires exactly once Accounts has approved this payment's
+      // verification — never on submission/pending/rejected. Generates
+      // (or reuses) the Payment Receipt PDF and sends the "Payment
+      // Received" email (receipt attached) + WhatsApp acknowledgement.
+      // Entirely additive and best-effort: never throws, and a
+      // notification failure can never reverse this payment approval —
+      // see lib/payment-receipt-notification.ts's own module comment for
+      // the full idempotency/retry design. Placed before the auto-confirm
+      // block below to match the spec's own step order (Payment Received
+      // → Get/Generate Receipt → Acknowledgement → Continue Booking
+      // Workflow), though the two are otherwise independent of each other.
+      if (verificationStatus === 'verified') {
+        await sendPaymentReceiptAcknowledgment(data.id)
       }
 
       // ── Auto-advance Booking Workflow on payment approval ─────────

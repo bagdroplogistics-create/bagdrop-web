@@ -45,6 +45,19 @@ interface Payment {
   // synthetic booking-derived rows and any payment created before this
   // column existed.
   attachments?: { url: string; filename: string; size: number; type: string; uploaded_at: string }[]
+  // Payment Acknowledgement + Payment Receipt automation (2026-09-07) —
+  // see lib/payment-receipt-notification.ts. Set once Accounts approves
+  // this payment's verification; absent/undefined for any payment created
+  // before supabase/migrations/20260907_payment_receipt_acknowledgement.sql
+  // was run, or for a synthetic booking-derived row (never has a real
+  // payments.id to send a receipt for).
+  receipt_pdf_url?:          string | null
+  receipt_email_status?:     string | null
+  receipt_email_sent_at?:    string | null
+  receipt_email_error?:      string | null
+  receipt_whatsapp_status?:  string | null
+  receipt_whatsapp_sent_at?: string | null
+  receipt_whatsapp_error?:   string | null
 }
 
 // This filter/badge set covers two different value spaces that GET
@@ -571,20 +584,50 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
   const [detail,  setDetail]  = useState<PaymentReceiptDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [err,     setErr]     = useState('')
+  // Payment Acknowledgement + Payment Receipt — Retry (see
+  // app/api/admin/payments/[id]/send-receipt/route.ts). Tracks which
+  // channel is currently retrying so only that button shows a spinner.
+  const [retrying, setRetrying] = useState<'email' | 'whatsapp' | null>(null)
 
-  useEffect(() => {
-    let cancelled = false
+  const loadDetail = useCallback(() => {
     setLoading(true); setErr('')
-    fetch(`/api/admin/payments/${paymentId}?key=${adminKey}`)
+    return fetch(`/api/admin/payments/${paymentId}?key=${adminKey}`)
       .then(async res => {
         if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? 'Could not load payment')
         return res.json()
       })
-      .then(j => { if (!cancelled) setDetail(j) })
-      .catch(e => { if (!cancelled) setErr(e.message ?? 'Could not load payment') })
-      .finally(() => { if (!cancelled) setLoading(false) })
-    return () => { cancelled = true }
+      .then(j => setDetail(j))
+      .catch(e => setErr(e.message ?? 'Could not load payment'))
+      .finally(() => setLoading(false))
   }, [paymentId, adminKey])
+
+  useEffect(() => {
+    let cancelled = false
+    loadDetail().then(() => {
+      if (cancelled) return
+    })
+    return () => { cancelled = true }
+  }, [loadDetail])
+
+  async function retryNotification(channel: 'email' | 'whatsapp') {
+    setRetrying(channel)
+    try {
+      const res = await fetch(`/api/admin/payments/${paymentId}/send-receipt`, {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        alert('Could not resend: ' + (e.error ?? 'Unknown error'))
+        return
+      }
+      await loadDetail()
+    } catch (e) {
+      alert('Could not resend: ' + (e instanceof Error ? e.message : 'Network error'))
+    } finally {
+      setRetrying(null)
+    }
+  }
 
   return (
     <div className="fixed inset-0 z-50 flex justify-end bg-black/40">
@@ -787,6 +830,63 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
                   </table>
                 </div>
               </div>
+
+              {/* Customer Notification — Payment Acknowledgement + Receipt
+                  automation (2026-09-07). Only shown for a Paid payment —
+                  sendPaymentReceiptAcknowledgment() only ever fires once
+                  Accounts has approved verification, so there's nothing to
+                  show for any other status. See
+                  lib/payment-receipt-notification.ts / app/api/admin/
+                  payments/[id]/send-receipt/route.ts. */}
+              {detail.payment.payment_status === 'paid' && (
+                <>
+                  <div className="my-6 border-t border-gray-200" />
+                  <div>
+                    <p className="mb-3 text-sm font-bold text-gray-800">Customer Notification — Payment Acknowledgement &amp; Receipt</p>
+                    <div className="space-y-2">
+                      {([
+                        { channel: 'email' as const,    label: 'Email + Receipt PDF', status: detail.payment.receipt_email_status,    sentAt: detail.payment.receipt_email_sent_at,    error: detail.payment.receipt_email_error },
+                        { channel: 'whatsapp' as const, label: 'WhatsApp',            status: detail.payment.receipt_whatsapp_status, sentAt: detail.payment.receipt_whatsapp_sent_at, error: detail.payment.receipt_whatsapp_error },
+                      ]).map(row => (
+                        <div key={row.channel} className="flex items-center justify-between rounded-lg border border-gray-100 bg-gray-50 px-3 py-2">
+                          <div className="flex items-center gap-2 text-xs">
+                            <span className="font-semibold text-gray-700">{row.label}</span>
+                            {row.status === 'sent' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-green-100 px-2 py-0.5 font-semibold text-green-700">
+                                <CheckCircle className="h-3 w-3" /> Sent{row.sentAt ? ` · ${fmtDateLong(row.sentAt)}` : ''}
+                              </span>
+                            ) : row.status === 'failed' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2 py-0.5 font-semibold text-red-700" title={row.error ?? undefined}>
+                                <XCircle className="h-3 w-3" /> Failed{row.error ? ` — ${row.error}` : ''}
+                              </span>
+                            ) : row.status === 'skipped' ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-gray-200 px-2 py-0.5 font-semibold text-gray-500" title={row.error ?? undefined}>
+                                Skipped{row.error ? ` — ${row.error}` : ''}
+                              </span>
+                            ) : (
+                              <span className="text-gray-400">Not sent yet</span>
+                            )}
+                          </div>
+                          {row.status !== 'sent' && (
+                            <button
+                              onClick={() => retryNotification(row.channel)}
+                              disabled={retrying === row.channel}
+                              className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-100 disabled:opacity-40">
+                              {retrying === row.channel ? 'Retrying…' : 'Retry'}
+                            </button>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                    {detail.payment.receipt_pdf_url && (
+                      <a href={detail.payment.receipt_pdf_url} target="_blank" rel="noopener noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
+                        <Download className="h-3 w-3" /> View generated Receipt PDF
+                      </a>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
         </div>

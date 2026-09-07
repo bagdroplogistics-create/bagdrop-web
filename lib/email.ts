@@ -700,6 +700,56 @@ export async function sendIndemnityBondAdminNotification(
   )
 }
 
+// ── Payment Received — Acknowledgement + Receipt (to customer) ─────────
+// Sent automatically once Accounts approves a payment's verification (NOT
+// when payment is merely submitted/pending — see
+// lib/payment-receipt-notification.ts's orchestration and
+// app/api/admin/payments/[id]/route.ts's `verificationStatus === 'verified'`
+// trigger, which is the existing Payment Verification workflow's own
+// approval step, left completely unmodified). The Payment Receipt PDF is
+// attached directly (not just linked), per spec — built by
+// lib/payment-receipt-pdf.ts from the exact same data as the admin's own
+// Payment Receipt panel, so the customer's copy can never drift from
+// what Accounts sees internally.
+
+export interface PaymentReceiptEmailData {
+  customerTitle?: string | null
+  customerName:  string
+  customerEmail: string
+  trackingId:    string
+  amount:        number
+}
+
+export async function sendPaymentReceiptEmail(data: PaymentReceiptEmailData, attachment: EmailAttachment) {
+  if (!data.customerEmail) return { success: false, error: 'No customer email' }
+  const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
+  const fmt = (n: number) => '₹' + Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+
+  const body =
+    '<h2 style="margin:0 0 20px;font-size:20px;font-weight:800;color:#111;">Payment Received</h2>' +
+    '<p style="margin:0 0 0;font-size:14px;color:#333;line-height:1.6;">Dear ' + displayName + ',</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Thank you for your payment.</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">' +
+    'We confirm that your payment of <strong>' + fmt(data.amount) + '</strong> for your Bagdrop booking <strong>' + data.trackingId + '</strong> ' +
+    'has been successfully received and verified.' +
+    '</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Your booking will now proceed to the next stage of the Bagdrop baggage delivery process.</p>' +
+    '<p style="margin:14px 0 0;font-size:14px;color:#333;line-height:1.6;">Thank you for choosing Bagdrop.</p>' +
+    '<p style="margin:24px 0 0;font-size:14px;color:#333;line-height:1.6;">Regards,<br/>Bagdrop Team</p>' +
+
+    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;margin:24px 0 4px;">' +
+    '<p style="margin:0;font-size:12px;color:#166534;">📎 Your Payment Receipt is attached to this email as a PDF for your records.</p>' +
+    '</div>'
+
+  return sendEmail(
+    data.customerEmail,
+    'Payment Received & Receipt – ' + data.trackingId,
+    baseTemplate(body),
+    'payment-receipt:' + data.trackingId,
+    [attachment],
+  )
+}
+
 // ── Legacy admin notification (kept for backward compat) ──────────────
 // Routes should migrate to sendInquiryNotification instead.
 
