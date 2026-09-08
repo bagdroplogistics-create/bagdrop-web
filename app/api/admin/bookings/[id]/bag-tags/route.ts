@@ -38,7 +38,7 @@ export async function GET(
 
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
-    .select('id, tracking_id, booking_type, status, customer_name, customer_phone, from_city, to_city, service_label, service_type, pickup_date, drop_address, total_bags, is_test')
+    .select('id, tracking_id, booking_type, status, customer_name, customer_phone, from_city, to_city, service_label, service_type, pickup_date, pickup_address, drop_address, total_bags, is_test')
     .eq('id', id)
     .maybeSingle()
 
