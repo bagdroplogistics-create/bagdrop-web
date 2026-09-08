@@ -21,6 +21,16 @@ export async function POST(
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   const { id } = await context.params
 
+  // Admin Approve toggle — Founder-reported 2026-09-08 (BDA-2026-0146):
+  // this route previously had no way to suppress its customer-facing
+  // email/WhatsApp at all, unlike the generic status-PATCH route (see
+  // admin_approve in app/api/admin/bookings/[id]/route.ts) — the Booking
+  // Workflow page's "Admin Approve (no customer notification)" checkbox
+  // had zero effect here. Body is optional/best-effort parsed since this
+  // route previously took no body at all.
+  const body = await req.json().catch(() => ({}))
+  const adminApprove = body?.admin_approve === true
+
   const { data: booking, error: bookingErr } = await supabaseAdmin
     .from('bookings')
     .select('id, tracking_id, status, status_history, customer_name, customer_phone, customer_email')
@@ -99,26 +109,32 @@ export async function POST(
 
   const secureLink = `https://www.bagdrop.co/indemnity/${secureToken}`
 
-  // Email — works today (Resend already configured)
-  if (booking.customer_email) {
-    await sendIndemnityBondEmail({
-      customerName:  booking.customer_name,
-      customerEmail: booking.customer_email,
-      trackingId:    booking.tracking_id,
-      secureLink,
-      expiryDays,
-    })
-  }
+  // Admin Approve — skip both customer-facing sends entirely when checked
+  // (e.g. the customer was already told separately). The bond record and
+  // secure link are still created/refreshed above and the booking still
+  // advances below — only the outbound email/WhatsApp are suppressed.
+  if (!adminApprove) {
+    // Email — works today (Resend already configured)
+    if (booking.customer_email) {
+      await sendIndemnityBondEmail({
+        customerName:  booking.customer_name,
+        customerEmail: booking.customer_email,
+        trackingId:    booking.tracking_id,
+        secureLink,
+        expiryDays,
+      })
+    }
 
-  // WhatsApp — approved template "indemnity_bond_sent" has exactly 2 body
-  // variables: {{1}} name, {{2}} secure link. Do not add a 3rd value here —
-  // that previously shifted the link out of {{2}} and showed the tracking
-  // ID in its place instead (confirmed against the live Meta template).
-  await sendIndemnityWhatsApp('bond_sent', {
-    customerPhone: booking.customer_phone,
-    customerName:  booking.customer_name,
-    trackingId:    booking.tracking_id,
-  }, [booking.customer_name ?? 'Customer', secureLink])
+    // WhatsApp — approved template "indemnity_bond_sent" has exactly 2 body
+    // variables: {{1}} name, {{2}} secure link. Do not add a 3rd value here —
+    // that previously shifted the link out of {{2}} and showed the tracking
+    // ID in its place instead (confirmed against the live Meta template).
+    await sendIndemnityWhatsApp('bond_sent', {
+      customerPhone: booking.customer_phone,
+      customerName:  booking.customer_name,
+      trackingId:    booking.tracking_id,
+    }, [booking.customer_name ?? 'Customer', secureLink])
+  }
 
   // Advance booking status + history
   const history = (booking.status_history ?? []) as object[]
@@ -127,7 +143,9 @@ export async function POST(
     to:         'indemnity_bond_sent',
     timestamp:  new Date().toISOString(),
     changed_by: 'admin',
-    note:       `Indemnity bond link sent (expires in ${expiryDays} days)`,
+    note:       adminApprove
+      ? `Indemnity bond link generated (expires in ${expiryDays} days) — Admin Approve: no customer notification sent`
+      : `Indemnity bond link sent (expires in ${expiryDays} days)`,
   })
 
   const { error: statusErr } = await supabaseAdmin

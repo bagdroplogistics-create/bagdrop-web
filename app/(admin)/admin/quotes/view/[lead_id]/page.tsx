@@ -1206,9 +1206,17 @@ export default function QuoteViewPage() {
     if (!booking?.id || !key) return
     setSendingIndemnity(true); setActionError(null)
     try {
+      // Admin Approve toggle — Founder-reported 2026-09-08 (BDA-2026-0146,
+      // Nirav R Gohil): this endpoint is a dedicated route, not a
+      // patchBooking() call, so it never received the admin_approve flag
+      // at all — the "no customer notification" checkbox had zero effect
+      // on the Indemnity Bond email/WhatsApp, which always sent
+      // unconditionally regardless of the toggle. Threaded through the
+      // same way patchBooking() already does it.
       const r = await fetch(`/api/admin/bookings/${booking.id}/indemnity/send`, {
         method: 'POST',
-        headers: { 'x-admin-key': key },
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ admin_approve: adminApproveMode }),
       })
       const d = await r.json()
       if (!r.ok) { setActionError(d.error ?? 'Failed to send indemnity bond'); return }

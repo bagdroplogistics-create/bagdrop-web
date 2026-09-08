@@ -568,17 +568,31 @@ export async function PATCH(
       to:         'confirmed',
       timestamp:  new Date().toISOString(),
       changed_by: 'system',
-      note:       'Auto-confirmed — Admin Approved (VIP/Credit, no payment verification required)',
+      note:       admin_approve === true
+        ? 'Auto-confirmed — Admin Approved (VIP/Credit, no payment verification required) — Admin Approve: no customer notification sent'
+        : 'Auto-confirmed — Admin Approved (VIP/Credit, no payment verification required)',
     })
 
     const prevConfirmNotified = Array.isArray((data as { notified_statuses?: unknown }).notified_statuses)
       ? (data as { notified_statuses?: string[] }).notified_statuses as string[]
       : []
     const alreadyConfirmNotified = prevConfirmNotified.includes('confirmed')
-    const shouldNotifyConfirm    = isForwardMove(data.status, 'confirmed') && !alreadyConfirmNotified
+    // admin_approve — Founder-reported 2026-09-08 (BDA-2026-0146, Nirav R
+    // Gohil): this auto-confirm-on-payment_approved branch computed its own
+    // shouldNotifyConfirm from scratch and never once checked admin_approve,
+    // unlike the main status-change branch above (line ~415) which already
+    // does. That meant checking "Admin Approve (no customer notification)"
+    // before clicking "Admin Approve — Pay Later (VIP/Credit)" (which sets
+    // status: 'payment_approved', auto-advancing straight to 'confirmed'
+    // right here) still sent the customer a "Booking Confirmed" WhatsApp —
+    // the one code path the checkbox had no effect on. Same suppression
+    // rule as the main branch now applies here too.
+    const shouldNotifyConfirm = admin_approve === true
+      ? false
+      : isForwardMove(data.status, 'confirmed') && !alreadyConfirmNotified
 
     const confirmUpdate: Record<string, unknown> = { status: 'confirmed', status_history: confirmHistory }
-    if (shouldNotifyConfirm && notifiedStatusesSupported) {
+    if ((shouldNotifyConfirm || admin_approve === true) && notifiedStatusesSupported && !alreadyConfirmNotified) {
       confirmUpdate.notified_statuses = [...prevConfirmNotified, 'confirmed']
     }
 
