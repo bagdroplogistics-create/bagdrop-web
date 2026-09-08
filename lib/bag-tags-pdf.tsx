@@ -48,7 +48,15 @@ const s = StyleSheet.create({
 
   main: { width: COL_MAIN, height: '100%', borderRightWidth: 1, borderColor: '#d4cfc6', borderStyle: 'dashed', padding: '8 10' },
   mainHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  logoColor: { width: 78, height: 19 },
+  // Fixed 2026-09-08 — this box was 78x19 (ratio 4.11:1), but
+  // LOGO_FULL_COLOR_DATA_URI's actual source image is 942x454 (ratio
+  // 2.07:1). react-pdf's <Image> stretches to fill whatever width/height
+  // are given rather than preserving the source's aspect ratio the way a
+  // browser does with the HTML card's `width: auto` — so this was visibly
+  // squashed ~2x flatter than the real logo (founder: "logo again
+  // stretched...it is not looking perfect"). Width recomputed from the
+  // real 942:454 ratio at the same 19pt height: 19 * (942/454) ≈ 39.4.
+  logoColor: { width: 39, height: 19 },
   // maxWidth bumped 100 -> 125 alongside pillTxt's font-size increase below
   // — at the old 100pt cap, a longer service label ("GROUP / WEDDING
   // BOOKING", "DOORSTEP TO DOORSTEP") wrapped to 2 lines at the new,
@@ -214,8 +222,17 @@ function BagTagCard({ b }: { b: BagTagInput }) {
           <View style={s.field}><Text style={s.fieldLabel}>SERVICE</Text><Text style={s.fieldValue}>{b.serviceLabel || '—'}</Text></View>
           <View style={s.field}><Text style={s.fieldLabel}>PICKUP DATE</Text><Text style={s.fieldValue}>{fmtDate(b.pickupDate)}</Text></View>
           <View style={s.field}><Text style={s.fieldLabel}>DELIVER TO</Text><Text style={s.fieldValue}>{b.deliveryLocation || '—'}</Text></View>
-          <View style={s.field}><Text style={s.fieldLabel}>BAG COUNT</Text><Text style={s.fieldValue}>Bag {b.bagNumber} of {b.bagTotal}</Text></View>
+          {/* TRACKING ID (the longest value in this grid, e.g.
+              "GBL-2026-0001-001") swapped to the bottom-LEFT cell and
+              BAG COUNT (short, e.g. "Bag 1 of 17") to bottom-right —
+              bottom-right is where the absolute-positioned QR code +
+              "SCAN TO TRACK BAG" caption live, and the long value
+              visibly collided with that caption there (confirmed by
+              rendering). Bottom-left has no such overlay competing for
+              space, so it's the safe place for the longest field
+              regardless of font size. */}
           <View style={s.field}><Text style={s.fieldLabel}>TRACKING ID</Text><Text style={s.fieldValueMono}>{b.bagLabel}</Text></View>
+          <View style={s.field}><Text style={s.fieldLabel}>BAG COUNT</Text><Text style={s.fieldValue}>Bag {b.bagNumber} of {b.bagTotal}</Text></View>
         </View>
         <View style={s.qrRow}>
           <Text style={s.qrCap}>SCAN TO{'\n'}TRACK BAG{'\n'}<Text style={s.qrCapSub}>{b.bagLabel}</Text></Text>

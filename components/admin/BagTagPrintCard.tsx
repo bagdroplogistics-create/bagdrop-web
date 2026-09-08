@@ -129,8 +129,13 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
           <div className="bag-tag-field"><span>SERVICE</span><b>{tag.serviceLabel || '—'}</b></div>
           <div className="bag-tag-field"><span>PICKUP DATE</span><b>{fmtDate(tag.pickupDate)}</b></div>
           <div className="bag-tag-field"><span>DELIVER TO</span><b>{tag.deliveryLocation || '—'}</b></div>
-          <div className="bag-tag-field"><span>BAG COUNT</span><b>Bag {tag.bagNumber} of {tag.bagTotal}</b></div>
+          {/* TRACKING ID (the longest value, e.g. "GBL-2026-0001-001")
+              swapped to bottom-left, BAG COUNT (short) to bottom-right —
+              kept in sync with the same swap in lib/bag-tags-pdf.tsx,
+              which visibly overlapped the QR/caption in the bottom-right
+              corner when rendered at the bigger font size. */}
           <div className="bag-tag-field"><span>TRACKING ID</span><b className="bag-tag-mono">{tag.bagLabel}</b></div>
+          <div className="bag-tag-field"><span>BAG COUNT</span><b>Bag {tag.bagNumber} of {tag.bagTotal}</b></div>
         </div>
         <div className="bag-tag-qr-wrap">
           <div className="bag-tag-qr-cap">SCAN TO<br />TRACK BAG<br /><span>{tag.bagLabel}</span></div>
