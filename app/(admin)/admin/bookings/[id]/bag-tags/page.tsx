@@ -77,6 +77,14 @@ export default function IndividualBagTagsPage() {
     markPrinted(ids)
   }
 
+  // Consignor/Consignee Consignment Label — a separate document from the
+  // barcode/QR Bag Tag above (lib/consignment-label-pdf.tsx), so it's
+  // available regardless of whether tags have been generated yet: it
+  // reads booking.total_bags as its fallback bag count.
+  function handleDownloadConsignmentLabel() {
+    window.open(`/api/admin/bookings/${id}/consignment-label?key=${adminKey}`, '_blank')
+  }
+
   function toggle(bagId: string) {
     setSelected(prev => {
       const next = new Set(prev)
@@ -139,6 +147,7 @@ export default function IndividualBagTagsPage() {
         <p>BAGDROP — {booking.tracking_id} — {bagTotal} Bag Tag{bagTotal !== 1 ? 's' : ''}</p>
         <div style={{ display: 'flex', gap: 8 }}>
           <button className="btn-back" onClick={() => router.back()}>← Back</button>
+          <button className="btn-secondary" onClick={handleDownloadConsignmentLabel}>Download Consignment Label</button>
           {tagData.length === 0 ? (
             <button className="btn-print" disabled={!canGenerate || generating} onClick={generateTags}>
               {generating ? 'Generating…' : canGenerate ? 'Generate Tags' : 'Confirm booking first'}
