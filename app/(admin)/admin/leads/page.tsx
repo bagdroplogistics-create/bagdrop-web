@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef, Suspense } from 'react'
+import { useEffect, useState, useCallback, useRef, Suspense, Fragment } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
@@ -934,6 +934,11 @@ function LeadsPageInner() {
   const [filter, setFilter]     = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [sort, setSort]         = useState('newest')
+  // Pagination — same pattern as the Dashboard table (app/(admin)/admin/
+  // page.tsx): client-side paging over the already-fetched, filtered/sorted
+  // list, with a page-size selector and Prev/Numbered/Next controls.
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
   const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting]       = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
@@ -1008,7 +1013,15 @@ function LeadsPageInner() {
   const fetchLeads = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    let qs = '?key=' + adminKey
+    // limit=5000 — GET /api/admin/leads defaults to page=1/limit=50 (server-
+    // side pagination it already supports, for other callers), which meant
+    // this page silently only ever showed the newest 50 matching leads with
+    // no way to see anything past that and no pagination UI to reveal the
+    // truncation. Client-side pagination (added below, matching the
+    // Dashboard table's own pattern) needs the full filtered set in memory
+    // to paginate over — same "admin-tool volumes only" ceiling already
+    // used elsewhere (e.g. app/api/admin/payments/route.ts).
+    let qs = '?key=' + adminKey + '&limit=5000'
     if (showDeleted) {
       // Show only soft-deleted leads
       qs += '&deleted=true'
@@ -1026,6 +1039,11 @@ function LeadsPageInner() {
   }, [adminKey, filter, search, showDeleted, sourceFilter])
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
+
+  // Reset to page 1 whenever the visible row set could change shape —
+  // otherwise changing a filter/search/sort while sitting on, say, page 4
+  // could leave the table showing an out-of-range empty page.
+  useEffect(() => { setPage(1) }, [filter, sourceFilter, search, sort, pageSize, followupParam, showDeleted])
 
   // ── Dashboard "Manage in Leads" direct-open ─────────────────────────
   // Fetches the exact target lead by booking_id/lead_id — a dedicated,
@@ -1277,6 +1295,19 @@ function LeadsPageInner() {
 
   if (!authed) return null
 
+  // ── Pagination derived values — same shape as the Dashboard table's
+  // own sortedBookings/pagedBookings/showingFrom/showingTo (app/(admin)/
+  // admin/page.tsx). visibleLeads is the exact same filtered+sorted set
+  // the table already computed inline before this change; openPrintView()
+  // above deliberately keeps its own separate copy of this same
+  // computation so printing still exports every matching row, not just
+  // whatever page is currently on screen.
+  const visibleLeads = sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam))
+  const totalPages    = Math.max(1, Math.ceil(visibleLeads.length / pageSize))
+  const pagedLeads    = visibleLeads.slice((page - 1) * pageSize, page * pageSize)
+  const showingFrom   = visibleLeads.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo     = Math.min(page * pageSize, visibleLeads.length)
+
   return (
     <>
       {modal.open && (
@@ -1502,6 +1533,7 @@ function LeadsPageInner() {
               </button>
             </div>
           ) : (
+            <>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
@@ -1512,7 +1544,7 @@ function LeadsPageInner() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam)).map(l => (
+                  {pagedLeads.map(l => (
                     <tr key={l.id} id={`lead-row-${l.id}`} className={`transition-colors duration-700 ${
                       highlightId === l.id ? 'bg-orange-50 ring-2 ring-inset ring-orange-400' : 'hover:bg-gray-50'
                     }`}>
@@ -1795,6 +1827,70 @@ function LeadsPageInner() {
                 </tbody>
               </table>
             </div>
+
+            {/* ── Pagination controls — mirrors Dashboard table (app/(admin)/admin/page.tsx) ── */}
+            <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
+              {/* Left: count + page size selector */}
+              <div className="flex items-center gap-3 text-sm text-gray-500">
+                {visibleLeads.length > 0 ? (
+                  <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{visibleLeads.length}</strong> quotes</span>
+                ) : (
+                  <span>0 quotes</span>
+                )}
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+
+              {/* Right: page buttons */}
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === totalPages || (n >= page - 2 && n <= page + 2))
+                    .map((n, idx, arr) => (
+                      <Fragment key={n}>
+                        {idx > 0 && arr[idx - 1] !== n - 1 && (
+                          <span className="px-1 text-xs text-gray-400">…</span>
+                        )}
+                        <button
+                          onClick={() => setPage(n)}
+                          className={`min-w-[32px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            page === n
+                              ? 'border-orange-400 bg-orange-500 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      </Fragment>
+                    ))}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
           )}
         </div>
         <p className="mt-3 text-center text-xs text-gray-400">
