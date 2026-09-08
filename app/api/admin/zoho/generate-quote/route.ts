@@ -44,6 +44,7 @@ import { SAC_TRANSPORT }             from '@/lib/zoho-books'
 import { sendQuoteEmail }            from '@/lib/email'
 import { findRouteMatch }            from '@/lib/city-normalize'
 import { nextTrackingId, nextQuoteNumber } from '@/lib/number-series'
+import { recomputeBookingPaymentStatus }   from '@/lib/payment-status'
 
 const GST_PCT = 5   // 5% total GST (2.5% CGST + 2.5% SGST)
 
@@ -248,6 +249,7 @@ export async function POST(req: NextRequest) {
     discount_type:        discountType,
     discount_fixed_amt:   discountFixedAmt,
     payment_status:       paymentStatusIn,
+    billing_type:         billingTypeIn,
   } = body as {
     lead_id:               string
     is_return_quote?:      boolean
@@ -272,7 +274,13 @@ export async function POST(req: NextRequest) {
     discount_type?:        'pct' | 'fixed'
     discount_fixed_amt?:   number
     payment_status?:       'pending' | 'received'
+    // FOC (Free of Charge) billing type — Founder spec 2026-09-08. Server
+    // is the authoritative enforcement point (not just the UI): any
+    // request with billing_type: 'foc' gets its total forced to ₹0 below,
+    // regardless of what line items/discount were sent.
+    billing_type?:         'paid' | 'foc'
   }
+  const isFOC = billingTypeIn === 'foc'
 
   // ── Fetch lead ────────────────────────────────────────────────────
   const { data: lead, error: leadErr } = await supabaseAdmin
@@ -382,8 +390,16 @@ export async function POST(req: NextRequest) {
   }
 
   const taxableAmt = subtotal - discountAmt
-  const taxAmt     = Math.round(taxableAmt * GST_PCT) / 100
-  const total      = Math.round((taxableAmt + taxAmt) * 100) / 100
+  // FOC (Free of Charge) — Founder spec 2026-09-08: "Total payable amount
+  // should be ₹0". Enforced here, server-side, as the authoritative source
+  // of truth (not just the quote-creation UI) — subtotal/discount above are
+  // left untouched so the line items still show what the service would
+  // normally have cost, but tax and the final payable total are always
+  // forced to zero for an FOC quote regardless of what was sent.
+  const rawTaxAmt  = Math.round(taxableAmt * GST_PCT) / 100
+  const rawTotal   = Math.round((taxableAmt + rawTaxAmt) * 100) / 100
+  const taxAmt     = isFOC ? 0 : rawTaxAmt
+  const total      = isFOC ? 0 : rawTotal
 
   // ── Quote number ──────────────────────────────────────────────────
   // Primary:  QT-2026-0022
@@ -412,6 +428,7 @@ export async function POST(req: NextRequest) {
       return_from_city:        fromCity || null,
       return_to_city:          toCity   || null,
       return_bags_count:       bags,
+      billing_type:            isFOC ? 'foc' : 'paid',
       ...(discountAmt  > 0 ? { return_discount_amt: discountAmt  } : { return_discount_amt: null }),
       ...(discountRate > 0 && discountType !== 'fixed' ? { return_discount_pct: discountRate } : { return_discount_pct: null }),
       ...(customer_notes    ? { return_quote_notes: customer_notes } : {}),
@@ -434,6 +451,7 @@ export async function POST(req: NextRequest) {
       quote_tax:            taxAmt,
       quote_date:           today,
       payment_status:       paymentStatusIn ?? 'pending',
+      billing_type:         isFOC ? 'foc' : 'paid',
       zoho_estimate_id:     null,
       zoho_estimate_number: quoteNumber,
       ...(expiry_date       ? { quote_expiry_date: expiry_date      } : {}),
@@ -513,6 +531,7 @@ export async function POST(req: NextRequest) {
         pickup_address: pickupAddrOverride ?? lead.pickup_address ?? null,
         total_bags:     bags,
         total_amount:   total,
+        billing_type:   isFOC ? 'foc' : 'paid',
         status:         'quote_created',
         status_history: [{
           from:       null,
@@ -552,6 +571,7 @@ export async function POST(req: NextRequest) {
         // (lead_id omitted — may not exist in older DB schemas)
         await supabaseAdmin.from('bookings').update({
           total_amount: total,
+          billing_type: isFOC ? 'foc' : 'paid',
           notes:        null,
           ...(!existing.status || existing.status === 'cancelled'
             ? { status: 'quote_created' }
@@ -598,6 +618,7 @@ export async function POST(req: NextRequest) {
 
     const bookingUpdates: Record<string, unknown> = {
       total_amount: total,
+      billing_type: isFOC ? 'foc' : 'paid',
       // Keep the booking's customer info in sync with the lead — otherwise a
       // booking created against an older name/email (e.g. reused via the
       // duplicate-phone path) stays stale forever and won't show up when
@@ -629,6 +650,14 @@ export async function POST(req: NextRequest) {
       console.log(`[generate-quote] Preserved booking status '${currentStatus}' — not downgraded to quote_created`)
     }
   }
+  // Recompute payment_status now that billing_type/total_amount are set —
+  // covers both the "created new booking" and "updated existing booking"
+  // paths above. For an FOC quote this flips the booking straight to
+  // 'not_applicable' (see lib/payment-status.ts's FOC short-circuit) so it
+  // never shows as "payment pending" anywhere. For a Paid quote with no
+  // payments yet, this computes the same 'pending' the DB default already
+  // gives it — a safe no-op.
+  if (bookingId) await recomputeBookingPaymentStatus(bookingId).catch(e => console.warn('[generate-quote] payment-status recompute (primary) non-fatal:', e))
   } else {
     // ── RETURN LEG: independent booking, separate from the primary
     // (onward) booking linked via lead.booking_id ─────────────────────
@@ -676,6 +705,7 @@ export async function POST(req: NextRequest) {
           drop_address:   dropAddrOverride ?? null,
           total_bags:     bags,
           total_amount:   total,
+          billing_type:   isFOC ? 'foc' : 'paid',
           status:         'quote_created',
           status_history: [{
             from:       null,
@@ -718,6 +748,7 @@ export async function POST(req: NextRequest) {
 
       const returnBookingUpdates: Record<string, unknown> = {
         total_amount:   total,
+        billing_type:   isFOC ? 'foc' : 'paid',
         customer_name:  lead.name,
         customer_email: lead.email ?? '',
         ...(canUpdateStatus ? { status: 'quote_created' } : {}),
@@ -745,6 +776,8 @@ export async function POST(req: NextRequest) {
         console.log(`[generate-quote] Preserved return-leg booking status '${currentStatus}' — not downgraded to quote_created`)
       }
     }
+    // See matching comment on the primary-booking path above.
+    if (returnBookingId) await recomputeBookingPaymentStatus(returnBookingId).catch(e => console.warn('[generate-quote] payment-status recompute (return leg) non-fatal:', e))
   }
 
   console.log(`[generate-quote] ${isReturnQuote ? 'Return quote' : 'Quote'} ${quoteNumber} saved for lead ${lead.lead_number} | Total: ₹${total}`)

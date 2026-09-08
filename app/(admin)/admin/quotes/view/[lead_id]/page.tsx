@@ -70,6 +70,8 @@ interface Lead {
   created_at: string
   // Payment tracking
   payment_status: string | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08.
+  billing_type?: 'paid' | 'foc' | null
   // Return journey quote fields
   return_quote_number:     string | null
   return_quote_line_items: LineItem[] | null
@@ -102,6 +104,8 @@ interface Booking {
   payment_status: string | null
   payment_reference: string | null
   total_amount: number | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08.
+  billing_type?: 'paid' | 'foc' | null
   customer_email: string | null
   customer_phone: string | null
   rejection_reason: string | null
@@ -351,6 +355,10 @@ const PAYMENT_STATUS_LABELS: Record<string, { label: string; color: string }> = 
   approved_pending:     { label: 'VIP / Admin Approved (Unpaid)',  color: 'text-amber-600' },
   pending:              { label: 'Payment Pending',                color: 'text-gray-600' },
   refunded:             { label: 'Refunded',                      color: 'text-purple-600' },
+  // FOC (Free of Charge) — Founder spec 2026-09-08. Set by the FOC
+  // short-circuit in lib/payment-status.ts's recomputeBookingPaymentStatus;
+  // deliberately distinct styling from every real payment state below.
+  not_applicable:       { label: 'Not Applicable (FOC)',           color: 'text-amber-600' },
 }
 
 // ── Main Component ────────────────────────────────────────────────────────────
@@ -605,6 +613,7 @@ export default function QuoteViewPage() {
           total:        grandTotal,
           notes:        lead.quote_notes,
           terms:        lead.quote_terms,
+          isFOC:        lead.billing_type === 'foc',
           // Return Trip — only present when this lead has a return quote
           // (Trip Type = Return Trip on New Quote). QuotePDF renders the
           // Journey 1 / Journey 2 + combined summary layout only when
@@ -1366,7 +1375,9 @@ export default function QuoteViewPage() {
   // clicking OK proceeds exactly as before. Does not touch patchBooking,
   // the status transition itself, or any other step in the workflow.
   function paymentNotYetPaid(): boolean {
-    return !!booking && !['paid', 'approved_pending', 'refunded'].includes(booking.payment_status ?? 'pending')
+    // 'not_applicable' = FOC (Free of Charge) booking — Founder spec
+    // 2026-09-08: no payment is ever due, so never nag about it here.
+    return !!booking && !['paid', 'approved_pending', 'refunded', 'not_applicable'].includes(booking.payment_status ?? 'pending')
   }
   async function doMarkDelivered() {
     if (paymentNotYetPaid() && !window.confirm('Payment for this booking is not marked as Paid yet. Mark as Delivered anyway?')) return
@@ -2873,6 +2884,7 @@ export default function QuoteViewPage() {
                         <option value="approved_pending">VIP / Admin Approved (Unpaid)</option>
                         <option value="paid">Paid</option>
                         <option value="refunded">Refunded</option>
+                        <option value="not_applicable">Not Applicable (FOC)</option>
                       </select>
                       <button onClick={doCorrectPaymentStatus} disabled={savingPaymentStatus}
                         className="rounded bg-blue-600 px-2 py-0.5 text-[11px] font-medium text-white hover:bg-blue-700 disabled:opacity-50">

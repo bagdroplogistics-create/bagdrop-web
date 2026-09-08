@@ -58,6 +58,8 @@ export interface LeadRowForPdf {
   quote_total: number | null
   quote_notes: string | null
   quote_terms: string | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08.
+  billing_type?: 'paid' | 'foc' | null
   return_quote_number?: string | null
   return_from_city?: string | null
   return_to_city?: string | null
@@ -111,6 +113,7 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf): Promise<Buffer> 
     total:  grandTotal,
     notes:  lead.quote_notes,
     terms:  lead.quote_terms,
+    isFOC:  lead.billing_type === 'foc',
     ...(lead.return_quote_number ? {
       returnFromCity:   lead.return_from_city,
       returnToCity:     lead.return_to_city,
