@@ -221,16 +221,28 @@ export const BAG_TAG_CARD_STYLES = `
   .bag-tag-main { flex: 0 0 41%; padding: 8px 10px; border-right: 1.5px dashed #d4cfc6; }
   .bag-tag-main-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
   .bag-tag-logo-color { height: 22px; width: auto; display: block; }
-  .bag-tag-pill { border: 1.5px solid #f97316; color: #c74f0f; border-radius: 999px; padding: 2px 8px; font-size: 6.2px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
+  /* Main coupon fields bumped 2026-09-08 alongside the flight panel —
+     founder: "still need to increase font size of attached so its
+     readable" (Booking ID / Customer / Route / Service / Pickup Date /
+     Deliver To / Bag Count / Tracking ID grid, plus the Claim Stub
+     below). Kept in sync with fieldLabel/fieldValue/pillTxt/qrCap/
+     qrCapSub in lib/bag-tags-pdf.tsx. */
+  .bag-tag-pill { border: 1.5px solid #f97316; color: #c74f0f; border-radius: 999px; padding: 2px 8px; font-size: 7.5px; font-weight: 800; letter-spacing: 0.4px; text-transform: uppercase; white-space: nowrap; max-width: 46%; overflow: hidden; text-overflow: ellipsis; }
   .bag-tag-divider { height: 1px; background: #e5e0d8; margin: 8px 0 6px; }
   .bag-tag-fields { display: grid; grid-template-columns: 1fr 1fr; row-gap: 7px; column-gap: 8px; flex: 1; }
   .bag-tag-field { display: flex; flex-direction: column; min-width: 0; }
-  .bag-tag-field span { font-size: 6px; font-weight: 700; letter-spacing: 0.5px; color: #918b81; }
-  .bag-tag-field b { font-size: 9px; font-weight: 800; color: #111827; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .bag-tag-mono { font-family: monospace; font-size: 8px !important; }
+  .bag-tag-field span { font-size: 7.5px; font-weight: 700; letter-spacing: 0.5px; color: #918b81; }
+  .bag-tag-field b { font-size: 12px; font-weight: 800; color: #111827; margin-top: 1px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  /* Kept smaller than the general .bag-tag-field b bump above on purpose —
+     TRACKING ID (e.g. "GBL-2026-0001-001") is the longest value in this
+     grid AND sits in the bottom-right cell, exactly where the QR code +
+     "SCAN TO TRACK BAG" caption also live. The PDF version's equivalent
+     (fieldValueMono in lib/bag-tags-pdf.tsx) visibly collided with that
+     caption at the full bumped size when rendered — same risk applies here. */
+  .bag-tag-mono { font-family: monospace; font-size: 9px !important; }
   .bag-tag-qr-wrap { position: absolute; right: 10px; bottom: 8px; display: flex; align-items: flex-end; gap: 6px; }
-  .bag-tag-qr-cap { font-size: 5.5px; font-weight: 700; color: #111827; text-align: right; line-height: 1.35; }
-  .bag-tag-qr-cap span { display: block; font-weight: 400; color: #918b81; font-size: 5px; margin-top: 1px; }
+  .bag-tag-qr-cap { font-size: 6.5px; font-weight: 700; color: #111827; text-align: right; line-height: 1.35; }
+  .bag-tag-qr-cap span { display: block; font-weight: 400; color: #918b81; font-size: 5.8px; margin-top: 1px; }
   .bag-tag-qr-wrap img { width: 15%; min-width: 34px; max-width: 46px; height: auto; display: block; border: 1px solid #e5e0d8; border-radius: 3px; }
 
   /* Flight panel */
@@ -256,9 +268,9 @@ export const BAG_TAG_CARD_STYLES = `
   /* Claim stub */
   .bag-tag-stub { flex: 0 0 27%; padding: 8px 8px; gap: 6px; }
   .bag-tag-stub-head { display: flex; align-items: center; justify-content: space-between; }
-  .bag-tag-stub-label { font-size: 5.2px; font-weight: 700; letter-spacing: 0.6px; color: #918b81; }
+  .bag-tag-stub-label { font-size: 6.5px; font-weight: 700; letter-spacing: 0.6px; color: #918b81; }
   .bag-tag-stub .bag-tag-barcode { height: 18px; }
   .bag-tag-stub-fields { display: flex; flex-direction: column; gap: 5px; flex: 1; }
-  .bag-tag-stub-fields .bag-tag-field b { font-size: 8px; }
+  .bag-tag-stub-fields .bag-tag-field b { font-size: 10.5px; }
   .bag-tag-stub-qr { position: absolute; right: 8px; bottom: 8px; width: 20%; min-width: 32px; max-width: 42px; height: auto; border: 1px solid #e5e0d8; border-radius: 3px; }
 `

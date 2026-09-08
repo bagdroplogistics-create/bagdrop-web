@@ -49,16 +49,36 @@ const s = StyleSheet.create({
   main: { width: COL_MAIN, height: '100%', borderRightWidth: 1, borderColor: '#d4cfc6', borderStyle: 'dashed', padding: '8 10' },
   mainHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   logoColor: { width: 78, height: 19 },
-  pill: { borderWidth: 1, borderColor: ORANGE, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, maxWidth: 100 },
-  pillTxt: { fontSize: 5.5, fontFamily: 'Helvetica-Bold', color: ORANGE_DK, letterSpacing: 0.3 },
+  // maxWidth bumped 100 -> 125 alongside pillTxt's font-size increase below
+  // — at the old 100pt cap, a longer service label ("GROUP / WEDDING
+  // BOOKING", "DOORSTEP TO DOORSTEP") wrapped to 2 lines at the new,
+  // bigger font size (confirmed by rendering). 125 is as far as this can
+  // go before crowding logoColor (78pt) in the space-between header row —
+  // mainHead's usable width is COL_MAIN(227) - padding(20) = 207pt.
+  pill: { borderWidth: 1, borderColor: ORANGE, borderRadius: 8, paddingHorizontal: 6, paddingVertical: 2, maxWidth: 125 },
+  // Bumped 2026-09-08 (founder, main coupon + claim stub screenshots:
+  // "still need to increase font size of attached so its readble") — same
+  // "plenty of unused vertical/horizontal room" reasoning as the flight
+  // panel bump above. Kept in sync with the matching HTML sizes in
+  // components/admin/BagTagPrintCard.tsx (.bag-tag-pill/.bag-tag-field/
+  // .bag-tag-qr-cap).
+  pillTxt: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: ORANGE_DK, letterSpacing: 0.3 },
   divider: { height: 1, backgroundColor: '#e5e0d8', marginVertical: 6 },
   fieldGrid: { flexDirection: 'row', flexWrap: 'wrap', flex: 1 },
   field: { width: '50%', marginBottom: 7, paddingRight: 6 },
-  fieldLabel: { fontSize: 5.3, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.4 },
-  fieldValue: { fontSize: 7.8, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 1 },
+  fieldLabel: { fontSize: 6.8, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.4 },
+  fieldValue: { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 1 },
+  // TRACKING ID is the longest value in this grid (e.g.
+  // "GBL-2026-0001-001", 18 characters) AND sits in the bottom-right cell
+  // — exactly where the absolute-positioned QR code + "SCAN TO TRACK BAG"
+  // caption also live. At the full fieldValue size above it visibly
+  // collided with that caption (confirmed by rendering) — kept smaller
+  // here on purpose, not an oversight. Mirrors .bag-tag-mono in
+  // components/admin/BagTagPrintCard.tsx.
+  fieldValueMono: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 1 },
   qrRow: { position: 'absolute', right: 10, bottom: 8, flexDirection: 'row', alignItems: 'flex-end' },
-  qrCap: { fontSize: 4.8, fontFamily: 'Helvetica-Bold', color: DARK, textAlign: 'right', marginRight: 5, lineHeight: 1.35 },
-  qrCapSub: { fontSize: 4.3, fontFamily: 'Helvetica', color: GREY },
+  qrCap: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: DARK, textAlign: 'right', marginRight: 5, lineHeight: 1.35 },
+  qrCapSub: { fontSize: 5, fontFamily: 'Helvetica', color: GREY },
   qr: { width: 38, height: 38, borderWidth: 1, borderColor: '#e5e0d8', borderRadius: 3 },
 
   flight: { width: COL_FLIGHT, height: '100%', borderRightWidth: 1, borderColor: '#d4cfc6', borderStyle: 'dashed' },
@@ -85,7 +105,7 @@ const s = StyleSheet.create({
 
   stub: { width: COL_STUB, height: '100%', padding: '8 8' },
   stubHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  stubLabel: { fontSize: 4.6, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.5 },
+  stubLabel: { fontSize: 6, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.5 },
 
   // Small lock-up for the flight header + claim stub: plain icon (no
   // baked-in wordmark, so it never turns to mush when this small) plus a
@@ -97,7 +117,7 @@ const s = StyleSheet.create({
   miniBrandTxtDark: { color: '#fff' },
   stubBarcodeWrap: { height: 20, marginTop: 6, marginBottom: 6 },
   stubRouteRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 6 },
-  stubRouteTxt: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK },
+  stubRouteTxt: { fontSize: 11.5, fontFamily: 'Helvetica-Bold', color: DARK },
   stubField: { marginBottom: 6 },
   stubQr: { position: 'absolute', right: 8, bottom: 8, width: 32, height: 32, borderWidth: 1, borderColor: '#e5e0d8', borderRadius: 3 },
 })
@@ -195,7 +215,7 @@ function BagTagCard({ b }: { b: BagTagInput }) {
           <View style={s.field}><Text style={s.fieldLabel}>PICKUP DATE</Text><Text style={s.fieldValue}>{fmtDate(b.pickupDate)}</Text></View>
           <View style={s.field}><Text style={s.fieldLabel}>DELIVER TO</Text><Text style={s.fieldValue}>{b.deliveryLocation || '—'}</Text></View>
           <View style={s.field}><Text style={s.fieldLabel}>BAG COUNT</Text><Text style={s.fieldValue}>Bag {b.bagNumber} of {b.bagTotal}</Text></View>
-          <View style={s.field}><Text style={s.fieldLabel}>TRACKING ID</Text><Text style={s.fieldValue}>{b.bagLabel}</Text></View>
+          <View style={s.field}><Text style={s.fieldLabel}>TRACKING ID</Text><Text style={s.fieldValueMono}>{b.bagLabel}</Text></View>
         </View>
         <View style={s.qrRow}>
           <Text style={s.qrCap}>SCAN TO{'\n'}TRACK BAG{'\n'}<Text style={s.qrCapSub}>{b.bagLabel}</Text></Text>
