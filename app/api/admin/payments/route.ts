@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { requireAdminAuth } from '@/lib/admin-auth'
+import { requireAdminAuth, getAdminRole } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { resolveCustomerTitle, DEFAULT_TITLE } from '@/lib/constants'
 import { nextPaymentId } from '@/lib/number-series'
+import { sendPaymentReceiptAcknowledgment } from '@/lib/payment-receipt-notification'
 
 // Confirmed-or-later bookings that have no matching row in `payments` at all
 // show up here as "no payment logged" — same slice used by
@@ -286,6 +287,12 @@ export async function GET(req: NextRequest) {
 
 export async function POST(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  // Same 'verified_by' stamping convention as app/api/admin/payments/[id]/
+  // route.ts's PATCH handler — added here too (2026-09-08) so a payment
+  // recorded directly as 'paid' via this route (Mark Payment Received /
+  // Record Payment) gets a real Approval Status on its receipt, instead of
+  // only ever being set for the separate proof-upload-verification path.
+  const role = getAdminRole(req)
 
   const body = await req.json().catch(() => null)
   if (!body?.customer_name || !body?.amount) {
@@ -357,6 +364,8 @@ export async function POST(req: NextRequest) {
           payment_method:     body.payment_method ?? 'upi',
           payment_reference:  body.payment_reference?.trim() || null,
           notes:              body.notes?.trim() || 'Confirmed — converted from an approved payment-proof upload (no duplicate entry created)',
+          verified_by:        role,
+          verified_at:        new Date().toISOString(),
           ...(paymentDate ? { payment_date: paymentDate, created_at: new Date(paymentDate + 'T12:00:00').toISOString() } : {}),
           ...(body.bank_charges != null && body.bank_charges !== '' ? { bank_charges: Number(body.bank_charges) } : {}),
           ...(body.tds_deducted ? { tds_deducted: true, tds_amount: body.tds_amount != null && body.tds_amount !== '' ? Number(body.tds_amount) : null } : {}),
@@ -371,6 +380,19 @@ export async function POST(req: NextRequest) {
           payment_reference: body.payment_reference?.trim() || null,
         }).eq('id', bookingId)
         await recomputeBookingPaymentStatus(bookingId)
+        // Payment Acknowledgement + Receipt — Founder-reported 2026-09-08
+        // (BDA-2026-0160): this "Mark Payment Received" / Record Payment
+        // path previously never sent a customer-facing receipt at all,
+        // even though it's exactly where a real, approved payment amount
+        // gets recorded — only the separate payment-proof-upload
+        // verification path (app/api/admin/payments/[id]/route.ts) did.
+        // That gap is what let a genuinely redundant $0 verification-only
+        // proof become the ONLY receipt a customer ever got for their real
+        // payment. Wired in here too now, using this row's own real
+        // amount — sendPaymentReceiptAcknowledgment already no-ops safely
+        // for a non-'paid' status or a $0 amount, so this is a safe
+        // addition for every other call site too.
+        await sendPaymentReceiptAcknowledgment(converted.id)
         return NextResponse.json({ payment: converted, converted: true }, { status: 200 })
       }
       // Update failed for some reason (e.g. race) — fall through and
@@ -409,6 +431,7 @@ export async function POST(req: NextRequest) {
     bank_charges:       body.bank_charges != null && body.bank_charges !== '' ? Number(body.bank_charges) : 0,
     tds_deducted:       !!body.tds_deducted,
     tds_amount:         body.tds_deducted && body.tds_amount != null && body.tds_amount !== '' ? Number(body.tds_amount) : null,
+    ...((body.payment_status ?? 'pending') === 'paid' ? { verified_by: role, verified_at: new Date().toISOString() } : {}),
   }).select().single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
@@ -427,6 +450,14 @@ export async function POST(req: NextRequest) {
       payment_reference: body.payment_reference?.trim() || null,
     }).eq('id', bookingId)
     await recomputeBookingPaymentStatus(bookingId)
+  }
+
+  // Payment Acknowledgement + Receipt — see the matching comment on the
+  // convert-branch above. Only fires when this fresh row was recorded
+  // directly as 'paid' (the common "Mark Payment Received" case); a
+  // 'pending' manual entry correctly sends nothing yet.
+  if (data && data.payment_status === 'paid') {
+    await sendPaymentReceiptAcknowledgment(data.id)
   }
 
   return NextResponse.json({ payment: data }, { status: 201 })

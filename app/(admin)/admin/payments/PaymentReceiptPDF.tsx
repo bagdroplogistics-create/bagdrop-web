@@ -122,6 +122,26 @@ export interface PaymentReceiptPDFProps {
   bagsCount?:      number | null
   pickupDate?:     string | null
   notes?:          string | null
+
+  // ── Payment Summary (Previous/Total/Outstanding) ────────────────────
+  // Founder-reported 2026-09-08 (BDA-2026-0160 / BDP-2026-0016): a receipt
+  // must show more than just "this transaction's amount" to be useful for
+  // partial payments — the customer needs to see where this payment leaves
+  // their running balance. All three are computed fresh from the live
+  // `payments` ledger at send time (lib/payment-receipt-notification.ts),
+  // never stored/cached on the payment row itself, so they're always
+  // correct even if an earlier payment's amount is later corrected.
+  // Rendered only when totalPaidAmount is provided (i.e. the caller could
+  // resolve a linked booking) — omitted entirely for a payment with no
+  // booking_id, same as the existing Booking Details card above.
+  previousPaidAmount?: number   // sum of prior approved payments, BEFORE this one
+  totalPaidAmount?:    number   // sum of all approved payments, INCLUDING this one
+  bookingTotalAmount?: number   // the booking's quoted total — for Outstanding
+  // Precomputed label (e.g. "Verified by Accounts on 8 September 2026") —
+  // kept as a ready-made string, matching how `route`/`serviceLabel` above
+  // are already precomputed by the caller rather than built from raw ids
+  // inside this presentational component.
+  approvalStatus?:     string | null
 }
 
 export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
@@ -129,7 +149,11 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
     receiptNumber, receiptDate, customerName, customerPhone, customerAddress,
     trackingId, amount, paymentDate, paymentMethod, paymentReference,
     route, serviceLabel, bagsCount, pickupDate, notes,
+    previousPaidAmount, totalPaidAmount, bookingTotalAmount, approvalStatus,
   } = props
+  const outstandingAmount = bookingTotalAmount != null && totalPaidAmount != null
+    ? Math.max(0, bookingTotalAmount - totalPaidAmount)
+    : null
 
   return (
     <Document>
@@ -230,6 +254,46 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
                 <View style={s.field}>
                   <Text style={s.fieldLabel}>Pickup Date</Text>
                   <Text style={s.fieldValue}>{fmtDate(pickupDate)}</Text>
+                </View>
+              ) : null}
+            </View>
+          </View>
+        )}
+
+        {/* Payment Summary — Previous Paid / Total Paid / Outstanding /
+            Approval Status. Only rendered when the caller could resolve a
+            linked booking's ledger (totalPaidAmount provided) — see the
+            PaymentReceiptPDFProps doc comment above. */}
+        {totalPaidAmount != null && (
+          <View style={{ ...s.cardFull, marginBottom: 16 }}>
+            <Text style={s.cardLabel}>Payment Summary</Text>
+            <View style={s.fieldGrid}>
+              <View style={s.field}>
+                <Text style={s.fieldLabel}>This Payment</Text>
+                <Text style={s.fieldValue}>{fmtRs(amount)}</Text>
+              </View>
+              {!!previousPaidAmount && previousPaidAmount > 0 && (
+                <View style={s.field}>
+                  <Text style={s.fieldLabel}>Previously Paid</Text>
+                  <Text style={s.fieldValue}>{fmtRs(previousPaidAmount)}</Text>
+                </View>
+              )}
+              <View style={s.field}>
+                <Text style={s.fieldLabel}>Total Paid</Text>
+                <Text style={[s.fieldValue, { color: GREEN }]}>{fmtRs(totalPaidAmount)}</Text>
+              </View>
+              {outstandingAmount != null && (
+                <View style={s.field}>
+                  <Text style={s.fieldLabel}>Outstanding</Text>
+                  <Text style={[s.fieldValue, outstandingAmount > 0 ? { color: '#d97706' } : { color: GREEN }]}>
+                    {outstandingAmount > 0 ? fmtRs(outstandingAmount) : 'Fully Paid'}
+                  </Text>
+                </View>
+              )}
+              {approvalStatus ? (
+                <View style={s.field}>
+                  <Text style={s.fieldLabel}>Approval Status</Text>
+                  <Text style={[s.fieldValue, { color: GREEN }]}>{approvalStatus}</Text>
                 </View>
               ) : null}
             </View>

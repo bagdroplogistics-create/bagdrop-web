@@ -43,6 +43,7 @@ import { formatCustomerName } from './constants'
 import { sendPaymentReceiptEmail, type EmailAttachment } from './email'
 import { sendWhatsAppTemplate } from './notifications'
 import { buildPaymentReceiptPdfBuffer, paymentReceiptPdfFilename, uploadPaymentReceiptPdf } from './payment-receipt-pdf'
+import { countsTowardTotalPaid } from './payment-ledger'
 
 interface PaymentRow {
   id:                 string
@@ -61,6 +62,13 @@ interface PaymentRow {
   receipt_pdf_url:        string | null
   receipt_email_status:   string | null
   receipt_whatsapp_status: string | null
+  // Payment Summary fields — Founder-reported 2026-09-08 (BDA-2026-0160 /
+  // BDP-2026-0016). verified_by/verified_at already exist on `payments`
+  // (set by app/api/admin/payments/[id]/route.ts whenever payment_status
+  // is set to 'paid' — see that route's own comment) and are reused here
+  // purely for the receipt's "Approval Status" line, nothing new to store.
+  verified_by:        string | null
+  verified_at:        string | null
 }
 
 interface BookingRow {
@@ -75,6 +83,11 @@ interface BookingRow {
   pickup_date:     string | null
   pickup_address:  string | null
   is_test:         boolean | null
+  // Payment Summary — the booking's quoted total, needed to compute
+  // Outstanding (bookingTotalAmount - totalPaidAmount). Never trusted as
+  // the PAYMENT amount itself (that stays payment.amount, per the
+  // 2026-09-08 fix) — only used for this one derived Outstanding figure.
+  total_amount:    number | null
 }
 
 // '₹' is fine here — this fmtRs is only used for the WhatsApp template
@@ -126,7 +139,7 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
   try {
     const { data: payment, error: paymentErr } = await supabaseAdmin
       .from('payments')
-      .select('id, payment_id, booking_id, title, customer_name, customer_phone, amount, payment_method, payment_status, payment_reference, payment_date, created_at, notes, receipt_pdf_url, receipt_email_status, receipt_whatsapp_status')
+      .select('id, payment_id, booking_id, title, customer_name, customer_phone, amount, payment_method, payment_status, payment_reference, payment_date, created_at, notes, receipt_pdf_url, receipt_email_status, receipt_whatsapp_status, verified_by, verified_at')
       .eq('id', paymentId)
       .maybeSingle<PaymentRow>()
 
@@ -180,7 +193,7 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
     if (payment.booking_id) {
       const { data: bk } = await supabaseAdmin
         .from('bookings')
-        .select('id, tracking_id, customer_email, from_city, to_city, service_label, service_type, total_bags, pickup_date, pickup_address, is_test')
+        .select('id, tracking_id, customer_email, from_city, to_city, service_label, service_type, total_bags, pickup_date, pickup_address, is_test, total_amount')
         .eq('id', payment.booking_id)
         .maybeSingle<BookingRow>()
       booking = bk ?? null
@@ -204,6 +217,38 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
       }
       console.log(`[PaymentReceipt] Payment ${payment.payment_id} — skipped (Test Mode booking)`)
       return
+    }
+
+    // ── Payment Summary — Previous Paid / Total Paid / Outstanding ───
+    // Founder-reported 2026-09-08: a receipt must show more than just this
+    // one transaction's amount to be useful for partial payments. Computed
+    // fresh from the live ledger every send (never cached), using the same
+    // countsTowardTotalPaid predicate the rest of the codebase already uses
+    // for "what counts as real, approved money" (lib/payment-status.ts,
+    // lib/payment-ledger.ts) — excludes pending/rejected/refunded rows and
+    // 'upload'-method verification-only rows. totalPaidAmount naturally
+    // already includes THIS payment (it's already 'paid' by the time this
+    // function runs), so previousPaidAmount = totalPaid - thisPayment is
+    // exactly "everything paid before this transaction," with no separate
+    // bookkeeping needed.
+    let totalPaidAmount: number | undefined
+    let previousPaidAmount: number | undefined
+    let approvalStatus: string | null = null
+    if (payment.booking_id) {
+      const { data: ledgerRows } = await supabaseAdmin
+        .from('payments')
+        .select('amount, payment_status, payment_method')
+        .eq('booking_id', payment.booking_id)
+      totalPaidAmount = (ledgerRows ?? [])
+        .filter(countsTowardTotalPaid)
+        .reduce((sum, p) => sum + (Number(p.amount) || 0), 0)
+      previousPaidAmount = Math.max(0, totalPaidAmount - Number(payment.amount))
+    }
+    if (payment.verified_by) {
+      const verifiedDate = payment.verified_at
+        ? new Date(payment.verified_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+        : null
+      approvalStatus = `Verified by ${payment.verified_by}` + (verifiedDate ? ` on ${verifiedDate}` : '')
     }
 
     // ── Get / Generate Payment Receipt ──────────────────────────────
@@ -238,6 +283,10 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
           bagsCount:      booking?.total_bags ?? null,
           pickupDate:     booking?.pickup_date ?? null,
           notes:          pdfSafe(payment.notes),
+          previousPaidAmount,
+          totalPaidAmount,
+          bookingTotalAmount: booking?.total_amount ?? undefined,
+          approvalStatus,
         })
       } catch (err) {
         const msg = err instanceof Error ? err.message : String(err)
