@@ -588,6 +588,40 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
   // app/api/admin/payments/[id]/send-receipt/route.ts). Tracks which
   // channel is currently retrying so only that button shows a spinner.
   const [retrying, setRetrying] = useState<'email' | 'whatsapp' | null>(null)
+  // Amount correction — Founder-reported 2026-09-08: a payment-proof row
+  // correctly clamped to ₹0 (already-recorded-elsewhere case — see
+  // app/api/admin/bookings/[id]/payment-proof/route.ts) still generated a
+  // confusing "₹0.00 received" customer receipt. There was no way to fix
+  // an existing payment's amount at all before this — PATCHing it here
+  // also resets receipt_*_status server-side (see the route) so the
+  // now-unlocked Retry buttons below can resend a corrected receipt.
+  const [editingAmount, setEditingAmount] = useState(false)
+  const [amountDraft,   setAmountDraft]   = useState('')
+  const [savingAmount,  setSavingAmount]  = useState(false)
+
+  async function saveAmount() {
+    const n = Number(amountDraft)
+    if (!Number.isFinite(n) || n < 0) { alert('Enter a valid, non-negative amount'); return }
+    setSavingAmount(true)
+    try {
+      const res = await fetch(`/api/admin/payments/${paymentId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ amount: n }),
+      })
+      if (!res.ok) {
+        const e = await res.json().catch(() => ({}))
+        alert('Could not update amount: ' + (e.error ?? 'Unknown error'))
+        return
+      }
+      setEditingAmount(false)
+      await loadDetail()
+    } catch {
+      alert('Could not update amount — network error')
+    } finally {
+      setSavingAmount(false)
+    }
+  }
 
   const loadDetail = useCallback(() => {
     setLoading(true); setErr('')
@@ -690,9 +724,39 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
                 </div>
                 <div className="shrink-0 rounded-lg bg-green-600 px-6 py-4 text-center">
                   <p className="text-[11px] font-medium uppercase tracking-wide text-green-100">Amount Received</p>
-                  <p className="mt-1 text-xl font-bold text-white">{fmtRs2(detail.payment.amount)}</p>
+                  {editingAmount ? (
+                    <div className="mt-1.5 flex items-center gap-1.5">
+                      <input
+                        type="number" min="0" step="0.01" autoFocus
+                        value={amountDraft}
+                        onChange={e => setAmountDraft(e.target.value)}
+                        className="w-24 rounded border-0 px-1.5 py-1 text-right text-sm font-bold text-gray-900"
+                      />
+                      <button onClick={saveAmount} disabled={savingAmount}
+                        className="rounded bg-white/90 px-2 py-1 text-[11px] font-bold text-green-700 hover:bg-white disabled:opacity-50">
+                        {savingAmount ? '…' : 'Save'}
+                      </button>
+                      <button onClick={() => setEditingAmount(false)} disabled={savingAmount}
+                        className="text-[11px] text-green-100 hover:text-white">✕</button>
+                    </div>
+                  ) : (
+                    <div className="mt-1 flex items-center justify-center gap-2">
+                      <p className="text-xl font-bold text-white">{fmtRs2(detail.payment.amount)}</p>
+                      <button
+                        onClick={() => { setAmountDraft(String(detail.payment.amount)); setEditingAmount(true) }}
+                        title="Correct this payment's amount"
+                        className="text-[11px] font-semibold text-green-100 underline decoration-dotted underline-offset-2 hover:text-white">
+                        correct
+                      </button>
+                    </div>
+                  )}
                 </div>
               </div>
+              {editingAmount && (
+                <p className="mt-1 text-right text-[11px] text-amber-600">
+                  Saving will also re-arm the Receipt Retry buttons below if a receipt was already sent, so a corrected one can go out.
+                </p>
+              )}
 
               <div className="my-6 border-t border-gray-200" />
 

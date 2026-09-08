@@ -71,10 +71,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body   = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
-  const allowed = ['payment_status', 'payment_method', 'payment_reference', 'notes', 'refund_amount', 'refund_reason']
+  // 'amount' — Founder-reported 2026-09-08: a payment-proof upload that's
+  // correctly clamped to ₹0 (see app/api/admin/bookings/[id]/payment-proof/
+  // route.ts's outstanding-balance clamp — prevents double-counting when
+  // the real amount was already recorded via a different flow, e.g. "Mark
+  // Payment Received") still gets approved through the normal Verification
+  // flow, which then fires the customer-facing Payment Receipt with that
+  // same ₹0 amount — technically accurate for THIS ledger row, but a
+  // confusing, wrong-looking receipt from the customer's side ("payment of
+  // ₹0.00 received"). There was previously no way to correct an existing
+  // payment's amount at all. See the reset-for-retry block below for how a
+  // correction here also lets the receipt be resent with the right value.
+  const allowed = ['payment_status', 'payment_method', 'payment_reference', 'notes', 'refund_amount', 'refund_reason', 'amount']
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+  if ('amount' in updates) {
+    const n = Number(updates.amount)
+    if (!Number.isFinite(n) || n < 0) {
+      return NextResponse.json({ error: 'amount must be a non-negative number' }, { status: 400 })
+    }
+    updates.amount = n
   }
 
   // Payment Date correction (founder-reported 2026-09-05: Dinesh Patel's
@@ -116,8 +134,28 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   // payments used to wipe those out too. This is also what the
   // email-based Accounts approval link (app/api/payment-verification/
   // [token]/route.ts) goes through, since it PATCHes this same endpoint.
-  if (data.booking_id && body.payment_status) {
+  if (data.booking_id && (body.payment_status || 'amount' in updates)) {
     await recomputeBookingPaymentStatus(data.booking_id)
+  }
+
+  // ── Amount correction — allow the Payment Receipt to be resent ──────
+  // An admin-corrected amount on a payment whose receipt already went out
+  // (email and/or WhatsApp marked 'sent') would otherwise leave that wrong
+  // receipt as the only one the customer ever gets — send-receipt only
+  // (re)sends a channel that ISN'T already 'sent' (see lib/payment-
+  // receipt-notification.ts's idempotency design). Clearing the cached PDF
+  // + both channels' status here (not the error columns, so the OLD
+  // failure reason isn't confused for a new one) re-arms both the cached
+  // receipt PDF (regenerated fresh off the new amount on next send) and
+  // the Payments page's "Retry" buttons, without touching anything about
+  // the payment's own approval/verification state.
+  if ('amount' in updates && data.payment_status === 'paid') {
+    await supabaseAdmin.from('payments').update({
+      receipt_pdf_url:          null,
+      receipt_generated_at:     null,
+      receipt_email_status:     null,
+      receipt_whatsapp_status:  null,
+    }).eq('id', id)
   }
 
   // ── Payment Verification sync ─────────────────────────────────────

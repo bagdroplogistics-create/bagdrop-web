@@ -152,6 +152,30 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
       return
     }
 
+    // Founder-reported 2026-09-08 (booking BDA-2026-0160 / receipt
+    // BDP-2026-0016): a payment-proof upload correctly clamped to ₹0 by
+    // app/api/admin/bookings/[id]/payment-proof/route.ts (the real amount
+    // was already recorded via a different flow — e.g. "Mark Payment
+    // Received" — and the outstanding-balance clamp there prevents
+    // double-counting a second payments row for the same money) still goes
+    // through Accounts Verification normally, which used to fire this same
+    // customer-facing "Payment Received" WhatsApp message + receipt PDF —
+    // technically correct for this one ledger row, but a nonsensical,
+    // confusing "we received your payment of ₹0.00" message from the
+    // customer's side. A ₹0 payment is never something to send a customer
+    // a receipt for, so this is skipped entirely (not just left pending —
+    // there is nothing to retry once genuinely nothing new was paid).
+    if (Number(payment.amount) <= 0) {
+      const updates: Record<string, unknown> = {}
+      if (!emailAlreadySent)    { updates.receipt_email_status = 'skipped';    updates.receipt_email_error = 'Payment amount is ₹0 — verification-only record, no new amount to acknowledge' }
+      if (!whatsappAlreadySent) { updates.receipt_whatsapp_status = 'skipped'; updates.receipt_whatsapp_error = 'Payment amount is ₹0 — verification-only record, no new amount to acknowledge' }
+      if (Object.keys(updates).length) {
+        await supabaseAdmin.from('payments').update(updates).eq('id', payment.id)
+      }
+      console.log(`[PaymentReceipt] Payment ${payment.payment_id} — skipped (amount is ₹0, likely a verification-only proof for money already recorded elsewhere)`)
+      return
+    }
+
     let booking: BookingRow | null = null
     if (payment.booking_id) {
       const { data: bk } = await supabaseAdmin
