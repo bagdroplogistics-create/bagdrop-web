@@ -4,6 +4,7 @@ import { requireAdminAuth } from '@/lib/admin-auth'
 import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS } from '@/lib/constants'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 
 // Statuses at/after 'accepted' in STATUS_ORDER — i.e. the customer has
 // acted on the quote (accepted, paid, or further along). 'cancelled' and
@@ -60,6 +61,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'quote_line_items', 'quote_subtotal', 'quote_discount_pct', 'quote_discount_amt',
     'quote_tax', 'quote_total', 'quote_subject', 'quote_notes', 'quote_terms',
     'quote_expiry_date', 'salesperson_name', 'agent_name',
+    // FOC (Free of Charge) billing type — Founder spec 2026-09-08.
+    'billing_type',
     // Return-journey quote fields — normally only written by
     // /api/admin/zoho/generate-quote (isReturnQuote branch). Included here so
     // an admin can clear an accidentally-generated return quote (e.g. a
@@ -219,6 +222,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if ('flight_number' in updates)  bookingUpdates.flight_number  = lead.flight_number
     // Keep the linked booking's total in sync when a quote is edited (incl. custom/manual routes)
     if ('quote_total' in updates)    bookingUpdates.total_amount   = lead.quote_total
+    // FOC (Free of Charge) — Founder spec 2026-09-08: keep the booking's
+    // own billing_type in sync whenever the quote's Client Type is edited.
+    if ('billing_type' in updates)   bookingUpdates.billing_type   = lead.billing_type
 
     // Business Customer support — keep the booking's copy of these fields
     // in sync so Invoice/LR (generated from bookings) reflect edits made
@@ -264,6 +270,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
       if (bookingErr) {
         console.error('[leads PATCH] booking sync failed (non-fatal):', bookingErr.message)
+      }
+      // Re-derive payment_status whenever billing_type or the total changes
+      // — e.g. an admin flips an existing Paid quote to FOC (or back) via
+      // Edit Quote, after the quote itself was already generated. Without
+      // this, only a fresh "Generate Quote" run (app/api/admin/zoho/
+      // generate-quote/route.ts) would ever recompute it, leaving a
+      // switched-to-FOC booking stuck at whatever payment_status it had
+      // before the switch.
+      if (('billing_type' in updates || 'quote_total' in updates) && lead.booking_id) {
+        await recomputeBookingPaymentStatus(lead.booking_id).catch(e =>
+          console.error('[leads PATCH] payment-status recompute non-fatal:', e))
       }
     }
 

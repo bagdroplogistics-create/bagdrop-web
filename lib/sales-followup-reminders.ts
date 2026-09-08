@@ -139,9 +139,17 @@ interface LeadRow {
   customer_responded_at: string | null
   booking_id: string | null
   is_test?: boolean | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08: "Do not
+  // trigger payment follow-up for an FOC quotation" / "Existing payment
+  // reminders... must not apply to FOC bookings". Both customer-facing
+  // Track 3 and the internal Track 2 "customer hasn't responded" nudge are
+  // fundamentally about driving a quote toward payment, so both skip an
+  // FOC lead — see the `lead.billing_type === 'foc'` guards below, which
+  // follow the exact same skip pattern already used for `lead.is_test`.
+  billing_type?: 'paid' | 'foc' | null
 }
 
-const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, customer_responded_at, booking_id, is_test'
+const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, customer_responded_at, booking_id, is_test, billing_type'
 
 async function appendCommunicationLog(leadId: string, entry: Record<string, unknown>): Promise<void> {
   const { data } = await supabaseAdmin.from('leads').select('communication_log').eq('id', leadId).maybeSingle()
@@ -214,6 +222,9 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
     const bookingStatusById = new Map(bookingRows.map(b => [b.id, b.status]))
 
     for (const lead of (awaitingResponseLeads ?? []) as LeadRow[]) {
+      // FOC (Free of Charge) — never schedule a payment-adjacent follow-up
+      // for a complimentary quote. See LeadRow.billing_type doc comment.
+      if (lead.billing_type === 'foc') continue
       const bStatus = lead.booking_id ? bookingStatusById.get(lead.booking_id) : undefined
       // Anything other than still sitting at 'quote_sent' (or no booking
       // status info at all) means the customer has already moved —
@@ -254,6 +265,7 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
     if (settings.clientFollowupEnabled) {
       for (const lead of (awaitingResponseLeads ?? []) as LeadRow[]) {
         if (lead.is_test) continue
+        if (lead.billing_type === 'foc') continue
         const bStatus = lead.booking_id ? bookingStatusById.get(lead.booking_id) : undefined
         if (bStatus && bStatus !== 'quote_sent' && bStatus !== 'quote_created' && bStatus !== 'inquiry') continue
         if (!hoursAgo(lead.quote_date as string, settings.clientFollowupHours)) continue
@@ -333,6 +345,12 @@ async function sendDuePending(): Promise<{ processed: number }> {
       // Re-check stop conditions at send time.
       let skipReason: string | null = null
       if (lead.status === 'lost') skipReason = 'Lead is now closed/lost'
+      // FOC (Free of Charge) — re-checked here too (not just at scheduling)
+      // in case an admin switched an already-scheduled quote to FOC via
+      // Edit Quote after the reminder row was created. Track 1
+      // (quote_pending_*) is exempt: it only ever fires before a quote
+      // (and therefore before a billing type) exists.
+      else if (!isQuoteTrack && lead.billing_type === 'foc') skipReason = 'Quote is FOC (Free of Charge) — no payment follow-up needed'
       else if (isQuoteTrack && lead.quote_number) skipReason = `Quote ${lead.quote_number} was already created`
       else if (!isQuoteTrack) {
         if (lead.customer_responded_at) skipReason = 'Customer response already recorded'

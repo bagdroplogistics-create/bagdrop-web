@@ -56,6 +56,11 @@ interface Lead {
   salesperson_name:   string | null
   agent_name:          string | null
   payment_status:      'pending' | 'received' | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08. Defaults
+  // to 'paid' on the server (supabase/migrations/20260908_foc_billing_type.sql)
+  // so existing quotes/leads are unaffected; optional here purely so older
+  // cached responses without the column still type-check.
+  billing_type?:       'paid' | 'foc' | null
   // Business Customer support — all optional/nullable, additive
   customer_type?:       string | null
   business_name?:       string | null
@@ -611,6 +616,7 @@ function QuotePageInner() {
         if (d.payment_status === 'pending' || d.payment_status === 'received') {
           setPaymentStatus(d.payment_status)
         }
+        if (d.billing_type === 'foc') setBillingType('foc')
         setSubject(d.quote_subject ?? '')
         // If this quote's saved Subject was itself auto-generated (never
         // customized) when it was first created, re-arm the auto-sync latch
@@ -909,14 +915,28 @@ function QuotePageInner() {
   const [discountPct,    setDiscountPct]    = useState(0)
   const [discountFixed,  setDiscountFixed]  = useState(0)
   const [paymentStatus,  setPaymentStatus]  = useState<'pending' | 'received'>('pending')
+  // Client Type / Billing Type — Founder spec 2026-09-08 ("Add FOC Option
+  // in Quotation Module"). Defaults to 'paid' so the existing quotation
+  // workflow is completely unchanged unless the admin explicitly selects
+  // FOC. Deliberately does NOT alter the discount/line-item math below —
+  // Total is force-zeroed as an independent override further down instead,
+  // so an FOC quote always shows ₹0 regardless of what's in the line items
+  // (no reliance on the admin remembering to also zero out rates/discount).
+  const [billingType,    setBillingType]    = useState<'paid' | 'foc'>('paid')
+  const isFOC = billingType === 'foc'
 
-  const subtotal    = lineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
-  const discountAmt = discountType === 'fixed'
+  const subtotal      = lineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
+  const discountAmt   = discountType === 'fixed'
     ? Math.min(Math.max(0, discountFixed), subtotal)
     : parseFloat((subtotal * discountPct / 100).toFixed(2))
-  const taxableAmt  = subtotal - discountAmt
-  const taxAmt      = taxableAmt * 0.05
-  const total       = taxableAmt + taxAmt
+  const taxableAmt    = subtotal - discountAmt
+  const rawTaxAmt      = taxableAmt * 0.05
+  const rawTotal       = taxableAmt + rawTaxAmt
+  // FOC override: Total payable must always be ₹0, per spec — regardless of
+  // line items or discount entered above (those stay visible/editable so
+  // the admin can still record what the service would normally have cost).
+  const taxAmt        = isFOC ? 0 : rawTaxAmt
+  const total          = isFOC ? 0 : rawTotal
 
   // Return journey totals — no discount in this phase, kept simple
   const returnSubtotal = returnLineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
@@ -961,6 +981,7 @@ function QuotePageInner() {
       salesperson_name:   salesperson || null,
       agent_name:         agentName.trim() || null,
       payment_status:     paymentStatus,
+      billing_type:       billingType,
     } : {}
 
     const res = await fetch(`/api/admin/leads/${leadId}`, {
@@ -1043,6 +1064,11 @@ function QuotePageInner() {
       if (returnNotes.trim()) returnPayload.customer_notes   = returnNotes.trim()
       if (salesperson)        returnPayload.salesperson_name = salesperson
       if (agentName.trim())   returnPayload.agent_name       = agentName.trim()
+      // Follow the PRIMARY quote's own saved billing type (not local
+      // `billingType` state, which may not be loaded yet on this early-exit
+      // "add return leg only" path) — an FOC primary quote's return leg is
+      // FOC too.
+      returnPayload.billing_type = lead.billing_type === 'foc' ? 'foc' : 'paid'
 
       try {
         const res = await fetch('/api/admin/zoho/generate-quote', {
@@ -1187,6 +1213,7 @@ function QuotePageInner() {
       payload.discount_type      = 'fixed'
     }
     payload.payment_status = paymentStatus
+    payload.billing_type   = billingType
 
     // If the onward quote was already created in an earlier click (Return
     // Trip: this is a retry after the return leg failed or had no items),
@@ -1248,6 +1275,9 @@ function QuotePageInner() {
       if (returnNotes.trim())   returnPayload.customer_notes  = returnNotes.trim()
       if (salesperson)          returnPayload.salesperson_name = salesperson
       if (agentName.trim())    returnPayload.agent_name       = agentName.trim()
+      // Return leg follows the same billing type as the onward quote — an
+      // FOC customer's return journey is FOC too, not a separate decision.
+      returnPayload.billing_type = billingType
 
       const returnRes = await fetch('/api/admin/zoho/generate-quote', {
         method: 'POST',
@@ -1828,11 +1858,28 @@ function QuotePageInner() {
                   placeholder="Hotel / Home address" className={inp} />
               </div>
               <div>
-                <label className={lbl}>Payment Status</label>
-                <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'pending' | 'received')} className={inp}>
-                  <option value="pending">Pending</option>
-                  <option value="received">Received</option>
+                <label className={lbl}>Client Type / Billing Type</label>
+                <select value={billingType} onChange={e => setBillingType(e.target.value as 'paid' | 'foc')}
+                  className={`${inp} ${isFOC ? 'border-amber-400 bg-amber-50 font-semibold text-amber-800' : ''}`}>
+                  <option value="paid">Paid</option>
+                  <option value="foc">FOC – Free of Charge</option>
                 </select>
+                {isFOC && (
+                  <p className="mt-1 text-[11px] font-medium text-amber-700">
+                    FOC selected — Total will show ₹0, no payment will be requested, and payment reminders/verification are skipped for this quote.
+                  </p>
+                )}
+              </div>
+              <div>
+                <label className={lbl}>Payment Status</label>
+                {isFOC ? (
+                  <input type="text" value="Not Applicable (FOC)" readOnly className={inpRO} />
+                ) : (
+                  <select value={paymentStatus} onChange={e => setPaymentStatus(e.target.value as 'pending' | 'received')} className={inp}>
+                    <option value="pending">Pending</option>
+                    <option value="received">Received</option>
+                  </select>
+                )}
               </div>
               <div>
                 <label className={lbl}>Undertaking Status</label>
@@ -2204,7 +2251,9 @@ function QuotePageInner() {
 
             <div className="pt-2 space-y-1 text-xs text-gray-400">
               <p className="font-semibold text-gray-500">Auto-set by system:</p>
-              <p>✓ Payment Status: <span className={paymentStatus === 'received' ? 'text-green-600 font-bold' : ''}>{paymentStatus === 'received' ? 'Received' : 'Pending'}</span></p>
+              <p>✓ Payment Status: {isFOC
+                ? <span className="font-bold text-amber-600">Not Applicable (FOC)</span>
+                : <span className={paymentStatus === 'received' ? 'text-green-600 font-bold' : ''}>{paymentStatus === 'received' ? 'Received' : 'Pending'}</span>}</p>
               <p>✓ Undertaking: Pending</p>
               <p>✓ Scan &amp; Pay QR</p>
             </div>

@@ -280,6 +280,15 @@ export interface QuotePDFProps {
   notes: string | null
   terms: string | null
 
+  // FOC (Free of Charge) — Founder spec 2026-09-08. When true, the PDF
+  // shows an "FOC — FREE OF CHARGE" banner, forces the displayed Total to
+  // ₹0 regardless of what's passed in `total` (defensive — the caller
+  // should already be passing 0, but the PDF never trusts that alone for
+  // something customer-facing), and replaces the bank/UPI "Payment
+  // Details" box with an FOC notice — a customer must never be shown an
+  // amount to pay or a way to pay it on a complimentary quote.
+  isFOC?: boolean
+
   // ── Return Trip (optional) ──────────────────────────────────────────
   // Populated only when this lead has a Return Trip quote (Trip Type =
   // Return Trip on New Quote). When present, Line Items + Totals render
@@ -326,6 +335,11 @@ export default function QuotePDF(p: QuotePDFProps) {
   const tcSectionStyle = compact ? { ...s.tcSection, margin: '0 28 3', paddingTop: 3 } : s.tcSection
   const footerStyle  = compact ? { ...s.footer, padding: '7 28' }               : s.footer
 
+  // FOC defensive override — see isFOC doc comment on QuotePDFProps above.
+  const isFOC       = p.isFOC === true
+  const displayTax   = isFOC ? 0 : p.tax
+  const displayTotal = isFOC ? 0 : p.total
+
   const meta = [
     { label: 'GSTIN',      value: '24AAACC9320N2ZL' },
     { label: 'SAC Code',   value: '996511' },
@@ -358,6 +372,17 @@ export default function QuotePDF(p: QuotePDFProps) {
             {p.expiryDate ? <Text style={s.qnValidTill}>Valid till {fmtDate(p.expiryDate)}</Text> : null}
           </View>
         </View>
+
+        {/* ── FOC (Free of Charge) banner — Founder spec 2026-09-08 ──
+            Placed directly under the header so it's the first thing seen
+            after the quote number, before any pricing detail. */}
+        {isFOC && (
+          <View style={{ margin: '0 28 6', backgroundColor: '#fef3c7', borderRadius: 4, padding: '6 12', alignItems: 'center' }}>
+            <Text style={{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: '#92400e', letterSpacing: 0.5 }}>
+              FOC — FREE OF CHARGE
+            </Text>
+          </View>
+        )}
 
         {/* ── Meta strip ── */}
         <View style={s.strip}>
@@ -497,29 +522,43 @@ export default function QuotePDF(p: QuotePDFProps) {
 
         {/* ── Payment + Totals ── */}
         <View style={tpRowStyle}>
-          {/* Payment */}
-          <View style={s.payBox}>
-            <Text style={s.payLbl}>Payment Details</Text>
-            <View style={{ flexDirection: 'row', gap: 8 }}>
-              <View style={{ flex: 1 }}>
-                <View style={s.payRow}><Text style={s.payKey}>Bank:</Text><Text style={s.payVal}>Indian Overseas Bank</Text></View>
-                <View style={s.payRow}><Text style={s.payKey}>A/C No:</Text><Text style={s.payVal}>171702000001297</Text></View>
-                <View style={s.payRow}><Text style={s.payKey}>IFSC:</Text><Text style={s.payVal}>IOBA0001717</Text></View>
-                <View style={s.payRow}><Text style={s.payKey}>Branch:</Text><Text style={s.payVal}>Gotri Road, Vadodara</Text></View>
-                <View style={s.upiBox}>
-                  <Text style={s.upiText}>UPI: BAGDROP1717@IOB</Text>
+          {/* Payment — suppressed entirely for FOC quotes (spec: "Customer
+              should not be shown an amount to pay" / "Payment should not
+              be required"). Showing a bank account + Scan-to-Pay QR on a
+              complimentary quote would directly contradict that. */}
+          {isFOC ? (
+            <View style={[s.payBox, { alignItems: 'center', justifyContent: 'center' }]}>
+              <Text style={{ fontSize: 10, fontFamily: 'Helvetica-Bold', color: '#92400e' }}>
+                No Payment Required
+              </Text>
+              <Text style={{ fontSize: 8, color: GREY, marginTop: 3, textAlign: 'center' }}>
+                This is a complimentary (FOC) booking. No amount is payable by the customer.
+              </Text>
+            </View>
+          ) : (
+            <View style={s.payBox}>
+              <Text style={s.payLbl}>Payment Details</Text>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                <View style={{ flex: 1 }}>
+                  <View style={s.payRow}><Text style={s.payKey}>Bank:</Text><Text style={s.payVal}>Indian Overseas Bank</Text></View>
+                  <View style={s.payRow}><Text style={s.payKey}>A/C No:</Text><Text style={s.payVal}>171702000001297</Text></View>
+                  <View style={s.payRow}><Text style={s.payKey}>IFSC:</Text><Text style={s.payVal}>IOBA0001717</Text></View>
+                  <View style={s.payRow}><Text style={s.payKey}>Branch:</Text><Text style={s.payVal}>Gotri Road, Vadodara</Text></View>
+                  <View style={s.upiBox}>
+                    <Text style={s.upiText}>UPI: BAGDROP1717@IOB</Text>
+                  </View>
+                </View>
+                <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
+                  {/* eslint-disable-next-line jsx-a11y/alt-text */}
+                  <Image
+                    src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=upi%3A%2F%2Fpay%3Fpa%3DBAGDROP1717%40IOB%26pn%3DBagdrop%26cu%3DINR"
+                    style={{ width: 78, height: 78, borderRadius: 4 }}
+                  />
+                  <Text style={{ fontSize: 7.5, color: GREY, marginTop: 3, textAlign: 'center' }}>Scan to Pay</Text>
                 </View>
               </View>
-              <View style={{ alignItems: 'center', justifyContent: 'flex-end' }}>
-                {/* eslint-disable-next-line jsx-a11y/alt-text */}
-                <Image
-                  src="https://api.qrserver.com/v1/create-qr-code/?size=80x80&data=upi%3A%2F%2Fpay%3Fpa%3DBAGDROP1717%40IOB%26pn%3DBagdrop%26cu%3DINR"
-                  style={{ width: 78, height: 78, borderRadius: 4 }}
-                />
-                <Text style={{ fontSize: 7.5, color: GREY, marginTop: 3, textAlign: 'center' }}>Scan to Pay</Text>
-              </View>
             </View>
-          </View>
+          )}
 
           {/* Totals */}
           <View style={s.totalsBox}>
@@ -532,16 +571,26 @@ export default function QuotePDF(p: QuotePDFProps) {
                 <Text style={[s.totVal, { color: '#dc2626' }]}>− {fmtRs(p.discountAmt!)}</Text>
               </View>
             )}
-            <View style={s.totRow}><Text style={s.totKey}>CGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(p.tax / 2)}</Text></View>
-            <View style={s.totRow}><Text style={s.totKey}>SGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(p.tax / 2)}</Text></View>
+            <View style={s.totRow}><Text style={s.totKey}>CGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(displayTax / 2)}</Text></View>
+            <View style={s.totRow}><Text style={s.totKey}>SGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(displayTax / 2)}</Text></View>
             <View style={[s.totRow, s.totDivider]}>
               <Text style={s.grandKey}>Total Amount</Text>
-              <Text style={s.grandVal}>{fmtRs(p.total)}</Text>
+              {/* fmtRs() below renders "Rs." not the ₹ glyph — this PDF's
+                  Helvetica font has no rupee-sign glyph, so a literal '₹'
+                  here would silently render as nothing (confirmed via
+                  render+visual-inspection). "FOC — Rs. 0" matches every
+                  other amount on this document instead. */}
+              <Text style={[s.grandVal, isFOC ? { color: '#92400e' } : undefined]}>{isFOC ? `FOC — ${fmtRs(0)}` : fmtRs(displayTotal)}</Text>
             </View>
-            {p.total > 0 && (
+            {isFOC ? (
+              <View style={s.amtWords}>
+                <Text style={s.amtWLabel}>Billing Type</Text>
+                <Text style={s.amtWText}>Free of Charge — no payment required for this booking.</Text>
+              </View>
+            ) : displayTotal > 0 && (
               <View style={s.amtWords}>
                 <Text style={s.amtWLabel}>Amount in Words</Text>
-                <Text style={s.amtWText}>{toWords(p.total)}</Text>
+                <Text style={s.amtWText}>{toWords(displayTotal)}</Text>
               </View>
             )}
           </View>

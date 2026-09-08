@@ -36,6 +36,7 @@ export type BookingPaymentStatus =
   | 'pending_verification'
   | 'paid'
   | 'approved_pending'
+  | 'not_applicable'
 
 export interface PaymentStatusResult {
   status:     BookingPaymentStatus
@@ -53,10 +54,23 @@ export { countsTowardTotalPaid } from '@/lib/payment-ledger'
 export async function recomputeBookingPaymentStatus(bookingId: string): Promise<PaymentStatusResult | null> {
   const { data: booking } = await supabaseAdmin
     .from('bookings')
-    .select('total_amount, approved_without_payment')
+    .select('total_amount, approved_without_payment, billing_type')
     .eq('id', bookingId)
     .maybeSingle()
   if (!booking) return null
+
+  // FOC (Free of Charge) bookings — Founder spec, 2026-09-08: FOC is a
+  // billing/payment TYPE, not a point on the normal payment-status ladder.
+  // No amount is ever due, so it must never be evaluated against the
+  // totalAmount/totalPaid precedence below (a ₹0 total would otherwise fall
+  // through to 'pending', which would then wrongly surface FOC bookings as
+  // "payment pending" everywhere payment_status is displayed or filtered).
+  // Short-circuit immediately, before touching the payments ledger at all.
+  if (booking.billing_type === 'foc') {
+    await supabaseAdmin.from('bookings').update({ payment_status: 'not_applicable' }).eq('id', bookingId)
+    await supabaseAdmin.from('invoices').update({ payment_status: 'paid' }).eq('booking_id', bookingId)
+    return { status: 'not_applicable', totalPaid: 0, balanceDue: 0 }
+  }
 
   const { data: paymentsRows } = await supabaseAdmin
     .from('payments')

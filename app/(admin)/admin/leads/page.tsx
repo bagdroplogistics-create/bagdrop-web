@@ -61,6 +61,8 @@ interface Lead {
   quote_discount_pct:   number | null
   quote_discount_amt:   number | null
   payment_status:       string | null
+  // FOC (Free of Charge) billing type — Founder spec 2026-09-08.
+  billing_type?:        'paid' | 'foc' | null
   updated_at?:          string | null
   acknowledgment_sent_at?: string | null
   communication_log?:   CommunicationLogEntry[] | null
@@ -1631,6 +1633,15 @@ function LeadsPageInner() {
                                     ? `−${l.quote_discount_pct}%`
                                     : `−₹${Number(l.quote_discount_amt).toLocaleString('en-IN')}`
                                   } discount
+                                </span>
+                              )}
+                              {/* FOC (Free of Charge) badge — Founder spec 2026-09-08:
+                                  "Show a small badge/label FOC in the Leads/Quotes
+                                  table so Admin can easily identify complimentary
+                                  bookings." */}
+                              {l.billing_type === 'foc' && (
+                                <span className="inline-flex items-center rounded-full bg-amber-50 border border-amber-200 px-2 py-0.5 text-[10px] font-bold text-amber-700">
+                                  FOC
                                 </span>
                               )}
 
