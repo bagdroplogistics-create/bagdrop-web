@@ -26,6 +26,7 @@ import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Line, Polygon 
 import React from 'react'
 import { LOGO_FULL_COLOR_DATA_URI, LOGO_ICON_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
 import { INVOICE_COMPANY } from '@/lib/company-info'
+import { generateQrDataUri } from '@/lib/qr-code'
 
 const ORANGE    = '#f97316'
 const ORANGE_DK = '#c74f0f'
@@ -38,10 +39,6 @@ const PAGE_W = 595.28
 const PAGE_H = 841.89
 const PAD    = 26
 const COL_W  = PAGE_W - PAD * 2 // 543.28
-
-function qrUrl(data: string, size: number) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
-}
 
 // Same non-negotiable rule as the Bag Tag QR (lib/bag-tags.ts's
 // bagTrackingUrl comment): only ever encode the bag/booking's own tracking
@@ -156,7 +153,13 @@ export interface ConsignmentLabelInput {
   consigneeAddress: string | null
 }
 
-function ConsignmentLabelPage({ l }: { l: ConsignmentLabelInput }) {
+// Internal-only shape — the public ConsignmentLabelInput never carries a
+// rendered QR image; buildConsignmentLabelPdfBuffer computes it once per
+// label (see generateQrDataUri) before handing off to react-pdf, since QR
+// generation is async and component rendering below is not.
+type ConsignmentLabelWithQr = ConsignmentLabelInput & { qrDataUri: string }
+
+function ConsignmentLabelPage({ l }: { l: ConsignmentLabelWithQr }) {
   const qrSeed = l.bagLabel || l.trackingId
 
   return (
@@ -219,7 +222,7 @@ function ConsignmentLabelPage({ l }: { l: ConsignmentLabelInput }) {
       <View style={s.qrRow}>
         <Text style={s.qrCap}>SCAN TO{'\n'}TRACK THIS BAG{'\n'}<Text style={s.qrCapSub}>{qrSeed}</Text></Text>
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
-        <Image style={s.qr} src={qrUrl(labelTrackingUrl(qrSeed), 160)} />
+        <Image style={s.qr} src={l.qrDataUri} />
       </View>
 
       {/* Handle with care */}
@@ -271,7 +274,7 @@ function ConsignmentLabelPage({ l }: { l: ConsignmentLabelInput }) {
   )
 }
 
-function ConsignmentLabelDocument({ labels }: { labels: ConsignmentLabelInput[] }) {
+function ConsignmentLabelDocument({ labels }: { labels: ConsignmentLabelWithQr[] }) {
   // One full A4 page per bag — matches the reference photo's scale (a
   // full printer-paper sheet taped over each bag's plastic wrap), unlike
   // the compact multi-per-page airport Bag Tag.
@@ -285,7 +288,16 @@ function ConsignmentLabelDocument({ labels }: { labels: ConsignmentLabelInput[] 
 }
 
 export async function buildConsignmentLabelPdfBuffer(labels: ConsignmentLabelInput[]): Promise<Buffer> {
-  const element = React.createElement(ConsignmentLabelDocument, { labels })
+  // QR codes are generated locally (lib/qr-code.ts) — no network call, so
+  // this can no longer silently render a blank QR box the way the old
+  // remote-fetched-at-render-time api.qrserver.com URL could.
+  const withQr: ConsignmentLabelWithQr[] = await Promise.all(
+    labels.map(async l => {
+      const qrSeed = l.bagLabel || l.trackingId
+      return { ...l, qrDataUri: await generateQrDataUri(labelTrackingUrl(qrSeed)) }
+    })
+  )
+  const element = React.createElement(ConsignmentLabelDocument, { labels: withQr })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blob = await pdf(element as any).toBlob()
   const arr  = await blob.arrayBuffer()

@@ -20,6 +20,7 @@ import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Line, Polygon 
 import React from 'react'
 import { bagTrackingUrl, cityCode, barcodeStripes } from '@/lib/bag-tags'
 import { LOGO_FULL_COLOR_DATA_URI, LOGO_ICON_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
+import { generateQrDataUri } from '@/lib/qr-code'
 
 const ORANGE = '#f97316'
 const ORANGE_DK = '#c74f0f'
@@ -136,10 +137,6 @@ function fmtDate(d: string | null): string {
   catch { return d }
 }
 
-function qrUrl(data: string, size: number) {
-  return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
-}
-
 function Barcode({ seed, size, vertical }: { seed: string; size: number; vertical?: boolean }) {
   const stripes = barcodeStripes(seed, vertical ? 40 : 26)
   return (
@@ -196,7 +193,14 @@ export interface BagTagInput {
   deliveryLocation: string | null
 }
 
-function BagTagCard({ b }: { b: BagTagInput }) {
+// Internal-only shape — computed once per bag in buildBagTagsPdfBuffer
+// (QR generation is async, component rendering below is not). Fix
+// (2026-09-08, founder report on the sibling Consignment Label — same
+// underlying bug applies here): previously fetched from api.qrserver.com
+// at render time; now generated locally (lib/qr-code.ts), no network call.
+type BagTagInputWithQr = BagTagInput & { qrDataUri: string }
+
+function BagTagCard({ b }: { b: BagTagInputWithQr }) {
   const fromCode = cityCode(b.fromCity)
   const toCode   = cityCode(b.toCity)
 
@@ -237,7 +241,7 @@ function BagTagCard({ b }: { b: BagTagInput }) {
         <View style={s.qrRow}>
           <Text style={s.qrCap}>SCAN TO{'\n'}TRACK BAG{'\n'}<Text style={s.qrCapSub}>{b.bagLabel}</Text></Text>
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
-          <Image style={s.qr} src={qrUrl(bagTrackingUrl(b.bagLabel), 140)} />
+          <Image style={s.qr} src={b.qrDataUri} />
         </View>
       </View>
 
@@ -281,18 +285,18 @@ function BagTagCard({ b }: { b: BagTagInput }) {
         <View style={s.stubField}><Text style={s.fieldLabel}>CUSTOMER</Text><Text style={s.fieldValue}>{b.customerName}</Text></View>
         <View style={s.stubField}><Text style={s.fieldLabel}>BAG</Text><Text style={s.fieldValue}>{String(b.bagNumber).padStart(2, '0')} / {b.bagTotal}</Text></View>
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
-        <Image style={s.stubQr} src={qrUrl(bagTrackingUrl(b.bagLabel), 100)} />
+        <Image style={s.stubQr} src={b.qrDataUri} />
       </View>
     </View>
   )
 }
 
-function BagTagsDocument({ bags }: { bags: BagTagInput[] }) {
+function BagTagsDocument({ bags }: { bags: BagTagInputWithQr[] }) {
   // 4 landscape tags stacked per A4 portrait page — same width as the
   // page's usable area (TAG_W), so bags.length can be arbitrarily large
   // (150+ for a big group booking) across as many pages as needed.
   const PER_PAGE = 4
-  const pages: BagTagInput[][] = []
+  const pages: BagTagInputWithQr[][] = []
   for (let i = 0; i < bags.length; i += PER_PAGE) pages.push(bags.slice(i, i + PER_PAGE))
 
   return (
@@ -313,7 +317,13 @@ function BagTagsDocument({ bags }: { bags: BagTagInput[] }) {
 }
 
 export async function buildBagTagsPdfBuffer(bags: BagTagInput[]): Promise<Buffer> {
-  const element = React.createElement(BagTagsDocument, { bags })
+  // QR generated locally per bag (lib/qr-code.ts) — see BagTagInputWithQr
+  // comment above for why this replaced the old remote-fetched-at-render
+  // api.qrserver.com URL.
+  const withQr: BagTagInputWithQr[] = await Promise.all(
+    bags.map(async b => ({ ...b, qrDataUri: await generateQrDataUri(bagTrackingUrl(b.bagLabel)) }))
+  )
+  const element = React.createElement(BagTagsDocument, { bags: withQr })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blob = await pdf(element as any).toBlob()
   const arr  = await blob.arrayBuffer()
