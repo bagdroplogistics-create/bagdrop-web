@@ -237,16 +237,20 @@ export const BAG_TAG_CARD_STYLES = `
   .bag-tag-flight { flex: 0 0 24%; border-right: 1.5px dashed #d4cfc6; background: #fff; }
   .bag-tag-flight-head { background: #111827; color: #fff; display: flex; align-items: center; justify-content: space-between; padding: 6px 8px; }
   .bag-tag-flight-head > span:last-child { font-size: 6.5px; font-weight: 800; letter-spacing: 1.2px; color: #f97316; }
-  .bag-tag-flight-body { flex: 1; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; gap: 6px; }
+  .bag-tag-flight-body { flex: 1; padding: 8px 10px; display: flex; flex-direction: column; justify-content: center; gap: 7px; }
   .bag-tag-fromto { display: flex; flex-direction: column; line-height: 1; }
-  .bag-tag-fromto-label { font-size: 5.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
-  .bag-tag-fromto-code { font-size: 17px; font-weight: 800; color: #111827; margin-top: 1px; }
+  /* Bumped 2026-09-08 (founder: "increase font...bcoz you have enough
+     space...FROM BDQ Vadodara TO UDR Udaipur font increase as per airline
+     bagtag sticker bigger font") — kept in sync with the same-purpose
+     ftLabel/ftCode/ftCity/bagNoLbl/bagNoVal sizes in lib/bag-tags-pdf.tsx. */
+  .bag-tag-fromto-label { font-size: 6.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
+  .bag-tag-fromto-code { font-size: 23px; font-weight: 800; color: #111827; margin-top: 2px; }
   .bag-tag-fromto-code-orange { color: #c74f0f; }
-  .bag-tag-fromto-city { font-size: 6px; font-weight: 600; letter-spacing: 0.4px; color: #918b81; text-transform: uppercase; margin-top: 1px; }
-  .bag-tag-flight-divider { height: 1px; background: #e5e0d8; margin: 3px 0; }
+  .bag-tag-fromto-city { font-size: 8.5px; font-weight: 600; letter-spacing: 0.4px; color: #918b81; text-transform: uppercase; margin-top: 1px; }
+  .bag-tag-flight-divider { height: 1px; background: #e5e0d8; margin: 4px 0; }
   .bag-tag-bagno { display: flex; align-items: baseline; gap: 6px; }
-  .bag-tag-bagno span { font-size: 5.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
-  .bag-tag-bagno b { font-size: 10px; font-weight: 800; color: #111827; }
+  .bag-tag-bagno span { font-size: 6.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
+  .bag-tag-bagno b { font-size: 13px; font-weight: 800; color: #111827; }
   .bag-tag-care { background: #111827; color: #fff; padding: 5px 8px; font-size: 6.5px; font-weight: 800; letter-spacing: 0.8px; text-align: center; }
 
   /* Claim stub */

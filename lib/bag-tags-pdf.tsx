@@ -65,14 +65,21 @@ const s = StyleSheet.create({
   flightHead: { backgroundColor: DARK, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: '5 8' },
   flightHeadTxt: { fontSize: 5.3, fontFamily: 'Helvetica-Bold', color: ORANGE, letterSpacing: 1 },
   flightBody: { flex: 1, padding: '6 9', justifyContent: 'center' },
-  ftLabel: { fontSize: 4.8, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8 },
-  ftCode:  { fontSize: 15, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 1 },
+  // Bumped 2026-09-08 (founder: "increase font...bcoz you have enough
+  // space...FROM BDQ Vadodara TO UDR Udaipur font increase as per airline
+  // bagtag sticker bigger font") — the flight panel's fixed 190pt height
+  // had plenty of unused vertical room below the FROM/TO block (verified
+  // by rendering: flightBody's actual content was well under half the
+  // available height), so every size in this panel scales up ~35-40%
+  // rather than only the two explicitly-named lines, for a consistent look.
+  ftLabel: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8 },
+  ftCode:  { fontSize: 21, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 2 },
   ftCodeOrange: { color: ORANGE_DK },
-  ftCity:  { fontSize: 5.2, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginTop: 1 },
-  ftDivider: { height: 1, backgroundColor: '#e5e0d8', marginVertical: 5 },
+  ftCity:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginTop: 1 },
+  ftDivider: { height: 1, backgroundColor: '#e5e0d8', marginVertical: 6 },
   bagNoRow: { flexDirection: 'row', alignItems: 'baseline' },
-  bagNoLbl: { fontSize: 4.8, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8, marginRight: 5 },
-  bagNoVal: { fontSize: 9, fontFamily: 'Helvetica-Bold', color: DARK },
+  bagNoLbl: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8, marginRight: 5 },
+  bagNoVal: { fontSize: 11.5, fontFamily: 'Helvetica-Bold', color: DARK },
   care: { backgroundColor: DARK, padding: '4 8' },
   careTxt: { fontSize: 5.8, fontFamily: 'Helvetica-Bold', color: '#fff', letterSpacing: 0.6, textAlign: 'center' },
 
@@ -207,7 +214,7 @@ function BagTagCard({ b }: { b: BagTagInput }) {
           <Text style={s.ftLabel}>FROM</Text>
           <Text style={s.ftCode}>{fromCode}</Text>
           <Text style={s.ftCity}>{b.fromCity || '—'}</Text>
-          <View style={{ height: 5 }} />
+          <View style={{ height: 7 }} />
           <Text style={s.ftLabel}>TO</Text>
           <Text style={[s.ftCode, s.ftCodeOrange]}>{toCode}</Text>
           <Text style={s.ftCity}>{b.toCity || '—'}</Text>
