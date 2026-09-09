@@ -1648,7 +1648,7 @@ export default function QuoteViewPage() {
                       quote_number: null, quote_line_items: null, quote_total: null,
                       quote_subtotal: null, quote_tax: null,
                       quote_discount_pct: null, quote_discount_amt: null,
-                      quote_date: null, quote_expiry_date: null,
+                      quote_date: null, quote_sent_at: null, quote_expiry_date: null,
                       quote_notes: null, quote_terms: null, quote_subject: null,
                       salesperson_name: null, agent_name: null,
                       zoho_estimate_id: null, zoho_estimate_number: null,

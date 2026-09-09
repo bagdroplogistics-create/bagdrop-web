@@ -58,6 +58,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // return_quote_* clear support below, e.g. "Delete Quote" on the quote
     // view page. This never deletes the lead row itself.
     'quote_number', 'quote_date',
+    // Real send timestamp alongside quote_date (date-only) — see
+    // supabase/migrations/20260909_quote_sent_at.sql. Included in the same
+    // clear-on-delete-quote flow as quote_date above.
+    'quote_sent_at',
     'quote_line_items', 'quote_subtotal', 'quote_discount_pct', 'quote_discount_amt',
     'quote_tax', 'quote_total', 'quote_subject', 'quote_notes', 'quote_terms',
     'quote_expiry_date', 'salesperson_name', 'agent_name',
@@ -100,7 +104,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'email', 'from_city', 'to_city', 'notes', 'assigned_to',
     'converted_booking_id', 'pnr', 'flight_number', 'flight_ticket_url', 'pickup_time',
     'pickup_address', 'drop_address',
-    'quote_number', 'quote_date',
+    'quote_number', 'quote_date', 'quote_sent_at',
     'quote_expiry_date', 'quote_subject', 'quote_notes', 'quote_terms',
     'salesperson_name', 'agent_name',
     'return_quote_number', 'return_quote_total', 'return_quote_subtotal',

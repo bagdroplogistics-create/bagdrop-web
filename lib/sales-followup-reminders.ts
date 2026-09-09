@@ -136,6 +136,11 @@ interface LeadRow {
   from_city: string | null; to_city: string | null
   created_at: string; status: string
   quote_number: string | null; quote_date: string | null
+  // Real send timestamp — see supabase/migrations/20260909_quote_sent_at.sql
+  // for why quote_date (DATE, no time-of-day) can't be used directly as a
+  // scheduling reference. NULL for any lead quoted before this column
+  // existed; every read below falls back to quote_date for those.
+  quote_sent_at: string | null
   customer_responded_at: string | null
   booking_id: string | null
   is_test?: boolean | null
@@ -149,7 +154,14 @@ interface LeadRow {
   billing_type?: 'paid' | 'foc' | null
 }
 
-const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, customer_responded_at, booking_id, is_test, billing_type'
+const LEAD_SELECT = 'id, lead_number, name, phone, from_city, to_city, created_at, status, quote_number, quote_date, quote_sent_at, customer_responded_at, booking_id, is_test, billing_type'
+
+// The real "quote was sent" instant to schedule/count from — quote_sent_at
+// when available, falling back to quote_date (date-only, midnight UTC) for
+// leads quoted before that column existed. See LeadRow.quote_sent_at.
+function quoteSentAt(lead: Pick<LeadRow, 'quote_date' | 'quote_sent_at'>): string {
+  return lead.quote_sent_at || (lead.quote_date as string)
+}
 
 async function appendCommunicationLog(leadId: string, entry: Record<string, unknown>): Promise<void> {
   const { data } = await supabaseAdmin.from('leads').select('communication_log').eq('id', leadId).maybeSingle()
@@ -234,8 +246,9 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
       for (const tier of TIERS) {
         if (tier > 24 && !settings.escalationEnabled) continue
         const thresholdHours = tier === 24 ? settings.responseReminderHours : tier
-        if (!hoursAgo(lead.quote_date as string, thresholdHours)) continue
-        const scheduledFor = new Date(new Date(lead.quote_date as string).getTime() + thresholdHours * 3600000).toISOString()
+        const sentAt = quoteSentAt(lead)
+        if (!hoursAgo(sentAt, thresholdHours)) continue
+        const scheduledFor = new Date(new Date(sentAt).getTime() + thresholdHours * 3600000).toISOString()
         for (const channel of channels) {
           const { error } = await supabaseAdmin.from('lead_followups').upsert(
             {
@@ -268,8 +281,9 @@ async function scheduleDueTiers(settings: FollowupSettings): Promise<{ scheduled
         if (lead.billing_type === 'foc') continue
         const bStatus = lead.booking_id ? bookingStatusById.get(lead.booking_id) : undefined
         if (bStatus && bStatus !== 'quote_sent' && bStatus !== 'quote_created' && bStatus !== 'inquiry') continue
-        if (!hoursAgo(lead.quote_date as string, settings.clientFollowupHours)) continue
-        const scheduledFor = new Date(new Date(lead.quote_date as string).getTime() + settings.clientFollowupHours * 3600000).toISOString()
+        const sentAt = quoteSentAt(lead)
+        if (!hoursAgo(sentAt, settings.clientFollowupHours)) continue
+        const scheduledFor = new Date(new Date(sentAt).getTime() + settings.clientFollowupHours * 3600000).toISOString()
         const { error } = await supabaseAdmin.from('lead_followups').upsert(
           {
             lead_id: lead.id, reminder_type: 'client_quote_followup_2h', channel: 'whatsapp',
@@ -428,7 +442,7 @@ async function sendDuePending(): Promise<{ processed: number }> {
         //     {{3}} Quote Date, {{4}} Route, {{5}} Mobile
         const variables = isQuoteTrack
           ? [lead.name || 'Customer', lead.lead_number, route, fmtDateTime(lead.created_at), lead.phone || '—']
-          : [lead.name || 'Customer', lead.lead_number, fmtDateTime(lead.quote_date), route, lead.phone || '—']
+          : [lead.name || 'Customer', lead.lead_number, fmtDateTime(quoteSentAt(lead)), route, lead.phone || '—']
 
         const result = await sendToAllRecipients(settings.whatsapp, templateId, variables)
         await supabaseAdmin.from('lead_followups').update({
@@ -452,7 +466,7 @@ async function sendDuePending(): Promise<{ processed: number }> {
              Inquiry Date: ${fmtDateTime(lead.created_at)}<br/>Mobile: ${lead.phone}</p>
              <p>Please review this inquiry and send the quotation as soon as possible.</p>`
           : `<p><strong>${stageLabel}</strong></p><p>The customer has not responded to the quotation.</p>
-             <p>Customer: ${lead.name}<br/>Inquiry ID: ${lead.lead_number}<br/>Quote Date: ${fmtDateTime(lead.quote_date)}<br/>
+             <p>Customer: ${lead.name}<br/>Inquiry ID: ${lead.lead_number}<br/>Quote Date: ${fmtDateTime(quoteSentAt(lead))}<br/>
              Route: ${route}<br/>Mobile: ${lead.phone}</p>
              <p>Please follow up with the customer by phone, WhatsApp, or email.</p>`
 

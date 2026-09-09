@@ -450,6 +450,14 @@ export async function POST(req: NextRequest) {
       quote_discount_amt:   discountAmt  > 0 ? discountAmt  : null,
       quote_tax:            taxAmt,
       quote_date:           today,
+      // Fix (2026-09-09, founder report — see supabase/migrations/
+      // 20260909_quote_sent_at.sql): quote_date is DATE-only (no time),
+      // which made every sales-followup timing threshold (2h/24h/48h/72h)
+      // count from midnight instead of the real creation instant. This is
+      // the actual timestamp lib/sales-followup-reminders.ts now schedules
+      // from. Re-stamped on every regenerate/resend, which correctly
+      // restarts the follow-up countdown from the latest send.
+      quote_sent_at:        new Date().toISOString(),
       payment_status:       paymentStatusIn ?? 'pending',
       billing_type:         isFOC ? 'foc' : 'paid',
       zoho_estimate_id:     null,
