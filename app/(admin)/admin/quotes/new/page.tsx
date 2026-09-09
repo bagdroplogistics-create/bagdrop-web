@@ -9,7 +9,7 @@ import {
   Building2, Package,
 } from 'lucide-react'
 import { TIME_OPTIONS } from '@/lib/time-options'
-import { searchItems, type BagdropItem } from '@/lib/bagdrop-items'
+import { searchItems, BAGDROP_ITEMS, type BagdropItem } from '@/lib/bagdrop-items'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { SOURCE_LABELS } from '@/lib/lead-source'
@@ -125,6 +125,28 @@ function flatPriceCap(name: string): number | null {
   const m = /up\s*-?\s*to\s+(?:min\.?\s*(?:of\s+)?)?(\d+)/i.exec(name)
   return m ? parseInt(m[1], 10) : null
 }
+
+// Stale-description guard — founder report 2026-09-09 (quote QT-2026-0167,
+// item "NMTBL - ... Navi Mumbai to Bangalore"): selecting a catalog item
+// via ItemSearchLocal's dropdown (selectItem() below) fills BOTH Name and
+// Description together from that item. If the admin then free-types over
+// just the Name (e.g. no matching catalog item exists yet for a new
+// route, so they edit an existing similar item's name by hand), the old
+// item's Description silently stays behind — the PDF then shows a second
+// line describing a completely different route. Root cause confirmed:
+// the wrong description text ("BRMT - Transportation of goods (Luggage up
+// To 2 Pieces) from Vadodara to Mumbai") is the VERBATIM catalog
+// description of a different item, only reachable by having selected it
+// first.
+//
+// Fix: track every non-empty catalog description (CATALOG_DESCRIPTIONS)
+// and which catalog name it belongs to (CATALOG_DESC_BY_NAME). updateRow()
+// clears a row's Description the moment its Name is hand-edited away from
+// whichever catalog item that Description actually belongs to — a
+// custom/manually-typed description (not verbatim matching any catalog
+// entry) is never touched.
+const CATALOG_DESCRIPTIONS = new Set(BAGDROP_ITEMS.filter(i => i.description).map(i => i.description))
+const CATALOG_DESC_BY_NAME = new Map(BAGDROP_ITEMS.map(i => [i.name, i.description]))
 
 // ── Constants ──────────────────────────────────────────────────────────
 const ZOHO_ORG_ID  = '60041657788'
@@ -882,6 +904,14 @@ function QuotePageInner() {
         next.amount = (cap != null && qtyNum >= 1 && qtyNum <= cap)
           ? Number(field === 'rate' ? value : r.rate)
           : undefined
+      }
+      // Stale-description guard — see CATALOG_DESCRIPTIONS' comment above.
+      // Only clears a description that's a verbatim catalog description no
+      // longer matching the (just hand-edited) name; a custom description
+      // the admin typed themselves never matches any catalog entry, so
+      // it's left alone.
+      if (field === 'name' && r.description && CATALOG_DESCRIPTIONS.has(r.description) && CATALOG_DESC_BY_NAME.get(String(value)) !== r.description) {
+        next.description = ''
       }
       return next
     }))
