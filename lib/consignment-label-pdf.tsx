@@ -40,11 +40,12 @@ const PAGE_H = 841.89
 const PAD    = 26
 const COL_W  = PAGE_W - PAD * 2 // 543.28
 
-// Same non-negotiable rule as the Bag Tag QR (lib/bag-tags.ts's
-// bagTrackingUrl comment): only ever encode the bag/booking's own tracking
-// id — never customer name/phone/address inside the QR payload itself.
-function labelTrackingUrl(id: string): string {
-  return `https://www.bagdrop.co/track-bag/${encodeURIComponent(id)}`
+// Founder request (2026-09-09): the QR now points at the plain Bagdrop
+// website rather than the per-bag tracking page — kept as its own function
+// (rather than inlining the literal URL at each call site) so this is one
+// place to change again later, same as the old per-bag version was.
+function labelQrUrl(): string {
+  return 'https://www.bagdrop.co'
 }
 
 function fmtDate(d: string | null): string {
@@ -198,8 +199,6 @@ function ConsignmentLabelPage({ l }: { l: ConsignmentLabelWithQr }) {
             <Text style={[s.ccChipTxt, { color: ORANGE_DK }]}>CONSIGNOR · FROM</Text>
           </View>
           <Text style={s.ccName}>{l.consignorName}</Text>
-          <Text style={s.ccFieldLabel}>PHONE</Text>
-          <Text style={s.ccFieldValue}>{l.consignorPhone || '—'}</Text>
           <Text style={s.ccFieldLabel}>ADDRESS</Text>
           <Text style={s.ccFieldValue}>{l.consignorAddress || '—'}</Text>
         </View>
@@ -211,8 +210,6 @@ function ConsignmentLabelPage({ l }: { l: ConsignmentLabelWithQr }) {
             <Text style={[s.ccChipTxt, { color: '#0369a1' }]}>CONSIGNEE · TO</Text>
           </View>
           <Text style={s.ccName}>{l.consigneeName}</Text>
-          <Text style={s.ccFieldLabel}>PHONE</Text>
-          <Text style={s.ccFieldValue}>{l.consigneePhone || '—'}</Text>
           <Text style={s.ccFieldLabel}>ADDRESS</Text>
           <Text style={s.ccFieldValue}>{l.consigneeAddress || '—'}</Text>
         </View>
@@ -220,7 +217,7 @@ function ConsignmentLabelPage({ l }: { l: ConsignmentLabelWithQr }) {
 
       {/* QR */}
       <View style={s.qrRow}>
-        <Text style={s.qrCap}>SCAN TO{'\n'}TRACK THIS BAG{'\n'}<Text style={s.qrCapSub}>{qrSeed}</Text></Text>
+        <Text style={s.qrCap}>SCAN TO VISIT{'\n'}<Text style={s.qrCapSub}>www.bagdrop.co</Text></Text>
         {/* eslint-disable-next-line jsx-a11y/alt-text */}
         <Image style={s.qr} src={l.qrDataUri} />
       </View>
@@ -290,13 +287,11 @@ function ConsignmentLabelDocument({ labels }: { labels: ConsignmentLabelWithQr[]
 export async function buildConsignmentLabelPdfBuffer(labels: ConsignmentLabelInput[]): Promise<Buffer> {
   // QR codes are generated locally (lib/qr-code.ts) — no network call, so
   // this can no longer silently render a blank QR box the way the old
-  // remote-fetched-at-render-time api.qrserver.com URL could.
-  const withQr: ConsignmentLabelWithQr[] = await Promise.all(
-    labels.map(async l => {
-      const qrSeed = l.bagLabel || l.trackingId
-      return { ...l, qrDataUri: await generateQrDataUri(labelTrackingUrl(qrSeed)) }
-    })
-  )
+  // remote-fetched-at-render-time api.qrserver.com URL could. Every label
+  // now encodes the same fixed bagdrop.co URL (no longer per-bag), so this
+  // is computed once rather than once per bag.
+  const qrDataUri = await generateQrDataUri(labelQrUrl())
+  const withQr: ConsignmentLabelWithQr[] = labels.map(l => ({ ...l, qrDataUri }))
   const element = React.createElement(ConsignmentLabelDocument, { labels: withQr })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blob = await pdf(element as any).toBlob()

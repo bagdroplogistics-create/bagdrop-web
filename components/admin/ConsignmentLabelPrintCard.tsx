@@ -46,8 +46,11 @@ function qrUrl(data: string, size: number) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
 }
 
-function labelTrackingUrl(id: string) {
-  return `https://www.bagdrop.co/track-bag/${encodeURIComponent(id)}`
+// Founder request (2026-09-09): QR now points at the plain Bagdrop website
+// rather than the per-bag tracking page — kept in sync with
+// lib/consignment-label-pdf.tsx's labelQrUrl().
+function labelQrUrl() {
+  return 'https://www.bagdrop.co'
 }
 
 function MiniBrand() {
@@ -89,8 +92,6 @@ export function ConsignmentLabelCard({ label, selected, onToggle }: { label: Con
         <div className="cl-cc-box cl-consignor">
           <span className="cl-chip cl-chip-consignor">CONSIGNOR · FROM</span>
           <div className="cl-cc-name">{label.consignorName}</div>
-          <span className="cl-cc-flabel">PHONE</span>
-          <div className="cl-cc-fvalue">{label.consignorPhone || '—'}</div>
           <span className="cl-cc-flabel">ADDRESS</span>
           <div className="cl-cc-fvalue">{label.consignorAddress || '—'}</div>
         </div>
@@ -100,16 +101,14 @@ export function ConsignmentLabelCard({ label, selected, onToggle }: { label: Con
         <div className="cl-cc-box cl-consignee">
           <span className="cl-chip cl-chip-consignee">CONSIGNEE · TO</span>
           <div className="cl-cc-name">{label.consigneeName}</div>
-          <span className="cl-cc-flabel">PHONE</span>
-          <div className="cl-cc-fvalue">{label.consigneePhone || '—'}</div>
           <span className="cl-cc-flabel">ADDRESS</span>
           <div className="cl-cc-fvalue">{label.consigneeAddress || '—'}</div>
         </div>
       </div>
 
       <div className="cl-qr-row">
-        <div className="cl-qr-cap">SCAN TO<br />TRACK THIS BAG<br /><span>{qrSeed}</span></div>
-        <img className="cl-qr" src={qrUrl(labelTrackingUrl(qrSeed), 160)} alt={qrSeed} />
+        <div className="cl-qr-cap">SCAN TO VISIT<br /><span>www.bagdrop.co</span></div>
+        <img className="cl-qr" src={qrUrl(labelQrUrl(), 160)} alt="www.bagdrop.co" />
       </div>
 
       <div className="cl-care"><span>HANDLE WITH CARE  ·  FRAGILE CONTENTS POSSIBLE</span></div>
