@@ -36,6 +36,7 @@ interface BookingLike {
   total_bags:         number | null
   total_amount:        number | null
   pickup_date:        string | null
+  delivery_date:      string | null
   drop_address:       string | null
   service_label:      string | null
   service_type:       string | null
@@ -201,7 +202,17 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       // bags_delivered template this replaced, which had delivery date in
       // {{3}} and the delivered-to address in {{4}}. Route (not address) is
       // now {{3}}, and the date moves to {{4}}.
-      variables = [name, booking.tracking_id, route || '—', fmtDate(new Date().toISOString())]
+      //
+      // Fix (2026-09-09, founder report): this used to always be
+      // new Date() — i.e. whenever an admin happens to click through to
+      // Delivered/Completed in the Booking Workflow, which is often a day
+      // or more AFTER the bag was actually delivered (admin catches up on
+      // status updates in batches). booking.delivery_date is the real
+      // delivery date already recorded on the booking (set from the
+      // Booking Workflow's own Delivery Date field) — use that as the
+      // source of truth, only falling back to "today" for older bookings
+      // that never had a delivery_date set at all.
+      variables = [name, booking.tracking_id, route || '—', fmtDate(booking.delivery_date || new Date().toISOString())]
     }
 
     // payment_pending's template has an Image header (the QR code);
