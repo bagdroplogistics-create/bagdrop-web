@@ -72,8 +72,12 @@ function qrUrl(data: string, size: number) {
   return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=0&data=${encodeURIComponent(data)}`
 }
 
-export function bagTrackingUrl(bagLabel: string) {
-  return `https://www.bagdrop.co/track-bag/${encodeURIComponent(bagLabel)}`
+// Changed 2026-09-10 (founder request) from the per-bag tracking URL (no
+// page has ever existed at /track-bag/<label>, so the QR previously led to
+// a 404) to the plain Bagdrop website — kept in sync with
+// lib/bag-tags-pdf.tsx's bagTagQrUrl().
+function bagTagQrUrl() {
+  return 'https://www.bagdrop.co'
 }
 
 function Barcode({ seed, vertical }: { seed: string; vertical?: boolean }) {
@@ -138,8 +142,8 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
           <div className="bag-tag-field"><span>BAG COUNT</span><b>Bag {tag.bagNumber} of {tag.bagTotal}</b></div>
         </div>
         <div className="bag-tag-qr-wrap">
-          <div className="bag-tag-qr-cap">SCAN TO<br />TRACK BAG<br /><span>{tag.bagLabel}</span></div>
-          <img src={qrUrl(bagTrackingUrl(tag.bagLabel), 160)} alt={tag.bagLabel} />
+          <div className="bag-tag-qr-cap">SCAN TO VISIT<br /><span>www.bagdrop.co</span></div>
+          <img src={qrUrl(bagTagQrUrl(), 160)} alt="www.bagdrop.co" />
         </div>
       </div>
 
@@ -150,15 +154,21 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
           <span>BAG TAG</span>
         </div>
         <div className="bag-tag-flight-body">
+          {/* Content swapped 2026-09-10 (founder request): the city NAME is
+              now the big/bold headline and the airport CODE is the small
+              (slightly bumped for readability) line underneath — reverse
+              of the original layout. Class names kept unchanged on purpose
+              so this diff stays minimal; only what's rendered moved.
+              Mirrors the identical swap in lib/bag-tags-pdf.tsx. */}
           <div className="bag-tag-fromto">
             <span className="bag-tag-fromto-label">FROM</span>
-            <span className="bag-tag-fromto-code">{fromCode}</span>
-            <span className="bag-tag-fromto-city">{tag.fromCity || '—'}</span>
+            <span className="bag-tag-fromto-code">{tag.fromCity || '—'}</span>
+            <span className="bag-tag-fromto-city">{fromCode}</span>
           </div>
           <div className="bag-tag-fromto">
             <span className="bag-tag-fromto-label">TO</span>
-            <span className="bag-tag-fromto-code bag-tag-fromto-code-orange">{toCode}</span>
-            <span className="bag-tag-fromto-city">{tag.toCity || '—'}</span>
+            <span className="bag-tag-fromto-code bag-tag-fromto-code-orange">{tag.toCity || '—'}</span>
+            <span className="bag-tag-fromto-city">{toCode}</span>
           </div>
           <div className="bag-tag-flight-divider" />
           <div className="bag-tag-bagno"><span>BAG NO.</span><b>{String(tag.bagNumber).padStart(2, '0')} / {tag.bagTotal}</b></div>
@@ -180,7 +190,7 @@ export function BagTagPrintCard({ tag, selected, onToggle }: { tag: BagTagCardDa
           <div className="bag-tag-field"><span>CUSTOMER</span><b>{tag.customerName}</b></div>
           <div className="bag-tag-field"><span>BAG</span><b>{String(tag.bagNumber).padStart(2, '0')} / {tag.bagTotal}</b></div>
         </div>
-        <img className="bag-tag-stub-qr" src={qrUrl(bagTrackingUrl(tag.bagLabel), 96)} alt={tag.bagLabel} />
+        <img className="bag-tag-stub-qr" src={qrUrl(bagTagQrUrl(), 96)} alt="www.bagdrop.co" />
       </div>
     </div>
   )
@@ -261,9 +271,15 @@ export const BAG_TAG_CARD_STYLES = `
      bagtag sticker bigger font") — kept in sync with the same-purpose
      ftLabel/ftCode/ftCity/bagNoLbl/bagNoVal sizes in lib/bag-tags-pdf.tsx. */
   .bag-tag-fromto-label { font-size: 6.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }
-  .bag-tag-fromto-code { font-size: 23px; font-weight: 800; color: #111827; margin-top: 2px; }
+  /* .bag-tag-fromto-code now renders the city NAME (big/bold headline) and
+     .bag-tag-fromto-city renders the airport CODE (small line) — reversed
+     2026-09-10 per founder request; class names kept stable, only the
+     rendered content and this size bump changed. Code line bumped
+     8.5px→10.5px "little increase...so its readable" per the same request,
+     mirroring lib/bag-tags-pdf.tsx's ftCity 7.5→9.5 bump. */
+  .bag-tag-fromto-code { font-size: 23px; font-weight: 800; color: #111827; margin-top: 2px; text-transform: uppercase; }
   .bag-tag-fromto-code-orange { color: #c74f0f; }
-  .bag-tag-fromto-city { font-size: 8.5px; font-weight: 600; letter-spacing: 0.4px; color: #918b81; text-transform: uppercase; margin-top: 1px; }
+  .bag-tag-fromto-city { font-size: 10.5px; font-weight: 600; letter-spacing: 0.4px; color: #918b81; text-transform: uppercase; margin-top: 1px; }
   .bag-tag-flight-divider { height: 1px; background: #e5e0d8; margin: 4px 0; }
   .bag-tag-bagno { display: flex; align-items: baseline; gap: 6px; }
   .bag-tag-bagno span { font-size: 6.5px; font-weight: 800; letter-spacing: 1px; color: #918b81; }

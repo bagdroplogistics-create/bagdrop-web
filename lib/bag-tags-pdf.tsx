@@ -11,16 +11,24 @@
 // stub) instead of the old single vertical card — keep both in sync.
 //
 // IMPORTANT: this is BagDrop's own OPERATIONAL tracking tag — never
-// represented as an airline-issued baggage tag. The QR encodes only the
-// bag's own BagDrop tracking URL (see lib/bag-tags.ts's bagTrackingUrl)
-// — no customer name/phone/address is ever put inside the QR payload.
-// The FROM/TO codes are a decorative styling touch (lib/bag-tags.ts's
-// cityCode) — never a real transport routing code.
+// represented as an airline-issued baggage tag. The FROM/TO codes are a
+// decorative styling touch (lib/bag-tags.ts's cityCode) — never a real
+// transport routing code.
+//
+// QR destination changed 2026-09-10 (founder request) from the per-bag
+// bagTrackingUrl() (www.bagdrop.co/track-bag/<label> — no page has ever
+// existed at that route, so the QR previously led to a 404) to the plain
+// Bagdrop website, same change already made to the Consignment Label
+// (lib/consignment-label-pdf.tsx's labelQrUrl()).
 import { pdf, Document, Page, Text, View, StyleSheet, Image, Svg, Line, Polygon } from '@react-pdf/renderer'
 import React from 'react'
-import { bagTrackingUrl, cityCode, barcodeStripes } from '@/lib/bag-tags'
+import { cityCode, barcodeStripes } from '@/lib/bag-tags'
 import { LOGO_FULL_COLOR_DATA_URI, LOGO_ICON_COLOR_DATA_URI } from '@/lib/bag-tag-logo'
 import { generateQrDataUri } from '@/lib/qr-code'
+
+function bagTagQrUrl(): string {
+  return 'https://www.bagdrop.co'
+}
 
 const ORANGE = '#f97316'
 const ORANGE_DK = '#c74f0f'
@@ -102,9 +110,15 @@ const s = StyleSheet.create({
   // available height), so every size in this panel scales up ~35-40%
   // rather than only the two explicitly-named lines, for a consistent look.
   ftLabel: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8 },
-  ftCode:  { fontSize: 21, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 2 },
+  // Swapped 2026-09-10 (founder request) — the city NAME is now the big
+  // bold headline (was the 3-letter code) and the code is the small line
+  // (was the city name), bumped from 7.5 to 9.5 for readability at its new,
+  // smaller-but-still-legible role. Style names kept as-is (ftCode = big,
+  // ftCity = small) even though what they render swapped, to minimize the
+  // diff — see the JSX below for which value goes into which style now.
+  ftCode:  { fontSize: 21, fontFamily: 'Helvetica-Bold', color: DARK, marginTop: 2, textTransform: 'uppercase' },
   ftCodeOrange: { color: ORANGE_DK },
-  ftCity:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginTop: 1 },
+  ftCity:  { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: GREY, textTransform: 'uppercase', marginTop: 1 },
   ftDivider: { height: 1, backgroundColor: '#e5e0d8', marginVertical: 6 },
   bagNoRow: { flexDirection: 'row', alignItems: 'baseline' },
   bagNoLbl: { fontSize: 6.2, fontFamily: 'Helvetica-Bold', color: GREY, letterSpacing: 0.8, marginRight: 5 },
@@ -239,7 +253,7 @@ function BagTagCard({ b }: { b: BagTagInputWithQr }) {
           <View style={s.field}><Text style={s.fieldLabel}>BAG COUNT</Text><Text style={s.fieldValue}>Bag {b.bagNumber} of {b.bagTotal}</Text></View>
         </View>
         <View style={s.qrRow}>
-          <Text style={s.qrCap}>SCAN TO{'\n'}TRACK BAG{'\n'}<Text style={s.qrCapSub}>{b.bagLabel}</Text></Text>
+          <Text style={s.qrCap}>SCAN TO VISIT{'\n'}<Text style={s.qrCapSub}>www.bagdrop.co</Text></Text>
           {/* eslint-disable-next-line jsx-a11y/alt-text */}
           <Image style={s.qr} src={b.qrDataUri} />
         </View>
@@ -253,12 +267,12 @@ function BagTagCard({ b }: { b: BagTagInputWithQr }) {
         </View>
         <View style={s.flightBody}>
           <Text style={s.ftLabel}>FROM</Text>
-          <Text style={s.ftCode}>{fromCode}</Text>
-          <Text style={s.ftCity}>{b.fromCity || '—'}</Text>
+          <Text style={s.ftCode}>{b.fromCity || '—'}</Text>
+          <Text style={s.ftCity}>{fromCode}</Text>
           <View style={{ height: 7 }} />
           <Text style={s.ftLabel}>TO</Text>
-          <Text style={[s.ftCode, s.ftCodeOrange]}>{toCode}</Text>
-          <Text style={s.ftCity}>{b.toCity || '—'}</Text>
+          <Text style={[s.ftCode, s.ftCodeOrange]}>{b.toCity || '—'}</Text>
+          <Text style={s.ftCity}>{toCode}</Text>
           <View style={s.ftDivider} />
           <View style={s.bagNoRow}>
             <Text style={s.bagNoLbl}>BAG NO.</Text>
@@ -317,12 +331,12 @@ function BagTagsDocument({ bags }: { bags: BagTagInputWithQr[] }) {
 }
 
 export async function buildBagTagsPdfBuffer(bags: BagTagInput[]): Promise<Buffer> {
-  // QR generated locally per bag (lib/qr-code.ts) — see BagTagInputWithQr
-  // comment above for why this replaced the old remote-fetched-at-render
-  // api.qrserver.com URL.
-  const withQr: BagTagInputWithQr[] = await Promise.all(
-    bags.map(async b => ({ ...b, qrDataUri: await generateQrDataUri(bagTrackingUrl(b.bagLabel)) }))
-  )
+  // QR generated locally (lib/qr-code.ts) — see BagTagInputWithQr comment
+  // above for why this replaced the old remote-fetched-at-render
+  // api.qrserver.com URL. Every bag now encodes the same fixed bagdrop.co
+  // URL (no longer per-bag), so this is computed once rather than per bag.
+  const qrDataUri = await generateQrDataUri(bagTagQrUrl())
+  const withQr: BagTagInputWithQr[] = bags.map(b => ({ ...b, qrDataUri }))
   const element = React.createElement(BagTagsDocument, { bags: withQr })
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const blob = await pdf(element as any).toBlob()
