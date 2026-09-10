@@ -1943,6 +1943,21 @@ export default function QuoteViewPage() {
             </div>
           )}
 
+          {/* Customer Note — same "accepted but never rendered" bug as
+              QuotePDF.tsx (fixed there 2026-09-10), just in this separate
+              on-screen HTML preview. This preview and QuotePDF.tsx are two
+              independent renderers of the same quote (this one drawn with
+              plain HTML/CSS for the browser, QuotePDF.tsx with react-pdf
+              primitives for the actual PDF) — a fix in one was never going
+              to show up in the other. Same box style as Subject Text,
+              placed right after it, only shown when a note was entered. */}
+          {lead.quote_notes && (
+            <div style={{ margin: '0 36px 16px', background: '#f9fafb', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
+              <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#4b5563', marginBottom: '4px' }}>Customer Note</div>
+              <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes}</div>
+            </div>
+          )}
+
           {/* Terms */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>
             <div style={{ fontSize: '10.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#374151', marginBottom: '8px' }}>Terms &amp; Conditions</div>
