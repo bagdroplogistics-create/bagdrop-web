@@ -662,6 +662,23 @@ export default function QuotePDF(p: QuotePDFProps) {
           </View>
         ) : null}
 
+        {/* ── Customer Notes — founder-reported bug (2026-09-10): the New
+              Quote / Edit Quote form's "Customer Notes" field (saved onto
+              leads.quote_notes and already threaded all the way through
+              into this component's `notes` prop, see lib/quote-pdf.ts) was
+              never actually rendered anywhere in the PDF — only accepted
+              and silently dropped. This is the fix: an actual box for it,
+              same style as the Subject Text box above, placed directly
+              after it so the PDF's field order matches the edit form's
+              (Customer Notes sits right above Terms & Conditions there
+              too). Renders only when a note was actually entered. ── */}
+        {p.notes ? (
+          <View style={notesBoxStyle}>
+            <Text style={s.notesLbl}>Customer Note</Text>
+            <Text style={s.notesText}>{p.notes}</Text>
+          </View>
+        ) : null}
+
         {/* ── T&C ── */}
         <View style={tcSectionStyle}>
           <Text style={s.tcTitle}>Terms &amp; Conditions</Text>
