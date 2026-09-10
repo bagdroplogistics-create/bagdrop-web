@@ -204,8 +204,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       paymentDate,
       proofUrl,
       proofType,
-      adminUrl:  `${SITE.url}/admin?highlight=${bookingId}`,
-      reviewUrl: `${SITE.url}/payment-verification/${verificationToken}`,
+      adminUrl:    `${SITE.url}/admin?highlight=${bookingId}`,
+      reviewUrl:   `${SITE.url}/payment-verification/${verificationToken}`,
+      reviewToken: verificationToken,
     })
   } catch (err) {
     console.error('[payment-proof] verification-request notification failed (non-fatal):', err)

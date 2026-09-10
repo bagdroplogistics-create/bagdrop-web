@@ -391,11 +391,29 @@ export async function sendWhatsAppTemplateFast2SMS(
 // `GET /dev/dlt_manager/whatsapp?type=template` on 2026-09-01 — see each
 // caller's own TEMPLATE_BY_* map for the exact status/event → name
 // mapping, and confirm there against the same dump before changing one.
+// Optional CTA (Call-To-Action) URL button component — added 2026-09-10 for
+// lib/payment-verification-notification.ts's "Approve from WhatsApp" button,
+// but usable by any future caller on this endpoint. WhatsApp URL buttons are
+// approved with a STATIC base URL plus one dynamic trailing segment (e.g.
+// the approved template's button is configured as
+// "https://www.bagdrop.co/payment-verification/{{1}}") — `payload` here is
+// just that dynamic segment (e.g. the bare token), never the full URL.
+// Confirmed against Fast2SMS's own docs (Send Template (CTA button),
+// https://docs.fast2sms.com/reference/sendtemplatectabutton), which show
+// the button parameter as `{ type: 'payload', payload: '...' }` — NOT
+// `{ type: 'text', text: '...' }` like the body parameters use, despite
+// both hitting this exact same /messages endpoint.
+export interface WhatsAppCtaButton {
+  index:   number
+  payload: string
+}
+
 export async function sendWhatsAppTemplateFast2SMSv2(
   phone: string,
   templateName: string,
   variables: string[],
-  header?: { type: 'image' | 'document'; url: string; filename?: string }
+  header?: { type: 'image' | 'document'; url: string; filename?: string },
+  buttons?: WhatsAppCtaButton[]
 ): Promise<{ success: boolean; error?: string; requestId?: string }> {
   const apiKey        = process.env.FAST2SMS_API_KEY
   const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
@@ -442,6 +460,16 @@ export async function sendWhatsAppTemplateFast2SMSv2(
     type: 'body',
     parameters: sanitizedVariables.map(text => ({ type: 'text', text })),
   })
+  if (buttons) {
+    for (const b of buttons) {
+      components.push({
+        type:       'button',
+        sub_type:   'url',
+        index:      String(b.index),
+        parameters: [{ type: 'payload', payload: b.payload }],
+      })
+    }
+  }
 
   // Same per-send timeout rationale as the GET sender above.
   const controller = new AbortController()

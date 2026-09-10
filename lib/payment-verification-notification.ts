@@ -6,11 +6,25 @@
 // lib/new-inquiry-notification.ts:
 //   - Email to anil@bagdrop.co (lib/email.ts's generic sendEmail — no new
 //     Resend template needed, just a plain HTML block built here).
-//   - WhatsApp to +91 99986 65328 via a Fast2SMS-approved template (same
-//     mechanism as every other outbound WhatsApp in this codebase —
-//     sendWhatsAppTemplateFast2SMS). No-ops (logs and returns) until
-//     FAST2SMS_PAYMENT_VERIFICATION_MESSAGE_ID is set, so nothing breaks
-//     before that template is submitted to Meta and approved.
+//   - WhatsApp to +91 99986 65328 via a Fast2SMS-approved template. No-ops
+//     (logs and returns) until FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME
+//     is set, so nothing breaks before that template is submitted to Meta
+//     and approved.
+//
+// Founder request (2026-09-10): Accounts should be able to approve a
+// payment straight from the WhatsApp message itself, with no need to open
+// the admin dashboard on a desktop. The public, no-login review page
+// (app/payment-verification/[token]/page.tsx, with its own big "Approve
+// Payment" / "Reject Payment" buttons) already existed for exactly this —
+// it just wasn't reachable from WhatsApp yet. Fixed by sending this
+// template via sendWhatsAppTemplateFast2SMSv2 (the POST/Meta-format
+// endpoint) instead of the older sendWhatsAppTemplateFast2SMS (a flat GET
+// query string with no concept of template components/buttons at all), and
+// attaching a CTA URL button whose dynamic parameter is the review token.
+// This IS a deliberate deviation from this codebase's usual rule that
+// internal/staff-facing templates stay on the plain GET sender (see
+// lib/notifications.ts's own module comments) — made only because buttons
+// are structurally impossible on that GET endpoint.
 //
 // This function only ever *asks* Accounts to check the payment — it never
 // marks a payment as approved itself. Approval happens separately via
@@ -18,7 +32,7 @@
 // actually flips bookings.payment_verification_status to 'verified'.
 
 import { sendEmail } from './email'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
 import { supabaseAdmin } from './supabase'
 
 const ACCOUNTS_EMAIL             = 'anil@bagdrop.co'
@@ -62,6 +76,7 @@ export interface PaymentVerificationRequestData {
   proofType:      'image' | 'pdf'
   adminUrl:       string  // deep link back into the admin Booking Workflow for this booking
   reviewUrl:      string  // public, no-login Approve/Reject page — see app/payment-verification/[token]/page.tsx
+  reviewToken:    string  // bare token portion of reviewUrl — the WhatsApp CTA button's dynamic parameter (button URL, not text, so it can't just reuse reviewUrl's full string)
 }
 
 /**
@@ -119,19 +134,29 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
     (emailResult.success ? `sent to ${ACCOUNTS_EMAIL}` : `failed — ${emailResult.error}`))
 
   try {
-    const templateId = process.env.FAST2SMS_PAYMENT_VERIFICATION_MESSAGE_ID
-    if (!templateId) {
-      console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp skipped: template not configured (FAST2SMS_PAYMENT_VERIFICATION_MESSAGE_ID)`)
+    const templateName = process.env.FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME
+    if (!templateName) {
+      console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp skipped: template not configured (FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME)`)
       return
     }
     const accountsNumber = await getAccountsWhatsAppNumber()
     // Approved-template variable order must match exactly what was
-    // submitted to Meta. Template text (updated 2026-08-13, added Route):
+    // submitted to Meta. Template body text (unchanged since 2026-08-13):
     //   Customer Name: {{1}}  Booking ID: {{2}}  Inquiry ID: {{3}}
     //   Route: {{4}}  Payment Amount: ₹{{5}}  Payment Date: {{6}}
     //   Payment Proof: {{7}}
     // Note: {{5}} is plain-number only (no "Rs." prefix, no ₹) since the
     // template body already prepends the ₹ symbol before {{5}}.
+    //
+    // Also requires the template to have ONE CTA URL button (index 0),
+    // configured in Meta/Fast2SMS with a dynamic base URL of
+    // "https://www.bagdrop.co/payment-verification/{{1}}" (button-local
+    // {{1}}, separate numbering from the body's {{1..7}} above) — label
+    // e.g. "Review & Approve". Tapping it in WhatsApp opens the existing
+    // public, no-login review page (app/payment-verification/[token]/
+    // page.tsx) with its own big Approve/Reject buttons — see this file's
+    // module comment for why that's a URL button and not a true in-chat
+    // quick-reply (which would need an inbound-webhook receiver instead).
     const variables = [
       data.customerName,
       data.trackingId,
@@ -141,7 +166,9 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
       fmtDateTime(data.paymentDate),
       data.proofUrl,
     ]
-    const result = await sendWhatsAppTemplateFast2SMS(accountsNumber, templateId, variables)
+    const result = await sendWhatsAppTemplateFast2SMSv2(accountsNumber, templateName, variables, undefined, [
+      { index: 0, payload: data.reviewToken },
+    ])
     console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`))
   } catch (err) {
