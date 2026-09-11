@@ -192,7 +192,15 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
         route,
       ]
     } else if (status === 'picked_up') {
-      variables = [name, booking.tracking_id, new Date().toLocaleString('en-IN'), String(booking.total_bags ?? 1)]
+      // Founder request (2026-09-11): "Collection Time" in this WhatsApp
+      // message shouldn't include a time-of-day — just the date. Was
+      // new Date().toLocaleString('en-IN'), which rendered like
+      // "11/9/2026, 9:46:33 am"; now matches every other date-only
+      // variable in this file (fmtDate — "11 September 2026"). The
+      // approved template's own body text still reads "Collection Time:"
+      // (changing that label would need a new Meta-approved template),
+      // but the value itself is now date-only.
+      variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), String(booking.total_bags ?? 1)]
     } else if (status === 'in_transit' || status === 'out_for_delivery') {
       variables = [name, booking.tracking_id]
     } else if (status === 'delivered') {
