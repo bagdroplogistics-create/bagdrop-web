@@ -75,11 +75,32 @@ interface LocalExpense {
   estimated_cost:string
   actual_cost:   string
   payment_status:string
+  // Vendor Master link + automatic notification fields (founder spec
+  // BAGDROP-VENDOR-AUTOMATION-001) — this wizard's own local expense form
+  // didn't have these at all until now, which is why they never appeared
+  // here even after being added to the Trip Sheet detail page's Expenses
+  // tab. vendor_id empty string means "in-house / no vendor".
+  vendor_id:           string
+  operational_date:    string
+  operational_time:    string
+  operation_category:  OperationCategory
 }
+
+type OperationCategory = 'pickup' | 'middle_mile' | 'delivery' | 'handling' | 'airport_delivery' | 'other'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const PAYMENT_STATUSES = ['pending', 'paid', 'reimbursed']
+
+// Must match lib/vendor-notifications.ts's OperationCategory / CATEGORY_LABEL exactly.
+const OPERATION_CATEGORIES: { value: OperationCategory; label: string }[] = [
+  { value: 'pickup',           label: 'Pickup' },
+  { value: 'middle_mile',      label: 'Middle Mile Movement' },
+  { value: 'delivery',         label: 'Delivery' },
+  { value: 'handling',         label: 'Handling' },
+  { value: 'airport_delivery', label: 'Airport Delivery' },
+  { value: 'other',            label: 'Other / In-house' },
+]
 
 const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   confirmed:    { label: 'Confirmed',    cls: 'bg-green-100  text-green-700'  },
@@ -93,6 +114,14 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
 
 let _uid = 0
 const uid = () => String(++_uid)
+
+function emptyLocalExpense(): LocalExpense {
+  return {
+    _id: uid(), expense_type: '', mode: '', from_location: '', to_location: '',
+    vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending',
+    vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other',
+  }
+}
 
 function fmtDate(d: string | null) {
   if (!d) return '—'
@@ -215,10 +244,7 @@ export default function NewTripSheetPage() {
   // Local expenses (added before creation, posted after)
   const [expenses, setExpenses] = useState<LocalExpense[]>([])
   const [showExpForm, setShowExpForm] = useState(false)
-  const [expForm, setExpForm] = useState<LocalExpense>({
-    _id: uid(), expense_type: '', mode: '', from_location: '', to_location: '',
-    vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending',
-  })
+  const [expForm, setExpForm] = useState<LocalExpense>(() => emptyLocalExpense())
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -345,7 +371,7 @@ export default function NewTripSheetPage() {
   function addExpenseRow() {
     if (!expForm.expense_type.trim()) return
     setExpenses(prev => [...prev, { ...expForm }])
-    setExpForm({ _id: uid(), expense_type: '', mode: '', from_location: '', to_location: '', vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending' })
+    setExpForm(emptyLocalExpense())
     setShowExpForm(false)
   }
 
@@ -425,6 +451,10 @@ export default function NewTripSheetPage() {
               estimated_cost: Number(e.estimated_cost) || 0,
               actual_cost:    Number(e.actual_cost)    || 0,
               payment_status: e.payment_status,
+              vendor_id:           e.vendor_id || null,
+              operational_date:    e.operational_date || null,
+              operational_time:    e.operational_time || null,
+              operation_category:  e.operation_category,
             }),
           })
         ))
@@ -946,12 +976,34 @@ export default function NewTripSheetPage() {
                         <FSelect label="Payment Status" value={expForm.payment_status}
                           onChange={v => setExpForm(f => ({ ...f, payment_status: v }))}
                           options={PAYMENT_STATUSES.map(s => ({ value: s, label: s }))} />
-                        <div className="flex items-end">
-                          <button onClick={addExpenseRow} disabled={!expForm.expense_type.trim()}
-                            className="w-full flex items-center justify-center gap-1.5 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-40 transition-colors">
-                            <Plus className="h-4 w-4" /> Add Row
-                          </button>
+                      </div>
+
+                      {/* Vendor Master + Automatic Notification fields (founder spec
+                          BAGDROP-VENDOR-AUTOMATION-001) — same fields as the Trip
+                          Sheet detail page's Expenses tab, so a brand-new trip
+                          sheet can have vendor notifications set up from the start. */}
+                      <div className="mt-3 rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-orange-500">Vendor &amp; Notification</p>
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <FSelect label="Vendor" value={expForm.vendor_id}
+                            onChange={v => setExpForm(f => ({ ...f, vendor_id: v }))}
+                            options={[{ value: '', label: 'In-house / No vendor' }, ...vendorsLite.map(v => ({ value: v.id, label: `${v.vendor_id} — ${v.vendor_name}` }))]} />
+                          <FSelect label="Operation Category" value={expForm.operation_category}
+                            onChange={v => setExpForm(f => ({ ...f, operation_category: v as OperationCategory }))}
+                            options={OPERATION_CATEGORIES} />
+                          <FInput label="Operational Date" type="date" value={expForm.operational_date}
+                            onChange={v => setExpForm(f => ({ ...f, operational_date: v }))} />
+                          <FInput label="Operational Time" type="time" value={expForm.operational_time}
+                            onChange={v => setExpForm(f => ({ ...f, operational_time: v }))} />
                         </div>
+                        <p className="mt-2 text-[11px] text-gray-400">Assigning a vendor here schedules an automatic WhatsApp/email notice to them on the Operational Date — leave as &quot;In-house&quot; for expenses like Packing Charges.</p>
+                      </div>
+
+                      <div className="mt-3 flex justify-end">
+                        <button onClick={addExpenseRow} disabled={!expForm.expense_type.trim()}
+                          className="flex items-center justify-center gap-1.5 rounded-xl bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-40 transition-colors">
+                          <Plus className="h-4 w-4" /> Add Row
+                        </button>
                       </div>
                     </div>
                   )}
@@ -975,11 +1027,15 @@ export default function NewTripSheetPage() {
                             <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Rate</th>
                             <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actual</th>
                             <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor</th>
+                            <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Op. Date</th>
                             <th className="px-2 py-3" />
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                          {expenses.map((e, i) => (
+                          {expenses.map((e, i) => {
+                            const v = vendorsLite.find(x => x.id === e.vendor_id)
+                            return (
                             <tr key={e._id} className={`hover:bg-orange-50/30 transition-colors ${i % 2 === 0 ? 'bg-white' : 'bg-gray-50/40'}`}>
                               <td className="px-4 py-3">
                                 <p className="text-sm font-medium text-gray-800">{e.expense_type}</p>
@@ -995,6 +1051,8 @@ export default function NewTripSheetPage() {
                                   e.payment_status === 'reimbursed' ? 'bg-blue-50 text-blue-700' : 'bg-amber-50 text-amber-700'
                                 }`}>{e.payment_status}</span>
                               </td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{v ? v.vendor_name : 'In-house'}</td>
+                              <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(e.operational_date || null)}</td>
                               <td className="px-2 py-3">
                                 <button onClick={() => removeExpense(e._id)}
                                   className="rounded-lg border border-gray-100 p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors">
@@ -1002,14 +1060,15 @@ export default function NewTripSheetPage() {
                                 </button>
                               </td>
                             </tr>
-                          ))}
+                            )
+                          })}
                         </tbody>
                         <tfoot className="border-t-2 border-gray-200 bg-gray-50">
                           <tr>
                             <td colSpan={3} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-gray-500">Total</td>
                             <td className="px-4 py-3 text-right text-sm font-bold text-gray-700">{fmtRs(expEstTotal)}</td>
                             <td className="px-4 py-3 text-right text-sm font-bold text-red-600">{fmtRs(expActTotal)}</td>
-                            <td colSpan={2} />
+                            <td colSpan={4} />
                           </tr>
                         </tfoot>
                       </table>
