@@ -575,20 +575,20 @@ export default function NewTripSheetPage() {
           ) : (
             <div className="p-6">
 
-              {/* Test Mode warning — this booking is excluded from Dashboard/
-                  revenue totals, but trip_sheets has no such is_test flag of
-                  its own: a trip sheet created here WILL be counted in Trip
-                  Sheet totals / P&L reports like any other. Fine for testing
-                  the vendor-notification feature, just don't forget to
-                  delete this trip sheet afterward the same way the Group
-                  Booking's own "Delete Test Booking" button expects. */}
+              {/* Test Mode note — trip_sheets has no is_test column of its
+                  own; GET /api/admin/trip-sheets excludes any sheet whose
+                  linked booking is is_test=true from its default results
+                  (2026-09-12 founder request), which is what the Dashboard's
+                  trip-sheet totals and the Trip Sheets list page's own sums
+                  both read from — so a trip sheet built from this booking
+                  stays invisible there, exactly like the booking itself. */}
               {entryMode === 'select' && selected?.is_test && (
                 <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
                   <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                   <span>
-                    <strong>TEST MODE booking.</strong> Unlike the Dashboard/revenue reports, the Trip Sheets module has no
-                    test-mode exclusion — a trip sheet you create here WILL show up in Trip Sheet totals and P&amp;L. Fine for
-                    testing (e.g. the vendor-notification feature), just remember to delete the trip sheet afterward.
+                    <strong>TEST MODE booking.</strong> A trip sheet created from this booking stays out of Dashboard totals,
+                    the Trip Sheets list's totals, and reports — same as the booking itself. It'll still be reachable from its
+                    own detail page for testing (e.g. the vendor-notification feature). Delete it when you're done.
                   </span>
                 </div>
               )}

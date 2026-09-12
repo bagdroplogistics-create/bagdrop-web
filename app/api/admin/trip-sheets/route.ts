@@ -34,9 +34,32 @@ export async function GET(req: NextRequest) {
   const vendor      = searchParams.get('vendor')
   const search      = searchParams.get('search')
   const bookingId   = searchParams.get('booking_id')
+  // Explicit opt-in only — see the Test Mode exclusion below.
+  const includeTest = searchParams.get('include_test') === 'true'
   const page        = parseInt(searchParams.get('page') ?? '1', 10)
   const limit       = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset      = (page - 1) * limit
+
+  // ── Test Mode exclusion ──────────────────────────────────────
+  // trip_sheets has no is_test column of its own (unlike bookings/leads) —
+  // a trip sheet's "test-ness" is entirely inherited from its linked
+  // booking. Founder request (2026-09-12): a trip sheet built from a Test
+  // Mode booking (e.g. to try out the vendor-notification feature on
+  // GBL-2026-0001) must not leak into Dashboard totals or the Trip Sheets
+  // list's own income/expense/profit sums — same cross-reference pattern
+  // already used by app/api/admin/payments/route.ts for the same problem.
+  // Skipped when a specific booking_id was asked for (that's a direct,
+  // deliberate lookup — e.g. the "New Trip Sheet" wizard checking for an
+  // existing sheet on the exact booking it already has selected) or when
+  // the caller explicitly opts in via include_test=true.
+  let excludedTestBookingIds: string[] = []
+  if (!includeTest && !bookingId) {
+    const { data: testBookings } = await supabaseAdmin
+      .from('bookings')
+      .select('id')
+      .eq('is_test', true)
+    excludedTestBookingIds = (testBookings ?? []).map(b => b.id as string)
+  }
 
   let query = supabaseAdmin
     .from('trip_sheets')
@@ -52,6 +75,11 @@ export async function GET(req: NextRequest) {
   // trying to build a second, blank one for a booking that's already
   // been converted.
   if (bookingId)  query = query.eq('booking_id', bookingId)
+  if (excludedTestBookingIds.length > 0) {
+    // NULL-trap-safe — `NOT IN (...)` alone would also exclude manual trip
+    // sheets (booking_id IS NULL), which were never test bookings at all.
+    query = query.or(`booking_id.is.null,booking_id.not.in.(${excludedTestBookingIds.join(',')})`)
+  }
   if (search) {
     query = query.or(
       `customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,trip_number.ilike.%${search}%,driver_name.ilike.%${search}%`
