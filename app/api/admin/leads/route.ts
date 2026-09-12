@@ -35,6 +35,12 @@ export async function GET(req: NextRequest) {
   const source         = searchParams.get('source')
   const deleted        = searchParams.get('deleted') === 'true'
   const bookingId      = searchParams.get('booking_id')       // Dashboard "Manage in Leads" direct-open lookup
+  // Explicit opt-in only — see the is_test filter below. Used by the New
+  // Trip Sheet wizard (app/(admin)/admin/trip-sheets/new/page.tsx) so a
+  // deliberately-created Test Mode lead/booking (e.g. a Group Booking used
+  // to test the vendor-notification feature) can still be picked to build
+  // a trip sheet against.
+  const includeTest    = searchParams.get('include_test') === 'true'
   const page          = parseInt(searchParams.get('page') ?? '1', 10)
   const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset        = (page - 1) * limit
@@ -168,10 +174,13 @@ export async function GET(req: NextRequest) {
     .from('leads')
     .select('*', { count: 'exact' })
     // Test Mode leads (e.g. a dummy inquiry created only to test a feature)
-    // never appear in the live Leads tab — founder-reported 2026-09-05.
-    .eq('is_test', false)
+    // never appear in the live Leads tab by default — founder-reported
+    // 2026-09-05 — unless the caller explicitly opts in via include_test
+    // (see above).
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
+
+  if (!includeTest) query = query.eq('is_test', false)
 
   if (deleted) {
     // Show only soft-deleted leads (for the "Deleted Leads" view)
@@ -277,9 +286,9 @@ export async function GET(req: NextRequest) {
     let fallbackQuery = supabaseAdmin
       .from('leads')
       .select('*', { count: 'exact' })
-      .eq('is_test', false)
       .order('created_at', { ascending: false })
       .range(offset, offset + limit - 1)
+    if (!includeTest) fallbackQuery = fallbackQuery.eq('is_test', false)
     if (!deleted && status && status !== 'all') {
       if (status === 'confirmed') {
         fallbackQuery = confirmedLeadIds.length > 0

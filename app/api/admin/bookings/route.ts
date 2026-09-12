@@ -56,6 +56,13 @@ export async function GET(req: NextRequest) {
   const updatedTo      = searchParams.get('updated_to')      // exclusive, ISO date/datetime — filters updated_at
   const completedFrom  = searchParams.get('completed_from')  // inclusive, "YYYY-MM-DD" — filters pickup_date, status='completed'
   const completedTo    = searchParams.get('completed_to')    // exclusive, "YYYY-MM-DD"
+  // Explicit opt-in only — see the is_test filter below. Used by the New
+  // Trip Sheet wizard (app/(admin)/admin/trip-sheets/new/page.tsx) so a
+  // deliberately-created Test Mode booking (e.g. a Group Booking used to
+  // test the vendor-notification feature) can still be picked to build a
+  // trip sheet against, without reopening it to every other list/report
+  // that reads this same endpoint.
+  const includeTest    = searchParams.get('include_test') === 'true'
   const page           = parseInt(searchParams.get('page') ?? '1', 10)
   const limit          = parseInt(searchParams.get('limit') ?? '50', 10)
   const offset         = (page - 1) * limit
@@ -108,10 +115,12 @@ export async function GET(req: NextRequest) {
     // e.g. Monali Patel / GBL-2026-0001) never appear in the live Dashboard
     // Bookings list / Workflow Phase tabs — founder-reported 2026-09-05.
     // They're still fully manageable from their own dedicated screen
-    // (Group Bookings admin list intentionally does NOT apply this filter).
-    .eq('is_test', false)
+    // (Group Bookings admin list intentionally does NOT apply this filter),
+    // and can opt back in here via ?include_test=true (see above).
     .order('created_at', { ascending: false })
     .range(offset, offset + limit - 1)
+
+  if (!includeTest) query = query.eq('is_test', false)
 
   if (completedFrom && completedTo) {
     // Used by the Dashboard Analytics "Current/Last Month Completed

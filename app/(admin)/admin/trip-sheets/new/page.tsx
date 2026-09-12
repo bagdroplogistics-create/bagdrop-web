@@ -30,6 +30,12 @@ interface TripEntry {
   status:        string
   source:        'booking' | 'lead'
   created_at?:   string
+  // Test Mode booking/lead (e.g. a Group Booking created just to test a
+  // feature, like GBL-2026-0001) — normally hidden everywhere else in the
+  // admin, but deliberately included here (via ?include_test=true on the
+  // fetches below) so it can still be used to build a real trip sheet for
+  // testing. Clearly badged in the list so it's never mistaken for a real one.
+  is_test?:      boolean
 }
 
 // An existing trip sheet already linked to the selected booking/lead (the
@@ -228,12 +234,18 @@ export default function NewTripSheetPage() {
     if (!adminKey) return
     setLoading(true)
     try {
+      // include_test=true — a Test Mode booking/lead (e.g. a Group Booking
+      // created just to test a feature) is normally hidden from every other
+      // list in the admin, but is explicitly allowed back in here so it can
+      // still be used to build a real trip sheet for testing (e.g. the
+      // vendor-notification feature). Each entry is clearly badged TEST
+      // below so it's never mistaken for a real customer's booking.
       const [r1, r2, r3, r4, r5] = await Promise.all([
-        fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200`),
-        fetch(`/api/admin/bookings?key=${adminKey}&status=completed&limit=200`),
-        fetch(`/api/admin/bookings?key=${adminKey}&status=delivered&limit=200`),
-        fetch(`/api/admin/bookings?key=${adminKey}&status=invoice_sent&limit=200`),
-        fetch(`/api/admin/leads?key=${adminKey}&status=converted&limit=200`),
+        fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200&include_test=true`),
+        fetch(`/api/admin/bookings?key=${adminKey}&status=completed&limit=200&include_test=true`),
+        fetch(`/api/admin/bookings?key=${adminKey}&status=delivered&limit=200&include_test=true`),
+        fetch(`/api/admin/bookings?key=${adminKey}&status=invoice_sent&limit=200&include_test=true`),
+        fetch(`/api/admin/leads?key=${adminKey}&status=converted&limit=200&include_test=true`),
       ])
       const [d1, d2, d3, d4, d5] = await Promise.all([r1.json(), r2.json(), r3.json(), r4.json(), r5.json()])
 
@@ -249,6 +261,7 @@ export default function NewTripSheetPage() {
           total_bags: b.total_bags ?? null, total_amount: b.total_amount ?? null,
           service_label: b.service_label ?? b.service_type ?? null,
           status, source: 'booking' as const, created_at: b.created_at,
+          is_test: !!b.is_test,
         }))
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -264,6 +277,7 @@ export default function NewTripSheetPage() {
           total_bags: l.bags_count ?? null, total_amount: null,
           service_label: l.service_type ?? null,
           status: 'converted', source: 'lead' as const, created_at: l.created_at,
+          is_test: !!l.is_test,
         }))
 
       const all: TripEntry[] = [
@@ -515,6 +529,7 @@ export default function NewTripSheetPage() {
                     <div className="flex items-center gap-1.5">
                       <span className="font-mono text-xs font-bold text-orange-600">{e.ref_number}</span>
                       {e.source === 'lead' && <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-purple-100 text-purple-600 uppercase">Lead</span>}
+                      {e.is_test && <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700 uppercase">Test</span>}
                     </div>
                     <div className="flex items-center gap-1.5 shrink-0">
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${badge.cls}`}>{badge.label}</span>
@@ -559,6 +574,24 @@ export default function NewTripSheetPage() {
             </div>
           ) : (
             <div className="p-6">
+
+              {/* Test Mode warning — this booking is excluded from Dashboard/
+                  revenue totals, but trip_sheets has no such is_test flag of
+                  its own: a trip sheet created here WILL be counted in Trip
+                  Sheet totals / P&L reports like any other. Fine for testing
+                  the vendor-notification feature, just don't forget to
+                  delete this trip sheet afterward the same way the Group
+                  Booking's own "Delete Test Booking" button expects. */}
+              {entryMode === 'select' && selected?.is_test && (
+                <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>
+                    <strong>TEST MODE booking.</strong> Unlike the Dashboard/revenue reports, the Trip Sheets module has no
+                    test-mode exclusion — a trip sheet you create here WILL show up in Trip Sheet totals and P&amp;L. Fine for
+                    testing (e.g. the vendor-notification feature), just remember to delete the trip sheet afterward.
+                  </span>
+                </div>
+              )}
 
               {/* Summary strip */}
               <div className="mb-5 grid grid-cols-4 gap-3">
