@@ -52,14 +52,17 @@ export async function GET(req: NextRequest) {
   // deliberate lookup — e.g. the "New Trip Sheet" wizard checking for an
   // existing sheet on the exact booking it already has selected) or when
   // the caller explicitly opts in via include_test=true.
-  let excludedTestBookingIds: string[] = []
-  if (!includeTest && !bookingId) {
-    const { data: testBookings } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('is_test', true)
-    excludedTestBookingIds = (testBookings ?? []).map(b => b.id as string)
-  }
+  // Fetched unconditionally (not just when excluding) so every returned
+  // sheet can also be annotated with is_test — lets the Trip Sheets list
+  // page show a TEST badge on any sheet an admin explicitly opts to view
+  // via include_test=true or a direct booking_id lookup.
+  const { data: testBookings } = await supabaseAdmin
+    .from('bookings')
+    .select('id')
+    .eq('is_test', true)
+  const testBookingIdSet = new Set((testBookings ?? []).map(b => b.id as string))
+
+  const excludedTestBookingIds = (!includeTest && !bookingId) ? [...testBookingIdSet] : []
 
   let query = supabaseAdmin
     .from('trip_sheets')
@@ -93,6 +96,7 @@ export async function GET(req: NextRequest) {
   const sheets = (data ?? []).map(s => ({
     ...s,
     total_expense: s.trip_expenses?.reduce((sum: number, e: { actual_cost: number }) => sum + (e.actual_cost || 0), 0) ?? s.total_expense,
+    is_test: s.booking_id ? testBookingIdSet.has(s.booking_id) : false,
   }))
 
   return NextResponse.json({ trip_sheets: sheets, total: count, page, limit })

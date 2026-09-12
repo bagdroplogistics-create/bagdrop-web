@@ -29,6 +29,11 @@ interface TripSheet {
   net_profit:    number
   created_by:    string
   created_at:    string
+  // Inherited from the linked booking — see app/api/admin/trip-sheets/
+  // route.ts. Test Mode trip sheets (e.g. one built from a Group Booking
+  // just to test the vendor-notification feature) are hidden by default,
+  // excluded from this page's own totals, and clearly badged when shown.
+  is_test?:      boolean
 }
 
 // ── Status config ─────────────────────────────────────────────
@@ -64,6 +69,7 @@ export default function TripSheetsPage() {
   const [filter,   setFilter]   = useState('all')
   const [deleting, setDeleting] = useState<string | null>(null)
   const [downloading, setDownloading] = useState<string | null>(null)
+  const [showTest, setShowTest] = useState(false)
 
   // Summary totals. Number(...) coercion guards against Postgres numeric
   // columns coming back from Supabase as strings — `s + (t.total_income ||
@@ -84,10 +90,11 @@ export default function TripSheetsPage() {
     let qs = '?key=' + adminKey
     if (filter !== 'all') qs += '&status=' + filter
     if (search) qs += '&search=' + encodeURIComponent(search)
+    if (showTest) qs += '&include_test=true'
     const res = await fetch('/api/admin/trip-sheets' + qs)
     if (res.ok) setSheets((await res.json()).trip_sheets ?? [])
     setLoading(false)
-  }, [adminKey, filter, search])
+  }, [adminKey, filter, search, showTest])
 
   useEffect(() => { if (authed) fetchSheets() }, [authed, fetchSheets])
 
@@ -228,6 +235,9 @@ export default function TripSheetsPage() {
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 shadow-sm transition-colors">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
+          <label className="flex items-center gap-2 whitespace-nowrap text-xs font-semibold text-gray-500">
+            <input type="checkbox" checked={showTest} onChange={e => setShowTest(e.target.checked)} /> Show test trip sheets
+          </label>
         </div>
 
         {/* Table */}
@@ -269,7 +279,10 @@ export default function TripSheetsPage() {
                           </Link>
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-semibold text-gray-900">{s.customer_name ?? '—'}</p>
+                          <div className="flex items-center gap-1.5">
+                            <p className="text-sm font-semibold text-gray-900">{s.customer_name ?? '—'}</p>
+                            {s.is_test && <span className="rounded px-1 py-0.5 text-[9px] font-bold bg-amber-100 text-amber-700 uppercase">Test</span>}
+                          </div>
                           <p className="text-xs text-gray-400">{s.customer_phone ?? ''}</p>
                         </td>
                         <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
