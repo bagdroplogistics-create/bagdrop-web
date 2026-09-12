@@ -26,6 +26,7 @@ interface SettingsMap {
   ops_reminder_day_before_time?:     string
   ops_reminder_day_of_time?:         string
   ops_reminder_hours_before_flight?: string
+  vendor_notification_time?: string
 }
 
 const TABS: { id: Tab; label: string; icon: React.ReactNode }[] = [
@@ -261,6 +262,21 @@ export default function SettingsPage() {
                   <input type="number" min={1} max={24} value={settings.ops_reminder_hours_before_flight ?? '4'} onChange={set('ops_reminder_hours_before_flight')} disabled={!isAdmin}
                     className={inp + (!isAdmin ? ' bg-gray-50 max-w-[120px]' : ' max-w-[120px]')} />
                 </div>
+              </div>
+
+              <div className="rounded-xl border border-gray-100 p-4">
+                <h3 className="mb-1 text-xs font-bold text-gray-700">Automatic Vendor Notifications</h3>
+                <p className="mb-3 text-xs text-gray-500">
+                  When a Trip Expense row has a vendor assigned (Vendor Master → Vendors) and an Operational Date, Bagdrop
+                  automatically sends that vendor a WhatsApp/email notice for their specific pickup, middle-mile, delivery,
+                  handling, or airport-delivery operation. This is the default time used when a row has no operational time of its own.
+                </p>
+                <div className="max-w-[200px]">
+                  <label className="mb-1.5 block text-xs font-semibold text-gray-600">Default Notification Time (IST)</label>
+                  <input type="time" value={settings.vendor_notification_time ?? '08:00'} onChange={set('vendor_notification_time')} disabled={!isAdmin}
+                    className={inp + (!isAdmin ? ' bg-gray-50' : '')} />
+                </div>
+                <p className="mt-2 text-[11px] text-gray-400">Edit vendor message wording under Vendors → Notification Templates.</p>
               </div>
             </div>
           )}

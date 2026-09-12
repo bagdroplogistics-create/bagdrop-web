@@ -24,7 +24,37 @@ interface Expense {
   payment_status: string
   receipt_url:    string | null
   created_at:     string
+  // Vendor Master link + automatic notification fields (founder spec
+  // BAGDROP-VENDOR-AUTOMATION-001, 2026-09-12).
+  vendor_id:            string | null
+  operational_date:     string | null
+  operational_time:     string | null
+  operation_category:   OperationCategory | null
+  notification_status:  NotificationStatus | null
 }
+
+// Vendor Master (lightweight — only what the Trip Expense dropdown needs)
+interface VendorLite {
+  id:           string
+  vendor_id:    string
+  vendor_name:  string
+  company_name: string | null
+  mobile:       string
+  email:        string | null
+}
+
+interface NotificationRow {
+  id:               string
+  channel:          'whatsapp' | 'email'
+  status:           string
+  recipient_mobile: string | null
+  recipient_email:  string | null
+  sent_at:          string | null
+  failure_reason:   string | null
+}
+
+type OperationCategory  = 'pickup' | 'middle_mile' | 'delivery' | 'handling' | 'airport_delivery' | 'other'
+type NotificationStatus = 'not_applicable' | 'pending' | 'sent' | 'partially_sent' | 'failed'
 
 interface TripSheet {
   id:                 string
@@ -98,6 +128,24 @@ const EXPENSE_TYPES = [
 
 const PAYMENT_STATUSES = ['pending', 'paid', 'reimbursed']
 
+// Must match lib/vendor-notifications.ts's OperationCategory / CATEGORY_LABEL exactly.
+const OPERATION_CATEGORIES: { value: OperationCategory; label: string }[] = [
+  { value: 'pickup',           label: 'Pickup' },
+  { value: 'middle_mile',      label: 'Middle Mile Movement' },
+  { value: 'delivery',         label: 'Delivery' },
+  { value: 'handling',         label: 'Handling' },
+  { value: 'airport_delivery', label: 'Airport Delivery' },
+  { value: 'other',            label: 'Other / In-house' },
+]
+
+const NOTIFICATION_STATUS: Record<NotificationStatus, { label: string; color: string; bg: string }> = {
+  not_applicable: { label: 'No Vendor',  color: '#9ca3af', bg: '#f3f4f6' },
+  pending:        { label: 'Pending',    color: '#d97706', bg: '#fef3c7' },
+  sent:           { label: 'Sent',       color: '#16a34a', bg: '#dcfce7' },
+  partially_sent: { label: 'Partial',    color: '#2563eb', bg: '#dbeafe' },
+  failed:         { label: 'Failed',     color: '#dc2626', bg: '#fee2e2' },
+}
+
 function fmt(n: number | null | undefined) {
   return '₹' + (n ?? 0).toLocaleString('en-IN')
 }
@@ -169,13 +217,25 @@ function TripSheetDetail({ id }: { id: string }) {
     expense_type: 'Transportation', mode: '', from_location: '',
     to_location: '', vendor: '', description: '', estimated_cost: '',
     actual_cost: '', payment_status: 'pending',
+    vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' as OperationCategory,
   })
   const [savingExp,    setSavingExp]    = useState(false)
   const [editingExp,   setEditingExp]   = useState<string | null>(null)
   const [editExpForm,  setEditExpForm]  = useState({
     expense_type: '', from_location: '', to_location: '',
     vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending',
+    vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' as OperationCategory,
   })
+
+  // Vendor Master (for the Trip Expense vendor dropdown)
+  const [vendors, setVendors] = useState<VendorLite[]>([])
+  const vendorById = (vid: string | null) => vendors.find(v => v.id === vid) ?? null
+
+  // Notification history (fetched on demand when a notification badge is clicked)
+  const [openNotifExpId, setOpenNotifExpId] = useState<string | null>(null)
+  const [notifHistory,   setNotifHistory]   = useState<Record<string, NotificationRow[]>>({})
+  const [loadingNotif,   setLoadingNotif]   = useState(false)
+  const [retryingId,     setRetryingId]     = useState<string | null>(null)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -216,6 +276,14 @@ function TripSheetDetail({ id }: { id: string }) {
   }, [adminKey, id])
 
   useEffect(() => { if (authed) fetchSheet() }, [authed, fetchSheet])
+
+  useEffect(() => {
+    if (!authed || !adminKey) return
+    fetch(`/api/admin/vendors?key=${adminKey}`)
+      .then(res => res.ok ? res.json() : { vendors: [] })
+      .then(d => setVendors(d.vendors ?? []))
+      .catch(() => {})
+  }, [authed, adminKey])
 
   async function saveEdit() {
     setSaving(true)
@@ -262,14 +330,47 @@ function TripSheetDetail({ id }: { id: string }) {
         ...expForm,
         estimated_cost: Number(expForm.estimated_cost) || 0,
         actual_cost:    Number(expForm.actual_cost)    || 0,
+        vendor_id:        expForm.vendor_id || null,
+        operational_date: expForm.operational_date || null,
+        operational_time: expForm.operational_time || null,
       }),
     })
     if (res.ok) {
       setShowExpForm(false)
-      setExpForm({ expense_type: 'Transportation', mode: '', from_location: '', to_location: '', vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending' })
+      setExpForm({ expense_type: 'Transportation', mode: '', from_location: '', to_location: '', vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending', vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' })
       fetchSheet()
     }
     setSavingExp(false)
+  }
+
+  async function fetchNotifHistory(expId: string) {
+    setLoadingNotif(true)
+    const res = await fetch(`/api/admin/trip-sheets/${id}/expenses/${expId}/notifications?key=${adminKey}`)
+    if (res.ok) {
+      const { notifications } = await res.json()
+      setNotifHistory(h => ({ ...h, [expId]: notifications ?? [] }))
+    }
+    setLoadingNotif(false)
+  }
+
+  function toggleNotifHistory(expId: string) {
+    if (openNotifExpId === expId) { setOpenNotifExpId(null); return }
+    setOpenNotifExpId(expId)
+    if (!notifHistory[expId]) fetchNotifHistory(expId)
+  }
+
+  async function retryNotification(notifId: string, expId: string) {
+    setRetryingId(notifId)
+    const res = await fetch(`/api/admin/vendor-notifications/${notifId}/retry`, {
+      method: 'POST', headers: { 'x-admin-key': adminKey },
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      alert(d.error ?? 'Retry failed')
+    }
+    await fetchNotifHistory(expId)
+    await fetchSheet()
+    setRetryingId(null)
   }
 
   async function deleteExpense(expId: string) {
@@ -291,6 +392,10 @@ function TripSheetDetail({ id }: { id: string }) {
       estimated_cost: String(e.estimated_cost ?? 0),
       actual_cost:    String(e.actual_cost    ?? 0),
       payment_status: e.payment_status ?? 'pending',
+      vendor_id:           e.vendor_id          ?? '',
+      operational_date:    e.operational_date   ?? '',
+      operational_time:    e.operational_time   ?? '',
+      operation_category:  e.operation_category ?? 'other',
     })
   }
 
@@ -308,6 +413,10 @@ function TripSheetDetail({ id }: { id: string }) {
         estimated_cost: Number(editExpForm.estimated_cost) || 0,
         actual_cost:    Number(editExpForm.actual_cost)    || 0,
         payment_status: editExpForm.payment_status,
+        vendor_id:           editExpForm.vendor_id || null,
+        operational_date:    editExpForm.operational_date || null,
+        operational_time:    editExpForm.operational_time || null,
+        operation_category:  editExpForm.operation_category,
       }),
     })
     setEditingExp(null)
@@ -611,13 +720,47 @@ function TripSheetDetail({ id }: { id: string }) {
                   <Select label="Payment Status" value={expForm.payment_status}
                     onChange={v => setExpForm(f => ({ ...f, payment_status: v }))}
                     options={PAYMENT_STATUSES} />
-                  <div className="flex items-end">
-                    <button onClick={addExpense} disabled={savingExp || !expForm.expense_type}
-                      className="w-full flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors">
-                      <Plus className="h-4 w-4" />
-                      {savingExp ? 'Adding…' : 'Add Row'}
-                    </button>
+                </div>
+
+                {/* Vendor Master + Automatic Notification fields (founder spec BAGDROP-VENDOR-AUTOMATION-001) */}
+                <div className="mt-3 rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-orange-500">Vendor &amp; Notification</p>
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-500">Vendor</label>
+                      <div className="relative">
+                        <select value={expForm.vendor_id} onChange={e => setExpForm(f => ({ ...f, vendor_id: e.target.value }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                          <option value="">In-house / No vendor</option>
+                          {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_id} — {v.vendor_name}</option>)}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-500">Operation Category</label>
+                      <div className="relative">
+                        <select value={expForm.operation_category} onChange={e => setExpForm(f => ({ ...f, operation_category: e.target.value as OperationCategory }))}
+                          className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                          {OPERATION_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
+                    </div>
+                    <Field label="Operational Date" type="date" value={expForm.operational_date}
+                      onChange={v => setExpForm(f => ({ ...f, operational_date: v }))} />
+                    <Field label="Operational Time" type="time" value={expForm.operational_time}
+                      onChange={v => setExpForm(f => ({ ...f, operational_time: v }))} />
                   </div>
+                  <p className="mt-2 text-[11px] text-gray-400">Assigning a vendor here schedules an automatic WhatsApp/email notice to them on the Operational Date — leave as &quot;In-house&quot; for expenses like Packing Charges.</p>
+                </div>
+
+                <div className="mt-3 flex justify-end">
+                  <button onClick={addExpense} disabled={savingExp || !expForm.expense_type}
+                    className="flex items-center justify-center gap-2 rounded-xl bg-orange-500 px-5 py-2 text-sm font-semibold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors">
+                    <Plus className="h-4 w-4" />
+                    {savingExp ? 'Adding…' : 'Add Row'}
+                  </button>
                 </div>
               </div>
             )}
@@ -639,6 +782,9 @@ function TripSheetDetail({ id }: { id: string }) {
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Rate / Cost</th>
                       <th className="px-4 py-3 text-right text-xs font-semibold uppercase tracking-wide text-gray-500">Actual Cost</th>
                       <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Status</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Vendor</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Op. Date</th>
+                      <th className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-gray-500">Notification</th>
                       <th className="px-2 py-3" />
                     </tr>
                   </thead>
@@ -692,6 +838,37 @@ function TripSheetDetail({ id }: { id: string }) {
                             </div>
                           </td>
                           <td className="px-2 py-2">
+                            <div className="relative mb-1">
+                              <select value={editExpForm.vendor_id}
+                                onChange={ev => setEditExpForm(f => ({ ...f, vendor_id: ev.target.value }))}
+                                className="w-full appearance-none rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400">
+                                <option value="">In-house</option>
+                                {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_id} — {v.vendor_name}</option>)}
+                              </select>
+                            </div>
+                            <div className="relative">
+                              <select value={editExpForm.operation_category}
+                                onChange={ev => setEditExpForm(f => ({ ...f, operation_category: ev.target.value as OperationCategory }))}
+                                className="w-full appearance-none rounded-lg border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400">
+                                {OPERATION_CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                              </select>
+                            </div>
+                          </td>
+                          <td className="px-2 py-2">
+                            <input type="date" value={editExpForm.operational_date}
+                              onChange={ev => setEditExpForm(f => ({ ...f, operational_date: ev.target.value }))}
+                              className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                            <input type="time" value={editExpForm.operational_time}
+                              onChange={ev => setEditExpForm(f => ({ ...f, operational_time: ev.target.value }))}
+                              className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                          </td>
+                          <td className="px-4 py-3 text-center">
+                            {e.notification_status && (
+                              <span style={{ color: NOTIFICATION_STATUS[e.notification_status].color, background: NOTIFICATION_STATUS[e.notification_status].bg }}
+                                className="rounded-full px-2 py-0.5 text-xs font-semibold">{NOTIFICATION_STATUS[e.notification_status].label}</span>
+                            )}
+                          </td>
+                          <td className="px-2 py-2">
                             <div className="flex gap-1">
                               <button onClick={() => saveExpEdit(e.id)} disabled={savingExp}
                                 title="Save"
@@ -728,6 +905,65 @@ function TripSheetDetail({ id }: { id: string }) {
                                                                   'bg-amber-50 text-amber-700'
                             }`}>{e.payment_status}</span>
                           </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">
+                            {vendorById(e.vendor_id) ? (
+                              <>
+                                <p className="font-medium text-gray-800">{vendorById(e.vendor_id)!.vendor_name}</p>
+                                <p className="text-xs text-gray-400">{vendorById(e.vendor_id)!.vendor_id}</p>
+                              </>
+                            ) : <span className="text-gray-300">In-house</span>}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600">{fmtDate(e.operational_date)}</td>
+                          <td className="px-4 py-3 text-center relative">
+                            {e.notification_status && e.notification_status !== 'not_applicable' ? (
+                              <button onClick={() => toggleNotifHistory(e.id)}
+                                style={{ color: NOTIFICATION_STATUS[e.notification_status].color, background: NOTIFICATION_STATUS[e.notification_status].bg }}
+                                className="rounded-full px-2 py-0.5 text-xs font-semibold hover:opacity-80 transition-opacity">
+                                {NOTIFICATION_STATUS[e.notification_status].label}
+                              </button>
+                            ) : (
+                              <span style={{ color: NOTIFICATION_STATUS.not_applicable.color, background: NOTIFICATION_STATUS.not_applicable.bg }}
+                                className="rounded-full px-2 py-0.5 text-xs font-semibold">—</span>
+                            )}
+                            {openNotifExpId === e.id && (
+                              <div className="absolute right-0 top-full z-10 mt-1 w-72 rounded-xl border border-gray-200 bg-white p-3 text-left shadow-lg">
+                                <div className="mb-2 flex items-center justify-between">
+                                  <p className="text-xs font-bold text-gray-600">Notification History</p>
+                                  <button onClick={() => setOpenNotifExpId(null)} className="text-gray-300 hover:text-gray-500"><X className="h-3.5 w-3.5" /></button>
+                                </div>
+                                {loadingNotif && !notifHistory[e.id] ? (
+                                  <p className="text-xs text-gray-400">Loading…</p>
+                                ) : (notifHistory[e.id]?.length ?? 0) === 0 ? (
+                                  <p className="text-xs text-gray-400">No notifications for this row.</p>
+                                ) : (
+                                  <div className="space-y-2">
+                                    {notifHistory[e.id]!.map(n => {
+                                      const st = NOTIFICATION_STATUS[n.status as NotificationStatus] ?? { label: n.status, color: '#6b7280', bg: '#f3f4f6' }
+                                      return (
+                                        <div key={n.id} className="rounded-lg border border-gray-100 p-2">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-xs font-semibold capitalize text-gray-700">{n.channel}</span>
+                                            <span style={{ color: st.color, background: st.bg }} className="rounded-full px-2 py-0.5 text-[10px] font-semibold">{st.label}</span>
+                                          </div>
+                                          <p className="mt-1 text-[11px] text-gray-400">
+                                            {n.channel === 'whatsapp' ? n.recipient_mobile : n.recipient_email}
+                                          </p>
+                                          {n.sent_at && <p className="text-[11px] text-gray-400">Sent {fmtDT(n.sent_at)}</p>}
+                                          {n.failure_reason && <p className="mt-1 text-[11px] text-red-500">{n.failure_reason}</p>}
+                                          {n.status === 'failed' && (
+                                            <button onClick={() => retryNotification(n.id, e.id)} disabled={retryingId === n.id}
+                                              className="mt-1.5 rounded-md bg-orange-500 px-2 py-1 text-[11px] font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+                                              {retryingId === n.id ? 'Retrying…' : 'Retry'}
+                                            </button>
+                                          )}
+                                        </div>
+                                      )
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </td>
                           <td className="px-2 py-3">
                             <div className="flex gap-1">
                               <button onClick={() => startEditExp(e)}
@@ -751,7 +987,7 @@ function TripSheetDetail({ id }: { id: string }) {
                       <td colSpan={3} className="px-4 py-3 text-xs font-bold uppercase tracking-wide text-gray-500">Total</td>
                       <td className="px-4 py-3 text-right text-sm font-bold text-gray-700">{fmt(estTotal)}</td>
                       <td className="px-4 py-3 text-right text-sm font-bold text-red-600">{fmt(actTotal)}</td>
-                      <td colSpan={2} />
+                      <td colSpan={5} />
                     </tr>
                   </tfoot>
                 </table>

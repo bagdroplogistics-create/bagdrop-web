@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { syncExpenseVendorNotifications } from '@/lib/vendor-notifications'
 
 export const runtime = 'nodejs'
 
@@ -53,6 +54,29 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid body' }, { status: 400 })
 
+  const operationCategory: string = body.operation_category ?? 'other'
+
+  // Default the Operational Date sensibly by category, per founder spec
+  // (§6): "Do not assume every expense must always use the Booking Pickup
+  // Date... use the actual scheduled date for that particular operation if
+  // the existing system already stores one." The only two dates the
+  // parent trip sheet actually stores are pickup_date and delivery_date —
+  // Pickup obviously maps to the former; Delivery and Airport Delivery
+  // (both "the vendor hands bags over at the far end") map to the latter.
+  // Middle Mile / Handling / Other have no existing structured date to
+  // infer from, so they're left blank for the admin to fill in — same
+  // "don't guess wrong" principle the spec explicitly asks for.
+  let operationalDate: string | null = body.operational_date ?? null
+  if (!operationalDate) {
+    const { data: sheet } = await supabaseAdmin
+      .from('trip_sheets')
+      .select('pickup_date, delivery_date')
+      .eq('id', id)
+      .maybeSingle()
+    if (operationCategory === 'pickup') operationalDate = sheet?.pickup_date ?? null
+    else if (operationCategory === 'delivery' || operationCategory === 'airport_delivery') operationalDate = sheet?.delivery_date ?? null
+  }
+
   const { data, error } = await supabaseAdmin
     .from('trip_expenses')
     .insert({
@@ -67,6 +91,12 @@ export async function POST(req: NextRequest, { params }: Params) {
       actual_cost:    Number(body.actual_cost)     || 0,
       payment_status: body.payment_status ?? 'pending',
       receipt_url:    body.receipt_url    ?? null,
+      // Vendor Master link + automatic notification fields (founder spec
+      // BAGDROP-VENDOR-AUTOMATION-001, 2026-09-12).
+      vendor_id:           body.vendor_id || null,
+      operational_date:    operationalDate,
+      operational_time:    body.operational_time || null,
+      operation_category:  operationCategory,
     })
     .select()
     .single()
@@ -74,5 +104,19 @@ export async function POST(req: NextRequest, { params }: Params) {
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   await recalcTotals(id)
+
+  try {
+    await syncExpenseVendorNotifications({
+      id:                 data.id,
+      trip_sheet_id:      data.trip_sheet_id,
+      expense_type:       data.expense_type,
+      vendor_id:          data.vendor_id,
+      operational_date:   data.operational_date,
+      operation_category: data.operation_category,
+    })
+  } catch (err) {
+    console.error('[trip-expenses POST] vendor-notification sync failed (non-fatal):', err)
+  }
+
   return NextResponse.json({ expense: data }, { status: 201 })
 }

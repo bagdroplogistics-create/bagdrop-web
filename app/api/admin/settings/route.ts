@@ -43,6 +43,11 @@ export async function PUT(req: NextRequest) {
     // separate from the internal-staff reminders above. See
     // supabase/migrations/20260905_client_quote_followup.sql.
     'client_quote_followup_enabled', 'client_quote_followup_hours',
+    // Automatic Vendor Notifications (founder spec BAGDROP-VENDOR-AUTOMATION-001,
+    // 2026-09-12) — see lib/vendor-notifications.ts. Default notification
+    // time used whenever a Trip Expense has no more specific operational
+    // time of its own.
+    'vendor_notification_time',
   ]
 
   const upserts = Object.entries(body as Record<string, string>)

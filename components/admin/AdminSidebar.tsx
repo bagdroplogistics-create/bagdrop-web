@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -58,6 +58,7 @@ const NAV = [
       { label: 'Route Pricing', href: '/admin/route-pricing', icon: Map },
       { label: 'LR Route Master', href: '/admin/lr-routes',   icon: Map },
       { label: 'Branches',       href: '/admin/branches',     icon: Building2 },
+      { label: 'Vendors',        href: '/admin/vendors',      icon: Contact },
     ],
   },
 ]
