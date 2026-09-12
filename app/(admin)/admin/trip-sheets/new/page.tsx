@@ -7,7 +7,7 @@ import {
   ArrowLeft, Search, Loader2, Truck, User, Phone, MapPin,
   Package, Calendar, CheckCircle, IndianRupee, ChevronRight,
   AlertCircle, Plus, X, Trash2, Layers, Pencil, ReceiptText,
-  TrendingUp, Activity, ChevronDown,
+  TrendingUp, Activity, ChevronDown, ExternalLink,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -31,6 +31,32 @@ interface TripEntry {
   source:        'booking' | 'lead'
   created_at?:   string
 }
+
+// An existing trip sheet already linked to the selected booking/lead (the
+// "New Trip Sheet" wizard's own `expenses` state below is always a fresh,
+// empty scratch list — it never reflects a trip sheet that already exists
+// for this booking, which is exactly what confused the founder: expenses
+// added "yesterday" from the trip sheet detail page don't show up here
+// because this screen was never looking at that trip sheet at all).
+interface ExistingExpense {
+  id:                   string
+  expense_type:         string
+  from_location:        string | null
+  to_location:          string | null
+  vendor:               string | null
+  vendor_id:            string | null
+  actual_cost:          number
+  estimated_cost:       number
+  payment_status:       string
+  notification_status:  string | null
+}
+interface ExistingSheet {
+  id:            string
+  trip_number:   string
+  status:        string
+  trip_expenses: ExistingExpense[]
+}
+interface VendorLite { id: string; vendor_id: string; vendor_name: string }
 
 interface LocalExpense {
   _id:           string   // temp uuid
@@ -174,6 +200,12 @@ export default function NewTripSheetPage() {
   const [notes,             setNotes]            = useState('')
   const [remarks,           setRemarks]          = useState('')
 
+  // Existing trip sheet already linked to the selected booking/lead — see
+  // ExistingSheet comment above.
+  const [existingSheet,  setExistingSheet]  = useState<ExistingSheet | null>(null)
+  const [existingLoading, setExistingLoading] = useState(false)
+  const [vendorsLite,    setVendorsLite]    = useState<VendorLite[]>([])
+
   // Local expenses (added before creation, posted after)
   const [expenses, setExpenses] = useState<LocalExpense[]>([])
   const [showExpForm, setShowExpForm] = useState(false)
@@ -250,6 +282,42 @@ export default function NewTripSheetPage() {
   }, [adminKey])
 
   useEffect(() => { if (authed) fetchAll() }, [authed, fetchAll])
+
+  // Vendor Master list — just for showing a real vendor NAME (instead of a
+  // bare vendor_id) in the "already exists" expenses preview below.
+  useEffect(() => {
+    if (!authed || !adminKey) return
+    fetch(`/api/admin/vendors?key=${adminKey}`)
+      .then(r => r.ok ? r.json() : { vendors: [] })
+      .then(d => setVendorsLite(d.vendors ?? []))
+      .catch(() => {})
+  }, [authed, adminKey])
+
+  // Whenever a booking/lead is selected, check whether it already has a
+  // (non-cancelled) trip sheet — the backend's own duplicate guard (see
+  // POST /api/admin/trip-sheets) already blocks creating a second one for
+  // the same customer/route/pickup-date, but until now nothing in this
+  // wizard told the admin THAT up front, so the Expenses tab just looked
+  // like an empty trip sheet even when a real one (with real expenses)
+  // already existed.
+  useEffect(() => {
+    if (entryMode !== 'select' || !selected || !adminKey) { setExistingSheet(null); return }
+    let cancelled = false
+    setExistingLoading(true)
+    setExistingSheet(null)
+    fetch(`/api/admin/trip-sheets?key=${adminKey}&booking_id=${selected.booking_id}&limit=5`)
+      .then(r => r.ok ? r.json() : { trip_sheets: [] })
+      .then(async d => {
+        const candidates = (d.trip_sheets ?? []).filter((s: { status: string }) => s.status !== 'cancelled')
+        if (candidates.length === 0) return
+        const full = await fetch(`/api/admin/trip-sheets/${candidates[0].id}?key=${adminKey}`)
+          .then(r => r.ok ? r.json() : null)
+        if (!cancelled) setExistingSheet(full?.trip_sheet ?? null)
+      })
+      .catch(() => {})
+      .finally(() => { if (!cancelled) setExistingLoading(false) })
+    return () => { cancelled = true }
+  }, [selected, entryMode, adminKey])
 
   const filtered = entries.filter(e => {
     if (!search.trim()) return true
@@ -510,6 +578,26 @@ export default function NewTripSheetPage() {
                 ))}
               </div>
 
+              {/* Existing trip sheet banner — see the useEffect above */}
+              {entryMode === 'select' && existingSheet && (
+                <div className="mb-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3">
+                  <div className="flex items-start gap-2 text-sm text-amber-800">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>
+                      This booking already has a trip sheet — <strong>{existingSheet.trip_number}</strong>
+                      {existingSheet.trip_expenses?.length
+                        ? `, with ${existingSheet.trip_expenses.length} expense${existingSheet.trip_expenses.length !== 1 ? 's' : ''} already added`
+                        : ''}.
+                      {' '}Creating another here for the same customer/route/pickup date will be blocked — see the Expenses tab below, or open the existing one directly.
+                    </span>
+                  </div>
+                  <Link href={`/admin/trip-sheets/${existingSheet.id}`}
+                    className="flex shrink-0 items-center gap-1.5 rounded-lg bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors">
+                    View Existing Trip Sheet <ExternalLink className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              )}
+
               {/* Tabs */}
               <div className="mb-4 flex gap-1 rounded-xl bg-gray-200/60 p-1">
                 {TABS.map(t => (
@@ -718,6 +806,73 @@ export default function NewTripSheetPage() {
               {/* ── TAB: Expenses ── */}
               {tab === 'expenses' && (
                 <div>
+                  {existingLoading && (
+                    <p className="mb-3 text-xs text-gray-400">Checking for an existing trip sheet…</p>
+                  )}
+
+                  {/* Expenses already saved on an existing trip sheet for this
+                      booking — read-only here on purpose; edit them from the
+                      real trip sheet detail page (linked below and in the
+                      banner above). This is what was missing before: this
+                      wizard's "expenses" state below is always a fresh, empty
+                      scratch list for a brand-new trip sheet, so it never
+                      reflected expenses added yesterday from the real trip
+                      sheet. */}
+                  {existingSheet && existingSheet.trip_expenses?.length > 0 && (
+                    <div className="mb-5">
+                      <p className="mb-2 text-xs font-bold uppercase tracking-widest text-amber-600">
+                        Already on {existingSheet.trip_number} ({existingSheet.trip_expenses.length})
+                      </p>
+                      <div className="overflow-hidden rounded-2xl border border-amber-200 bg-amber-50/40 shadow-sm">
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full divide-y divide-amber-100">
+                            <thead className="bg-amber-100/50">
+                              <tr>
+                                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-amber-700">Mode</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-amber-700">From</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-amber-700">To</th>
+                                <th className="px-4 py-2 text-right text-xs font-semibold uppercase tracking-wide text-amber-700">Actual Cost</th>
+                                <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-700">Status</th>
+                                <th className="px-4 py-2 text-left text-xs font-semibold uppercase tracking-wide text-amber-700">Vendor</th>
+                                <th className="px-4 py-2 text-center text-xs font-semibold uppercase tracking-wide text-amber-700">Notification</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-amber-100">
+                              {existingSheet.trip_expenses.map(e => {
+                                const v = vendorsLite.find(x => x.id === e.vendor_id)
+                                return (
+                                  <tr key={e.id}>
+                                    <td className="px-4 py-2 text-sm text-gray-700">{e.expense_type}</td>
+                                    <td className="px-4 py-2 text-sm text-gray-600">{e.from_location || '—'}</td>
+                                    <td className="px-4 py-2 text-sm text-gray-600">{e.to_location || '—'}</td>
+                                    <td className="px-4 py-2 text-right text-sm font-semibold text-gray-800">{fmtRs(e.actual_cost)}</td>
+                                    <td className="px-4 py-2 text-center">
+                                      <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
+                                        e.payment_status === 'paid' ? 'bg-green-100 text-green-700' :
+                                        e.payment_status === 'reimbursed' ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-700'
+                                      }`}>{e.payment_status}</span>
+                                    </td>
+                                    <td className="px-4 py-2 text-sm text-gray-600">{v ? v.vendor_name : (e.vendor_id ? '—' : 'In-house')}</td>
+                                    <td className="px-4 py-2 text-center text-xs">
+                                      {e.notification_status && e.notification_status !== 'not_applicable' ? (
+                                        <span className="rounded-full bg-gray-100 px-2 py-0.5 font-semibold capitalize text-gray-600">{e.notification_status.replace('_', ' ')}</span>
+                                      ) : <span className="text-gray-300">—</span>}
+                                    </td>
+                                  </tr>
+                                )
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                      <p className="mt-2 text-xs text-amber-600">
+                        Read-only here — edit these from the{' '}
+                        <Link href={`/admin/trip-sheets/${existingSheet.id}`} className="font-semibold underline">trip sheet detail page</Link>.
+                        The form below only adds NEW rows if you go ahead and create another trip sheet for this booking.
+                      </p>
+                    </div>
+                  )}
+
                   <div className="mb-4 flex items-center justify-between">
                     <div>
                       <h3 className="text-sm font-bold text-gray-700">Trip Expenses</h3>

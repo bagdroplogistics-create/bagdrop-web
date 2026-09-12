@@ -30,12 +30,13 @@ export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const { searchParams } = req.nextUrl
-  const status  = searchParams.get('status')
-  const vendor  = searchParams.get('vendor')
-  const search  = searchParams.get('search')
-  const page    = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit   = parseInt(searchParams.get('limit') ?? '50', 10)
-  const offset  = (page - 1) * limit
+  const status     = searchParams.get('status')
+  const vendor      = searchParams.get('vendor')
+  const search      = searchParams.get('search')
+  const bookingId   = searchParams.get('booking_id')
+  const page        = parseInt(searchParams.get('page') ?? '1', 10)
+  const limit       = parseInt(searchParams.get('limit') ?? '50', 10)
+  const offset      = (page - 1) * limit
 
   let query = supabaseAdmin
     .from('trip_sheets')
@@ -44,7 +45,13 @@ export async function GET(req: NextRequest) {
     .range(offset, offset + limit - 1)
 
   if (status && status !== 'all') query = query.eq('status', status)
-  if (vendor)  query = query.ilike('vendor', `%${vendor}%`)
+  if (vendor)     query = query.ilike('vendor', `%${vendor}%`)
+  // Used by the "New Trip Sheet" wizard to detect whether the selected
+  // booking/lead already has a trip sheet, so it can point the admin at
+  // the existing one (with its real expenses) instead of them accidentally
+  // trying to build a second, blank one for a booking that's already
+  // been converted.
+  if (bookingId)  query = query.eq('booking_id', bookingId)
   if (search) {
     query = query.or(
       `customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,trip_number.ilike.%${search}%,driver_name.ilike.%${search}%`
