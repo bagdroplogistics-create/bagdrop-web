@@ -160,8 +160,22 @@ export async function syncBookingReminders(booking: BookingForReminders): Promis
     const settings = await getReminderSettings()
     const isConfirmedOnward = CONFIRMED_ONWARD_STATUSES.includes(booking.status)
     const isTerminal        = booking.status === 'cancelled' || booking.status === 'rejected'
+    // Founder-reported 2026-09-11: marked a booking 'picked_up' before 5pm,
+    // still got the "Upcoming Pickup Reminder" (day_of, scheduled for 5pm)
+    // for it anyway — the reminder even showed "Status: Picked Up" in its
+    // own body (it re-fetches the booking fresh at send time), it just
+    // never checked that status before deciding to send at all. Root cause:
+    // isConfirmedOnward is true for EVERY status from 'confirmed' through
+    // 'completed' (see STATUS_ORDER), including 'picked_up' and beyond, so
+    // it never triggered the cancellation branch below just because the
+    // pickup already happened — only cancelled/rejected did. These
+    // reminders exist purely to make sure the pickup gets arranged; once
+    // the booking has actually reached 'picked_up' or later, the pickup by
+    // definition already happened and any still-pending reminder for it is
+    // stale, not upcoming.
+    const isPastPickup = STATUS_ORDER.indexOf(booking.status) >= STATUS_ORDER.indexOf('picked_up')
 
-    if (!settings.enabled || !isConfirmedOnward || isTerminal) {
+    if (!settings.enabled || !isConfirmedOnward || isTerminal || isPastPickup) {
       await supabaseAdmin
         .from('booking_reminders')
         .update({ status: 'cancelled', detail: 'Cancelled — booking is no longer an upcoming confirmed pickup' })
@@ -238,21 +252,33 @@ function fmtDate(d: string | null): string {
  * Builds the 12 positional variables for the ops_pickup_reminder Fast2SMS
  * template (see FAST2SMS_TEMPLATES.md) — order must match the approved
  * template exactly, Fast2SMS substitutes {{1}}..{{12}} positionally.
+ *
+ * Founder-reported 2026-09-11 (BDA-2026-0169): the sent message showed
+ * "Pickup Date: Doorstep → Doorstep", "Pickup Time: 11 Sept 2026", "Route:
+ * <pickup address>", "Pickup Address: <delivery address>", "Delivery
+ * Address: BARODA → DELHI" — every value from {{3}} through {{7}} landed
+ * one field to the right of its real label. Root cause: this array was
+ * built against a Service-Type-then-combined-date+time layout that doesn't
+ * match what's actually in the approved template's body text (confirmed
+ * directly from the screenshot — the real label order is Pickup Date /
+ * Pickup Time / Route / Pickup Address / Delivery Address, with NO
+ * separate Service Type field at all). Fixed by matching that real order
+ * exactly and splitting date/time into their own {{3}}/{{4}} slots instead
+ * of one combined string.
  */
 function buildReminderVariables(b: BookingSnapshot): string[] {
   const route      = [b.from_city, b.to_city].filter(Boolean).join(' → ') || '—'
-  const pickupWhen = `${fmtDate(b.pickup_date)}${b.time_slot ? ', ' + b.time_slot : ''}`
   const driver      = b.driver_name ? `${b.driver_name}${b.driver_phone ? ' (' + b.driver_phone + ')' : ''}` : 'Not assigned yet'
   const instructions = (b.pickup_instructions || b.notes || 'None') as string
 
   return [
     b.customer_name ?? 'Customer',                                   // {{1}} Customer Name
     b.tracking_id,                                                   // {{2}} Booking ID
-    b.service_label ?? b.service_type ?? 'Baggage Delivery',         // {{3}} Service Type
-    pickupWhen,                                                      // {{4}} Pickup Date & Time
-    b.pickup_address || '—',                                         // {{5}} Pickup Address
-    b.drop_address || '—',                                           // {{6}} Delivery Address
-    route,                                                           // {{7}} Route
+    fmtDate(b.pickup_date),                                          // {{3}} Pickup Date
+    b.time_slot || 'TBC',                                            // {{4}} Pickup Time
+    route,                                                           // {{5}} Route
+    b.pickup_address || '—',                                         // {{6}} Pickup Address
+    b.drop_address || '—',                                           // {{7}} Delivery Address
     String(b.total_bags ?? '—'),                                     // {{8}} Number of Bags
     b.customer_phone || '—',                                         // {{9}} Customer Mobile Number
     fmtLabel(b.status),                                              // {{10}} Current Booking Status
