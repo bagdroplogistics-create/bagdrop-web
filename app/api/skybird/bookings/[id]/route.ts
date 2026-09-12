@@ -6,6 +6,15 @@ import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { requireSkybirdAuth, SKYBIRD_PARTNER_NAME } from '@/lib/skybird-auth'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
 
+// Kept in sync with app/api/bookings/route.ts's sanitizeFlightDateTime — a
+// bare "HH:MM" (no date) reaching bookings.flight_datetime (timestamptz)
+// fails the update outright. See that file's comment for the full
+// BDA-2026-0175 incident writeup.
+function sanitizeFlightDateTime(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  return value.includes('T') ? value : null
+}
+
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — edit an existing booking
 // ============================================================================
@@ -157,7 +166,7 @@ export async function PATCH(
       delivery_date:  booking.deliveryDate  || null,
       time_slot:      timeSlotLabel,
       flight_number:  booking.flightNumber  ?? null,
-      flight_datetime: booking.flightDateTime || null,
+      flight_datetime: sanitizeFlightDateTime(booking.flightDateTime),
       total_bags:     pricing?.totalBags    ?? booking.bags ?? 1,
       bag_details:    bagDetails,
       total_amount:   pricing?.total        ?? existing.total_amount ?? 0,

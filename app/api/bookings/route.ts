@@ -9,6 +9,22 @@ import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
+// Defensive last line of defense for bookings.flight_datetime (timestamptz).
+// A real incident (BDA-2026-0175, 2026-09-12) traced back to the flight
+// time <select> on the booking form emitting a bare "HH:MM" string with no
+// date when a customer picked a time before a date — that string went
+// straight into this timestamptz column, Postgres rejected it outright,
+// and the ENTIRE booking insert failed while the site still told the
+// customer their inquiry was received (fixed at the source in
+// components/booking/step-schedule.tsx). This only needs a 'T' to look
+// like a real ISO datetime rather than a bare date/time fragment — kept
+// deliberately loose so it never rejects a genuinely valid value, just the
+// bare-time shape that broke the insert.
+function sanitizeFlightDateTime(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  return value.includes('T') ? value : null
+}
+
 // Best-effort mapping from the old '+91'/'+1'/'+44'/'+1CA' dial-code-string
 // convention to an ISO2 country — only hit if a client sends the pre-
 // international-support `countryCode` field instead of the new `countryIso2`.
@@ -96,7 +112,8 @@ export async function POST(req: Request) {
         // Collected on step 3 for airport-delivery (BookingState.flightDateTime)
         // but previously never persisted — needed for the "Driver Details
         // Shared" 4-hours-before-arrival automation (see lib/driver-details.ts).
-        flight_datetime: booking.flightDateTime || null,
+        // Sanitized — see sanitizeFlightDateTime's comment above.
+        flight_datetime: sanitizeFlightDateTime(booking.flightDateTime),
         total_bags:     pricing?.totalBags     ?? booking.bags ?? 1,
         bag_details:    (() => {
           const base = booking.bagDetails ?? null
@@ -133,7 +150,7 @@ export async function POST(req: Request) {
       .select()
       .single()
 
-    if (dbError) {
+    if (dbError || !savedBooking) {
       console.error('[Bookings] Supabase insert error:', dbError)
       // Booking insert failed outright — no lead is attempted below (gated
       // on savedBooking), so this tracking number vanishes with nothing
@@ -147,8 +164,22 @@ export async function POST(req: Request) {
         customerName,
         customerPhone,
         customerEmail: customerEmail || null,
-        errorMessage:  dbError.message,
+        errorMessage:  dbError?.message ?? 'Insert returned no row',
       })
+      // 2026-09-12 fix (BDA-2026-0175 incident): this used to fall through
+      // and still send the "New Inquiry Received" admin email + return
+      // { success: true } to the customer's browser even though NOTHING
+      // was saved — the customer saw a normal "thank you" while their
+      // inquiry silently vanished, discoverable only via the failure-alert
+      // email (which the founder has to notice and manually repair). Now
+      // matches app/api/skybird/bookings/route.ts's already-correct
+      // behavior: surface it as a real error so the booking form shows the
+      // customer something failed and to retry/contact support, instead of
+      // a false "success" that hides real data loss.
+      return NextResponse.json(
+        { error: 'Something went wrong saving your inquiry. Please try again, or contact us directly if it keeps happening.' },
+        { status: 500 }
+      )
     }
 
     // ── Auto-create Lead ────────────────────────────────────────────

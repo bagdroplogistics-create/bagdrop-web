@@ -10,6 +10,15 @@ import { requireSkybirdAuth, SKYBIRD_SOURCE, SKYBIRD_PARTNER_NAME } from '@/lib/
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
+// Kept in sync with app/api/bookings/route.ts's sanitizeFlightDateTime — a
+// bare "HH:MM" (no date) reaching bookings.flight_datetime (timestamptz)
+// fails the whole insert outright. See that file's comment for the full
+// BDA-2026-0175 incident writeup.
+function sanitizeFlightDateTime(value: unknown): string | null {
+  if (typeof value !== 'string' || !value.trim()) return null
+  return value.includes('T') ? value : null
+}
+
 // ============================================================================
 // SKYBIRD PARTNER DASHBOARD — scoped bookings API
 // ============================================================================
@@ -89,7 +98,7 @@ export async function POST(req: NextRequest) {
         delivery_date:  booking.deliveryDate   || null,
         time_slot:      timeSlotLabel,
         flight_number:  booking.flightNumber   ?? null,
-        flight_datetime: booking.flightDateTime || null,
+        flight_datetime: sanitizeFlightDateTime(booking.flightDateTime),
         total_bags:     pricing?.totalBags     ?? booking.bags ?? 1,
         bag_details:    (() => {
           const base = booking.bagDetails ?? null

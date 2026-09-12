@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import { motion } from 'framer-motion'
 import {
   Plane, ShieldCheck,
@@ -44,6 +45,11 @@ export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds =
   const valid            = isStep3Valid(state)
   const isAirportService = ['airport-delivery', 'door-to-airport'].includes(state.serviceId ?? '')
   const visibleAddons     = ADDON_SERVICES.filter(a => !hiddenAddonIds.includes(a.id))
+
+  // Holds a time picked BEFORE a date, so it isn't lost — see the flight
+  // date/time onChange handlers below for the full incident writeup
+  // (BDA-2026-0175, 2026-09-12).
+  const [pendingTime, setPendingTime] = useState('')
 
   function toggleAddon(id: AddonId) {
     const has = state.addonIds.includes(id)
@@ -189,16 +195,33 @@ export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds =
                 type="date"
                 value={state.flightDateTime ? state.flightDateTime.slice(0, 10) : ''}
                 onChange={e => {
-                  const timePart = state.flightDateTime ? state.flightDateTime.slice(11, 16) : ''
+                  // Root cause of a real lost-booking incident (BDA-2026-0175,
+                  // 2026-09-12): flight_datetime is a timestamptz column, and
+                  // a bare "HH:MM" with no date ever reaching it makes the
+                  // WHOLE booking insert fail — silently losing a real
+                  // customer inquiry while the site still told them it was
+                  // received (see app/api/bookings/route.ts for the other
+                  // half of that fix). Combine with any time picked first
+                  // (held in pendingTime below) so a full, valid datetime is
+                  // always what gets sent, never a bare date or bare time.
+                  const timePart = state.flightDateTime ? state.flightDateTime.slice(11, 16) : pendingTime
                   onChange({ flightDateTime: timePart ? `${e.target.value}T${timePart}` : e.target.value })
+                  if (timePart) setPendingTime('')
                 }}
                 className="input-base flex-1"
               />
               <select
-                value={state.flightDateTime ? state.flightDateTime.slice(11, 16) : ''}
+                value={state.flightDateTime ? state.flightDateTime.slice(11, 16) : pendingTime}
                 onChange={e => {
                   const datePart = state.flightDateTime ? state.flightDateTime.slice(0, 10) : ''
-                  onChange({ flightDateTime: datePart ? `${datePart}T${e.target.value}` : e.target.value })
+                  if (!datePart) {
+                    // No date chosen yet — hold the time locally instead of
+                    // sending a bare "HH:MM" up to booking state (that string
+                    // is exactly what broke BDA-2026-0175 above).
+                    setPendingTime(e.target.value)
+                    return
+                  }
+                  onChange({ flightDateTime: e.target.value ? `${datePart}T${e.target.value}` : datePart })
                 }}
                 className="input-base w-28 shrink-0"
               >
