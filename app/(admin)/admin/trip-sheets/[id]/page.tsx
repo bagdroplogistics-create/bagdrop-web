@@ -460,7 +460,7 @@ function TripSheetDetail({ id }: { id: string }) {
         </div>
       </div>
 
-      <main className="mx-auto max-w-5xl px-4 py-6 sm:px-6">
+      <main className="mx-auto max-w-screen-2xl px-4 py-6 sm:px-6">
 
         {/* Summary strip */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
@@ -773,7 +773,19 @@ function TripSheetDetail({ id }: { id: string }) {
             ) : (
               <div className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm">
                 <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-100">
+                <table className="w-full table-fixed divide-y divide-gray-100">
+                  <colgroup>
+                    <col className="w-[20%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[11%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[8%]" />
+                    <col className="w-[13%]" />
+                    <col className="w-[9%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[80px]" />
+                  </colgroup>
                   <thead className="bg-gray-50">
                     <tr>
                       <th className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500">Mode</th>
