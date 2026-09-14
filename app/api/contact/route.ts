@@ -2,13 +2,13 @@ import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendLeadAcknowledgment } from '@/lib/lead-acknowledgment'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
+import { ADMIN_EMAILS } from '@/lib/email'
 import { TITLE_OPTIONS, DEFAULT_TITLE, type TitleId, formatCustomerName } from '@/lib/constants'
 import { nextInquiryNumberPair } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 const RESEND_API = 'https://api.resend.com/emails'
 const FROM       = 'Bagdrop Website <info@bagdrop.co>'
-const ADMIN      = 'info@bagdrop.co'
 
 // ── Competitor / suspicious domain blocklist ──────────────────────
 // Submissions from these domains are silently swallowed.
@@ -259,19 +259,33 @@ export async function POST(req: Request) {
     '<p style="color:#888;font-size:12px">If this looks like a competitor inquiry, search this IP in your logs to find repeat submissions.</p>',
   ].join('')
 
-  await fetch(RESEND_API, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + apiKey,
-    },
-    body: JSON.stringify({
-      from: FROM,
-      to: [ADMIN],
-      subject: 'Website Contact: ' + (subject || 'New Message') + ' — ' + displayName,
-      html,
-    }),
-  })
+  // Sent to BOTH admin addresses (2026-09-14 fix — this route used to hardcode
+  // a single `const ADMIN = 'info@bagdrop.co'`, so Contact Form submissions
+  // never reached aditya@bagdrop.co even though the Website Booking Form
+  // already did via lib/email.ts's sendInquiryNotification. Now reads from
+  // the same shared ADMIN_EMAILS list that function uses, so both sources
+  // stay in sync going forward. One independent Resend call per recipient —
+  // not a single call with `to: ADMIN_EMAILS` — matching the same pattern
+  // sendInquiryNotification already uses, since Resend can silently drop
+  // recipients from a multi-address `to` array.
+  const emailSubject = 'Website Contact: ' + (subject || 'New Message') + ' — ' + displayName
+  await Promise.allSettled(
+    ADMIN_EMAILS.map(addr =>
+      fetch(RESEND_API, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ' + apiKey,
+        },
+        body: JSON.stringify({
+          from: FROM,
+          to: [addr],
+          subject: emailSubject,
+          html,
+        }),
+      })
+    )
+  )
 
   return NextResponse.json({ success: true })
 }

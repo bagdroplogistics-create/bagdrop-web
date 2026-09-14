@@ -7,8 +7,15 @@ const RESEND_API   = 'https://api.resend.com/emails'
 const FROM         = 'Bagdrop <info@bagdrop.co>'
 const BRAND        = '#FF6300'
 
-// Both admins receive every inquiry notification
-const ADMIN_EMAILS = ['info@bagdrop.co', 'aditya@bagdrop.co']
+// Both admins receive every inquiry notification. Exported (2026-09-14) so
+// every inquiry-creation route uses this ONE list instead of each keeping
+// its own local admin-recipient constant — that's exactly how the Contact
+// Form route (app/api/contact/route.ts) ended up only ever emailing
+// info@bagdrop.co: it had its own separate `const ADMIN = 'info@bagdrop.co'`
+// that never got updated when aditya@bagdrop.co was added here for the
+// Website Booking Form. A single shared source of truth means adding or
+// changing an admin recipient here now fixes every inquiry source at once.
+export const ADMIN_EMAILS = ['info@bagdrop.co', 'aditya@bagdrop.co']
 
 export interface EmailAttachment {
   filename: string
