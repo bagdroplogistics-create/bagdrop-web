@@ -631,6 +631,7 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
         customerPhone: normPhone,
         customerEmail: body.email?.trim() || null,
         errorMessage:  bookingErr.message,
+        rawPayload:    body,
       })
     }
     // If still null, the lead is created without a booking — admin can repair via
@@ -740,6 +741,7 @@ async function handleCreateLead(req: NextRequest): Promise<NextResponse> {
       customerPhone: normPhone,
       customerEmail: body.email?.trim() || null,
       errorMessage:  leadErr.message,
+      rawPayload:    body,
     })
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }

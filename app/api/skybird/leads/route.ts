@@ -296,6 +296,7 @@ export async function POST(req: NextRequest) {
         customerPhone: normPhone,
         customerEmail: body.email?.trim() || null,
         errorMessage:  bookingErr.message,
+        rawPayload:    body,
       })
     }
   }
@@ -360,6 +361,7 @@ export async function POST(req: NextRequest) {
       customerPhone: normPhone,
       customerEmail: body.email?.trim() || null,
       errorMessage:  leadErr.message,
+      rawPayload:    body,
     })
     return NextResponse.json({ error: leadErr.message }, { status: 500 })
   }

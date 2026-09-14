@@ -158,6 +158,7 @@ export async function POST(req: Request) {
         customerPhone: normalizedPhone,
         customerEmail: cleanEmail || null,
         errorMessage:  bookingErr.message,
+        rawPayload:    body,
       })
     }
 
@@ -196,6 +197,7 @@ export async function POST(req: Request) {
         customerPhone: normalizedPhone,
         customerEmail: cleanEmail || null,
         errorMessage:  leadInsertErr.message,
+        rawPayload:    body,
       })
     } else {
       console.log(`[Contact] Auto-created lead ${leadNumber}${newBooking ? ` + booking ${trackingId}` : ''} from contact form`)

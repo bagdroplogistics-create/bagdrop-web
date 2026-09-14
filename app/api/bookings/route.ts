@@ -165,6 +165,10 @@ export async function POST(req: Request) {
         customerPhone,
         customerEmail: customerEmail || null,
         errorMessage:  dbError?.message ?? 'Insert returned no row',
+        // Full original submission (2026-09-14, post BDA-2026-0175) — lets
+        // /api/admin/repair/recreate-lost-inquiry recreate this exactly
+        // instead of retyping it from a screenshot.
+        rawPayload:    { booking, pricing },
       })
       // 2026-09-12 fix (BDA-2026-0175 incident): this used to fall through
       // and still send the "New Inquiry Received" admin email + return
@@ -242,6 +246,7 @@ export async function POST(req: Request) {
               customerPhone,
               customerEmail: customerEmail || null,
               errorMessage:  leadInsertErr.message,
+              rawPayload:    { booking, pricing },
             })
           } else {
             // Note: lead_id on bookings omitted (column may not exist in all DB schemas).

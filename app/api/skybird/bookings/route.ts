@@ -147,6 +147,7 @@ export async function POST(req: NextRequest) {
         customerPhone,
         customerEmail: customerEmail || null,
         errorMessage:  dbError?.message ?? 'Insert returned no row',
+        rawPayload:    { booking, pricing },
       })
       // Unlike the public /api/bookings route, we surface this instead of
       // silently returning success:true — an internal partner tool must
@@ -214,6 +215,7 @@ export async function POST(req: NextRequest) {
               customerPhone,
               customerEmail: customerEmail || null,
               errorMessage:  leadInsertErr.message,
+              rawPayload:    { booking, pricing },
             })
           } else {
             console.log(`[Skybird Bookings] Auto-created lead ${leadNumber} for booking ${trackingId}`)

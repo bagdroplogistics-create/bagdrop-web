@@ -29,6 +29,19 @@ export interface CreationFailureDetails {
   customerPhone?: string | null
   customerEmail?: string | null
   errorMessage:   string
+  // The full, as-received request body for this creation attempt — added
+  // 2026-09-14 after BDA-2026-0175 (see app/api/bookings/route.ts's
+  // sanitizeFlightDateTime comment). Before this, the audit row/email only
+  // ever captured a handful of summary fields (name/phone/email), so
+  // recovering a genuinely lost inquiry meant transcribing every other
+  // field (addresses, dates, bags, service type...) by hand from a
+  // screenshot of the customer-facing "New Inquiry Received" email —
+  // error-prone and slow. Optional and best-effort: every existing call
+  // site keeps working unchanged without it, but any call site that HAS
+  // the raw body should pass it so recreate-lost-inquiry
+  // (app/api/admin/repair/recreate-lost-inquiry/route.ts) can be filled in
+  // directly from this record instead.
+  rawPayload?:    unknown
 }
 
 export async function alertCreationFailure(details: CreationFailureDetails): Promise<void> {
@@ -56,7 +69,12 @@ export async function alertCreationFailure(details: CreationFailureDetails): Pro
           directly using the phone/email above — their inquiry never made it into
           the system. If a booking record exists for this tracking ID with no
           linked lead, it can be repaired via
-          <code>/api/admin/repair/create-lead-for-booking</code>.
+          <code>/api/admin/repair/create-lead-for-booking</code>. If NOTHING was
+          saved at all (no booking, no lead), the full original submission
+          ${details.rawPayload ? 'was captured and is saved in the inquiry_creation_failures table (raw_payload column) — recreate it exactly via' : 'was NOT captured — recreate it from whatever details you have via'}
+          <code>/api/admin/repair/recreate-lost-inquiry</code>, using this
+          same tracking ID/lead number so the customer's original inquiry
+          number is preserved.
         </p>
       </div>
     `
@@ -82,6 +100,7 @@ export async function alertCreationFailure(details: CreationFailureDetails): Pro
       customer_email: details.customerEmail ?? null,
       error_message:  details.errorMessage,
       alert_sent:     alertSent,
+      raw_payload:    details.rawPayload ?? null,
     })
     if (error) {
       console.warn('[CreationFailureAlert] Could not write audit row (has 20260822_inquiry_creation_failures.sql been run?):', error.message)

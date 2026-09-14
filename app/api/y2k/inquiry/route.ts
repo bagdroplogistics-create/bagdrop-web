@@ -169,6 +169,7 @@ export async function POST(req: NextRequest) {
           customerPhone: '+91' + digits,
           customerEmail: email?.trim().toLowerCase() || null,
           errorMessage:  dbError.message,
+          rawPayload:    body,
         })
       } else {
         savedBookingId = savedBooking?.id ?? null
@@ -183,6 +184,7 @@ export async function POST(req: NextRequest) {
         customerPhone: '+91' + digits,
         customerEmail: email?.trim().toLowerCase() || null,
         errorMessage:  dbErr instanceof Error ? dbErr.message : String(dbErr),
+        rawPayload:    body,
       })
     }
 
@@ -263,6 +265,7 @@ export async function POST(req: NextRequest) {
               customerPhone: '+91' + digits,
               customerEmail: email?.trim().toLowerCase() || null,
               errorMessage:  leadInsertErr.message,
+              rawPayload:    body,
             })
           } else {
             console.log(`[y2k/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
