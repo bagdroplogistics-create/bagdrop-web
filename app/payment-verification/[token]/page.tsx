@@ -19,6 +19,7 @@ interface ReviewData {
     payment_status: string
     proof_url:      string | null
     proof_type:     'image' | 'pdf' | null
+    proof_urls:     { url: string; type: 'image' | 'pdf'; name?: string }[]
     created_at:     string
   }
   booking: { tracking_id: string; route: string } | null
@@ -132,23 +133,34 @@ export default function PaymentVerificationPage() {
               </tbody>
             </table>
 
-            {data.payment.proof_url && (
+            {/* Every proof uploaded for this submission (2026-09-14) — falls
+                back to the single proof_url/proof_type pair via the
+                proof_urls fallback built in lib/payment-verification-token.ts
+                for pre-migration rows, so this renders identically to before
+                for every existing single-proof payment. */}
+            {data.payment.proof_urls && data.payment.proof_urls.length > 0 && (
               <div>
-                <p className="mb-2 text-xs font-semibold text-gray-500">Uploaded Proof</p>
-                {data.payment.proof_type === 'pdf' ? (
-                  <a href={data.payment.proof_url} target="_blank" rel="noopener noreferrer"
-                    className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-100">
-                    <FileText className="h-4 w-4" /> View Payment Receipt (PDF)
-                  </a>
-                ) : (
-                  <a href={data.payment.proof_url} target="_blank" rel="noopener noreferrer" className="block">
-                    <img src={data.payment.proof_url} alt="Payment proof"
-                      className="max-h-80 w-full rounded-lg border border-gray-200 object-contain bg-gray-50" />
-                    <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-gray-500">
-                      <ImageIcon className="h-3.5 w-3.5" /> Tap to view full size
-                    </span>
-                  </a>
-                )}
+                <p className="mb-2 text-xs font-semibold text-gray-500">
+                  {data.payment.proof_urls.length > 1 ? `Uploaded Proofs (${data.payment.proof_urls.length})` : 'Uploaded Proof'}
+                </p>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {data.payment.proof_urls.map((p, i) => (
+                    p.type === 'pdf' ? (
+                      <a key={i} href={p.url} target="_blank" rel="noopener noreferrer"
+                        className="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3 text-sm font-semibold text-gray-700 hover:bg-gray-100">
+                        <FileText className="h-4 w-4" /> View Payment Receipt (PDF){data.payment.proof_urls.length > 1 ? ` ${i + 1}` : ''}
+                      </a>
+                    ) : (
+                      <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="block">
+                        <img src={p.url} alt={`Payment proof ${i + 1}`}
+                          className="max-h-80 w-full rounded-lg border border-gray-200 object-contain bg-gray-50" />
+                        <span className="mt-1 flex items-center gap-1 text-xs font-semibold text-gray-500">
+                          <ImageIcon className="h-3.5 w-3.5" /> Tap to view full size{data.payment.proof_urls.length > 1 ? ` (proof ${i + 1})` : ''}
+                        </span>
+                      </a>
+                    )
+                  ))}
+                </div>
               </div>
             )}
 

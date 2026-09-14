@@ -40,6 +40,10 @@ export interface PaymentVerificationRow {
   payment_status:  string
   proof_url:       string | null
   proof_type:      string | null
+  // Full list of files uploaded for this submission (2026-09-14) — falls
+  // back to a single-entry list built from proof_url/proof_type by the
+  // caller when this is empty (older rows, pre-migration).
+  proof_urls:      { url: string; type: 'image' | 'pdf'; name?: string }[]
   created_at:       string
   verification_token_expires_at: string | null
 }
@@ -66,7 +70,7 @@ export async function resolvePaymentVerificationToken(token: string): Promise<To
 
   const { data: payment, error } = await supabaseAdmin
     .from('payments')
-    .select('id, payment_id, booking_id, customer_name, customer_phone, amount, payment_status, proof_url, proof_type, created_at, verification_token_expires_at')
+    .select('id, payment_id, booking_id, customer_name, customer_phone, amount, payment_status, proof_url, proof_type, proof_urls, created_at, verification_token_expires_at')
     .eq('verification_token', token)
     .maybeSingle()
 
@@ -74,6 +78,15 @@ export async function resolvePaymentVerificationToken(token: string): Promise<To
     if (error) console.error('[resolvePaymentVerificationToken] lookup failed for token', token, '—', error.message)
     return { ok: false, status: 404, error: 'This link is invalid. Please check the Booking Workflow in the admin dashboard instead.' }
   }
+
+  // Pre-migration rows have no proof_urls — fall back to a single-entry
+  // list built from proof_url/proof_type so every caller can treat
+  // proof_urls as the one source of truth without a null/empty check.
+  const proofUrls: { url: string; type: 'image' | 'pdf'; name?: string }[] =
+    Array.isArray(payment.proof_urls) && payment.proof_urls.length > 0
+      ? payment.proof_urls
+      : (payment.proof_url ? [{ url: payment.proof_url, type: (payment.proof_type as 'image' | 'pdf') ?? 'image' }] : [])
+  payment.proof_urls = proofUrls
 
   if (payment.verification_token_expires_at && new Date(payment.verification_token_expires_at).getTime() < Date.now()) {
     return { ok: false, status: 410, error: 'This link has expired. Please review this payment from the admin dashboard instead.' }

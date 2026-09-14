@@ -74,6 +74,12 @@ export interface PaymentVerificationRequestData {
   paymentDate?:   string | null   // ISO timestamp, if known
   proofUrl:       string
   proofType:      'image' | 'pdf'
+  // Every file uploaded in this submission (2026-09-14 — see
+  // app/api/admin/bookings/[id]/payment-proof/route.ts). proofUrl/proofType
+  // above always equal proofUrls[0] — kept as separate top-level fields so
+  // nothing that only ever needed the single primary proof has to change.
+  // Optional so this stays a fully backward-compatible addition.
+  proofUrls?:     { url: string; type: 'image' | 'pdf'; name?: string }[]
   adminUrl:       string  // deep link back into the admin Booking Workflow for this booking
   reviewUrl:      string  // public, no-login Approve/Reject page — see app/payment-verification/[token]/page.tsx
   reviewToken:    string  // bare token portion of reviewUrl — the WhatsApp CTA button's dynamic parameter (button URL, not text, so it can't just reuse reviewUrl's full string)
@@ -106,10 +112,17 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
           <tr><td style="padding:6px 0;color:#6b7280">Payment Amount</td><td style="padding:6px 0;font-weight:700">${fmtRs(data.amount)}</td></tr>
           <tr><td style="padding:6px 0;color:#6b7280">Payment Date/Time</td><td style="padding:6px 0;font-weight:700">${fmtDateTime(data.paymentDate)}</td></tr>
         </table>
-        <p style="margin:20px 0 8px;font-size:13px;color:#6b7280">Uploaded Proof</p>
-        <a href="${data.proofUrl}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 18px;border-radius:6px">
+        <p style="margin:20px 0 8px;font-size:13px;color:#6b7280">
+          ${(data.proofUrls?.length ?? 1) > 1 ? `Uploaded Proofs (${data.proofUrls!.length})` : 'Uploaded Proof'}
+        </p>
+        ${(data.proofUrls?.length ?? 1) > 1
+          ? data.proofUrls!.map((p, i) => `
+        <a href="${p.url}" style="display:inline-block;margin:0 6px 6px 0;background:#f97316;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 18px;border-radius:6px">
+          View ${p.type === 'pdf' ? 'Receipt' : 'Screenshot'} ${i + 1}
+        </a>`).join('')
+          : `<a href="${data.proofUrl}" style="display:inline-block;background:#f97316;color:#fff;text-decoration:none;font-size:13px;font-weight:700;padding:10px 18px;border-radius:6px">
           View ${data.proofType === 'pdf' ? 'Payment Receipt (PDF)' : 'Payment Screenshot'}
-        </a>
+        </a>`}
 
         <p style="margin:24px 0 8px;font-size:13px;color:#6b7280">Approve or reject — no dashboard login needed</p>
         <a href="${data.reviewUrl}" style="display:inline-block;background:#16a34a;color:#fff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 22px;border-radius:6px">
@@ -157,6 +170,18 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
     // page.tsx) with its own big Approve/Reject buttons — see this file's
     // module comment for why that's a URL button and not a true in-chat
     // quick-reply (which would need an inbound-webhook receiver instead).
+    // {{7}} stays a single free-text variable — no new Meta template
+    // submission needed to indicate multiple proofs (2026-09-14). When more
+    // than one file was uploaded, this appends a short "(+N more — see
+    // Review below)" note after the first proof's URL. WhatsApp still
+    // auto-links the raw URL at the start of the string as a tappable link;
+    // the note just tells Accounts there's more to see via the CTA button
+    // (reviewToken below), which already opens the full review page — now
+    // updated to show every proof, not just the first.
+    const extraProofCount = (data.proofUrls?.length ?? 1) - 1
+    const proofVariable = extraProofCount > 0
+      ? `${data.proofUrl} (+${extraProofCount} more — see Review below)`
+      : data.proofUrl
     const variables = [
       data.customerName,
       data.trackingId,
@@ -164,7 +189,7 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
       data.route,
       Number(data.amount ?? 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
       fmtDateTime(data.paymentDate),
-      data.proofUrl,
+      proofVariable,
     ]
     const result = await sendWhatsAppTemplateFast2SMSv2(accountsNumber, templateName, variables, undefined, [
       { index: 0, payload: data.reviewToken },

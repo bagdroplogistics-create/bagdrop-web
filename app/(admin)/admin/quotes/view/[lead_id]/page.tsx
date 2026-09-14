@@ -437,7 +437,19 @@ export default function QuoteViewPage() {
   }
 
   // Payment proof upload (Booking Workflow spec items 1–3)
-  const [proofFile, setProofFile]           = useState<File | null>(null)
+  // Multiple files per submission (2026-09-14 fix — was a single File,
+  // silently dropping every screenshot after the first). See the matching
+  // <input multiple> below and doUploadPaymentProof's form.append loop.
+  const [proofFiles, setProofFiles]         = useState<File[]>([])
+  // Explicit "amount received" field (2026-09-14 fix for the WhatsApp
+  // "Payment Amount: ₹0.00" bug) — pre-filled from outstandingAmount below
+  // (same default the old hardcoded send used) but now editable, so a
+  // payment can be recorded correctly even when outstandingAmount alone
+  // would compute to 0 (e.g. an additional/extra payment on a booking the
+  // ledger already shows as fully paid) or when it's a genuine PARTIAL
+  // amount smaller than the full outstanding balance. Empty string means
+  // "use the outstandingAmount default" — see the input's value binding.
+  const [proofAmount, setProofAmount]       = useState('')
   const [uploadingProof, setUploadingProof] = useState(false)
   const [proofMsg, setProofMsg]             = useState<string | null>(null)
   const [proofErr, setProofErr]             = useState<string | null>(null)
@@ -1115,23 +1127,36 @@ export default function QuoteViewPage() {
   // payment-proof/route.ts) and notifies Accounts. The booking stays
   // exactly where it is in the workflow either way.
   async function doUploadPaymentProof() {
-    if (!booking?.id || !key || !proofFile) return
+    if (!booking?.id || !key || proofFiles.length === 0) return
+    // Root cause of the 2026-08-24 double-payment bug (BDA-2026-0124 showing
+    // Paid ₹10,500 against a ₹5,250 quote): this used to always send
+    // booking.total_amount here, ignoring any payment already recorded via
+    // "Mark Payment Received" (Step 6). Switched then to always sending
+    // outstandingAmount instead — but that created a NEW bug (2026-09-14,
+    // BDA-2026-0179): when outstandingAmount is 0 (ledger already shows the
+    // total as fully 'paid'), a real, non-zero payment being submitted —
+    // an additional/extra payment, or a partial amount smaller than the
+    // full outstanding balance — got silently recorded and shown to
+    // Accounts as ₹0.00. proofAmount is now an editable field, defaulting
+    // to outstandingAmount (same default as before, so the common
+    // full-payment case needs no extra typing) but overridable to the real
+    // amount this specific submission is for. The API route's own
+    // outstanding-clamp (see payment-proof/route.ts) still guards against
+    // double-counting whenever there IS outstanding balance to clamp
+    // against, so that protection is unchanged for the normal case.
+    const finalAmount = proofAmount.trim() !== '' ? Number(proofAmount) : outstandingAmount
+    if (!Number.isFinite(finalAmount) || finalAmount <= 0) {
+      setProofErr('Enter the payment amount (must be greater than ₹0).')
+      return
+    }
     setUploadingProof(true); setProofErr(null); setProofMsg(null)
     try {
       const form = new FormData()
-      form.append('file', proofFile)
-      // Root cause of the 2026-08-24 double-payment bug (BDA-2026-0124
-      // showing Paid ₹10,500 against a ₹5,250 quote): this used to always
-      // send booking.total_amount here, ignoring any payment already
-      // recorded via "Mark Payment Received" (Step 6). If that step had
-      // already logged the full amount as 'paid', uploading proof here
-      // still created a SECOND payments row for the FULL total — once
-      // Accounts approved it, the ledger double-counted. Sending
-      // outstandingAmount (the actual remaining balance, already computed
-      // above from the live payments ledger — see the paidTotal effect)
-      // instead means a booking that's already fully paid uploads a ₹0
-      // proof row, which can never inflate Total Paid even if approved.
-      form.append('amount', String(outstandingAmount ?? 0))
+      // One 'file' entry per selected file (2026-09-14 fix) — the API now
+      // reads every entry via form.getAll('file') instead of just the
+      // first, and stores all of them against this one payment submission.
+      proofFiles.forEach(f => form.append('file', f))
+      form.append('amount', String(finalAmount))
       const r = await fetch(`/api/admin/bookings/${booking.id}/payment-proof?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'x-admin-key': key },
@@ -1144,8 +1169,10 @@ export default function QuoteViewPage() {
         payment_verification_status: 'pending_verification',
         payment_verification_payment_id: d.payment?.id ?? prev.payment_verification_payment_id,
       } : prev)
-      setProofFile(null)
-      setProofMsg('✅ Payment proof uploaded. Account Department notified — payment stays Pending Verification until they approve it.')
+      setProofFiles([])
+      setProofAmount('')
+      const fileCountMsg = proofFiles.length > 1 ? ` (${proofFiles.length} files)` : ''
+      setProofMsg(`✅ Payment proof uploaded${fileCountMsg}. Account Department notified — payment stays Pending Verification until they approve it.`)
     } catch {
       setProofErr('Network error — please try again')
     } finally {
@@ -2354,17 +2381,33 @@ export default function QuoteViewPage() {
                         {booking.payment_verification_status === 'rejected' && (
                           <p className="text-xs font-semibold text-red-600">Previous proof was rejected — upload a new one below.</p>
                         )}
-                        <p className="text-xs text-teal-700">Upload the customer&apos;s payment screenshot or PDF receipt. This notifies Accounts to check and approve it — it does not mark the payment approved on its own.</p>
+                        <p className="text-xs text-teal-700">Upload the customer&apos;s payment screenshot(s) or PDF receipt — select multiple files if the customer sent more than one. This notifies Accounts to check and approve it — it does not mark the payment approved on its own.</p>
                         <div className="flex flex-wrap items-center gap-2">
-                          <input type="file" accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
-                            onChange={e => setProofFile(e.target.files?.[0] ?? null)}
+                          <input type="file" multiple accept="image/jpeg,image/png,image/webp,image/heic,image/heif,application/pdf"
+                            onChange={e => setProofFiles(Array.from(e.target.files ?? []))}
                             className="text-xs text-gray-600 file:mr-2 file:rounded-lg file:border-0 file:bg-teal-600 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-white hover:file:bg-teal-700" />
-                          <button onClick={doUploadPaymentProof} disabled={!proofFile || uploadingProof}
-                            className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-40">
-                            {uploadingProof ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-                            {uploadingProof ? 'Uploading...' : 'Upload Proof'}
-                          </button>
                         </div>
+                        {proofFiles.length > 0 && (
+                          <p className="text-xs text-teal-700">
+                            {proofFiles.length} file{proofFiles.length > 1 ? 's' : ''} selected: {proofFiles.map(f => f.name).join(', ')}
+                          </p>
+                        )}
+                        <div className="flex flex-wrap items-center gap-2">
+                          <label className="text-xs font-semibold text-teal-800">
+                            Amount received (₹)
+                          </label>
+                          <input type="number" min="0" step="0.01"
+                            value={proofAmount}
+                            onChange={e => setProofAmount(e.target.value)}
+                            placeholder={String(outstandingAmount)}
+                            className="w-32 rounded-lg border border-teal-200 px-2 py-1 text-xs text-gray-700" />
+                          <span className="text-[11px] text-teal-600">Outstanding: ₹{outstandingAmount.toLocaleString('en-IN')} — defaults to this if left blank</span>
+                        </div>
+                        <button onClick={doUploadPaymentProof} disabled={proofFiles.length === 0 || uploadingProof}
+                          className="flex items-center gap-1.5 rounded-lg bg-teal-600 px-4 py-2 text-xs font-semibold text-white hover:bg-teal-700 disabled:opacity-40">
+                          {uploadingProof ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                          {uploadingProof ? 'Uploading...' : 'Upload Proof'}
+                        </button>
                       </div>
                     )}
 

@@ -28,6 +28,7 @@ export async function GET(_req: NextRequest, { params }: Params) {
       payment_status: payment.payment_status,
       proof_url:      payment.proof_url,
       proof_type:     payment.proof_type,
+      proof_urls:     payment.proof_urls,
       created_at:     payment.created_at,
     },
     booking: booking ? {
