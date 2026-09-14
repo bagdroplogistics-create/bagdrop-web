@@ -91,7 +91,18 @@ export async function POST(req: NextRequest) {
     ? body.customer_phone.trim()
     : '+91' + body.customer_phone.replace(/\D/g, '').replace(/^91/, '')
 
-  const recoveryNote = `Recovered via recreate-lost-inquiry repair tool on ${new Date().toISOString().slice(0, 10)} — original website submission was lost due to the flight_datetime insert bug (see BDA-2026-0175 incident, fixed in commit c6d4b31). Recreated with its original tracking_id/lead_number and source=${body.source ?? 'website'}.${body.notes ? ' Original notes: ' + body.notes.trim() : ''}`
+  // reason is caller-supplied (2026-09-14 — generalized after this route's
+  // second use, recovering Sachin Patel's 10-Aug inquiry that was
+  // overwritten by his 15-Aug re-inquiry reusing the same lead, the
+  // 2026-08-17 duplicate-phone-reuse incident — a different root cause
+  // than this route's original BDA-2026-0175 flight_datetime case). Falls
+  // back to a generic description rather than hardcoding either specific
+  // incident, since this route now serves any "recreate a record that was
+  // lost or overwritten under its correct original tracking number" case.
+  const reason = typeof body.reason === 'string' && body.reason.trim()
+    ? body.reason.trim()
+    : 'the original record was lost or overwritten and needed to be recreated under its correct original tracking number'
+  const recoveryNote = `Recovered via recreate-lost-inquiry repair tool on ${new Date().toISOString().slice(0, 10)} — ${reason}. Recreated with its original tracking_id/lead_number and source=${body.source ?? 'website'}.${body.notes ? ' Original notes: ' + body.notes.trim() : ''}`
 
   // submitted_at backdates both rows to when the customer actually
   // submitted, not when this repair ran — both created_at columns are
