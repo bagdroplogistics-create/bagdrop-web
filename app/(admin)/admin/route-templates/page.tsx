@@ -69,9 +69,22 @@ interface RouteTemplate {
   route_template_operations?: (RouteOperation & { id: string; vendors?: { vendor_name: string; vendor_id: string } | null })[]
 }
 
+// A brand-new operation row previously always defaulted to Category
+// "Other" (regardless of position), which is why the very first row — even
+// though its label was typed as "Pickup" — silently stayed filed under
+// Other unless the admin remembered to change the dropdown by hand. A
+// route's operations are overwhelmingly built in the same real-world
+// order (Pickup, then Middle Mile, then Delivery, then Handling, then
+// Airport Delivery), so each new row now guesses the next category in that
+// sequence instead — 6th and later rows fall back to Other, which is
+// exactly where a one-off extra like Packing Charges belongs. Category
+// auto-fills the Expense Label too (same rule as changing the dropdown by
+// hand), so a fresh route with the standard 5 operations needs zero manual
+// category selection at all.
 function emptyOperation(sequence: number): RouteOperation {
+  const category = CATEGORY_ORDER[Math.min(sequence, CATEGORY_ORDER.length - 1)]
   return {
-    sequence, expense_type: '', mode: '', operation_category: 'other',
+    sequence, expense_type: CATEGORY_LABEL[category], mode: '', operation_category: category,
     vendor_id: null, from_location: '', to_location: '',
     rate_type: 'fixed', rate: '0', date_rule: 'none',
     notification_required: true, description: '',
