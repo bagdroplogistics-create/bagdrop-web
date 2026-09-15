@@ -8,6 +8,7 @@ import {
   User, Hash, ChevronDown, Plus, Pencil, Trash2, Save, X,
   CheckCircle, Clock, IndianRupee, TrendingUp, TrendingDown,
   FileText, Activity, Layers, ReceiptText, RefreshCw,
+  Download, MessageCircle, Loader2,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────
@@ -211,6 +212,15 @@ function TripSheetDetail({ id }: { id: string }) {
   const [saveMsg,  setSaveMsg]  = useState('')
   const [syncingQuote, setSyncingQuote] = useState(false)
 
+  // Download / Email / WhatsApp actions (founder request, 2026-09-15) —
+  // admin-only, not sent to the customer. All three share one PDF-
+  // generation step (client-side @react-pdf/renderer, same code the Trip
+  // Sheets list page's Download button already uses) so there's only one
+  // place that builds the PDF's actual content.
+  const [downloadingPdf, setDownloadingPdf] = useState(false)
+  const [emailingPdf,    setEmailingPdf]    = useState(false)
+  const [emailMsg,       setEmailMsg]       = useState('')
+
   // Edit form state
   const [editForm, setEditForm] = useState({
     status: 'created', mode: '', payment_status: 'RECEIVED', undertaking_status: 'RECEIVED',
@@ -336,6 +346,126 @@ function TripSheetDetail({ id }: { id: string }) {
     if (res.ok) { await fetchSheet() }
     else { const d = await res.json().catch(() => ({})); alert(d.error ?? 'Failed to sync income from booking') }
     setSyncingQuote(false)
+  }
+
+  // ── Download / Email / WhatsApp (founder request, 2026-09-15) ──────────
+  // One shared PDF-build step for all three actions below, generated
+  // client-side from the trip sheet already loaded in `sheet` — same
+  // @react-pdf/renderer component the Trip Sheets list page's own Download
+  // button uses, so the document content is identical everywhere.
+  async function buildTripSheetPdfBlob() {
+    const { pdf } = await import('@react-pdf/renderer')
+    const { default: TripSheetPDF } = await import('../TripSheetPDF')
+    return await pdf(
+      TripSheetPDF({
+        tripNumber:        sheet!.trip_number,
+        createdAt:         sheet!.created_at,
+        status:            sheet!.status,
+        bookingId:         sheet!.booking_id,
+        customerName:      sheet!.customer_name,
+        customerPhone:     sheet!.customer_phone,
+        customerEmail:     sheet!.customer_email,
+        fromCity:          sheet!.from_city,
+        toCity:            sheet!.to_city,
+        pickupAddress:     sheet!.pickup_address,
+        dropAddress:       sheet!.drop_address,
+        pickupDate:        sheet!.pickup_date,
+        deliveryDate:      sheet!.delivery_date,
+        totalBags:         sheet!.total_bags,
+        serviceLabel:      sheet!.service_label,
+        vendor:            sheet!.vendor,
+        driverName:        sheet!.driver_name,
+        vehicleNumber:     sheet!.vehicle_number,
+        consignmentNumber: sheet!.consignment_number,
+        luggageCode:       sheet!.luggage_code,
+        cloakRoomNumber:   sheet!.cloak_room_number,
+        pickupPerson:      sheet!.pickup_person,
+        pickupContact:     sheet!.pickup_contact,
+        deliveryPerson:    sheet!.delivery_person,
+        deliveryContact:   sheet!.delivery_contact,
+        expenses:          sheet!.trip_expenses ?? [],
+        quoteAmount:       sheet!.quote_amount ?? 0,
+        additionalCharges: sheet!.additional_charges ?? 0,
+        discount:          sheet!.discount ?? 0,
+        taxAmount:         sheet!.tax_amount ?? 0,
+        totalIncome:       sheet!.total_income ?? 0,
+        totalExpense:      sheet!.total_expense ?? 0,
+        netProfit:         sheet!.net_profit ?? 0,
+        paymentStatus:     sheet!.payment_status,
+        notes:             sheet!.notes,
+        remarks:           sheet!.remarks,
+      })
+    ).toBlob()
+  }
+
+  async function downloadPdf() {
+    if (!sheet) return
+    setDownloadingPdf(true)
+    try {
+      const blob = await buildTripSheetPdfBlob()
+      const url  = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href     = url
+      link.download = `${sheet.trip_number}.pdf`
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      URL.revokeObjectURL(url)
+    } catch (e) {
+      console.error('Trip sheet PDF generation failed:', e)
+      alert('Could not generate the trip sheet PDF. Please try again.')
+    } finally {
+      setDownloadingPdf(false)
+    }
+  }
+
+  function blobToBase64(blob: Blob): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onloadend = () => resolve(((reader.result as string) ?? '').split(',')[1] ?? '')
+      reader.onerror = reject
+      reader.readAsDataURL(blob)
+    })
+  }
+
+  // Admin-only — founder explicitly said this is NOT for the customer.
+  // Sends to ADMIN_EMAILS (lib/email.ts) via the new email-pdf route.
+  async function emailPdfToAdmin() {
+    if (!sheet) return
+    setEmailingPdf(true); setEmailMsg('')
+    try {
+      const blob   = await buildTripSheetPdfBlob()
+      const base64 = await blobToBase64(blob)
+      const res = await fetch(`/api/admin/trip-sheets/${id}/email-pdf`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ pdf_base64: base64 }),
+      })
+      if (res.ok) { setEmailMsg('Emailed to admin!'); setTimeout(() => setEmailMsg(''), 4000) }
+      else { const d = await res.json().catch(() => ({})); setEmailMsg('Error: ' + (d.error ?? 'Failed to send')) }
+    } catch (e) {
+      console.error('Trip sheet PDF email failed:', e)
+      setEmailMsg('Error: could not generate/send PDF')
+    } finally {
+      setEmailingPdf(false)
+    }
+  }
+
+  // Quick-share via WhatsApp (founder's explicit choice, 2026-09-15, over a
+  // fully-automatic send — that would need a new Meta-approved WhatsApp
+  // Business template with document-attachment support, pending review).
+  // Downloads the PDF so it's ready to attach, then opens WhatsApp with a
+  // pre-filled message and NO fixed number, so you pick the recipient
+  // (driver, vendor, yourself, anyone) inside WhatsApp and attach the file
+  // yourself with one tap.
+  function shareViaWhatsapp() {
+    if (!sheet) return
+    downloadPdf()
+    const text = encodeURIComponent(
+      `Trip Sheet ${sheet.trip_number}${sheet.customer_name ? ' — ' + sheet.customer_name : ''}` +
+      `${sheet.from_city && sheet.to_city ? ` (${sheet.from_city} → ${sheet.to_city})` : ''} — PDF downloading now, attach it here.`
+    )
+    window.open(`https://wa.me/?text=${text}`, '_blank')
   }
 
   async function addExpense() {
@@ -466,14 +596,36 @@ function TripSheetDetail({ id }: { id: string }) {
     <>
       {/* Page header */}
       <div className="border-b border-orange-100 bg-white px-6 py-4">
-        <div className="flex items-center gap-4">
-          <Link href="/admin/trip-sheets" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
-            <ArrowLeft className="h-4 w-4" /> Trip Sheets
-          </Link>
-          <span className="text-gray-300">/</span>
-          <span className="font-mono text-sm font-bold text-orange-500">{sheet.trip_number}</span>
-          <span style={{ color: st.color, background: st.bg }}
-            className="rounded-full px-2.5 py-1 text-xs font-semibold">{st.label}</span>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-4">
+            <Link href="/admin/trip-sheets" className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700">
+              <ArrowLeft className="h-4 w-4" /> Trip Sheets
+            </Link>
+            <span className="text-gray-300">/</span>
+            <span className="font-mono text-sm font-bold text-orange-500">{sheet.trip_number}</span>
+            <span style={{ color: st.color, background: st.bg }}
+              className="rounded-full px-2.5 py-1 text-xs font-semibold">{st.label}</span>
+          </div>
+
+          {/* Download / Email / WhatsApp — admin-only actions, not sent to
+              the customer (founder confirmed, 2026-09-15). */}
+          <div className="flex items-center gap-2">
+            {emailMsg && (
+              <span className={`text-xs font-medium ${emailMsg.startsWith('Error') ? 'text-red-600' : 'text-green-600'}`}>{emailMsg}</span>
+            )}
+            <button onClick={downloadPdf} disabled={downloadingPdf} title="Download trip sheet PDF"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {downloadingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Download
+            </button>
+            <button onClick={emailPdfToAdmin} disabled={emailingPdf} title="Email PDF to admin"
+              className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {emailingPdf ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Mail className="h-3.5 w-3.5" />} Email to Admin
+            </button>
+            <button onClick={shareViaWhatsapp} title="Download PDF + open WhatsApp to share it"
+              className="flex items-center gap-1.5 rounded-lg border border-green-200 bg-green-50 px-3 py-1.5 text-xs font-semibold text-green-700 hover:bg-green-100 transition-colors">
+              <MessageCircle className="h-3.5 w-3.5" /> Share via WhatsApp
+            </button>
+          </div>
         </div>
       </div>
 

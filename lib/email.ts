@@ -757,6 +757,58 @@ export async function sendPaymentReceiptEmail(data: PaymentReceiptEmailData, att
   )
 }
 
+// ── Trip Sheet PDF — email to admin (Route Master follow-up, 2026-09-15) ──
+// Founder request: from a Trip Sheet's detail page, "Email PDF to Admin"
+// sends the same PDF the Download button produces straight to
+// ADMIN_EMAILS as an attachment — for internal recordkeeping, NOT the
+// customer. The PDF itself is generated client-side (browser, via
+// @react-pdf/renderer — same code the Download button already uses) and
+// handed to this function as a ready base64 attachment, rather than this
+// function re-rendering the PDF server-side, so there's only ever one PDF-
+// generation code path to keep correct.
+
+export interface TripSheetPDFEmailData {
+  tripNumber:   string
+  customerName: string | null
+  fromCity:     string | null
+  toCity:       string | null
+  totalIncome:  number
+  totalExpense: number
+  netProfit:    number
+}
+
+export async function sendTripSheetPDFToAdmin(data: TripSheetPDFEmailData, attachment: EmailAttachment) {
+  const fmt = (n: number) => '₹' + Number(n).toLocaleString('en-IN')
+
+  const body =
+    '<h2 style="margin:0 0 4px;font-size:20px;font-weight:800;color:#111;">Trip Sheet PDF</h2>' +
+    '<p style="margin:0 0 24px;font-size:13px;color:#777;">Sent from the admin panel — Trip Sheet detail page.</p>' +
+
+    '<div style="background:#fff7f0;border-left:4px solid ' + BRAND + ';border-radius:6px;padding:14px 18px;margin-bottom:24px;">' +
+    '<p style="margin:0;font-size:11px;color:#999;letter-spacing:1px;text-transform:uppercase;">Trip Number</p>' +
+    '<p style="margin:4px 0 0;font-size:26px;font-weight:900;color:' + BRAND + ';letter-spacing:2px;">' + data.tripNumber + '</p>' +
+    '</div>' +
+
+    '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">' +
+    row('Customer', data.customerName) +
+    row('Route',    data.fromCity && data.toCity ? data.fromCity + ' → ' + data.toCity : null) +
+    row('Income',   fmt(data.totalIncome)) +
+    row('Expense',  fmt(data.totalExpense)) +
+    row('Net Profit', fmt(data.netProfit)) +
+    '</table>' +
+
+    '<div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:8px;padding:14px 18px;">' +
+    '<p style="margin:0;font-size:12px;color:#166534;">📎 The Trip Sheet PDF is attached to this email.</p>' +
+    '</div>'
+
+  const subject = 'Trip Sheet PDF — ' + data.tripNumber + (data.customerName ? ' — ' + data.customerName : '')
+
+  // Send one independent email per admin — Resend can silently drop array recipients
+  return Promise.allSettled(
+    ADMIN_EMAILS.map(addr => sendEmail(addr, subject, baseTemplate(body), 'trip-sheet-pdf:' + data.tripNumber, [attachment]))
+  )
+}
+
 // ── Legacy admin notification (kept for backward compat) ──────────────
 // Routes should migrate to sendInquiryNotification instead.
 
