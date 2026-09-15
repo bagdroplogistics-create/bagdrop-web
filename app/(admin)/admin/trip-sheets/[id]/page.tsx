@@ -31,6 +31,16 @@ interface Expense {
   operational_time:     string | null
   operation_category:   OperationCategory | null
   notification_status:  NotificationStatus | null
+  // Route Master (founder spec BAGDROP-TRIPSHEET-ROUTE-TEMPLATE-001,
+  // 2026-09-15) — only populated on rows generated from a Route Template
+  // (rate_type null on any manually-added expense). bags is this row's OWN
+  // bag count at the time it was generated/last recalculated — compared
+  // against the Trip Sheet's current total_bags below to flag when a row
+  // has fallen out of sync (deliberately overridden, or the sheet's bag
+  // count changed after this row was individually edited).
+  rate_type:            'fixed' | 'per_bag' | null
+  unit_rate:             number | null
+  bags:                  number | null
 }
 
 // Vendor Master (lightweight — only what the Trip Expense dropdown needs)
@@ -209,6 +219,11 @@ function TripSheetDetail({ id }: { id: string }) {
     pickup_person: '', pickup_contact: '', delivery_person: '', delivery_contact: '',
     notes: '', remarks: '',
     additional_charges: '0', discount: '0', tax_amount: '0',
+    // Route Master (2026-09-15) — editing this now cascades to every
+    // per-bag expense still tracking the OLD count (see PATCH /api/admin/
+    // trip-sheets/[id]); fixed-rate rows and rows already individually
+    // overridden are left untouched.
+    total_bags: '1',
   })
 
   // New expense form
@@ -270,6 +285,7 @@ function TripSheetDetail({ id }: { id: string }) {
         additional_charges: String(trip_sheet.additional_charges ?? 0),
         discount:           String(trip_sheet.discount            ?? 0),
         tax_amount:         String(trip_sheet.tax_amount          ?? 0),
+        total_bags:         String(trip_sheet.total_bags          ?? 1),
       })
     }
     setLoading(false)
@@ -296,6 +312,7 @@ function TripSheetDetail({ id }: { id: string }) {
         additional_charges: Number(editForm.additional_charges) || 0,
         discount:           Number(editForm.discount)           || 0,
         tax_amount:         Number(editForm.tax_amount)         || 0,
+        total_bags:         Math.max(1, Number(editForm.total_bags) || 1),
       }),
     })
     if (res.ok) { setSaveMsg('Saved!'); fetchSheet(); setTimeout(() => setSaveMsg(''), 3000) }
@@ -567,7 +584,7 @@ function TripSheetDetail({ id }: { id: string }) {
             {/* Section 1: Key status fields (matches Excel header) */}
             <div className="rounded-2xl border border-blue-100 bg-blue-50/40 p-5">
               <p className="mb-4 text-xs font-bold uppercase tracking-widest text-blue-500">Trip Status &amp; Mode</p>
-              <div className="grid gap-4 sm:grid-cols-4">
+              <div className="grid gap-4 sm:grid-cols-5">
                 {/* Trip Status */}
                 <div>
                   <label className="mb-1 block text-xs font-semibold text-gray-500">Trip Status</label>
@@ -623,6 +640,23 @@ function TripSheetDetail({ id }: { id: string }) {
                     </select>
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
                   </div>
+                </div>
+
+                {/* Total Bags — Route Master (2026-09-15). Changing this
+                    recalculates every per-bag expense still tracking the
+                    old count (see the confirmation note below the field);
+                    fixed-rate rows and any row already individually
+                    overridden are left untouched. */}
+                <div>
+                  <label className="mb-1 block text-xs font-semibold text-gray-500">Total Bags</label>
+                  <input type="number" min={1} value={editForm.total_bags}
+                    onChange={e => setEditForm(f => ({ ...f, total_bags: e.target.value }))}
+                    className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-semibold focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                  {sheet && Number(editForm.total_bags) !== (sheet.total_bags ?? 1) && (
+                    <p className="mt-1 text-[11px] font-medium text-amber-600">
+                      Was {sheet.total_bags ?? 1} — Save to recalculate per-bag expenses.
+                    </p>
+                  )}
                 </div>
               </div>
             </div>
@@ -904,6 +938,24 @@ function TripSheetDetail({ id }: { id: string }) {
                               <p className="text-xs text-gray-400 mt-0.5">
                                 {[e.vendor, e.description].filter(Boolean).join(' · ')}
                               </p>
+                            )}
+                            {/* Route Master (2026-09-15) — only shows on rows
+                                generated from a route template (rate_type
+                                set). Amber badge flags a per-bag row whose
+                                own bag count no longer matches the Trip
+                                Sheet's current total_bags — i.e. it was
+                                individually overridden, or the sheet's bag
+                                count changed since this row was last synced. */}
+                            {e.rate_type === 'per_bag' && e.bags != null && (
+                              <p className={`mt-1 text-[11px] font-semibold ${
+                                sheet && e.bags !== (sheet.total_bags ?? 1) ? 'text-amber-600' : 'text-gray-400'
+                              }`}>
+                                {e.bags} bag{e.bags !== 1 ? 's' : ''} × ₹{e.unit_rate ?? 0}
+                                {sheet && e.bags !== (sheet.total_bags ?? 1) ? ' — differs from Trip Sheet' : ''}
+                              </p>
+                            )}
+                            {e.rate_type === 'fixed' && (
+                              <p className="mt-1 text-[11px] text-gray-400">Fixed rate</p>
                             )}
                           </td>
                           <td className="px-4 py-3 text-sm text-gray-600">{e.from_location || <span className="text-gray-300">—</span>}</td>
