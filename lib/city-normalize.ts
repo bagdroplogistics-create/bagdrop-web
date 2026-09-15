@@ -18,10 +18,18 @@
 // silently leaving quote line items empty even when pricing was configured
 // correctly. Both call sites now import this one function instead.
 
+// Founder request, 2026-09-15: "replace baroda with Vadodara everywhere" —
+// canonical form flipped from 'baroda' to 'vadodara' (previously every
+// alias resolved TO 'baroda'; now 'baroda' itself is just another alias
+// that resolves to 'vadodara'). Matching behavior is unchanged either way
+// — citiesEqual('Vadodara','Baroda') was and still is true — this only
+// changes which spelling downstream code sees as the canonical/display
+// form when it needs one (e.g. the Route Templates bulk-import, which
+// title-cases whatever normalizeCity would resolve a route to).
 const CITY_ALIASES: Record<string, string> = {
-  vadodara:   'baroda',
-  vdr:        'baroda',
-  brc:        'baroda',
+  baroda:     'vadodara',
+  vdr:        'vadodara',
+  brc:        'vadodara',
   bengaluru:  'bangalore',
   blr:        'bangalore',
   bombay:     'mumbai',

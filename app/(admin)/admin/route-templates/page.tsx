@@ -215,6 +215,39 @@ export default function RouteTemplatesPage() {
     }
   }
 
+  // Founder request, 2026-09-15: "replace baroda with Vadodara everywhere"
+  // — scoped to Route Pricing + Route Templates config data (not historical
+  // bookings/leads/quotes, per the founder's own choice). One-time cleanup;
+  // safe to click again later, it's conflict-aware and only touches rows
+  // still literally saying "baroda".
+  async function standardizeVadodara() {
+    if (!confirm('Rename "Baroda" to "Vadodara" across Route Pricing and Route Templates? This does not touch bookings, leads, or invoices.')) return
+    setImporting(true); setImportMsg('')
+    try {
+      const res = await fetch('/api/admin/route-templates/standardize-vadodara', {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setImportMsg('Error: ' + (d.error ?? 'Standardize failed')); return }
+      const parts = [
+        `${d.route_pricing_updated} Route Pricing row${d.route_pricing_updated === 1 ? '' : 's'} updated`,
+        `${d.route_templates_updated} Route Template${d.route_templates_updated === 1 ? '' : 's'} updated`,
+        `${d.operations_updated} operation location${d.operations_updated === 1 ? '' : 's'} updated`,
+      ]
+      const conflicts = [...(d.route_pricing_conflicts ?? []), ...(d.route_templates_conflicts ?? [])]
+      setImportMsg(
+        parts.join(', ') + '.' +
+        (conflicts.length > 0 ? ` ${conflicts.length} skipped due to a conflict — check the list and merge manually: ${conflicts.join('; ')}` : '')
+      )
+      fetchRoutes()
+    } catch {
+      setImportMsg('Error: network error, please try again')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   useEffect(() => {
     if (!authed || !adminKey) return
     fetch(`/api/admin/vendors?key=${adminKey}`).then(r => r.json()).then(d => setVendors(d.vendors ?? [])).catch(() => {})
@@ -405,6 +438,12 @@ export default function RouteTemplatesPage() {
               className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <DownloadCloud className="h-4 w-4" />}
               Import from Route Pricing
+            </button>
+            <button onClick={standardizeVadodara} disabled={importing}
+              title="Rename 'Baroda' to 'Vadodara' in Route Pricing + Route Templates"
+              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RouteIcon className="h-4 w-4" />}
+              &quot;Baroda&quot; → &quot;Vadodara&quot;
             </button>
             <button onClick={startCreate}
               className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
