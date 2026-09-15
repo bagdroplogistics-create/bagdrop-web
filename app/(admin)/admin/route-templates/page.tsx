@@ -19,7 +19,7 @@ import { useRouter } from 'next/navigation'
 import { normalizeCity } from '@/lib/city-normalize'
 import {
   Route as RouteIcon, Plus, Search, Pencil, Archive, RotateCcw, X, Save, Loader2,
-  ChevronDown, ChevronUp, Trash2, GripVertical, Copy, DownloadCloud,
+  ChevronDown, ChevronUp, Trash2, GripVertical, Copy, DownloadCloud, Layers,
 } from 'lucide-react'
 
 // Must match lib/vendor-notifications.ts's OperationCategory / CATEGORY_LABEL
@@ -215,30 +215,30 @@ export default function RouteTemplatesPage() {
     }
   }
 
-  // Founder request, 2026-09-15: "replace baroda with Vadodara everywhere"
-  // — scoped to Route Pricing + Route Templates config data (not historical
-  // bookings/leads/quotes, per the founder's own choice). One-time cleanup;
-  // safe to click again later, it's conflict-aware and only touches rows
-  // still literally saying "baroda".
-  async function standardizeVadodara() {
-    if (!confirm('Rename "Baroda" to "Vadodara" across Route Pricing and Route Templates? This does not touch bookings, leads, or invoices.')) return
+  // Founder request, 2026-09-15: "add all 6 operation with specific
+  // location according to all operation just like vadodara-to-mumbai
+  // route template with 6 operations" — bulk-adds the same 6-operation
+  // skeleton (Pickup/Middle Mile/Delivery/Handling/Airport Delivery/
+  // Other) to every route template that has none yet, with From/To
+  // already set to that route's own cities. Vendor and Rate are left
+  // blank/₹0 — those are real facts specific to each corridor that only
+  // the founder can supply, not something to invent from the Vadodara→
+  // Mumbai example. Never touches a route that already has operations.
+  async function addStandardOperations() {
+    if (!confirm('Add the standard 6 operations (Pickup, Middle Mile, Delivery, Handling, Airport Delivery, Other) to every route template that has none yet? Vendor and Rate will need to be filled in per route afterward.')) return
     setImporting(true); setImportMsg('')
     try {
-      const res = await fetch('/api/admin/route-templates/standardize-vadodara', {
+      const res = await fetch('/api/admin/route-templates/add-standard-operations', {
         method: 'POST',
-        headers: { 'x-admin-key': adminKey },
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({}),
       })
       const d = await res.json().catch(() => ({}))
-      if (!res.ok) { setImportMsg('Error: ' + (d.error ?? 'Standardize failed')); return }
-      const parts = [
-        `${d.route_pricing_updated} Route Pricing row${d.route_pricing_updated === 1 ? '' : 's'} updated`,
-        `${d.route_templates_updated} Route Template${d.route_templates_updated === 1 ? '' : 's'} updated`,
-        `${d.operations_updated} operation location${d.operations_updated === 1 ? '' : 's'} updated`,
-      ]
-      const conflicts = [...(d.route_pricing_conflicts ?? []), ...(d.route_templates_conflicts ?? [])]
+      if (!res.ok) { setImportMsg('Error: ' + (d.error ?? 'Failed to add operations')); return }
       setImportMsg(
-        parts.join(', ') + '.' +
-        (conflicts.length > 0 ? ` ${conflicts.length} skipped due to a conflict — check the list and merge manually: ${conflicts.join('; ')}` : '')
+        d.routes_updated > 0
+          ? `Added 6 operations each to ${d.routes_updated} route${d.routes_updated !== 1 ? 's' : ''} (${d.operations_created} total) — fill in the real Vendor and Rate for each below.`
+          : 'No routes needed operations — every route template already has some.'
       )
       fetchRoutes()
     } catch {
@@ -439,11 +439,11 @@ export default function RouteTemplatesPage() {
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <DownloadCloud className="h-4 w-4" />}
               Import from Route Pricing
             </button>
-            <button onClick={standardizeVadodara} disabled={importing}
-              title="Rename 'Baroda' to 'Vadodara' in Route Pricing + Route Templates"
-              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-50 transition-colors">
-              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <RouteIcon className="h-4 w-4" />}
-              &quot;Baroda&quot; → &quot;Vadodara&quot;
+            <button onClick={addStandardOperations} disabled={importing}
+              title="Add the standard 6 operations (Pickup, Middle Mile, Delivery, Handling, Airport Delivery, Other) to every route that doesn't have any yet"
+              className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              Add Standard 6 Operations
             </button>
             <button onClick={startCreate}
               className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
