@@ -107,6 +107,13 @@ export default function RouteTemplatesPage() {
   const [fromCity,  setFromCity]  = useState('')
   const [toCity,    setToCity]    = useState('')
   const [notes,     setNotes]     = useState('')
+  // Route Name defaults to "From City → To City" as you type them — that
+  // was the exact duplicate typing the founder flagged (typing "Vadodara →
+  // Mumbai" by hand right after typing Vadodara/Mumbai into the two fields
+  // next to it). Still a real, editable field — set routeNameTouched once
+  // the admin types something into it directly, so a genuinely custom name
+  // (e.g. "Vadodara Express — Premium") never gets silently overwritten.
+  const [routeNameTouched, setRouteNameTouched] = useState(false)
   const [operations, setOperations] = useState<RouteOperation[]>([])
   const [removedOperationIds, setRemovedOperationIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -137,6 +144,7 @@ export default function RouteTemplatesPage() {
   function startCreate() {
     setEditingRouteId('new')
     setRouteName(''); setFromCity(''); setToCity(''); setNotes('')
+    setRouteNameTouched(false)
     setOperations([emptyOperation(0)])
     setRemovedOperationIds([])
     setSaveErr('')
@@ -145,6 +153,9 @@ export default function RouteTemplatesPage() {
   function startEdit(r: RouteTemplate) {
     setEditingRouteId(r.id)
     setRouteName(r.route_name); setFromCity(r.from_city); setToCity(r.to_city); setNotes(r.notes ?? '')
+    // Treat an existing route's saved name as intentional — never let
+    // further From/To City edits during this session silently overwrite it.
+    setRouteNameTouched(true)
     setOperations(
       (r.route_template_operations ?? []).map(op => ({
         id: op.id, sequence: op.sequence, expense_type: op.expense_type, mode: op.mode ?? '',
@@ -163,7 +174,15 @@ export default function RouteTemplatesPage() {
   }
 
   function addOperationRow() {
-    setOperations(ops => [...ops, emptyOperation(ops.length)])
+    setOperations(ops => [
+      ...ops,
+      // Prefill From/To from the route's own From City/To City — most
+      // operations on a route just move between those same two points, so
+      // this saves retyping the same city names on every row; still fully
+      // editable per operation for the rare leg that differs (e.g. a
+      // Pickup that starts somewhere other than the route's From City).
+      { ...emptyOperation(ops.length), from_location: fromCity, to_location: toCity },
+    ])
   }
 
   function removeOperationRow(index: number) {
@@ -277,10 +296,23 @@ export default function RouteTemplatesPage() {
           <h4 className="mb-4 text-sm font-bold text-orange-700">{editingRouteId === 'new' ? 'New Route Template' : 'Edit Route Template'}</h4>
 
           <div className="grid gap-3 sm:grid-cols-3">
-            <Field label="Route Name *" value={routeName} onChange={setRouteName} placeholder="e.g. Vadodara → Mumbai" />
-            <Field label="From City *"  value={fromCity}  onChange={setFromCity}  placeholder="Vadodara" />
-            <Field label="To City *"    value={toCity}    onChange={setToCity}    placeholder="Mumbai" />
+            <Field label="From City *"  value={fromCity}
+              onChange={v => {
+                setFromCity(v)
+                if (!routeNameTouched) setRouteName(v || toCity ? `${v}${v && toCity ? ' → ' : ''}${toCity}` : '')
+              }}
+              placeholder="Vadodara" />
+            <Field label="To City *"    value={toCity}
+              onChange={v => {
+                setToCity(v)
+                if (!routeNameTouched) setRouteName(fromCity || v ? `${fromCity}${fromCity && v ? ' → ' : ''}${v}` : '')
+              }}
+              placeholder="Mumbai" />
+            <Field label="Route Name" value={routeName}
+              onChange={v => { setRouteName(v); setRouteNameTouched(true) }}
+              placeholder="auto: From City → To City" />
           </div>
+          <p className="mt-1 text-[11px] text-gray-400">Route Name fills in automatically from From/To City — edit it only if you want something more specific (e.g. distinguishing two routes with the same cities).</p>
           <div className="mt-3">
             <Field label="Notes" value={notes} onChange={setNotes} placeholder="optional" />
           </div>
@@ -309,22 +341,47 @@ export default function RouteTemplatesPage() {
                     </div>
                   </div>
 
+                  {/* Simplified to the fields that actually drive something:
+                      Category picks the operation bucket (also used by the
+                      vendor-notification engine and the Operational Date
+                      default below) and auto-fills the Expense Label so you
+                      don't have to type "Pickup" twice — rename the label
+                      afterwards only if you want something more specific,
+                      like "Packing Charges" for a Handling-category row.
+                      Mode and per-operation Description were dropped — mode
+                      isn't shown anywhere in the Trip Sheet views, and notes
+                      belong on the trip sheet's own Notes field instead. */}
                   <div className="grid gap-3 sm:grid-cols-4">
-                    <Field label="Expense Type / Label *" value={op.expense_type} onChange={v => updateOperation(i, { expense_type: v })} placeholder="e.g. Pickup" />
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-gray-500">Category</label>
-                      <select value={op.operation_category} onChange={e => updateOperation(i, { operation_category: e.target.value })}
+                      <select value={op.operation_category}
+                        onChange={e => {
+                          const newCat = e.target.value
+                          const prevDefaultLabel = CATEGORY_LABEL[op.operation_category]
+                          const shouldAutoFill = !op.expense_type.trim() || op.expense_type === prevDefaultLabel
+                          updateOperation(i, {
+                            operation_category: newCat,
+                            ...(shouldAutoFill ? { expense_type: CATEGORY_LABEL[newCat] } : {}),
+                          })
+                        }}
                         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
                         {CATEGORY_ORDER.map(c => <option key={c} value={c}>{CATEGORY_LABEL[c]}</option>)}
                       </select>
                     </div>
-                    <Field label="Mode" value={op.mode} onChange={v => updateOperation(i, { mode: v })} placeholder="Road / Air / Rail" />
+                    <Field label="Expense Label *" value={op.expense_type} onChange={v => updateOperation(i, { expense_type: v })} placeholder="e.g. Packing Charges" />
                     <div>
                       <label className="mb-1 block text-xs font-semibold text-gray-500">Vendor</label>
                       <select value={op.vendor_id ?? ''} onChange={e => updateOperation(i, { vendor_id: e.target.value || null })}
                         className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
                         <option value="">— In-house / none —</option>
                         {vendors.map(v => <option key={v.id} value={v.id}>{v.vendor_id} — {v.vendor_name}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-500">Operational Date Rule</label>
+                      <select value={op.date_rule} onChange={e => updateOperation(i, { date_rule: e.target.value as RouteOperation['date_rule'] })}
+                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                        {Object.entries(DATE_RULE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                       </select>
                     </div>
                   </div>
@@ -343,22 +400,10 @@ export default function RouteTemplatesPage() {
                     <Field label={op.rate_type === 'per_bag' ? 'Rate (₹ / bag)' : 'Rate (₹, fixed)'} value={op.rate} onChange={v => updateOperation(i, { rate: v.replace(/[^0-9.]/g, '') })} />
                   </div>
 
-                  <div className="mt-3 grid gap-3 sm:grid-cols-3">
-                    <div>
-                      <label className="mb-1 block text-xs font-semibold text-gray-500">Operational Date Rule</label>
-                      <select value={op.date_rule} onChange={e => updateOperation(i, { date_rule: e.target.value as RouteOperation['date_rule'] })}
-                        className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
-                        {Object.entries(DATE_RULE_LABEL).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
-                      </select>
-                    </div>
-                    <Field label="Description" value={op.description} onChange={v => updateOperation(i, { description: v })} placeholder="optional notes" />
-                    <div className="flex items-end pb-2">
-                      <label className="flex items-center gap-2 text-xs font-semibold text-gray-600">
-                        <input type="checkbox" checked={op.notification_required} onChange={e => updateOperation(i, { notification_required: e.target.checked })} />
-                        Notify vendor automatically
-                      </label>
-                    </div>
-                  </div>
+                  <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-gray-600">
+                    <input type="checkbox" checked={op.notification_required} onChange={e => updateOperation(i, { notification_required: e.target.checked })} />
+                    Notify vendor automatically
+                  </label>
 
                   {op.rate_type === 'per_bag' && (
                     <p className="mt-2 text-[11px] text-gray-400">
