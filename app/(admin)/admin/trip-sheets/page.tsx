@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -71,6 +71,13 @@ export default function TripSheetsPage() {
   const [downloading, setDownloading] = useState<string | null>(null)
   const [showTest, setShowTest] = useState(false)
 
+  // Pagination (founder request, 2026-09-15) — mirrors the exact pattern
+  // already used on the Leads/Quote Management page: fetch a large enough
+  // batch from the API in one go, then page through it client-side so
+  // clicking Prev/Next/a page number feels instant with no refetch.
+  const [page,     setPage]     = useState(1)
+  const [pageSize, setPageSize] = useState(20)
+
   // Summary totals. Number(...) coercion guards against Postgres numeric
   // columns coming back from Supabase as strings — `s + (t.total_income ||
   // 0)` would silently string-concatenate instead of add in that case.
@@ -87,7 +94,11 @@ export default function TripSheetsPage() {
   const fetchSheets = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    let qs = '?key=' + adminKey
+    // limit=5000 — GET /api/admin/trip-sheets defaults to page=1/limit=50
+    // (server-side pagination it already supports), but this page paginates
+    // client-side instead (same convention as the Leads page), so it needs
+    // everything in one fetch rather than one server page at a time.
+    let qs = '?key=' + adminKey + '&limit=5000'
     if (filter !== 'all') qs += '&status=' + filter
     if (search) qs += '&search=' + encodeURIComponent(search)
     if (showTest) qs += '&include_test=true'
@@ -97,6 +108,14 @@ export default function TripSheetsPage() {
   }, [adminKey, filter, search, showTest])
 
   useEffect(() => { if (authed) fetchSheets() }, [authed, fetchSheets])
+
+  // Reset to page 1 whenever the underlying result set changes shape.
+  useEffect(() => { setPage(1) }, [filter, search, showTest, pageSize])
+
+  const totalPages  = Math.max(1, Math.ceil(sheets.length / pageSize))
+  const pagedSheets = sheets.slice((page - 1) * pageSize, page * pageSize)
+  const showingFrom = sheets.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo   = Math.min(page * pageSize, sheets.length)
 
   async function deleteSheet(id: string) {
     if (!confirm('Delete this trip sheet? This cannot be undone.')) return
@@ -267,7 +286,7 @@ export default function TripSheetsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {sheets.map(s => {
+                  {pagedSheets.map(s => {
                     const st = TRIP_STATUS[s.status] ?? { label: s.status, color: '#6b7280', bg: '#f3f4f6' }
                     const profit = s.net_profit ?? (s.total_income - s.total_expense)
                     return (
@@ -340,6 +359,66 @@ export default function TripSheetsPage() {
                   })}
                 </tbody>
               </table>
+            </div>
+          )}
+
+          {/* ── Pagination controls — mirrors Leads/Quote Management page
+              (app/(admin)/admin/leads/page.tsx) ── */}
+          {!loading && sheets.length > 0 && (
+            <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
+              <div className="flex items-center gap-3 text-sm text-gray-500">
+                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{sheets.length}</strong> trip sheets</span>
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setPage(p => Math.max(1, p - 1))}
+                    disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === totalPages || (n >= page - 2 && n <= page + 2))
+                    .map((n, idx, arr) => (
+                      <Fragment key={n}>
+                        {idx > 0 && arr[idx - 1] !== n - 1 && (
+                          <span className="px-1 text-xs text-gray-400">…</span>
+                        )}
+                        <button
+                          onClick={() => setPage(n)}
+                          className={`min-w-[32px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            page === n
+                              ? 'border-orange-400 bg-orange-500 text-white'
+                              : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}
+                        >
+                          {n}
+                        </button>
+                      </Fragment>
+                    ))}
+                  <button
+                    onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                    disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                  >
+                    Next →
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
