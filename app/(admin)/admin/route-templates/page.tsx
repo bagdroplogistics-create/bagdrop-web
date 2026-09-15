@@ -14,8 +14,9 @@
 // ones snapshot the values at creation time and are never recalculated
 // from a changed template (see the schema migration's module comment).
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { normalizeCity } from '@/lib/city-normalize'
 import {
   Route as RouteIcon, Plus, Search, Pencil, Archive, RotateCcw, X, Save, Loader2,
   ChevronDown, ChevronUp, Trash2, GripVertical, Copy, DownloadCloud,
@@ -115,6 +116,13 @@ export default function RouteTemplatesPage() {
   const [showInactive, setShowInactive] = useState(false)
   const [importing, setImporting] = useState(false)
   const [importMsg, setImportMsg] = useState('')
+  // Founder request, 2026-09-15: "show my all basic frequent routes
+  // first" — real inquiry counts per route (direction/alias-agnostic),
+  // from GET /api/admin/route-templates/frequency. Empty until loaded;
+  // routes with no matching count just sort to the bottom (0), same as
+  // a freshly Imported-from-Route-Pricing route that has no real
+  // inquiries yet.
+  const [routeFrequency, setRouteFrequency] = useState<Record<string, number>>({})
 
   // Create/edit form — null routeId means "creating a new route"
   const [editingRouteId, setEditingRouteId] = useState<string | null | 'new'>(null)
@@ -154,6 +162,30 @@ export default function RouteTemplatesPage() {
   }, [adminKey, search, showInactive])
 
   useEffect(() => { if (authed) fetchRoutes() }, [authed, fetchRoutes])
+
+  useEffect(() => {
+    if (!authed || !adminKey) return
+    fetch(`/api/admin/route-templates/frequency?key=${adminKey}`)
+      .then(r => r.ok ? r.json() : { counts: {} })
+      .then(d => setRouteFrequency(d.counts ?? {}))
+      .catch(() => {})
+  }, [authed, adminKey])
+
+  // Real inquiry count for a route, direction/alias-agnostic — same
+  // normalized key the frequency endpoint groups leads by.
+  const frequencyFor = useCallback((r: RouteTemplate) => {
+    const key = [normalizeCity(r.from_city), normalizeCity(r.to_city)].sort().join('|')
+    return routeFrequency[key] ?? 0
+  }, [routeFrequency])
+
+  // Busiest routes first; ties broken alphabetically so the order stays
+  // stable and predictable rather than shuffling on every reload.
+  const sortedRoutes = useMemo(() => {
+    return [...routes].sort((a, b) => {
+      const diff = frequencyFor(b) - frequencyFor(a)
+      return diff !== 0 ? diff : a.route_name.localeCompare(b.route_name)
+    })
+  }, [routes, frequencyFor])
 
   // Founder request, 2026-09-15: bulk-create a Route Template shell for
   // every from/to city pair Bagdrop already prices in Route Pricing,
@@ -559,11 +591,27 @@ export default function RouteTemplatesPage() {
             </div>
           ) : (
             <div className="space-y-3">
-              {routes.map(r => (
+              {/* Busiest routes first (founder request, 2026-09-15) — ranked
+                  by real inquiry count from GET /api/admin/route-templates/
+                  frequency, direction/alias-agnostic (Vadodara = Baroda,
+                  Mumbai→Baroda = Baroda→Mumbai). A route with no real
+                  inquiries yet (e.g. one just bulk-imported from Route
+                  Pricing) simply sorts to the bottom, not hidden. */}
+              {sortedRoutes.map(r => {
+                const freq = frequencyFor(r)
+                return (
                 <div key={r.id} className={`rounded-2xl border border-gray-100 bg-white p-4 shadow-sm ${r.status === 'inactive' ? 'opacity-50' : ''}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <div>
-                      <p className="text-sm font-bold text-gray-800">{r.route_name}</p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-bold text-gray-800">{r.route_name}</p>
+                        {freq > 0 && (
+                          <span title={`${freq} real inquir${freq === 1 ? 'y' : 'ies'} on this route`}
+                            className="rounded-full bg-orange-50 px-2 py-0.5 text-[10px] font-bold text-orange-600">
+                            {freq} inquir{freq === 1 ? 'y' : 'ies'}
+                          </span>
+                        )}
+                      </div>
                       <p className="text-xs text-gray-400">{r.from_city} → {r.to_city} · {(r.route_template_operations ?? []).length} operation{(r.route_template_operations ?? []).length === 1 ? '' : 's'}</p>
                     </div>
                     <div className="flex items-center gap-1">
@@ -587,7 +635,8 @@ export default function RouteTemplatesPage() {
                     </div>
                   )}
                 </div>
-              ))}
+                )
+              })}
             </div>
           )}
         </>
