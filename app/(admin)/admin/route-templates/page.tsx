@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Route as RouteIcon, Plus, Search, Pencil, Archive, RotateCcw, X, Save, Loader2,
-  ChevronDown, ChevronUp, Trash2, GripVertical,
+  ChevronDown, ChevronUp, Trash2, GripVertical, Copy,
 } from 'lucide-react'
 
 // Must match lib/vendor-notifications.ts's OperationCategory / CATEGORY_LABEL
@@ -127,6 +127,10 @@ export default function RouteTemplatesPage() {
   // the admin types something into it directly, so a genuinely custom name
   // (e.g. "Vadodara Express — Premium") never gets silently overwritten.
   const [routeNameTouched, setRouteNameTouched] = useState(false)
+  // Set only when the current draft came from "Duplicate" — drives the
+  // reminder banner below the From/To City fields (per-operation From/To
+  // isn't auto-updated just because the route-level cities changed).
+  const [duplicatedFromName, setDuplicatedFromName] = useState<string | null>(null)
   const [operations, setOperations] = useState<RouteOperation[]>([])
   const [removedOperationIds, setRemovedOperationIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
@@ -158,6 +162,7 @@ export default function RouteTemplatesPage() {
     setEditingRouteId('new')
     setRouteName(''); setFromCity(''); setToCity(''); setNotes('')
     setRouteNameTouched(false)
+    setDuplicatedFromName(null)
     setOperations([emptyOperation(0)])
     setRemovedOperationIds([])
     setSaveErr('')
@@ -166,6 +171,7 @@ export default function RouteTemplatesPage() {
   function startEdit(r: RouteTemplate) {
     setEditingRouteId(r.id)
     setRouteName(r.route_name); setFromCity(r.from_city); setToCity(r.to_city); setNotes(r.notes ?? '')
+    setDuplicatedFromName(null)
     // Treat an existing route's saved name as intentional — never let
     // further From/To City edits during this session silently overwrite it.
     setRouteNameTouched(true)
@@ -182,8 +188,41 @@ export default function RouteTemplatesPage() {
     setSaveErr('')
   }
 
+  // Duplicate an existing route as the starting point for a new one —
+  // founder request, 2026-09-15: build out the busiest corridors first
+  // (e.g. clone "Vadodara → Mumbai" as the base for "Ahmedabad → Mumbai")
+  // without retyping all 6 operations, vendors and rates from scratch.
+  // Copies every operation across (minus its id, so Save creates brand-new
+  // rows — this never touches the source route or any trip sheet already
+  // generated from it). From/To City start out matching the source route
+  // so you can see exactly what's being copied; change them to the new
+  // corridor, then double-check each operation's own From/To (Pickup/
+  // Delivery legs especially) since those don't auto-update just because
+  // the route-level cities changed.
+  function duplicateRoute(r: RouteTemplate) {
+    setEditingRouteId('new')
+    setRouteName(`${r.from_city} → ${r.to_city}`)
+    setFromCity(r.from_city)
+    setToCity(r.to_city)
+    setRouteNameTouched(false)
+    setDuplicatedFromName(r.route_name)
+    setNotes(r.notes ?? '')
+    setOperations(
+      (r.route_template_operations ?? []).map(op => ({
+        sequence: op.sequence, expense_type: op.expense_type, mode: op.mode ?? '',
+        operation_category: op.operation_category, vendor_id: op.vendor_id,
+        from_location: op.from_location ?? '', to_location: op.to_location ?? '',
+        rate_type: op.rate_type, rate: String(op.rate), date_rule: op.date_rule,
+        notification_required: op.notification_required, description: op.description ?? '',
+      }))
+    )
+    setRemovedOperationIds([])
+    setSaveErr('')
+  }
+
   function cancelEdit() {
     setEditingRouteId(null)
+    setDuplicatedFromName(null)
   }
 
   function addOperationRow() {
@@ -268,6 +307,7 @@ export default function RouteTemplatesPage() {
         ])
       }
       setEditingRouteId(null)
+      setDuplicatedFromName(null)
       fetchRoutes()
     } finally {
       setSaving(false)
@@ -306,7 +346,17 @@ export default function RouteTemplatesPage() {
 
       {isEditing ? (
         <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
-          <h4 className="mb-4 text-sm font-bold text-orange-700">{editingRouteId === 'new' ? 'New Route Template' : 'Edit Route Template'}</h4>
+          <h4 className="mb-1 text-sm font-bold text-orange-700">
+            {duplicatedFromName ? `Duplicate of "${duplicatedFromName}"` : editingRouteId === 'new' ? 'New Route Template' : 'Edit Route Template'}
+          </h4>
+
+          {duplicatedFromName && (
+            <p className="mb-4 rounded-lg border border-orange-200 bg-white px-3 py-2 text-xs text-orange-700">
+              All {operations.length} operations were copied from <strong>{duplicatedFromName}</strong>, including vendors and rates.
+              Update the From/To City below for the new corridor, then check each operation&apos;s own From/To fields —
+              those don&apos;t change automatically just because the route-level cities did.
+            </p>
+          )}
 
           <div className="grid gap-3 sm:grid-cols-3">
             <Field label="From City *"  value={fromCity}
@@ -473,6 +523,7 @@ export default function RouteTemplatesPage() {
                     <div className="flex items-center gap-1">
                       <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.status === 'active' ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-500'}`}>{r.status}</span>
                       <button onClick={() => startEdit(r)} title="Edit" className="rounded-lg border border-gray-100 p-1.5 text-gray-300 hover:bg-blue-50 hover:text-blue-500 hover:border-blue-200 transition-colors"><Pencil className="h-3.5 w-3.5" /></button>
+                      <button onClick={() => duplicateRoute(r)} title="Duplicate this route for a different location" className="rounded-lg border border-gray-100 p-1.5 text-gray-300 hover:bg-orange-50 hover:text-orange-500 hover:border-orange-200 transition-colors"><Copy className="h-3.5 w-3.5" /></button>
                       {r.status === 'active' ? (
                         <button onClick={() => toggleStatus(r)} title="Deactivate" className="rounded-lg border border-gray-100 p-1.5 text-gray-300 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors"><Archive className="h-3.5 w-3.5" /></button>
                       ) : (
