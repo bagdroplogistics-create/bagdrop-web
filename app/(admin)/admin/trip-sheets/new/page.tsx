@@ -134,6 +134,23 @@ const STATUS_BADGE: Record<string, { label: string; cls: string }> = {
   invoice_sent: { label: 'Invoice Sent', cls: 'bg-purple-100 text-purple-700' },
 }
 
+// Founder request, 2026-09-15: this list was sorting purely by pickup date,
+// which let a Converted lead with a far-future pickup date float above an
+// already-Completed trip that actually needs a Trip Sheet built today — the
+// exact confusion that surfaced while chasing the Disha Patel duplicate
+// (a still-open Converted quote sitting above the real Completed booking
+// for the same trip). Completed trips are what this screen is overwhelmingly
+// used for (the trip already happened, actual expenses need entering), so
+// they now sort to the top as a group, most recent first; everything else
+// follows below, also most recent first within its own group.
+const STATUS_SORT_PRIORITY: Record<string, number> = {
+  completed:    0,
+  invoice_sent: 1,
+  delivered:    2,
+  confirmed:    3,
+  converted:    4,
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 let _uid = 0
@@ -347,7 +364,15 @@ export default function NewTripSheetPage() {
       ]
       const seen = new Set<string>()
       const deduped = all.filter(e => { if (seen.has(e.booking_id)) return false; seen.add(e.booking_id); return true })
-      deduped.sort((a, b) => ((b.pickup_date ?? b.created_at ?? '') > (a.pickup_date ?? a.created_at ?? '') ? 1 : -1))
+      // Completed trips first (as a group), most recent first — see
+      // STATUS_SORT_PRIORITY above for why. Within any other status group,
+      // also most recent first.
+      deduped.sort((a, b) => {
+        const pa = STATUS_SORT_PRIORITY[a.status] ?? 5
+        const pb = STATUS_SORT_PRIORITY[b.status] ?? 5
+        if (pa !== pb) return pa - pb
+        return (b.pickup_date ?? b.created_at ?? '') > (a.pickup_date ?? a.created_at ?? '') ? 1 : -1
+      })
       setEntries(deduped)
     } catch { setError('Failed to load bookings') }
     setLoading(false)
