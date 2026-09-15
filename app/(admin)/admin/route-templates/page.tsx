@@ -18,7 +18,7 @@ import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Route as RouteIcon, Plus, Search, Pencil, Archive, RotateCcw, X, Save, Loader2,
-  ChevronDown, ChevronUp, Trash2, GripVertical, Copy,
+  ChevronDown, ChevronUp, Trash2, GripVertical, Copy, DownloadCloud,
 } from 'lucide-react'
 
 // Must match lib/vendor-notifications.ts's OperationCategory / CATEGORY_LABEL
@@ -113,6 +113,8 @@ export default function RouteTemplatesPage() {
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [showInactive, setShowInactive] = useState(false)
+  const [importing, setImporting] = useState(false)
+  const [importMsg, setImportMsg] = useState('')
 
   // Create/edit form — null routeId means "creating a new route"
   const [editingRouteId, setEditingRouteId] = useState<string | null | 'new'>(null)
@@ -152,6 +154,34 @@ export default function RouteTemplatesPage() {
   }, [adminKey, search, showInactive])
 
   useEffect(() => { if (authed) fetchRoutes() }, [authed, fetchRoutes])
+
+  // Founder request, 2026-09-15: bulk-create a Route Template shell for
+  // every from/to city pair Bagdrop already prices in Route Pricing,
+  // instead of retyping city names one route at a time. Safe to click
+  // again later after adding new Route Pricing rows — already-covered
+  // pairs are skipped, not duplicated.
+  async function importFromPricing() {
+    setImporting(true); setImportMsg('')
+    try {
+      const res = await fetch('/api/admin/route-templates/import-from-pricing', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ active_only: true }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setImportMsg('Error: ' + (d.error ?? 'Import failed')); return }
+      setImportMsg(
+        d.created > 0
+          ? `Created ${d.created} new route${d.created !== 1 ? 's' : ''} (${d.skipped} already existed) — fill in vendor operations for each below.`
+          : `No new routes to import — all ${d.skipped} Route Pricing routes already have a template.`
+      )
+      fetchRoutes()
+    } catch {
+      setImportMsg('Error: network error, please try again')
+    } finally {
+      setImporting(false)
+    }
+  }
 
   useEffect(() => {
     if (!authed || !adminKey) return
@@ -337,12 +367,28 @@ export default function RouteTemplatesPage() {
           <p className="mt-0.5 text-sm text-gray-400">Configure a route&apos;s standard operations once — New Trip Sheet then just needs a route + bag count.</p>
         </div>
         {!isEditing && (
-          <button onClick={startCreate}
-            className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
-            <Plus className="h-4 w-4" /> New Route Template
-          </button>
+          <div className="flex items-center gap-2">
+            <button onClick={importFromPricing} disabled={importing}
+              title="Create a route template shell for every route already priced in Route Pricing"
+              className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <DownloadCloud className="h-4 w-4" />}
+              Import from Route Pricing
+            </button>
+            <button onClick={startCreate}
+              className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
+              <Plus className="h-4 w-4" /> New Route Template
+            </button>
+          </div>
         )}
       </div>
+
+      {importMsg && !isEditing && (
+        <div className={`mb-4 rounded-xl border px-4 py-2.5 text-sm font-medium ${
+          importMsg.startsWith('Error') ? 'border-red-200 bg-red-50 text-red-700' : 'border-green-200 bg-green-50 text-green-700'
+        }`}>
+          {importMsg}
+        </div>
+      )}
 
       {isEditing ? (
         <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5">
