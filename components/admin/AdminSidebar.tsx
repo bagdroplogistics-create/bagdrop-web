@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact, Route,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -59,6 +59,10 @@ const NAV = [
       { label: 'LR Route Master', href: '/admin/lr-routes',   icon: Map },
       { label: 'Branches',       href: '/admin/branches',     icon: Building2 },
       { label: 'Vendors',        href: '/admin/vendors',      icon: Contact },
+      // Route Master / Trip Sheet Templates (founder spec BAGDROP-TRIPSHEET-
+      // ROUTE-TEMPLATE-001, 2026-09-15) — "select route + enter bags" auto-
+      // generation of Trip Expenses. See app/(admin)/admin/route-templates.
+      { label: 'Route Templates', href: '/admin/route-templates', icon: Route },
     ],
   },
 ]

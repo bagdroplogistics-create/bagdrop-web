@@ -37,11 +37,77 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     'luggage_code', 'cloak_room_number', 'pickup_person', 'pickup_contact',
     'delivery_person', 'delivery_contact', 'notes', 'remarks',
     'additional_charges', 'discount', 'tax_amount',
+    // Route Master (2026-09-15) — was previously not editable at all after
+    // creation. See the total_bags recalculation block below for what
+    // changing it now does to per-bag expenses.
+    'total_bags',
   ]
 
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
+  }
+  if ('total_bags' in updates) updates.total_bags = Math.max(1, Number(updates.total_bags) || 1)
+
+  // ── Route Master: bag-count change cascades to per-bag expenses ────────
+  // Founder spec section 25: changing the Trip Sheet's overall bag count
+  // must automatically recalculate every applicable PER-BAG expense (Rate/
+  // Cost = new bag count x its unit rate), while fixed-rate expenses never
+  // change. Section 6 additionally requires that an expense whose bag count
+  // was already deliberately edited away from the sheet's own count is left
+  // alone (it's already "different from Trip Sheet" by the admin's own
+  // choice) — only rows still tracking the OLD sheet-level bag count get
+  // cascaded to the new one. Only rate_type='per_bag' rows carry a bags/
+  // unit_rate at all (manually-added expenses have neither and are never
+  // touched by this).
+  if ('total_bags' in updates) {
+    const { data: sheetBefore } = await supabaseAdmin
+      .from('trip_sheets')
+      .select('total_bags')
+      .eq('id', id)
+      .single()
+    const oldBags = Number(sheetBefore?.total_bags) || 1
+    const newBags = updates.total_bags as number
+
+    if (oldBags !== newBags) {
+      const { data: perBagExpenses } = await supabaseAdmin
+        .from('trip_expenses')
+        .select('id, bags, unit_rate, estimated_cost, actual_cost')
+        .eq('trip_sheet_id', id)
+        .eq('rate_type', 'per_bag')
+        .eq('bags', oldBags)
+
+      for (const exp of perBagExpenses ?? []) {
+        const unitRate = Number(exp.unit_rate) || 0
+        const newCost = newBags * unitRate
+        // Only cascade Actual Cost alongside Rate/Cost when it hasn't
+        // already diverged from the plan (i.e. nobody's recorded a real,
+        // different invoiced amount yet) — same "don't silently overwrite
+        // a deliberate override" principle as the bags field itself.
+        const actualStillTrackingPlan = Number(exp.actual_cost) === Number(exp.estimated_cost)
+        await supabaseAdmin
+          .from('trip_expenses')
+          .update({
+            bags: newBags,
+            estimated_cost: newCost,
+            ...(actualStillTrackingPlan ? { actual_cost: newCost } : {}),
+          })
+          .eq('id', exp.id)
+      }
+
+      // The cascade above may have changed some rows' actual_cost directly
+      // in the DB — trip_sheets.total_expense (normally kept in sync by the
+      // expenses routes' own recalcTotals) would otherwise go stale here.
+      // Recompute it fresh so the "Recompute income/profit" block below
+      // reads the correct current total_expense instead of a cached one.
+      if ((perBagExpenses ?? []).length > 0) {
+        const { data: allExpenses } = await supabaseAdmin
+          .from('trip_expenses')
+          .select('actual_cost')
+          .eq('trip_sheet_id', id)
+        updates.total_expense = allExpenses?.reduce((s, e) => s + (Number(e.actual_cost) || 0), 0) ?? 0
+      }
+    }
   }
 
   // ── Sync income from the linked booking ────────────────────
@@ -206,7 +272,7 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     const ac   = Number(updates.additional_charges ?? current.additional_charges) || 0
     const disc = Number(updates.discount            ?? current.discount)           || 0
     const tax  = Number(updates.tax_amount          ?? current.tax_amount)         || 0
-    const exp  = Number(current.total_expense)       || 0
+    const exp  = Number(updates.total_expense ?? current.total_expense) || 0
 
     updates.total_income = qa + ac - disc + tax
     updates.net_profit   = (qa + ac - disc + tax) - exp

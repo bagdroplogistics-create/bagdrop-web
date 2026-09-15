@@ -7,7 +7,7 @@ import {
   ArrowLeft, Search, Loader2, Truck, User, Phone, MapPin,
   Package, Calendar, CheckCircle, IndianRupee, ChevronRight,
   AlertCircle, Plus, X, Trash2, Layers, Pencil, ReceiptText,
-  TrendingUp, Activity, ChevronDown, ExternalLink,
+  TrendingUp, Activity, ChevronDown, ExternalLink, Route as RouteIcon,
 } from 'lucide-react'
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -63,6 +63,30 @@ interface ExistingSheet {
   trip_expenses: ExistingExpense[]
 }
 interface VendorLite { id: string; vendor_id: string; vendor_name: string }
+
+// Route Master / Trip Sheet Templates (founder spec BAGDROP-TRIPSHEET-
+// ROUTE-TEMPLATE-001, 2026-09-15) — "select route + enter bags" auto-
+// generation. Only used here to let the admin pick a route and preview/
+// confirm what will be generated; the actual snapshot-insert happens
+// server-side in POST /api/admin/trip-sheets/[id]/apply-route-template
+// right after this wizard creates the (empty) trip sheet.
+interface RouteTemplateOpLite {
+  id: string
+  expense_type: string
+  operation_category: string
+  rate_type: 'fixed' | 'per_bag'
+  rate: number
+  vendor_id: string | null
+  vendors?: { vendor_name: string } | null
+}
+interface RouteTemplateLite {
+  id: string
+  route_name: string
+  from_city: string
+  to_city: string
+  status: string
+  route_template_operations?: RouteTemplateOpLite[]
+}
 
 interface LocalExpense {
   _id:           string   // temp uuid
@@ -246,6 +270,14 @@ export default function NewTripSheetPage() {
   const [showExpForm, setShowExpForm] = useState(false)
   const [expForm, setExpForm] = useState<LocalExpense>(() => emptyLocalExpense())
 
+  // Route Master — "select route + enter bags" (founder spec, 2026-09-15).
+  // Entirely optional: leaving routeTemplateId empty keeps this wizard
+  // working exactly as before (manual "+ Add Expense" only).
+  const [routeTemplates,       setRouteTemplates]      = useState<RouteTemplateLite[]>([])
+  const [routeTemplateId,      setRouteTemplateId]     = useState('')
+  const [routeTemplateBags,    setRouteTemplateBags]   = useState('1')
+  const [loadingRouteTemplates, setLoadingRouteTemplates] = useState(false)
+
   // ── Auth ─────────────────────────────────────────────────────────────────
 
   useEffect(() => {
@@ -333,6 +365,27 @@ export default function NewTripSheetPage() {
       .catch(() => {})
   }, [authed, adminKey])
 
+  // Route Master list — active templates only, with their operations so we
+  // can show a live preview of what "select route + enter bags" will
+  // generate before the admin commits to creating the trip sheet.
+  useEffect(() => {
+    if (!authed || !adminKey) return
+    setLoadingRouteTemplates(true)
+    fetch(`/api/admin/route-templates?key=${adminKey}&status=active&include_operations=true`)
+      .then(r => r.ok ? r.json() : { route_templates: [] })
+      .then(d => setRouteTemplates(d.route_templates ?? []))
+      .catch(() => {})
+      .finally(() => setLoadingRouteTemplates(false))
+  }, [authed, adminKey])
+
+  // Keep the Route Template bag-count field defaulted to whatever the
+  // customer/booking already implies, until the admin edits it by hand.
+  useEffect(() => {
+    const implied = entryMode === 'manual' ? manualBags : String(selected?.total_bags ?? 1)
+    setRouteTemplateBags(implied || '1')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selected?.booking_id, entryMode])
+
   // Whenever a booking/lead is selected, check whether it already has a
   // (non-cancelled) trip sheet — the backend's own duplicate guard (see
   // POST /api/admin/trip-sheets) already blocks creating a second one for
@@ -389,13 +442,19 @@ export default function NewTripSheetPage() {
       return
     }
     setCreating(true); setError('')
+    // If a Route Template is selected, its bag count is authoritative for
+    // the trip sheet's total_bags (overriding the booking's own bag count,
+    // per founder spec: "enter/edit only the number of bags" is the whole
+    // point of this flow) — otherwise total_bags is left to whatever the
+    // booking/manual-entry fields already determine, exactly as before.
+    const routeBagsOverride = routeTemplateId ? (Number(routeTemplateBags) || 1) : null
     try {
       const res = await fetch('/api/admin/trip-sheets', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
         body: JSON.stringify({
           ...(entryMode === 'select'
-            ? { booking_id: selected!.booking_id }
+            ? { booking_id: selected!.booking_id, ...(routeBagsOverride ? { total_bags: routeBagsOverride } : {}) }
             : {
                 manual:          true,
                 customer_name:   manualCustomerName.trim(),
@@ -408,7 +467,7 @@ export default function NewTripSheetPage() {
                 delivery_date:   manualDeliveryDate           || null,
                 pickup_address:  manualPickupAddress.trim()  || null,
                 drop_address:    manualDropAddress.trim()    || null,
-                total_bags:      Number(manualBags)  || 1,
+                total_bags:      routeBagsOverride || Number(manualBags) || 1,
                 quote_amount:    Number(manualAmount) || 0,
               }),
           mode:               mode              || null,
@@ -434,6 +493,27 @@ export default function NewTripSheetPage() {
       const d = await res.json()
       if (!res.ok) { setError(d.error ?? 'Failed to create trip sheet'); setCreating(false); return }
       const sheetId = d.trip_sheet.id
+
+      // Route Master — "select route + enter bags" auto-generation. Runs
+      // BEFORE the manual expense rows below so the route-template rows
+      // and any exceptional/manually-added rows (still fully supported,
+      // per founder spec §18-19) both end up on the sheet, clearly
+      // distinguishable via route_template_operation_id on each row.
+      if (routeTemplateId) {
+        const applyRes = await fetch(`/api/admin/trip-sheets/${sheetId}/apply-route-template`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ route_template_id: routeTemplateId, bags: routeBagsOverride }),
+        })
+        if (!applyRes.ok) {
+          const ad = await applyRes.json().catch(() => ({}))
+          // Non-fatal — the trip sheet itself was created successfully;
+          // surface the template failure but still take the admin to it
+          // so they aren't stuck (they can retry from the detail page, or
+          // just add expenses manually there — nothing is lost).
+          console.error('[new trip sheet] apply-route-template failed:', ad.error)
+        }
+      }
 
       // Post any local expenses
       if (expenses.length > 0) {
@@ -680,6 +760,75 @@ export default function NewTripSheetPage() {
               {/* ── TAB: Overview ── */}
               {tab === 'overview' && (
                 <div className="grid gap-4 sm:grid-cols-2">
+
+                  {/* Route Master — "select route + enter bags" (founder spec
+                      BAGDROP-TRIPSHEET-ROUTE-TEMPLATE-001, 2026-09-15). Fully
+                      optional — leave "No route template" selected to build
+                      the trip sheet exactly as before, with only manually-
+                      added expenses. */}
+                  <div className="sm:col-span-2 rounded-2xl border border-orange-200 bg-orange-50/60 p-5">
+                    <h3 className="mb-1 flex items-center gap-2 text-sm font-bold text-orange-700">
+                      <RouteIcon className="h-4 w-4" /> Route Template (optional)
+                    </h3>
+                    <p className="mb-4 text-xs text-orange-600/80">
+                      Pick a configured route and enter bags — vendors, from/to, rates and expenses for every operation are generated automatically.
+                    </p>
+                    <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="sm:col-span-2">
+                        <label className={lbl}>Route Template</label>
+                        <div className="relative">
+                          <select value={routeTemplateId} onChange={e => setRouteTemplateId(e.target.value)}
+                            className={inp + ' appearance-none pr-8 bg-white'}>
+                            <option value="">— No route template (manual expenses only) —</option>
+                            {routeTemplates.map(rt => (
+                              <option key={rt.id} value={rt.id}>
+                                {rt.route_name} ({rt.from_city} → {rt.to_city}) — {(rt.route_template_operations ?? []).length} op{(rt.route_template_operations ?? []).length === 1 ? '' : 's'}
+                              </option>
+                            ))}
+                          </select>
+                          <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                        </div>
+                        {loadingRouteTemplates && <p className="mt-1 text-[11px] text-gray-400">Loading route templates…</p>}
+                        {!loadingRouteTemplates && routeTemplates.length === 0 && (
+                          <p className="mt-1 text-[11px] text-gray-400">
+                            No active route templates yet — <Link href="/admin/route-templates" className="underline font-semibold">create one</Link>.
+                          </p>
+                        )}
+                      </div>
+                      <FInput label="Bags" value={routeTemplateBags} onChange={setRouteTemplateBags} type="number" placeholder="1" />
+                    </div>
+
+                    {/* Live preview of what will be auto-generated */}
+                    {routeTemplateId && (() => {
+                      const rt = routeTemplates.find(r => r.id === routeTemplateId)
+                      const bags = Number(routeTemplateBags) || 1
+                      const ops = rt?.route_template_operations ?? []
+                      const total = ops.reduce((s, op) => s + (op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)), 0)
+                      return (
+                        <div className="mt-4 overflow-hidden rounded-xl border border-orange-200 bg-white">
+                          <div className="max-h-56 overflow-y-auto divide-y divide-orange-50">
+                            {ops.map(op => {
+                              const cost = op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)
+                              return (
+                                <div key={op.id} className="flex items-center justify-between px-3 py-2 text-xs">
+                                  <span className="font-medium text-gray-700">{op.expense_type}</span>
+                                  <span className="text-gray-400">{op.vendors?.vendor_name ?? 'In-house'}</span>
+                                  <span className="font-semibold text-gray-800">
+                                    {op.rate_type === 'per_bag' ? `${bags} × ₹${op.rate} = ` : ''}{fmtRs(cost)}
+                                  </span>
+                                </div>
+                              )
+                            })}
+                          </div>
+                          <div className="flex items-center justify-between border-t border-orange-100 bg-orange-50 px-3 py-2">
+                            <span className="text-xs font-bold uppercase tracking-wide text-orange-700">Auto-generated total</span>
+                            <span className="text-sm font-black text-orange-700">{fmtRs(total)}</span>
+                          </div>
+                        </div>
+                      )
+                    })()}
+                  </div>
+
                   {entryMode === 'manual' ? (
                     <>
                       {/* Customer Details — editable, no booking to read from */}
@@ -1198,8 +1347,10 @@ export default function NewTripSheetPage() {
                 <button onClick={create} disabled={creating}
                   className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 py-3 text-sm font-bold text-white hover:bg-orange-600 disabled:opacity-50 transition-colors shadow-sm">
                   {creating
-                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating Trip Sheet{expenses.length > 0 ? ` + ${expenses.length} expense${expenses.length !== 1 ? 's' : ''}` : ''}…</>
-                    : <><Truck className="h-4 w-4" /> Create Trip Sheet{entryMode === 'select' ? ` for ${selected!.ref_number}` : ' (Manual Entry)'}{expenses.length > 0 ? ` + ${expenses.length} Expense${expenses.length !== 1 ? 's' : ''}` : ''}</>
+                    ? <><Loader2 className="h-4 w-4 animate-spin" /> Creating Trip Sheet…</>
+                    : <><Truck className="h-4 w-4" /> Create Trip Sheet{entryMode === 'select' ? ` for ${selected!.ref_number}` : ' (Manual Entry)'}
+                        {routeTemplateId ? ' + Route Template' : ''}
+                        {expenses.length > 0 ? ` + ${expenses.length} Expense${expenses.length !== 1 ? 's' : ''}` : ''}</>
                   }
                 </button>
                 <p className="mt-2 text-center text-xs text-gray-400">All fields can be updated later from the trip sheet detail page.</p>

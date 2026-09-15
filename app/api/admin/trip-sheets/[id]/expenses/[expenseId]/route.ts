@@ -45,6 +45,13 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // `vendor` free-text column above is untouched; vendor_id is the new,
     // separate structured link that actually drives notifications.
     'vendor_id', 'operational_date', 'operational_time', 'operation_category',
+    // Route Master (2026-09-15) — lets an admin override an individual
+    // expense's bag count away from the Trip Sheet's own total (founder
+    // spec section 6). Only meaningful on rows that have a rate_type/
+    // unit_rate at all (i.e. generated from a route template); harmless no-
+    // op on any other row, since estimated_cost is only auto-recomputed
+    // below when unit_rate is present.
+    'bags',
   ]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -57,6 +64,27 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // back to in-house) — 'vendor_id' in body with an empty/falsy value
   // means "unassign", not "leave unchanged".
   if ('vendor_id' in updates && !updates.vendor_id) updates.vendor_id = null
+
+  // Editing bags directly on a per-bag route-template row recomputes its
+  // Rate/Cost from that row's own stored unit_rate — same calculation the
+  // Trip Sheet-level bag-count cascade uses, just scoped to one row instead
+  // of every still-in-sync one. If the admin also sent an explicit
+  // estimated_cost/actual_cost in the same request, that wins (don't
+  // silently override a value they just typed).
+  if ('bags' in updates) {
+    updates.bags = Math.max(0, Number(updates.bags) || 0) || null
+    const { data: existing } = await supabaseAdmin
+      .from('trip_expenses')
+      .select('rate_type, unit_rate, estimated_cost, actual_cost')
+      .eq('id', expenseId)
+      .maybeSingle()
+    if (existing?.rate_type === 'per_bag' && existing.unit_rate != null && updates.bags) {
+      const newCost = Number(updates.bags) * Number(existing.unit_rate)
+      if (!('estimated_cost' in updates)) updates.estimated_cost = newCost
+      const actualStillTrackingPlan = Number(existing.actual_cost) === Number(existing.estimated_cost)
+      if (!('actual_cost' in updates) && actualStillTrackingPlan) updates.actual_cost = newCost
+    }
+  }
 
   const { data, error } = await supabaseAdmin
     .from('trip_expenses')

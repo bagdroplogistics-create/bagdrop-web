@@ -211,7 +211,14 @@ export async function POST(req: NextRequest) {
       drop_address:    booking ? (booking.drop_address   ?? null) : (body.drop_address   || null),
       pickup_date:     booking ? (booking.pickup_date    ?? null) : (body.pickup_date    || null),
       delivery_date:   booking ? (booking.delivery_date  ?? null) : (body.delivery_date  || null),
-      total_bags:      booking ? (booking.total_bags     ?? 1)    : (Number(body.total_bags) || 1),
+      // Route Master (2026-09-15): the "select route + enter bags" wizard
+      // step lets the admin set/override the bag count right at creation —
+      // previously booking mode always forced total_bags to whatever the
+      // booking already had, with no way to correct it here. body.total_bags
+      // now wins when explicitly supplied, in both booking and manual mode;
+      // falls back to the booking's own total_bags exactly as before when
+      // it isn't.
+      total_bags:      Number(body.total_bags) || (booking ? (booking.total_bags ?? 1) : 1),
       quote_amount:    quoteAmount,
       payment_status:  booking ? (booking.payment_status ?? null) : (body.payment_status || null),
 

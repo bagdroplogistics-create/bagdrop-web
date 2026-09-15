@@ -97,6 +97,13 @@ export async function POST(req: NextRequest, { params }: Params) {
       operational_date:    operationalDate,
       operational_time:    body.operational_time || null,
       operation_category:  operationCategory,
+      // Route Master (2026-09-15) — optional on a manually-added expense
+      // (the exceptional-expense path, spec section 19); when the admin
+      // does mark one as per-bag, it becomes eligible for the same
+      // Trip-Sheet-bag-count cascade as a route-template-generated row.
+      rate_type: body.rate_type === 'per_bag' ? 'per_bag' : (body.rate_type === 'fixed' ? 'fixed' : null),
+      unit_rate: body.unit_rate != null ? Number(body.unit_rate) || 0 : null,
+      bags:      body.bags != null ? Number(body.bags) || null : null,
     })
     .select()
     .single()
