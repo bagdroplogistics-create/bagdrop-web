@@ -14,7 +14,7 @@ export const runtime = 'nodejs'
 // Query params:
 //   range      = today | this_week | this_month | last_month | this_year | custom  (default this_month)
 //   date_from, date_to = 'YYYY-MM-DD', only used when range=custom
-const VALID_PRESETS = new Set(['today', 'this_week', 'this_month', 'last_month', 'this_year', 'custom'])
+const VALID_PRESETS = new Set(['today', 'this_week', 'this_month', 'last_month', 'this_year', 'all_time', 'custom'])
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {

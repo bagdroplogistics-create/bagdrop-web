@@ -70,7 +70,13 @@ import { resolveSource, SOURCE_LABELS } from '@/lib/lead-source'
 
 // ── Date range resolution — single shared implementation for every section ──
 
-export type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom'
+// Founder request, 2026-09-16: "total inquiries coming from website,
+// contact or manually added any inquiry from june month to till now" —
+// added as an explicit 'all_time' preset (since real records only start
+// where the company began using this software) rather than relying on
+// 'this_year' happening to cover it, which would silently stop working
+// come January.
+export type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'all_time' | 'custom'
 
 export interface ResolvedRange {
   preset:      DashboardRangePreset
@@ -160,6 +166,14 @@ export function resolveDashboardRange(
     case 'this_year': {
       fromY = y; fromM = 0; fromD = 1
       lastY = y; lastM = 11; lastD = 31
+      break
+    }
+    case 'all_time': {
+      // Well before this system's earliest possible real record — a fixed
+      // floor rather than a live MIN(created_at) query, since it only
+      // needs to be safely earlier than any real data, not exact.
+      fromY = 2020; fromM = 0; fromD = 1
+      lastY = y; lastM = m; lastD = d
       break
     }
     case 'custom': {
@@ -496,12 +510,6 @@ export async function getDashboardData(
     }
   }
 
-  function balanceFor(b: BookingRow): number {
-    if (b.billing_type === 'foc') return 0
-    const total = Number(b.total_amount) || 0
-    const paid = totalPaidByBooking.get(b.id) ?? 0
-    return Math.max(0, total - paid)
-  }
   // Real money collected for this booking so far — actual ledger total if
   // any real payment exists, else the full total_amount ONLY if the
   // booking's derived payment_status is already 'paid' (the "synthetic"
@@ -575,24 +583,62 @@ export async function getDashboardData(
 
   // Live snapshot — not date-filtered, see module comment.
   //
-  // Founder-reported 2026-09-16: this originally scoped to "every booking
-  // except rejected/closed/cancelled," which wrongly counted a bare
-  // inquiry or a quote the customer hasn't even responded to yet as
-  // outstanding debt for its full total_amount — a week with ₹15,330 of
-  // real paid revenue showed ₹11,37,272 "Outstanding" because every
-  // unanswered quote ever sent (all-time) was being added in. Outstanding
-  // only makes sense once a customer has actually committed to pay —
-  // i.e. the booking reached 'accepted' or later in STATUS_ORDER — through
-  // to 'completed' (a completed job with an unpaid balance is real money
-  // still owed, so it stays included, not excluded). Bookings still stuck
-  // at inquiry/quote_created/quote_sent (nobody has said yes yet) and the
-  // rejected/closed/cancelled terminal branches are both correctly out.
-  const outstandingBookings = bookings.filter(b => {
-    if (b.is_test) return false
-    const i = idxOf(b.status)
-    return i !== -1 && i >= ACCEPTED_IDX
-  })
-  const outstandingAmount = outstandingBookings.reduce((s, b) => s + balanceFor(b), 0)
+  // Founder-reported 2026-09-16, round 2: an earlier version scoped this to
+  // "every accepted-or-later booking's total_amount minus its real payments-
+  // ledger total" — which silently treated any booking marked paid via Mark
+  // Payment Received / VIP approval with NO row ever logged in `payments`
+  // (exactly the case app/api/admin/payments/route.ts's
+  // fetchUnloggedBookingPayments exists to handle) as if it had collected
+  // ₹0, counting its FULL total_amount as still outstanding even though the
+  // booking's own payment_status already says 'paid'. That's what produced
+  // ₹11,37,272 "Outstanding" against a real Payments-tab Pending of
+  // ₹36,750 (screenshot, Payments page: 53 transactions, ₹4,10,025
+  // collected, ₹36,750 pending, spanning June–September 2026).
+  //
+  // Fix: stop deriving a second, independent "balance due" formula and
+  // instead reproduce the Payments page's own Total/Collected/Pending cards
+  // EXACTLY (down to the rupee) — same real-payments-ledger half, same
+  // synthetic-row half for confirmed-or-paid bookings with no logged
+  // payment at all — computed here from the SAME bookings/payments arrays
+  // already fetched above, no extra query needed. See app/api/admin/
+  // payments/route.ts's fetchUnloggedBookingPayments() and its frontend
+  // totalPending calculation (app/(admin)/admin/payments/page.tsx) — this
+  // is a deliberate line-for-line port of that already-trusted logic, not
+  // a new definition.
+  const CONFIRMED_ONWARD_IDX = STATUS_ORDER.indexOf('confirmed')
+  const PAID_WITHOUT_LEDGER_ROW_STATUSES = new Set(['paid', 'approved_pending'])
+
+  // Every booking that has AT LEAST ONE real `payments` row, regardless of
+  // that row's own status — matches existingBookingIds in payments/
+  // route.ts, which is what fetchUnloggedBookingPayments uses to avoid
+  // synthesizing a second "no payment logged" line for a booking that
+  // actually already has one (even a still-pending one).
+  const bookingsWithAnyRealPayment = new Set(
+    payments.filter(p => p.booking_id && !testBookingIds.has(p.booking_id)).map(p => p.booking_id as string)
+  )
+
+  const realOutstanding = payments
+    .filter(p =>
+      p.payment_method !== 'upload' &&
+      p.payment_status !== 'paid' &&
+      p.payment_status !== 'refunded' &&
+      (!p.booking_id || !testBookingIds.has(p.booking_id))
+    )
+    .reduce((s, p) => s + (Number(p.amount) || 0), 0)
+
+  const syntheticOutstanding = bookings
+    .filter(b => {
+      if (b.is_test) return false
+      if (bookingsWithAnyRealPayment.has(b.id)) return false // already counted in realOutstanding, or already paid
+      const i = idxOf(b.status)
+      const reachedConfirmed = i !== -1 && i >= CONFIRMED_ONWARD_IDX
+      const paidWithoutLedger = PAID_WITHOUT_LEDGER_ROW_STATUSES.has(b.payment_status ?? '')
+      if (!reachedConfirmed && !paidWithoutLedger) return false
+      return b.payment_status !== 'paid' // a synthetic 'paid' row (e.g. FOC-adjacent) owes nothing
+    })
+    .reduce((s, b) => s + (Number(b.total_amount) || 0), 0)
+
+  const outstandingAmount = realOutstanding + syntheticOutstanding
 
   const pendingVerificationAmount = payments
     .filter(p => p.payment_status === 'pending_verification' && (!p.booking_id || !testBookingIds.has(p.booking_id)))

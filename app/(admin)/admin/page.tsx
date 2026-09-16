@@ -278,7 +278,7 @@ interface DashboardV2Data {
   sources: { source: string; label: string; inquiries: number; quotes: number; confirmed: number; completed: number; revenue: number }[]
 }
 
-type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom'
+type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'all_time' | 'custom'
 type OpsRangePreset = 'today' | 'tomorrow' | 'next3' | 'next7' | 'all' | 'custom'
 
 interface OpsBookingRow {
@@ -300,6 +300,7 @@ const DASH_RANGE_OPTIONS: { value: DashboardRangePreset; label: string }[] = [
   { value: 'this_month', label: 'This Month' },
   { value: 'last_month', label: 'Last Month' },
   { value: 'this_year',  label: 'This Year' },
+  { value: 'all_time',   label: 'All Time' },
   { value: 'custom',     label: 'Custom Range' },
 ]
 const OPS_RANGE_OPTIONS: { value: OpsRangePreset; label: string }[] = [
