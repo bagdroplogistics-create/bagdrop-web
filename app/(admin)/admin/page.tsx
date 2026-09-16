@@ -234,6 +234,105 @@ function StatusBadge({ status }: { status: string }) {
   )
 }
 
+// ── Redesigned Dashboard (founder request, 2026-09-16) ──────────────────
+// Backed by GET /api/admin/dashboard-v2 (lib/dashboard-analytics-v2.ts) for
+// Business Overview / Funnel / Revenue & Payment Collection / Logistics /
+// Trip Profitability / Service Types / Sources, and by the EXISTING,
+// already-proven GET /api/admin/reports/operations (built 2026-08-22) for
+// Upcoming Operations + Upcoming Confirmed Bookings — reused as-is rather
+// than reimplemented, per the founder spec's own instruction to "use the
+// existing Upcoming Confirmed Bookings logic." Both are read-only.
+interface DashboardV2Data {
+  range: { preset: string; from: string; to: string }
+  business_overview: {
+    total_inquiries: number; quotes_sent: number; confirmed_bookings: number
+    payments_received_count: number; payments_received_amount: number
+    outstanding_amount: number; revenue: number
+  }
+  funnel: {
+    stages: {
+      total_inquiries: number; quotes_generated: number; quotes_sent: number
+      accepted: number; payment_received: number; confirmed: number; completed: number
+    }
+    status_counts: {
+      new_inquiries: number; pending_inquiries: number; quotes_pending: number
+      quote_sent: number; waiting_customer_approval: number; quote_rejected: number
+      cancelled: number; confirmed: number; completed: number
+    }
+  }
+  revenue_collection: {
+    revenue: number; payments_received_amount: number; payments_received_count: number
+    outstanding: number; pending_verification: number; refunds: number; net_revenue: number
+  }
+  logistics: {
+    total_bags_handled: number; picked_up: number; in_transit: number
+    airport_handover: number; delivered: number; pending: number; exceptions: number
+    group_booking_count: number; group_booking_bag_count: number
+  }
+  trip_profitability: {
+    total_trips: number; active_trips: number; completed_trips: number; delivered_trips: number
+    total_income: number; total_expense: number; net_profit: number
+    avg_revenue_per_trip: number; avg_expense_per_trip: number; profit_margin: number
+  }
+  service_types: { service_label: string; bookings: number; bags: number; revenue: number }[]
+  sources: { source: string; label: string; inquiries: number; quotes: number; confirmed: number; completed: number; revenue: number }[]
+}
+
+type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'custom'
+type OpsRangePreset = 'today' | 'tomorrow' | 'next3' | 'next7' | 'all' | 'custom'
+
+interface OpsBookingRow {
+  id: string; tracking_id: string; status: string
+  customer_name: string | null; service_label: string | null
+  from_city: string | null; to_city: string | null
+  pickup_date: string | null; delivery_date: string | null
+  pickup_address: string | null; total_bags: number | null
+  driver_name: string | null
+}
+interface OpsData {
+  upcoming_bookings: OpsBookingRow[]
+  widgets: { todays_pickups: number; todays_deliveries: number; delivered_today: number; upcoming_pickups_7d: number }
+}
+
+const DASH_RANGE_OPTIONS: { value: DashboardRangePreset; label: string }[] = [
+  { value: 'today',      label: 'Today' },
+  { value: 'this_week',  label: 'This Week' },
+  { value: 'this_month', label: 'This Month' },
+  { value: 'last_month', label: 'Last Month' },
+  { value: 'this_year',  label: 'This Year' },
+  { value: 'custom',     label: 'Custom Range' },
+]
+const OPS_RANGE_OPTIONS: { value: OpsRangePreset; label: string }[] = [
+  { value: 'today',   label: 'Today' },
+  { value: 'tomorrow', label: 'Tomorrow' },
+  { value: 'next3',   label: 'Next 3 Days' },
+  { value: 'next7',   label: 'Next 7 Days' },
+  { value: 'custom',  label: 'Custom Range' },
+]
+const FUNNEL_STAGES: { key: keyof DashboardV2Data['funnel']['stages']; label: string }[] = [
+  { key: 'total_inquiries',  label: 'Inquiries' },
+  { key: 'quotes_generated', label: 'Quotes Generated' },
+  { key: 'quotes_sent',      label: 'Quotes Sent' },
+  { key: 'accepted',         label: 'Customer Approval' },
+  { key: 'payment_received', label: 'Payment Received' },
+  { key: 'confirmed',        label: 'Confirmed' },
+  { key: 'completed',        label: 'Completed' },
+]
+const STATUS_COUNT_CARDS: { key: keyof DashboardV2Data['funnel']['status_counts']; label: string }[] = [
+  { key: 'new_inquiries',              label: 'New Inquiries' },
+  { key: 'pending_inquiries',          label: 'Pending Inquiries' },
+  { key: 'quotes_pending',             label: 'Quotes Pending' },
+  { key: 'quote_sent',                 label: 'Quote Sent' },
+  { key: 'waiting_customer_approval',  label: 'Waiting Approval' },
+  { key: 'quote_rejected',             label: 'Quote Rejected' },
+  { key: 'cancelled',                  label: 'Cancelled' },
+  { key: 'confirmed',                  label: 'Confirmed' },
+  { key: 'completed',                  label: 'Completed' },
+]
+
+const fmtINR = (n: number) => 'Rs.' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
+const fmtOrDash = (n: number | undefined | null) => (n === undefined || n === null ? '—' : fmtINR(n))
+
 // Statuses that require a quote before any status change is allowed
 const PRE_QUOTE_STATUSES = ['inquiry', 'pending']
 
@@ -1390,6 +1489,19 @@ export default function AdminDashboard() {
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
 
+  // ── Redesigned Dashboard state (2026-09-16) ──────────────────────────
+  const [dashRangePreset, setDashRangePreset] = useState<DashboardRangePreset>('this_month')
+  const [dashCustomFrom, setDashCustomFrom]   = useState('')
+  const [dashCustomTo, setDashCustomTo]       = useState('')
+  const [dashData, setDashData]               = useState<DashboardV2Data | null>(null)
+  const [dashLoading, setDashLoading]         = useState(false)
+
+  const [opsRangePreset, setOpsRangePreset] = useState<OpsRangePreset>('next7')
+  const [opsCustomFrom, setOpsCustomFrom]   = useState('')
+  const [opsCustomTo, setOpsCustomTo]       = useState('')
+  const [opsData, setOpsData]               = useState<OpsData | null>(null)
+  const [opsLoading, setOpsLoading]         = useState(false)
+
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
     if (!key) { router.replace('/admin/login'); return }
@@ -1518,6 +1630,41 @@ export default function AdminDashboard() {
 
   useEffect(() => { if (authed) fetchRevenueReport() }, [authed, fetchRevenueReport])
 
+  // ── Redesigned Dashboard fetches ──────────────────────────────────────
+  // Business Overview / Funnel / Revenue & Payment Collection / Logistics /
+  // Trip Profitability / Service Types / Sources — one call, shared date
+  // range (see lib/dashboard-analytics-v2.ts).
+  const fetchDashboardV2 = useCallback(async () => {
+    if (!adminKey) return
+    setDashLoading(true)
+    let qs = '?key=' + adminKey + '&range=' + dashRangePreset
+    if (dashRangePreset === 'custom') {
+      if (dashCustomFrom) qs += '&date_from=' + encodeURIComponent(dashCustomFrom)
+      if (dashCustomTo)   qs += '&date_to='   + encodeURIComponent(dashCustomTo)
+    }
+    const res = await fetch('/api/admin/dashboard-v2' + qs)
+    if (res.ok) setDashData(await res.json())
+    setDashLoading(false)
+  }, [adminKey, dashRangePreset, dashCustomFrom, dashCustomTo])
+  useEffect(() => { if (authed) fetchDashboardV2() }, [authed, fetchDashboardV2])
+
+  // Upcoming Operations / Upcoming Confirmed Bookings — the EXISTING
+  // Operations Center endpoint (app/api/admin/reports/operations/route.ts),
+  // reused as-is rather than reimplemented.
+  const fetchOps = useCallback(async () => {
+    if (!adminKey) return
+    setOpsLoading(true)
+    let qs = '?key=' + adminKey + '&range=' + opsRangePreset
+    if (opsRangePreset === 'custom') {
+      if (opsCustomFrom) qs += '&from=' + encodeURIComponent(opsCustomFrom)
+      if (opsCustomTo)   qs += '&to='   + encodeURIComponent(opsCustomTo)
+    }
+    const res = await fetch('/api/admin/reports/operations' + qs)
+    if (res.ok) setOpsData(await res.json())
+    setOpsLoading(false)
+  }, [adminKey, opsRangePreset, opsCustomFrom, opsCustomTo])
+  useEffect(() => { if (authed) fetchOps() }, [authed, fetchOps])
+
   if (!authed) return null
 
   // ── Pagination derived values ──────────────────────────────────
@@ -1560,237 +1707,350 @@ export default function AdminDashboard() {
           <span className="font-bold text-pink-700">Open →</span>
         </a>
 
-        {/* Dashboard Analytics — unified inquiry KPIs. Single source of truth:
-            app/api/admin/dashboard-analytics/route.ts counts each lead once
-            (the Dashboard and Leads tabs describe the same inquiries — a
-            lead is created for every inquiry regardless of source, and a
-            booking never exists without one), bucketed by its linked
-            booking's status. All-time. Every card below is clickable and
-            filters the bookings table further down to exactly the records
-            behind that number. */}
-        <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Dashboard Analytics</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              {
-                label: 'Total Inquiries', value: analytics?.total_inquiries ?? '—',
-                icon: <Users className="h-4 w-4" />, color: '#2563eb', bg: '#dbeafe',
-                href: '/admin/leads' as string | undefined, onClick: undefined as (() => void) | undefined,
-              },
-              {
-                label: 'Total Completed Bookings', value: analytics?.total_completed ?? '—',
-                icon: <CheckCircle className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7',
-                href: undefined as string | undefined,
-                onClick: () => { setKpiView(null); setPhaseFilter('all'); setFilter('completed') },
-              },
-              {
-                label: 'Total Confirmed Bookings', value: analytics?.total_active ?? '—',
-                icon: <Truck className="h-4 w-4" />, color: '#0891b2', bg: '#cffafe',
-                href: undefined as string | undefined,
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: ACTIVE_BOOKING_STATUSES, label: 'Total Confirmed Bookings', requireQuote: true }) },
-              },
-              {
-                label: 'Total Pending Inquiries', value: analytics?.total_pending ?? '—',
-                icon: <Clock className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7',
-                href: undefined as string | undefined,
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: PENDING_BOOKING_STATUSES, label: 'Total Pending Inquiries' }) },
-              },
-              {
-                label: 'Total Rejected', value: analytics?.total_rejected ?? '—',
-                icon: <X className="h-4 w-4" />, color: '#dc2626', bg: '#fee2e2',
-                href: undefined as string | undefined,
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ statuses: REJECTED_BOOKING_STATUSES, label: 'Quote Rejected' }) },
-              },
-              {
-                label: 'Revenue This Month',
-                value: crmStats
-                  ? ('Rs.' + crmStats.revenue_this_month.toLocaleString('en-IN', { maximumFractionDigits: 0 }))
-                  : '—',
-                icon: <IndianRupee className="h-4 w-4" />, color: '#7c3aed', bg: '#ede9fe',
-                href: '/admin/customers' as string | undefined, onClick: undefined as (() => void) | undefined,
-              },
-            ].map(c => {
-              const body = (
-                <>
-                  <div className="flex items-center justify-between">
-                    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                    <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5 shrink-0">{c.icon}</div>
-                  </div>
-                  <p className="mt-1.5 text-lg font-bold text-gray-900">{c.value}</p>
-                </>
-              )
-              if (c.onClick) {
-                return (
-                  <button key={c.label} onClick={c.onClick}
-                    className="rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm hover:border-orange-200 transition-colors">
-                    {body}
-                  </button>
-                )
-              }
-              return (
-                <Link key={c.label} href={c.href!}
-                  className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
-                  {body}
-                </Link>
-              )
-            })}
-          </div>
+        {/* ══════════════════════════════════════════════════════════════
+            REDESIGNED DASHBOARD (founder request, 2026-09-16)
+            Business Overview → Inquiry & Sales Funnel → Revenue & Payment
+            Collection → Upcoming Operations → Logistics Performance →
+            Trip Operations & Profitability → Bookings by Service Type →
+            Inquiry Sources → the existing Booking/Inquiry table below.
+            Backed by GET /api/admin/dashboard-v2 (lib/dashboard-analytics-
+            v2.ts) and the existing GET /api/admin/reports/operations. Every
+            figure is a real aggregation over leads/bookings/payments/
+            trip_sheets/group_bags — see that file's module comment for
+            exactly which business date each metric uses and why. ═══════ */}
 
-          {/* Monthly Inquiry Statistics — same unified dataset, split by the
-              originating lead's created_at (This Month vs Last Month). Also
-              clickable — filters the bookings table by the same calendar
-              month plus (for the two "Completed" cards) status=completed. */}
-          <p className="mb-2 mt-4 text-xs font-bold uppercase tracking-widest text-gray-400">Monthly Inquiry Statistics</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-            {[
-              {
-                label: 'Current Month Total Inquiries', value: analytics?.current_month_total_inquiries ?? '—',
-                color: '#2563eb', bg: '#dbeafe',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'current' as const, statuses: NON_REJECTED_STATUSES, label: 'Current Month Total Inquiries' }) },
-              },
-              {
-                label: 'Current Month Completed Bookings', value: analytics?.current_month_completed ?? '—',
-                color: '#16a34a', bg: '#dcfce7',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ completedMonth: 'current' as const, statuses: ['completed'], label: 'Current Month Completed Bookings' }) },
-              },
-              {
-                label: 'Last Month Total Inquiries', value: analytics?.last_month_total_inquiries ?? '—',
-                color: '#0891b2', bg: '#cffafe',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ month: 'last' as const, statuses: NON_REJECTED_STATUSES, label: 'Last Month Total Inquiries' }) },
-              },
-              {
-                label: 'Last Month Completed Bookings', value: analytics?.last_month_completed ?? '—',
-                color: '#14532d', bg: '#bbf7d0',
-                onClick: () => { setFilter('all'); setPhaseFilter('all'); setKpiView({ completedMonth: 'last' as const, statuses: ['completed'], label: 'Last Month Completed Bookings' }) },
-              },
-            ].map(c => (
-              <button key={c.label} onClick={c.onClick}
-                className="rounded-xl border border-gray-100 bg-white p-3 text-left shadow-sm hover:border-orange-200 transition-colors">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
-              </button>
-            ))}
-          </div>
-        </div>
-
-        {/* Sales Follow-up — Automated reminder system summary. See
-            app/api/admin/sales-followup-summary/route.ts +
-            lib/sales-followup-reminders.ts. Each card links to the Leads
-            tab pre-filtered to exactly those inquiries via the new
-            ?followup= query param (app/(admin)/admin/leads/page.tsx). */}
+        {/* ── 1. Business Overview ── shared date-range selector also
+            drives section 3 (Revenue & Payment Collection), per the
+            "reusable date-filter system" requirement — each metric behind
+            it still resolves against its OWN business date server-side. */}
         <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Sales Follow-up</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              { label: 'Quotes Pending',     value: followupSummary?.quotesPending      ?? '—', color: '#d97706', bg: '#fef3c7', param: 'quotes_pending' },
-              { label: 'Follow-up Pending',  value: followupSummary?.followupPending    ?? '—', color: '#ea580c', bg: '#ffedd5', param: 'followup_pending' },
-              { label: 'Overdue Quotes',     value: followupSummary?.overdueQuotes      ?? '—', color: '#dc2626', bg: '#fee2e2', param: 'overdue_quotes' },
-              { label: 'Overdue Follow-ups', value: followupSummary?.overdueFollowups   ?? '—', color: '#dc2626', bg: '#fee2e2', param: 'overdue_followups' },
-              { label: "Today's Follow-ups", value: followupSummary?.todaysFollowups    ?? '—', color: '#2563eb', bg: '#dbeafe', param: 'today_followups' },
-              { label: "Tomorrow's Follow-ups", value: followupSummary?.tomorrowsFollowups ?? '—', color: '#0891b2', bg: '#cffafe', param: 'tomorrow_followups' },
-            ].map(c => (
-              <Link key={c.label} href={`/admin/leads?followup=${c.param}`}
-                className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
-                <div className="flex items-center justify-between">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                  <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5 shrink-0">
-                    <Clock className="h-4 w-4" />
-                  </div>
-                </div>
-                <p className="mt-1.5 text-lg font-bold text-gray-900">{c.value}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-
-        {/* Revenue Report — period selector. Same "paid" definition as the
-            Revenue This Month KPI card above, just over a chosen window.
-            See fetchRevenueReport() / app/api/admin/crm-stats's optional
-            date_from/date_to params. */}
-        <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Revenue Report</p>
-          <div className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap gap-2">
-              {([
-                { value: 'current', label: 'Current Month' },
-                { value: 'last',    label: 'Last Month' },
-                { value: 'custom',  label: 'Custom Range' },
-                { value: 'month',   label: 'Select Month' },
-              ] as const).map(o => (
-                <button key={o.value} onClick={() => setRevenuePeriod(o.value)}
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Business Overview</p>
+            <div className="flex flex-wrap gap-1.5">
+              {DASH_RANGE_OPTIONS.map(o => (
+                <button key={o.value} onClick={() => setDashRangePreset(o.value)}
                   className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
-                    revenuePeriod === o.value
-                      ? 'bg-orange-500 text-white'
-                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                    dashRangePreset === o.value ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
                   }`}>
                   {o.label}
                 </button>
               ))}
             </div>
+          </div>
+          {dashRangePreset === 'custom' && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input type="date" value={dashCustomFrom} onChange={e => setDashCustomFrom(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              <span className="text-xs text-gray-400">to</span>
+              <input type="date" value={dashCustomTo} onChange={e => setDashCustomTo(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            </div>
+          )}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: 'Total Inquiries',    value: dashData?.business_overview.total_inquiries,     icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe' },
+              { label: 'Quotes Sent',        value: dashData?.business_overview.quotes_sent,          icon: <FileText className="h-4 w-4" />,    color: '#6d28d9', bg: '#ede9fe' },
+              { label: 'Confirmed Bookings', value: dashData?.business_overview.confirmed_bookings,   icon: <Truck className="h-4 w-4" />,        color: '#0891b2', bg: '#cffafe' },
+              { label: 'Payments Received',  value: dashData?.business_overview.payments_received_count, sub: dashData ? fmtINR(dashData.business_overview.payments_received_amount) : undefined, icon: <CreditCard className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Outstanding',        value: dashData ? fmtOrDash(dashData.business_overview.outstanding_amount) : undefined, icon: <AlertCircle className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7' },
+              { label: 'Revenue',            value: dashData ? fmtOrDash(dashData.business_overview.revenue) : undefined, icon: <IndianRupee className="h-4 w-4" />, color: '#7c3aed', bg: '#ede9fe' },
+            ].map(c => (
+              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                  <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5 shrink-0">{c.icon}</div>
+                </div>
+                <p className="mt-1.5 text-lg font-bold text-gray-900">{dashLoading ? '…' : (c.value ?? '—')}</p>
+                {c.sub && <p className="mt-0.5 text-[10px] text-gray-400">{c.sub}</p>}
+              </div>
+            ))}
+          </div>
+          <p className="mt-2 text-[11px] text-gray-400">
+            Showing {DASH_RANGE_OPTIONS.find(o => o.value === dashRangePreset)?.label.toLowerCase()}
+            {dashData ? ` (${formatDateOnly(dashData.range.from)} – ${formatDateOnly(dashData.range.to)})` : ''}.
+            Outstanding is always a live, current-balance figure regardless of the period selected above.
+          </p>
+        </div>
 
-            {revenuePeriod === 'custom' && (
-              <div className="mb-3 flex flex-wrap items-center gap-2">
-                <input type="date" value={revenueCustomFrom} onChange={e => setRevenueCustomFrom(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
-                <span className="text-xs text-gray-400">to</span>
-                <input type="date" value={revenueCustomTo} onChange={e => setRevenueCustomTo(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+        {/* ── 2. Inquiry & Sales Funnel ── */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Inquiry &amp; Sales Funnel</p>
+          <div className="mb-3 overflow-x-auto rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
+            <div className="flex items-center gap-2">
+              {FUNNEL_STAGES.map((s, i) => (
+                <Fragment key={s.key}>
+                  <div className="flex shrink-0 flex-col items-center rounded-lg bg-gray-50 px-3 py-2 min-w-[100px]">
+                    <span className="text-center text-[10px] font-semibold uppercase leading-tight text-gray-400">{s.label}</span>
+                    <span className="mt-1 text-lg font-bold text-gray-900">{dashLoading ? '…' : (dashData?.funnel.stages[s.key] ?? '—')}</span>
+                  </div>
+                  {i < FUNNEL_STAGES.length - 1 && <ArrowRight className="h-4 w-4 shrink-0 text-gray-300" />}
+                </Fragment>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {STATUS_COUNT_CARDS.map(c => (
+              <div key={c.key} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                <p className="mt-1.5 text-lg font-bold text-gray-900">{dashLoading ? '…' : (dashData?.funnel.status_counts[c.key] ?? '—')}</p>
+              </div>
+            ))}
+          </div>
+          {/* Automated reminder system summary — see app/api/admin/
+              sales-followup-summary/route.ts. Kept as a compact strip
+              (folded out of its own former section) since it answers a
+              related-but-different question: not "where do inquiries
+              stand" but "which specific ones are overdue for a human
+              follow-up today." */}
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
+            <span className="font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Follow-ups</span>
+            <Link href="/admin/leads?followup=quotes_pending" className="hover:text-orange-600">Quotes Pending: <b>{followupSummary?.quotesPending ?? '—'}</b></Link>
+            <Link href="/admin/leads?followup=followup_pending" className="hover:text-orange-600">Follow-up Pending: <b>{followupSummary?.followupPending ?? '—'}</b></Link>
+            <Link href="/admin/leads?followup=overdue_quotes" className="hover:text-red-600">Overdue Quotes: <b className="text-red-600">{followupSummary?.overdueQuotes ?? '—'}</b></Link>
+            <Link href="/admin/leads?followup=overdue_followups" className="hover:text-red-600">Overdue Follow-ups: <b className="text-red-600">{followupSummary?.overdueFollowups ?? '—'}</b></Link>
+            <Link href="/admin/leads?followup=today_followups" className="hover:text-orange-600">Today: <b>{followupSummary?.todaysFollowups ?? '—'}</b></Link>
+            <Link href="/admin/leads?followup=tomorrow_followups" className="hover:text-orange-600">Tomorrow: <b>{followupSummary?.tomorrowsFollowups ?? '—'}</b></Link>
+          </div>
+        </div>
+
+        {/* ── 3. Revenue & Payment Collection ── uses the same date range
+            selected in Business Overview above. */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Revenue &amp; Payment Collection</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            {[
+              { label: 'Revenue',              value: dashData?.revenue_collection.revenue },
+              { label: 'Payments Received',    value: dashData?.revenue_collection.payments_received_amount, sub: dashData ? dashData.revenue_collection.payments_received_count + ' transactions' : undefined },
+              { label: 'Outstanding',          value: dashData?.revenue_collection.outstanding },
+              { label: 'Pending Verification', value: dashData?.revenue_collection.pending_verification },
+              { label: 'Refunds',              value: dashData?.revenue_collection.refunds },
+              { label: 'Net Revenue',          value: dashData?.revenue_collection.net_revenue },
+            ].map(c => (
+              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                <p className="mt-1.5 text-lg font-bold text-gray-900">{dashLoading ? '…' : fmtOrDash(c.value)}</p>
+                {c.sub && <p className="mt-0.5 text-[10px] text-gray-400">{c.sub}</p>}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 4 & 5. Upcoming Operations + Upcoming Confirmed Bookings ──
+            Reuses the existing, already-proven Operations Center endpoint
+            (app/api/admin/reports/operations/route.ts) — confirmed-or-later
+            bookings only (OPS_ACTIVE_STATUSES = 'confirmed' through
+            'trip_created'), never an inquiry/quote/payment-pending record. */}
+        <div className="mb-6">
+          <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Upcoming Operations</p>
+            <div className="flex flex-wrap gap-1.5">
+              {OPS_RANGE_OPTIONS.map(o => (
+                <button key={o.value} onClick={() => setOpsRangePreset(o.value)}
+                  className={`rounded-full px-3 py-1 text-xs font-semibold transition-colors ${
+                    opsRangePreset === o.value ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                  }`}>
+                  {o.label}
+                </button>
+              ))}
+            </div>
+          </div>
+          {opsRangePreset === 'custom' && (
+            <div className="mb-3 flex flex-wrap items-center gap-2">
+              <input type="date" value={opsCustomFrom} onChange={e => setOpsCustomFrom(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+              <span className="text-xs text-gray-400">to</span>
+              <input type="date" value={opsCustomTo} onChange={e => setOpsCustomTo(e.target.value)}
+                className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+            </div>
+          )}
+          <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {[
+              { label: "Today's Pickups",    value: opsData?.widgets.todays_pickups,    color: '#2563eb', bg: '#dbeafe' },
+              { label: "Today's Deliveries", value: opsData?.widgets.todays_deliveries, color: '#0891b2', bg: '#cffafe' },
+              { label: 'Delivered Today',    value: opsData?.widgets.delivered_today,   color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Upcoming (7 Days)',  value: opsData?.widgets.upcoming_pickups_7d, color: '#7c3aed', bg: '#ede9fe' },
+            ].map(c => (
+              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{opsLoading ? '…' : (c.value ?? '—')}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Upcoming Confirmed Bookings</p>
+            <Link href="/admin/reports/operations" className="text-xs font-semibold text-orange-500 hover:text-orange-600">Open Operations Center →</Link>
+          </div>
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-gray-50">
+                  <tr>
+                    {['Customer', 'Tracking', 'Service', 'Pickup', 'Delivery', 'Route', 'Status', 'Driver', 'Bags', 'Days Left'].map(h => (
+                      <th key={h} className="whitespace-nowrap px-3 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {opsLoading ? (
+                    <tr><td colSpan={10} className="py-10 text-center text-sm text-gray-400">Loading…</td></tr>
+                  ) : (opsData?.upcoming_bookings ?? []).length === 0 ? (
+                    <tr><td colSpan={10} className="py-10 text-center text-sm text-gray-400">No upcoming confirmed bookings in this window</td></tr>
+                  ) : (opsData?.upcoming_bookings ?? []).slice(0, 50).map(b => {
+                    const daysLeft = b.pickup_date ? Math.ceil((new Date(b.pickup_date + 'T00:00:00').getTime() - new Date(new Date().toDateString()).getTime()) / 86400000) : null
+                    return (
+                      <tr key={b.id} className="hover:bg-gray-50">
+                        <td className="whitespace-nowrap px-3 py-2 text-sm font-medium text-gray-900">{b.customer_name || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 font-mono text-xs font-bold text-orange-600">{b.tracking_id}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">{b.service_label || '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">{formatDateOnly(b.pickup_date)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">{formatDateOnly(b.delivery_date)}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">{b.from_city} &rarr; {b.to_city}</td>
+                        <td className="whitespace-nowrap px-3 py-2"><StatusBadge status={b.status} /></td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm">
+                          {b.driver_name ? b.driver_name : <span className="font-semibold text-amber-600">Driver Not Assigned</span>}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm font-semibold text-gray-900">{b.total_bags ?? '—'}</td>
+                        <td className="whitespace-nowrap px-3 py-2 text-sm text-gray-600">
+                          {daysLeft === null ? '—' : daysLeft < 0 ? <span className="font-semibold text-red-600">Overdue</span> : daysLeft === 0 ? 'Today' : `${daysLeft}d`}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+            {(opsData?.upcoming_bookings.length ?? 0) > 50 && (
+              <div className="border-t border-gray-100 px-3 py-2 text-xs text-gray-400">
+                Showing first 50 of {opsData?.upcoming_bookings.length} — open the{' '}
+                <Link href="/admin/reports/operations" className="font-semibold text-orange-500">Operations Center</Link> for the full list.
               </div>
             )}
+          </div>
+        </div>
 
-            {revenuePeriod === 'month' && (
-              <div className="mb-3">
-                <input type="month" value={revenueMonth} onChange={e => setRevenueMonth(e.target.value)}
-                  className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
+        {/* ── 6. Logistics Performance ── bag-level, from the BagDrop Bag
+            Tag system (group_bags — universal per-bag table for both
+            Individual and Group/Wedding bookings). Date-filtered by the
+            linked booking's pickup_date, using the Business Overview range
+            above. */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Logistics Performance</p>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
+            {[
+              { label: 'Total Bags Handled', value: dashData?.logistics.total_bags_handled },
+              { label: 'Picked Up',          value: dashData?.logistics.picked_up },
+              { label: 'In Transit',         value: dashData?.logistics.in_transit },
+              { label: 'Airport Handover',   value: dashData?.logistics.airport_handover },
+              { label: 'Delivered',          value: dashData?.logistics.delivered },
+              { label: 'Pending',            value: dashData?.logistics.pending },
+              { label: 'Exceptions',         value: dashData?.logistics.exceptions, alert: (dashData?.logistics.exceptions ?? 0) > 0 },
+            ].map(c => (
+              <div key={c.label} className={`rounded-xl border bg-white p-3 shadow-sm ${c.alert ? 'border-red-200' : 'border-gray-100'}`}>
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
+                <p className={`mt-1.5 text-lg font-bold ${c.alert ? 'text-red-600' : 'text-gray-900'}`}>{dashLoading ? '…' : (c.value ?? '—')}</p>
               </div>
-            )}
+            ))}
+          </div>
+          {dashData && dashData.logistics.group_booking_count > 0 && (
+            <p className="mt-2 text-[11px] text-gray-400">
+              Includes {dashData.logistics.group_booking_count} Group/Wedding booking(s) totaling {dashData.logistics.group_booking_bag_count} individual bags — counted by bag, not by booking.
+            </p>
+          )}
+        </div>
 
-            <div className="flex items-end gap-6">
-              <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Revenue</p>
-                <p className="mt-1 text-2xl font-bold text-gray-900">
-                  {revenueLoading
-                    ? '…'
-                    : revenueReport
-                      ? 'Rs.' + revenueReport.amount.toLocaleString('en-IN', { maximumFractionDigits: 0 })
-                      : '—'}
-                </p>
+        {/* ── 7. Trip Operations & Profitability ── from trip_sheets,
+            date-filtered by pickup_date, same range as Business Overview. */}
+        <div className="mb-6">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Trip Operations &amp; Profitability</p>
+            <Link href="/admin/trip-sheets" className="text-xs font-semibold text-orange-500 hover:text-orange-600">View all →</Link>
+          </div>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+            {[
+              { label: 'Total Trips',        value: dashData?.trip_profitability.total_trips,     color: '#f97316', bg: '#fff7ed' },
+              { label: 'Active Trips',       value: dashData?.trip_profitability.active_trips,     color: '#2563eb', bg: '#dbeafe' },
+              { label: 'Delivered Trips',    value: dashData?.trip_profitability.delivered_trips,  color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Total Income',       value: dashData ? fmtOrDash(dashData.trip_profitability.total_income)  : undefined, color: '#16a34a', bg: '#f0fdf4' },
+              { label: 'Total Expense',      value: dashData ? fmtOrDash(dashData.trip_profitability.total_expense) : undefined, color: '#dc2626', bg: '#fef2f2' },
+              { label: 'Net Profit',         value: dashData ? fmtOrDash(dashData.trip_profitability.net_profit)    : undefined, color: (dashData?.trip_profitability.net_profit ?? 0) >= 0 ? '#16a34a' : '#dc2626', bg: (dashData?.trip_profitability.net_profit ?? 0) >= 0 ? '#f0fdf4' : '#fef2f2' },
+              { label: 'Avg Revenue / Trip', value: dashData ? fmtOrDash(dashData.trip_profitability.avg_revenue_per_trip) : undefined, color: '#0891b2', bg: '#cffafe' },
+              { label: 'Avg Expense / Trip', value: dashData ? fmtOrDash(dashData.trip_profitability.avg_expense_per_trip) : undefined, color: '#dc2626', bg: '#fef2f2' },
+              { label: 'Profit Margin',      value: dashData ? dashData.trip_profitability.profit_margin.toFixed(1) + '%' : undefined, color: '#7c3aed', bg: '#ede9fe' },
+            ].map(c => (
+              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{c.label}</p>
+                <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{dashLoading ? '…' : (c.value ?? '—')}</p>
               </div>
-              <div>
-                {/* Sourced from the same "Paid" dataset as the Payments page
-                    (see crm-stats/route.ts) — real payments.paid rows plus
-                    synthetic entries for confirmed bookings paid without a
-                    logged payment row. */}
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">Paid Payments</p>
-                <p className="mt-1 text-lg font-semibold text-gray-600">
-                  {revenueLoading ? '…' : revenueReport?.count ?? '—'}
-                </p>
-              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* ── 8. Bookings by Service Type ── Confirmed-or-later bookings
+            only, date-filtered by pickup_date. */}
+        <div className="mb-6">
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Bookings by Service Type</p>
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-gray-50">
+                  <tr>{['Service Type', 'Bookings', 'Bags', 'Revenue'].map(h => (
+                    <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {dashLoading ? (
+                    <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                  ) : (dashData?.service_types ?? []).length === 0 ? (
+                    <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">No confirmed bookings in this period</td></tr>
+                  ) : (dashData?.service_types ?? []).map(s => (
+                    <tr key={s.service_label} className="hover:bg-gray-50">
+                      <td className="px-4 py-2 text-sm text-gray-700">{s.service_label}</td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.bookings}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{s.bags}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{fmtINR(s.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>
 
-        {/* Trip Operations quick stats */}
+        {/* ── 9. Inquiry Source Analytics ── */}
         <div className="mb-6">
-          <div className="mb-2 flex items-center justify-between">
-            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Trip Operations</p>
-            <Link href="/admin/trip-sheets" className="text-xs font-semibold text-orange-500 hover:text-orange-600">View all →</Link>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-            {[
-              { label: 'Total Trips',   value: tripStats?.total ?? '—',    color: '#f97316', bg: '#fff7ed' },
-              { label: 'Active Trips',  value: tripStats?.active ?? '—',   color: '#2563eb', bg: '#dbeafe' },
-              { label: 'Delivered',     value: tripStats?.delivered ?? '—', color: '#16a34a', bg: '#dcfce7' },
-              { label: 'Total Income',  value: tripStats ? '₹' + tripStats.totalIncome.toLocaleString('en-IN')  : '—', color: '#16a34a', bg: '#f0fdf4' },
-              { label: 'Total Expense', value: tripStats ? '₹' + tripStats.totalExpense.toLocaleString('en-IN') : '—', color: '#dc2626', bg: '#fef2f2' },
-              { label: 'Net Profit',    value: tripStats ? (tripStats.netProfit >= 0 ? '₹' : '-₹') + Math.abs(tripStats.netProfit).toLocaleString('en-IN') : '—', color: (tripStats?.netProfit ?? 0) >= 0 ? '#16a34a' : '#dc2626', bg: (tripStats?.netProfit ?? 0) >= 0 ? '#f0fdf4' : '#fef2f2' },
-            ].map(c => (
-              <Link key={c.label} href="/admin/trip-sheets"
-                className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm hover:border-orange-200 transition-colors">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{c.label}</p>
-                <p className="mt-1.5 text-lg font-bold" style={{ color: c.color }}>{c.value}</p>
-              </Link>
-            ))}
+          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Inquiry Sources</p>
+          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-100">
+                <thead className="bg-gray-50">
+                  <tr>{['Source', 'Inquiries', 'Quotes', 'Confirmed', 'Completed', 'Revenue'].map(h => (
+                    <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>
+                  ))}</tr>
+                </thead>
+                <tbody className="divide-y divide-gray-50">
+                  {dashLoading ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">Loading…</td></tr>
+                  ) : (dashData?.sources ?? []).length === 0 ? (
+                    <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">No inquiries in this period</td></tr>
+                  ) : (dashData?.sources ?? []).map(s => (
+                    <tr key={s.source} className="hover:bg-gray-50">
+                      <td className="px-4 py-2">
+                        <span style={{ color: resolveSource(s.source).color, background: resolveSource(s.source).bg }}
+                          className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
+                          {s.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.inquiries}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{s.quotes}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{s.confirmed}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{s.completed}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{fmtINR(s.revenue)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
