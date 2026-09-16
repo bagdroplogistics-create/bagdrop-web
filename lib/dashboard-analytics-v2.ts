@@ -399,6 +399,12 @@ export interface DashboardData {
   }
   service_types: { service_label: string; bookings: number; bags: number; revenue: number }[]
   sources: { source: string; label: string; inquiries: number; quotes: number; confirmed: number; completed: number; revenue: number }[]
+  // Present only when a `drilldown` key was requested — the EXACT records
+  // behind one of the Business Overview cards, built from the same
+  // filtered array the card's own number is counted from (see
+  // buildDrilldownRecords below), so this can never disagree with the
+  // number the admin just clicked.
+  drilldown_records?: DrilldownRecord[]
   debug: {
     leads_fetched: number
     bookings_fetched: number
@@ -410,10 +416,25 @@ export interface DashboardData {
   }
 }
 
+// Business Overview drill-down — founder request, 2026-09-16: "when i click
+// Business Overview first 4 cards from any tab, it should show data
+// according to that card data." One row per matching lead/booking/payment.
+export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received'
+export interface DrilldownRecord {
+  id: string
+  date: string | null           // the business date that qualified this record for the card
+  customer_name: string | null
+  tracking_id: string | null
+  route: string | null
+  status: string | null
+  amount: number | null
+}
+
 export async function getDashboardData(
   preset: DashboardRangePreset,
   customFrom?: string | null,
   customTo?: string | null,
+  drilldown?: DrilldownKey | null,
 ): Promise<DashboardData> {
   const range = resolveDashboardRange(preset, customFrom, customTo)
 
@@ -525,15 +546,21 @@ export async function getDashboardData(
 
   // ── Business Overview + Funnel "stages" (period-activity: each metric
   // uses ITS OWN business date, per founder spec §5) ──────────────────────
-  const totalInquiries = leads.filter(l => inTs(l.created_at, range)).length
+  // Stored as arrays (not just .length) so the Business Overview card
+  // click-through (drilldown param, see bottom of this function) can list
+  // the EXACT records behind each number — guaranteed to never disagree
+  // with the count, since both are read from the same filtered array.
+  const totalInquiriesLeads = leads.filter(l => inTs(l.created_at, range))
+  const totalInquiries = totalInquiriesLeads.length
 
   const quotesGenerated = leads.filter(l => l.quote_number && quoteInRange(l, range)).length
 
-  const quotesSent = leads.filter(l => {
+  const quotesSentLeads = leads.filter(l => {
     if (!l.quote_number) return false
     const b = l.booking_id ? bookingsById.get(l.booking_id) : null
     return everReachedStage(b, QUOTE_SENT_IDX) && quoteInRange(l, range)
-  }).length
+  })
+  const quotesSent = quotesSentLeads.length
 
   const accepted = leads.filter(l => {
     const b = l.booking_id ? bookingsById.get(l.booking_id) : null
@@ -864,6 +891,73 @@ export async function getDashboardData(
     }
   }).sort((a, b) => b.inquiries - a.inquiries)
 
+  // Business Overview drill-down — builds the exact record list behind
+  // whichever of the 4 clicked cards was requested, from the SAME filtered
+  // array the card's own count comes from (totalInquiriesLeads,
+  // quotesSentLeads, confirmedBookingsInRange, paymentsInRange), so the
+  // list can never disagree with the number the admin just clicked.
+  function routeFor(b: BookingRow | null | undefined): string | null {
+    if (!b) return null
+    if (b.from_city && b.to_city) return `${b.from_city} → ${b.to_city}`
+    return b.from_city || b.to_city || null
+  }
+  function buildDrilldownRecords(key: DrilldownKey): DrilldownRecord[] {
+    switch (key) {
+      case 'total_inquiries':
+        return totalInquiriesLeads.map(l => {
+          const b = l.booking_id ? bookingsById.get(l.booking_id) : null
+          return {
+            id: l.id,
+            date: l.created_at,
+            customer_name: b?.customer_name ?? null,
+            tracking_id: b?.tracking_id ?? null,
+            route: routeFor(b),
+            status: b?.status ?? l.status ?? null,
+            amount: b?.total_amount ?? null,
+          }
+        })
+      case 'quotes_sent':
+        return quotesSentLeads.map(l => {
+          const b = l.booking_id ? bookingsById.get(l.booking_id) : null
+          const { iso } = quoteDateOf(l)
+          return {
+            id: l.id,
+            date: iso,
+            customer_name: b?.customer_name ?? null,
+            tracking_id: b?.tracking_id ?? null,
+            route: routeFor(b),
+            status: b?.status ?? l.status ?? null,
+            amount: b?.total_amount ?? null,
+          }
+        })
+      case 'confirmed_bookings':
+        return confirmedBookingsInRange.map(b => ({
+          id: b.id,
+          date: firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received')),
+          customer_name: b.customer_name ?? null,
+          tracking_id: b.tracking_id ?? null,
+          route: routeFor(b),
+          status: b.status ?? null,
+          amount: b.total_amount ?? null,
+        }))
+      case 'payments_received':
+        return paymentsInRange.map(p => {
+          const b = p.booking_id ? bookingsById.get(p.booking_id) : null
+          return {
+            id: p.id,
+            date: p.payment_date || p.created_at,
+            customer_name: b?.customer_name ?? null,
+            tracking_id: b?.tracking_id ?? null,
+            route: routeFor(b),
+            status: p.payment_status ?? null,
+            amount: Number(p.amount) || 0,
+          }
+        })
+      default:
+        return []
+    }
+  }
+
   return {
     range: { preset: range.preset, from: range.fromStr, to: range.toStr },
     business_overview: {
@@ -900,6 +994,7 @@ export async function getDashboardData(
     trip_profitability: tripProfitability,
     service_types: serviceTypes,
     sources,
+    ...(drilldown ? { drilldown_records: buildDrilldownRecords(drilldown) } : {}),
     debug: {
       leads_fetched: leads.length,
       bookings_fetched: bookings.length,

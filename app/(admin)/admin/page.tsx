@@ -278,6 +278,26 @@ interface DashboardV2Data {
   sources: { source: string; label: string; inquiries: number; quotes: number; confirmed: number; completed: number; revenue: number }[]
 }
 
+// Business Overview drill-down — founder request, 2026-09-16: clicking one
+// of the first 4 Business Overview cards shows the exact records behind
+// that card's number, for whichever date range is currently selected.
+type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received'
+interface DrilldownRecord {
+  id: string
+  date: string | null
+  customer_name: string | null
+  tracking_id: string | null
+  route: string | null
+  status: string | null
+  amount: number | null
+}
+const DRILLDOWN_TITLES: Record<DrilldownKey, string> = {
+  total_inquiries:    'Total Inquiries',
+  quotes_sent:        'Quotes Sent',
+  confirmed_bookings: 'Confirmed Bookings',
+  payments_received:  'Payments Received',
+}
+
 type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'all_time' | 'custom'
 type OpsRangePreset = 'today' | 'tomorrow' | 'next3' | 'next7' | 'all' | 'custom'
 
@@ -1486,6 +1506,10 @@ export default function AdminDashboard() {
   const [dashData, setDashData]               = useState<DashboardV2Data | null>(null)
   const [dashLoading, setDashLoading]         = useState(false)
 
+  const [drilldownKey, setDrilldownKey]           = useState<DrilldownKey | null>(null)
+  const [drilldownRecords, setDrilldownRecords]   = useState<DrilldownRecord[]>([])
+  const [drilldownLoading, setDrilldownLoading]   = useState(false)
+
   const [opsRangePreset, setOpsRangePreset] = useState<OpsRangePreset>('next7')
   const [opsCustomFrom, setOpsCustomFrom]   = useState('')
   const [opsCustomTo, setOpsCustomTo]       = useState('')
@@ -1638,6 +1662,32 @@ export default function AdminDashboard() {
   }, [adminKey, dashRangePreset, dashCustomFrom, dashCustomTo])
   useEffect(() => { if (authed) fetchDashboardV2() }, [authed, fetchDashboardV2])
 
+  // Business Overview card drill-down — reuses the SAME range params as
+  // fetchDashboardV2 above, so the record list is always scoped to
+  // whichever date-range tab the admin currently has selected, per the
+  // founder's "from any tab" requirement.
+  const openDrilldown = useCallback(async (key: DrilldownKey) => {
+    if (!adminKey) return
+    setDrilldownKey(key)
+    setDrilldownLoading(true)
+    setDrilldownRecords([])
+    let qs = '?key=' + adminKey + '&range=' + dashRangePreset + '&drilldown=' + key
+    if (dashRangePreset === 'custom') {
+      if (dashCustomFrom) qs += '&date_from=' + encodeURIComponent(dashCustomFrom)
+      if (dashCustomTo)   qs += '&date_to='   + encodeURIComponent(dashCustomTo)
+    }
+    const res = await fetch('/api/admin/dashboard-v2' + qs)
+    if (res.ok) {
+      const d = await res.json()
+      setDrilldownRecords(d.drilldown_records ?? [])
+    }
+    setDrilldownLoading(false)
+  }, [adminKey, dashRangePreset, dashCustomFrom, dashCustomTo])
+  function closeDrilldown() {
+    setDrilldownKey(null)
+    setDrilldownRecords([])
+  }
+
   // Upcoming Operations / Upcoming Confirmed Bookings — the EXISTING
   // Operations Center endpoint (app/api/admin/reports/operations/route.ts),
   // reused as-is rather than reimplemented.
@@ -1741,20 +1791,23 @@ export default function AdminDashboard() {
           )}
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
             {[
-              { label: 'Total Inquiries',    value: dashData?.business_overview.total_inquiries,     icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe' },
-              { label: 'Quotes Sent',        value: dashData?.business_overview.quotes_sent,          icon: <FileText className="h-4 w-4" />,    color: '#6d28d9', bg: '#ede9fe' },
-              { label: 'Confirmed Bookings', value: dashData?.business_overview.confirmed_bookings,   icon: <Truck className="h-4 w-4" />,        color: '#0891b2', bg: '#cffafe' },
-              { label: 'Payments Received',  value: dashData?.business_overview.payments_received_count, sub: dashData ? fmtINR(dashData.business_overview.payments_received_amount) : undefined, icon: <CreditCard className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7' },
+              { label: 'Total Inquiries',    value: dashData?.business_overview.total_inquiries,     icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe', drilldown: 'total_inquiries' as DrilldownKey },
+              { label: 'Quotes Sent',        value: dashData?.business_overview.quotes_sent,          icon: <FileText className="h-4 w-4" />,    color: '#6d28d9', bg: '#ede9fe', drilldown: 'quotes_sent' as DrilldownKey },
+              { label: 'Confirmed Bookings', value: dashData?.business_overview.confirmed_bookings,   icon: <Truck className="h-4 w-4" />,        color: '#0891b2', bg: '#cffafe', drilldown: 'confirmed_bookings' as DrilldownKey },
+              { label: 'Payments Received',  value: dashData?.business_overview.payments_received_count, sub: dashData ? fmtINR(dashData.business_overview.payments_received_amount) : undefined, icon: <CreditCard className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7', drilldown: 'payments_received' as DrilldownKey },
               { label: 'Outstanding',        value: dashData ? fmtOrDash(dashData.business_overview.outstanding_amount) : undefined, icon: <AlertCircle className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7' },
               { label: 'Revenue',            value: dashData ? fmtOrDash(dashData.business_overview.revenue) : undefined, icon: <IndianRupee className="h-4 w-4" />, color: '#7c3aed', bg: '#ede9fe' },
             ].map(c => (
-              <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
+              <div key={c.label}
+                onClick={c.drilldown ? () => openDrilldown(c.drilldown as DrilldownKey) : undefined}
+                className={`rounded-xl border border-gray-100 bg-white p-3 shadow-sm ${c.drilldown ? 'cursor-pointer transition-shadow hover:shadow-md hover:border-orange-200' : ''}`}>
                 <div className="flex items-center justify-between">
                   <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
                   <div style={{ color: c.color, background: c.bg }} className="rounded-lg p-1.5 shrink-0">{c.icon}</div>
                 </div>
                 <p className="mt-1.5 text-lg font-bold text-gray-900">{dashLoading ? '…' : (c.value ?? '—')}</p>
                 {c.sub && <p className="mt-0.5 text-[10px] text-gray-400">{c.sub}</p>}
+                {c.drilldown && <p className="mt-1 text-[10px] font-medium text-orange-500">View records →</p>}
               </div>
             ))}
           </div>
@@ -1764,6 +1817,64 @@ export default function AdminDashboard() {
             Outstanding is always a live, current-balance figure regardless of the period selected above.
           </p>
         </div>
+
+        {/* ── Business Overview drill-down modal ── shows the exact records
+            behind whichever of the 4 clickable cards above was clicked,
+            scoped to the same date range — built from the identical
+            filtered array the card's own count is derived from (see
+            buildDrilldownRecords in lib/dashboard-analytics-v2.ts), so this
+            list can never disagree with the number on the card. */}
+        {drilldownKey && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={closeDrilldown}>
+            <div className="max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-xl bg-white shadow-xl" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+                <div>
+                  <p className="text-sm font-bold text-gray-900">{DRILLDOWN_TITLES[drilldownKey]}</p>
+                  <p className="text-[11px] text-gray-400">
+                    {DASH_RANGE_OPTIONS.find(o => o.value === dashRangePreset)?.label}
+                    {dashData ? ` · ${formatDateOnly(dashData.range.from)} – ${formatDateOnly(dashData.range.to)}` : ''}
+                    {' · '}{drilldownLoading ? '…' : drilldownRecords.length} record{drilldownRecords.length === 1 ? '' : 's'}
+                  </p>
+                </div>
+                <button onClick={closeDrilldown} className="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <div className="max-h-[70vh] overflow-y-auto">
+                {drilldownLoading ? (
+                  <p className="px-5 py-8 text-center text-sm text-gray-400">Loading…</p>
+                ) : drilldownRecords.length === 0 ? (
+                  <p className="px-5 py-8 text-center text-sm text-gray-400">No records in this range.</p>
+                ) : (
+                  <table className="w-full text-left text-sm">
+                    <thead className="sticky top-0 bg-gray-50 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                      <tr>
+                        <th className="px-5 py-2">Date</th>
+                        <th className="px-3 py-2">Customer</th>
+                        <th className="px-3 py-2">Tracking ID</th>
+                        <th className="px-3 py-2">Route</th>
+                        <th className="px-3 py-2">Status</th>
+                        <th className="px-5 py-2 text-right">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {drilldownRecords.map(r => (
+                        <tr key={r.id} className="border-t border-gray-50">
+                          <td className="px-5 py-2 text-gray-600">{formatDateOnly(r.date)}</td>
+                          <td className="px-3 py-2 text-gray-900">{r.customer_name ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-600">{r.tracking_id ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-600">{r.route ?? '—'}</td>
+                          <td className="px-3 py-2 text-gray-600">{r.status ?? '—'}</td>
+                          <td className="px-5 py-2 text-right font-medium text-gray-900">{r.amount != null ? fmtINR(r.amount) : '—'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* ── 2. Inquiry & Sales Funnel ── */}
         <div className="mb-6">

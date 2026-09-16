@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { getDashboardData, DashboardRangePreset } from '@/lib/dashboard-analytics-v2'
+import { getDashboardData, DashboardRangePreset, DrilldownKey } from '@/lib/dashboard-analytics-v2'
 
 export const runtime = 'nodejs'
 
@@ -12,9 +12,14 @@ export const runtime = 'nodejs'
 // route (which stays untouched — still used by the mobile admin-app).
 //
 // Query params:
-//   range      = today | this_week | this_month | last_month | this_year | custom  (default this_month)
+//   range      = today | this_week | this_month | last_month | this_year | all_time | custom  (default this_month)
 //   date_from, date_to = 'YYYY-MM-DD', only used when range=custom
+//   drilldown  = total_inquiries | quotes_sent | confirmed_bookings | payments_received
+//                (optional — founder request 2026-09-16: clicking a Business
+//                Overview card asks for its exact record list, scoped to
+//                whichever range is currently selected)
 const VALID_PRESETS = new Set(['today', 'this_week', 'this_month', 'last_month', 'this_year', 'all_time', 'custom'])
+const VALID_DRILLDOWNS = new Set(['total_inquiries', 'quotes_sent', 'confirmed_bookings', 'payments_received'])
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -26,9 +31,11 @@ export async function GET(req: NextRequest) {
   const preset: DashboardRangePreset = (VALID_PRESETS.has(rangeParam) ? rangeParam : 'this_month') as DashboardRangePreset
   const dateFrom = searchParams.get('date_from')
   const dateTo   = searchParams.get('date_to')
+  const drilldownParam = searchParams.get('drilldown')
+  const drilldown: DrilldownKey | null = drilldownParam && VALID_DRILLDOWNS.has(drilldownParam) ? drilldownParam as DrilldownKey : null
 
   try {
-    const data = await getDashboardData(preset, dateFrom, dateTo)
+    const data = await getDashboardData(preset, dateFrom, dateTo, drilldown)
     return NextResponse.json(data)
   } catch (err) {
     console.error('[dashboard-v2] failed:', err)
