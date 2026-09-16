@@ -319,17 +319,6 @@ const FUNNEL_STAGES: { key: keyof DashboardV2Data['funnel']['stages']; label: st
   { key: 'confirmed',        label: 'Confirmed' },
   { key: 'completed',        label: 'Completed' },
 ]
-const STATUS_COUNT_CARDS: { key: keyof DashboardV2Data['funnel']['status_counts']; label: string }[] = [
-  { key: 'new_inquiries',              label: 'New Inquiries' },
-  { key: 'pending_inquiries',          label: 'Pending Inquiries' },
-  { key: 'quotes_pending',             label: 'Quotes Pending' },
-  { key: 'quote_sent',                 label: 'Quote Sent' },
-  { key: 'waiting_customer_approval',  label: 'Waiting Approval' },
-  { key: 'quote_rejected',             label: 'Quote Rejected' },
-  { key: 'cancelled',                  label: 'Cancelled' },
-  { key: 'confirmed',                  label: 'Confirmed' },
-  { key: 'completed',                  label: 'Completed' },
-]
 
 const fmtINR = (n: number) => 'Rs.' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 })
 const fmtOrDash = (n: number | undefined | null) => (n === undefined || n === null ? '—' : fmtINR(n))
@@ -1713,7 +1702,10 @@ export default function AdminDashboard() {
             Business Overview → Inquiry & Sales Funnel → Revenue & Payment
             Collection → Upcoming Operations → Logistics Performance →
             Trip Operations & Profitability → Bookings by Service Type →
-            Inquiry Sources → the existing Booking/Inquiry table below.
+            the existing Booking/Inquiry table below. (Founder request,
+            2026-09-16: the funnel's status-count card grid + follow-up
+            strip, and the separate Inquiry Sources table, were removed —
+            both repeated numbers already shown elsewhere on this page.)
             Backed by GET /api/admin/dashboard-v2 (lib/dashboard-analytics-
             v2.ts) and the existing GET /api/admin/reports/operations. Every
             figure is a real aggregation over leads/bookings/payments/
@@ -1788,29 +1780,6 @@ export default function AdminDashboard() {
                 </Fragment>
               ))}
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
-            {STATUS_COUNT_CARDS.map(c => (
-              <div key={c.key} className="rounded-xl border border-gray-100 bg-white p-3 shadow-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                <p className="mt-1.5 text-lg font-bold text-gray-900">{dashLoading ? '…' : (dashData?.funnel.status_counts[c.key] ?? '—')}</p>
-              </div>
-            ))}
-          </div>
-          {/* Automated reminder system summary — see app/api/admin/
-              sales-followup-summary/route.ts. Kept as a compact strip
-              (folded out of its own former section) since it answers a
-              related-but-different question: not "where do inquiries
-              stand" but "which specific ones are overdue for a human
-              follow-up today." */}
-          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 rounded-lg border border-gray-100 bg-gray-50 px-3 py-2 text-xs text-gray-600">
-            <span className="font-semibold text-gray-400 uppercase tracking-wide text-[10px]">Follow-ups</span>
-            <Link href="/admin/leads?followup=quotes_pending" className="hover:text-orange-600">Quotes Pending: <b>{followupSummary?.quotesPending ?? '—'}</b></Link>
-            <Link href="/admin/leads?followup=followup_pending" className="hover:text-orange-600">Follow-up Pending: <b>{followupSummary?.followupPending ?? '—'}</b></Link>
-            <Link href="/admin/leads?followup=overdue_quotes" className="hover:text-red-600">Overdue Quotes: <b className="text-red-600">{followupSummary?.overdueQuotes ?? '—'}</b></Link>
-            <Link href="/admin/leads?followup=overdue_followups" className="hover:text-red-600">Overdue Follow-ups: <b className="text-red-600">{followupSummary?.overdueFollowups ?? '—'}</b></Link>
-            <Link href="/admin/leads?followup=today_followups" className="hover:text-orange-600">Today: <b>{followupSummary?.todaysFollowups ?? '—'}</b></Link>
-            <Link href="/admin/leads?followup=tomorrow_followups" className="hover:text-orange-600">Tomorrow: <b>{followupSummary?.tomorrowsFollowups ?? '—'}</b></Link>
           </div>
         </div>
 
@@ -2009,43 +1978,6 @@ export default function AdminDashboard() {
                       <td className="px-4 py-2 text-sm text-gray-700">{s.service_label}</td>
                       <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.bookings}</td>
                       <td className="px-4 py-2 text-sm text-gray-600">{s.bags}</td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{fmtINR(s.revenue)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-
-        {/* ── 9. Inquiry Source Analytics ── */}
-        <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Inquiry Sources</p>
-          <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
-            <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-100">
-                <thead className="bg-gray-50">
-                  <tr>{['Source', 'Inquiries', 'Quotes', 'Confirmed', 'Completed', 'Revenue'].map(h => (
-                    <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>
-                  ))}</tr>
-                </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {dashLoading ? (
-                    <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">Loading…</td></tr>
-                  ) : (dashData?.sources ?? []).length === 0 ? (
-                    <tr><td colSpan={6} className="py-8 text-center text-sm text-gray-400">No inquiries in this period</td></tr>
-                  ) : (dashData?.sources ?? []).map(s => (
-                    <tr key={s.source} className="hover:bg-gray-50">
-                      <td className="px-4 py-2">
-                        <span style={{ color: resolveSource(s.source).color, background: resolveSource(s.source).bg }}
-                          className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-semibold whitespace-nowrap">
-                          {s.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.inquiries}</td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{s.quotes}</td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{s.confirmed}</td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{s.completed}</td>
                       <td className="px-4 py-2 text-sm text-gray-600">{fmtINR(s.revenue)}</td>
                     </tr>
                   ))}
