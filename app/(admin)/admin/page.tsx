@@ -2061,6 +2061,27 @@ export default function AdminDashboard() {
             <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Bookings by Service Type</p>
             <p className="text-[11px] text-gray-400">All completed bookings, all time — not affected by the period filter above</p>
           </div>
+          {/* Grand-total banner — founder request, 2026-09-16: "update this
+              with all our completed inquiries total bags show somewhere,
+              for example 100 bags delivered." Summed client-side from the
+              same dashData.service_types rows the table below renders, so
+              it can never disagree with them. */}
+          {!dashLoading && (dashData?.service_types ?? []).length > 0 && (() => {
+            const totalBags     = (dashData?.service_types ?? []).reduce((s, r) => s + r.bags, 0)
+            const totalBookings = (dashData?.service_types ?? []).reduce((s, r) => s + r.bookings, 0)
+            const totalRevenue  = (dashData?.service_types ?? []).reduce((s, r) => s + r.revenue, 0)
+            return (
+              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border border-orange-100 bg-orange-50 px-4 py-3">
+                <Package className="h-4 w-4 shrink-0 text-orange-500" />
+                <p className="text-sm font-bold text-gray-900">
+                  {totalBags.toLocaleString('en-IN')} bags delivered
+                </p>
+                <p className="text-xs text-gray-500">
+                  across {totalBookings.toLocaleString('en-IN')} completed bookings · {fmtINR(totalRevenue)} revenue
+                </p>
+              </div>
+            )
+          })()}
           <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
@@ -2083,6 +2104,16 @@ export default function AdminDashboard() {
                     </tr>
                   ))}
                 </tbody>
+                {!dashLoading && (dashData?.service_types ?? []).length > 0 && (
+                  <tfoot>
+                    <tr className="border-t-2 border-gray-100 bg-gray-50">
+                      <td className="px-4 py-2 text-sm font-bold text-gray-900">Total</td>
+                      <td className="px-4 py-2 text-sm font-bold text-gray-900">{(dashData?.service_types ?? []).reduce((s, r) => s + r.bags, 0)}</td>
+                      <td className="px-4 py-2 text-sm font-bold text-gray-900">{(dashData?.service_types ?? []).reduce((s, r) => s + r.bookings, 0)}</td>
+                      <td className="px-4 py-2 text-sm font-bold text-gray-900">{fmtINR((dashData?.service_types ?? []).reduce((s, r) => s + r.revenue, 0))}</td>
+                    </tr>
+                  </tfoot>
+                )}
               </table>
             </div>
           </div>
