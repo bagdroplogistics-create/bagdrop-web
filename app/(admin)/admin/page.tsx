@@ -1750,12 +1750,13 @@ export default function AdminDashboard() {
         {/* ══════════════════════════════════════════════════════════════
             REDESIGNED DASHBOARD (founder request, 2026-09-16)
             Business Overview → Inquiry & Sales Funnel → Revenue & Payment
-            Collection → Upcoming Operations → Logistics Performance →
-            Trip Operations & Profitability → Bookings by Service Type →
-            the existing Booking/Inquiry table below. (Founder request,
-            2026-09-16: the funnel's status-count card grid + follow-up
-            strip, and the separate Inquiry Sources table, were removed —
-            both repeated numbers already shown elsewhere on this page.)
+            Collection → Upcoming Operations → Trip Operations &
+            Profitability → Bookings by Service Type → the existing
+            Booking/Inquiry table below. (Founder request, 2026-09-16: the
+            funnel's status-count card grid + follow-up strip, the separate
+            Inquiry Sources table, and the Logistics Performance section,
+            were all removed from display — dashData still computes each
+            of them server-side, just unused in this JSX.)
             Backed by GET /api/admin/dashboard-v2 (lib/dashboard-analytics-
             v2.ts) and the existing GET /api/admin/reports/operations. Every
             figure is a real aggregation over leads/bookings/payments/
@@ -2010,35 +2011,13 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* ── 6. Logistics Performance ── bag-level, from the BagDrop Bag
-            Tag system (group_bags — universal per-bag table for both
-            Individual and Group/Wedding bookings). Date-filtered by the
-            linked booking's pickup_date, using the Business Overview range
-            above. */}
-        <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Logistics Performance</p>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:grid-cols-7">
-            {[
-              { label: 'Total Bags Handled', value: dashData?.logistics.total_bags_handled },
-              { label: 'Picked Up',          value: dashData?.logistics.picked_up },
-              { label: 'In Transit',         value: dashData?.logistics.in_transit },
-              { label: 'Airport Handover',   value: dashData?.logistics.airport_handover },
-              { label: 'Delivered',          value: dashData?.logistics.delivered },
-              { label: 'Pending',            value: dashData?.logistics.pending },
-              { label: 'Exceptions',         value: dashData?.logistics.exceptions, alert: (dashData?.logistics.exceptions ?? 0) > 0 },
-            ].map(c => (
-              <div key={c.label} className={`rounded-xl border bg-white p-3 shadow-sm ${c.alert ? 'border-red-200' : 'border-gray-100'}`}>
-                <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400 leading-tight">{c.label}</p>
-                <p className={`mt-1.5 text-lg font-bold ${c.alert ? 'text-red-600' : 'text-gray-900'}`}>{dashLoading ? '…' : (c.value ?? '—')}</p>
-              </div>
-            ))}
-          </div>
-          {dashData && dashData.logistics.group_booking_count > 0 && (
-            <p className="mt-2 text-[11px] text-gray-400">
-              Includes {dashData.logistics.group_booking_count} Group/Wedding booking(s) totaling {dashData.logistics.group_booking_bag_count} individual bags — counted by bag, not by booking.
-            </p>
-          )}
-        </div>
+        {/* ── Logistics Performance section removed from the dashboard
+            (founder request, 2026-09-16) — dashData.logistics is still
+            fetched/computed server-side (lib/dashboard-analytics-v2.ts),
+            just no longer rendered here, same "leave the backend data
+            intact, only remove the display" pattern already used for the
+            funnel status-count grid / Follow-ups strip / Inquiry Sources
+            table earlier in this file. */}
 
         {/* ── 7. Trip Operations & Profitability ── from trip_sheets,
             date-filtered by pickup_date, same range as Business Overview. */}
