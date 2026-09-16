@@ -595,6 +595,29 @@ export async function getDashboardData(
     paidAmountForPaymentsReceived.set(p.booking_id, (paidAmountForPaymentsReceived.get(p.booking_id) ?? 0) + (Number(p.amount) || 0))
   }
 
+  // Bookings marked payment_status === 'paid' (real money actually
+  // received — lib/payment-status.ts) with NO row at all in the real
+  // `payments` ledger — paid via "Mark Payment Received"/VIP-approve
+  // with no logged payments row, the exact same synthetic case the
+  // Payments tab already surfaces via fetchUnloggedBookingPayments
+  // (app/api/admin/payments/route.ts). Founder-reported 2026-09-16:
+  // September's Payments tab showed 18 transactions / ₹1,02,984
+  // collected, but the Business Overview Payments Received card showed
+  // only 8 / ₹62,559 — exactly the 8 REAL payment rows, missing all 10
+  // synthetic ones (9 genuinely paid + 1 FOC/not_applicable, which
+  // correctly stays excluded below since its payment_status is
+  // 'not_applicable', not 'paid') entirely. Folded into
+  // paidAmountForPaymentsReceived so paymentReceivedStage (funnel,
+  // already reads this map) picks these up automatically too.
+  const bookingIdsWithAnyRealPaidPayment = new Set(
+    payments.filter(p => p.payment_status === 'paid' && p.booking_id).map(p => p.booking_id as string)
+  )
+  for (const b of bookings) {
+    if (b.is_test || b.payment_status !== 'paid') continue
+    if (bookingIdsWithAnyRealPaidPayment.has(b.id)) continue // has a real row — already counted above
+    paidAmountForPaymentsReceived.set(b.id, Number(b.total_amount) || 0)
+  }
+
   // Real money collected for this booking so far — actual ledger total if
   // any real payment exists, else the full total_amount ONLY if the
   // booking's derived payment_status is already 'paid' (the "synthetic"
@@ -689,8 +712,22 @@ export async function getDashboardData(
     const d = bookingReportingDate(b) ?? (p.payment_date || p.created_at?.slice(0, 10) || null)
     return d ? inDateStr(d, range) : false
   })
-  const paymentsReceivedCount  = paymentsInRange.length
+  // Synthetic transactions — the booking-shaped counterpart of
+  // paymentsInRange, one entry per booking paid with no real payments
+  // row (see bookingIdsWithAnyRealPaidPayment above). Kept as a separate
+  // booking-shaped list rather than merged into paymentsInRange (which
+  // stays real-PaymentRow-shaped for its own field mapping) — combined
+  // for count/amount below, and appended in buildDrilldownRecords's
+  // 'payments_received' case so the drill-down list matches exactly.
+  const syntheticPaymentsInRange = bookings.filter(b => {
+    if (b.is_test || b.payment_status !== 'paid') return false
+    if (bookingIdsWithAnyRealPaidPayment.has(b.id)) return false
+    const d = bookingReportingDate(b)
+    return d ? inDateStr(d, range) : false
+  })
+  const paymentsReceivedCount  = paymentsInRange.length + syntheticPaymentsInRange.length
   const paymentsReceivedAmount = paymentsInRange.reduce((s, p) => s + (Number(p.amount) || 0), 0)
+    + syntheticPaymentsInRange.reduce((s, b) => s + (Number(b.total_amount) || 0), 0)
 
   // Live snapshot — not date-filtered, see module comment.
   //
@@ -1025,18 +1062,32 @@ export async function getDashboardData(
           amount: b.total_amount ?? null,
         }))
       case 'payments_received':
-        return paymentsInRange.map(p => {
-          const b = p.booking_id ? bookingsById.get(p.booking_id) : null
-          return {
-            id: p.id,
-            date: p.payment_date || p.created_at,
-            customer_name: b?.customer_name ?? null,
-            tracking_id: b?.tracking_id ?? null,
+        return [
+          ...paymentsInRange.map(p => {
+            const b = p.booking_id ? bookingsById.get(p.booking_id) : null
+            return {
+              id: p.id,
+              date: p.payment_date || p.created_at,
+              customer_name: b?.customer_name ?? null,
+              tracking_id: b?.tracking_id ?? null,
+              route: routeFor(b),
+              status: p.payment_status ?? null,
+              amount: Number(p.amount) || 0,
+            }
+          }),
+          // Synthetic — bookings paid with no real payments row (see
+          // syntheticPaymentsInRange above), same "booking:<id>" id
+          // convention the Payments tab itself uses for these.
+          ...syntheticPaymentsInRange.map(b => ({
+            id: `booking:${b.id}`,
+            date: bookingReportingDate(b),
+            customer_name: b.customer_name ?? null,
+            tracking_id: b.tracking_id ?? null,
             route: routeFor(b),
-            status: p.payment_status ?? null,
-            amount: Number(p.amount) || 0,
-          }
-        })
+            status: b.status ?? null,
+            amount: b.total_amount ?? null,
+          })),
+        ]
       // Added 2026-09-16 alongside the Payment Received bucketing fix, so
       // the founder can inspect the EXACT 15 bookings behind the funnel's
       // "Completed" number and compare directly against the Payments tab's
