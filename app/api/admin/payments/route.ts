@@ -346,11 +346,46 @@ export async function POST(req: NextRequest) {
     // overwrite here, so it falls through to a normal insert instead.
     const { data: existingPaid } = await supabaseAdmin
       .from('payments')
-      .select('id, payment_method')
+      .select('id, payment_method, amount, created_at')
       .eq('booking_id', bookingId)
       .eq('payment_status', 'paid')
     const existingUploads = (existingPaid ?? []).filter(p => p.payment_method === 'upload')
     const existingNonUploads = (existingPaid ?? []).filter(p => p.payment_method !== 'upload')
+
+    // ── Duplicate-resubmission guard — founder-reported 2026-09-16
+    // (BDP-2026-0028 and BDP-2026-0029, ₹10,500 each, both for BDA-2026-0188,
+    // 17 minutes apart): the customer got the Payment Received WhatsApp +
+    // email receipt TWICE for one real payment. Root cause: a real,
+    // non-upload 'paid' row already existed for this booking, and a second
+    // "Mark Payment Received"/Record Payment submission for the exact same
+    // amount created a second, genuinely duplicate 'paid' row — each row
+    // correctly triggers its own receipt (sendPaymentReceiptAcknowledgment's
+    // idempotency is PER PAYMENT ROW, by design, so it can't catch this; the
+    // bug is two rows existing at all, not the same row being notified
+    // twice). Two installments landing minutes apart for an identical round
+    // amount is never a coincidence in practice — it's the same real-world
+    // payment being recorded a second time (stale on-screen Outstanding
+    // Amount after the first submission, a second admin/tab acting on the
+    // same booking, etc.). Guard: if a real 'paid' payment for this exact
+    // amount already exists for this booking within the last 30 minutes,
+    // reuse it instead of inserting a new row / sending a second receipt.
+    // Centralized here (not in the frontend) so both callers — the Booking
+    // Workflow's "Mark Payment Received" button and the Payments tab's own
+    // Record Payment modal — get the same protection, matching this
+    // route's existing "server decides, one place" convention (see the
+    // convert-guard right below).
+    const DUPLICATE_PAID_WINDOW_MS = 30 * 60 * 1000
+    const requestedAmount = Number(body.amount)
+    const likelyDuplicate = existingNonUploads.find(p =>
+      Math.abs(Number(p.amount) - requestedAmount) < 0.01 &&
+      Date.now() - new Date(p.created_at).getTime() < DUPLICATE_PAID_WINDOW_MS
+    )
+    if (likelyDuplicate) {
+      console.warn(`[payments POST] Likely duplicate 'paid' submission for booking ${bookingId} (₹${requestedAmount}, within 30 min of existing payment ${likelyDuplicate.id}) — reusing the existing row instead of creating a new one / resending the receipt`)
+      const { data: existingFull } = await supabaseAdmin.from('payments').select('*').eq('id', likelyDuplicate.id).maybeSingle()
+      return NextResponse.json({ payment: existingFull ?? likelyDuplicate, duplicate: true }, { status: 200 })
+    }
+
     if (existingUploads.length === 1 && existingNonUploads.length === 0) {
       // Opportunistically correct the title too, if this request carries a
       // better one than whatever the original upload row defaulted to.

@@ -1097,6 +1097,17 @@ export default function QuoteViewPage() {
               payment_reference:  paymentRef.trim() || undefined,
               notes:              'Marked Payment Received — Booking Workflow',
             }),
+          }).then(async r => {
+            const d = await r.json().catch(() => ({}))
+            // Server-side duplicate-resubmission guard (POST /api/admin/
+            // payments/route.ts, 2026-09-16 fix) — reused the existing
+            // payment instead of creating a new one, so no second receipt
+            // was sent. Surfaced here so the admin sees WHY nothing new
+            // appeared to happen, instead of assuming the click failed.
+            if (d?.duplicate) {
+              setActionError('Payment already recorded — this looks like the same payment being submitted again, so no duplicate was created and no second receipt was sent.')
+              setTimeout(() => setActionError(null), 8000)
+            }
           }).catch(err => console.error('[doMarkPaymentReceived] payment create failed:', err))
         }
       }

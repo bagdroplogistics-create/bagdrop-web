@@ -304,7 +304,19 @@ function RecordPaymentModal({ adminKey, initial, onSaved, onClose }: { adminKey:
     })
     if (!res.ok) { const j = await res.json().catch(() => ({})); setErr(j.error ?? 'Failed to save payment'); setSaving(false); return }
 
-    const { payment } = await res.json()
+    const { payment, duplicate } = await res.json()
+
+    // Server-side duplicate-resubmission guard (POST /api/admin/payments/
+    // route.ts, 2026-09-16 fix) — a real 'paid' payment for this exact
+    // amount already existed for this booking within the last 30 minutes,
+    // so the server reused it instead of inserting a new row / sending a
+    // second Payment Received receipt. Stop here rather than closing
+    // silently, so it's clear nothing new was recorded.
+    if (duplicate) {
+      setErr('Already recorded — a payment of this exact amount was logged for this booking within the last 30 minutes, so no duplicate entry or second receipt was created.')
+      setSaving(false)
+      return
+    }
 
     if (pendingFiles.length > 0 && payment?.id) {
       setUploadingAttachments(true)
