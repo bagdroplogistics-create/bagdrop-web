@@ -517,6 +517,55 @@ export async function getDashboardData(
         : (Number(s.total_expense) || 0),
     }))
 
+  // ── Payments Received (Business Overview card, Revenue & Payment
+  // Collection, and the funnel's "Payment Received" stage) — founder-
+  // reported 2026-09-16: September showed 15 Completed bookings and only 8
+  // Payment Received, when the founder counted 18 Completed and expected
+  // 17 Payment Received (18 minus the 1 FOC booking, which correctly never
+  // has a real payment). Root cause: Payment Received was scoped to
+  // "payment's OWN date (payment_date/created_at) falls in September,"
+  // while Completed is scoped to the booking's OPERATIONAL month
+  // (completed_month_override ?? pickup_date) — the exact same date-
+  // dimension mismatch already fixed on the Payments page for Ms. Kanak's
+  // advance payment. A booking paid in an earlier month (a deposit/advance
+  // ahead of its actual job) but completed/picked-up in September was
+  // being silently excluded from September's Payment Received figures
+  // even though it belongs in September by every other metric on this
+  // dashboard. Fixed below by bucketing Payment Received by the SAME
+  // booking-reporting-month dimension as Completed, not by the payment's
+  // own collection date (which stays exactly as-is for Revenue and
+  // Outstanding — those two intentionally still use the real collection/
+  // status date, per their own module comments, and are unaffected here).
+  function bookingReportingDate(b: BookingRow | null | undefined): string | null {
+    if (!b) return null
+    return b.completed_month_override ?? b.pickup_date ?? null
+  }
+  // Also recovers an approved payment-proof upload that's the SOLE payment
+  // for its booking (never converted into a real ledger row) — same fix
+  // already applied to GET /api/admin/payments (Ms. Urmila Patel,
+  // 2026-09-16). countsTowardTotalPaid's blanket "upload never counts"
+  // rule assumes a real, non-upload duplicate always exists for the same
+  // booking, which is safe to assume for Revenue/Outstanding (unaffected,
+  // still use countsTowardTotalPaid below) but not for "did this booking
+  // actually get paid" — a genuinely sole approved proof is real money.
+  const redundantUploadPaymentIds = new Set<string>()
+  {
+    const paidByBooking = new Map<string, PaymentRow[]>()
+    for (const p of payments) {
+      if (p.payment_status !== 'paid' || !p.booking_id) continue
+      const list = paidByBooking.get(p.booking_id) ?? []
+      list.push(p)
+      paidByBooking.set(p.booking_id, list)
+    }
+    for (const list of paidByBooking.values()) {
+      if (list.length < 2) continue
+      const hasRealPaid = list.some(p => p.payment_method !== 'upload')
+      if (hasRealPaid) {
+        for (const p of list) if (p.payment_method === 'upload') redundantUploadPaymentIds.add(p.id)
+      }
+    }
+  }
+
   const totalPaidByBooking = new Map<string, number>()
   const earliestPaidDateByBooking = new Map<string, string>()
   for (const p of payments) {
@@ -529,6 +578,21 @@ export async function getDashboardData(
       const cur = earliestPaidDateByBooking.get(p.booking_id)
       if (!cur || d < cur) earliestPaidDateByBooking.set(p.booking_id, d)
     }
+  }
+
+  // "Did this booking actually receive any real money" — used only by
+  // Payment Received (business_overview + funnel stage) below, kept
+  // SEPARATE from totalPaidByBooking above (which stays on
+  // countsTowardTotalPaid's stricter definition, since Revenue/Outstanding
+  // must never double-count a genuine real-payment-plus-upload-duplicate
+  // pair). Recovers a sole, non-redundant approved upload too — see the
+  // redundantUploadPaymentIds comment above.
+  const paidAmountForPaymentsReceived = new Map<string, number>()
+  for (const p of payments) {
+    if (p.payment_status !== 'paid') continue
+    if (!p.booking_id || testBookingIds.has(p.booking_id)) continue
+    if (redundantUploadPaymentIds.has(p.id)) continue
+    paidAmountForPaymentsReceived.set(p.booking_id, (paidAmountForPaymentsReceived.get(p.booking_id) ?? 0) + (Number(p.amount) || 0))
   }
 
   // Real money collected for this booking so far — actual ledger total if
@@ -572,10 +636,19 @@ export async function getDashboardData(
     return quoteInRange(l, range)
   }).length
 
+  // Bucketed by the booking's own operational month (bookingReportingDate —
+  // completed_month_override ?? pickup_date), the SAME dimension Completed
+  // uses below, not by when the payment happened to be collected — see the
+  // module comment above paidAmountForPaymentsReceived. Gated on actually
+  // having real money (paidAmountForPaymentsReceived > 0) rather than
+  // everReachedStage's workflow-status check, since a booking can carry the
+  // literal 'payment_received' status label without any real payment (e.g.
+  // a FOC booking pushed through the workflow) — that must never count here.
   const paymentReceivedStage = leads.filter(l => {
     const b = l.booking_id ? bookingsById.get(l.booking_id) : null
-    if (!b || !everReachedStage(b, PAYMENT_RECEIVED_IDX)) return false
-    const d = earliestPaidDateByBooking.get(b.id)
+    if (!b) return false
+    if ((paidAmountForPaymentsReceived.get(b.id) ?? 0) <= 0) return false
+    const d = bookingReportingDate(b)
     return d ? inDateStr(d, range) : false
   }).length
 
@@ -600,11 +673,22 @@ export async function getDashboardData(
   })
 
   // ── Payments received / Outstanding / Pending verification / Refunds ──
-  const paymentsInRange = payments.filter(p =>
-    countsTowardTotalPaid(p) &&
-    (!p.booking_id || !testBookingIds.has(p.booking_id)) &&
-    inDateStr(p.payment_date || p.created_at?.slice(0, 10), range)
-  )
+  // Individual real payment transactions, one row per row (so the
+  // Business Overview drill-down still lists exact transactions, not
+  // bookings) — but bucketed into a period by the LINKED BOOKING's
+  // operational month (bookingReportingDate), same reasoning as
+  // paymentReceivedStage above. Falls back to the payment's own
+  // payment_date/created_at only when there's no linked booking (e.g. a
+  // standalone manual-invoice payment) or that booking has neither
+  // completed_month_override nor pickup_date set.
+  const paymentsInRange = payments.filter(p => {
+    if (p.payment_status !== 'paid') return false
+    if (redundantUploadPaymentIds.has(p.id)) return false
+    if (p.booking_id && testBookingIds.has(p.booking_id)) return false
+    const b = p.booking_id ? bookingsById.get(p.booking_id) : null
+    const d = bookingReportingDate(b) ?? (p.payment_date || p.created_at?.slice(0, 10) || null)
+    return d ? inDateStr(d, range) : false
+  })
   const paymentsReceivedCount  = paymentsInRange.length
   const paymentsReceivedAmount = paymentsInRange.reduce((s, p) => s + (Number(p.amount) || 0), 0)
 
