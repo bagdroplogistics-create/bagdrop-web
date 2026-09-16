@@ -281,7 +281,11 @@ interface DashboardV2Data {
 // Business Overview drill-down — founder request, 2026-09-16: clicking one
 // of the first 4 Business Overview cards shows the exact records behind
 // that card's number, for whichever date range is currently selected.
-type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received'
+// 'completed' added the same day so the founder can inspect the exact
+// bookings behind the funnel's Completed tile — see that DrilldownKey
+// case's comment in lib/dashboard-analytics-v2.ts for why (comparing
+// against the Payments tab's broader confirmed-onward population).
+type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
 interface DrilldownRecord {
   id: string
   date: string | null
@@ -296,6 +300,7 @@ const DRILLDOWN_TITLES: Record<DrilldownKey, string> = {
   quotes_sent:        'Quotes Sent',
   confirmed_bookings: 'Confirmed Bookings',
   payments_received:  'Payments Received',
+  completed:          'Completed',
 }
 
 type DashboardRangePreset = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'all_time' | 'custom'
@@ -1884,9 +1889,14 @@ export default function AdminDashboard() {
             <div className="flex items-center gap-2">
               {FUNNEL_STAGES.map((s, i) => (
                 <Fragment key={s.key}>
-                  <div className="flex shrink-0 flex-col items-center rounded-lg bg-gray-50 px-3 py-2 min-w-[100px]">
+                  <div
+                    onClick={s.key === 'completed' ? () => openDrilldown('completed') : undefined}
+                    className={`flex shrink-0 flex-col items-center rounded-lg bg-gray-50 px-3 py-2 min-w-[100px] ${
+                      s.key === 'completed' ? 'cursor-pointer transition-colors hover:bg-orange-50' : ''
+                    }`}>
                     <span className="text-center text-[10px] font-semibold uppercase leading-tight text-gray-400">{s.label}</span>
                     <span className="mt-1 text-lg font-bold text-gray-900">{dashLoading ? '…' : (dashData?.funnel.stages[s.key] ?? '—')}</span>
+                    {s.key === 'completed' && <span className="mt-0.5 text-[9px] font-medium text-orange-500">View →</span>}
                   </div>
                   {i < FUNNEL_STAGES.length - 1 && <ArrowRight className="h-4 w-4 shrink-0 text-gray-300" />}
                 </Fragment>

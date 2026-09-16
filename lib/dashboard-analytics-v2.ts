@@ -419,7 +419,7 @@ export interface DashboardData {
 // Business Overview drill-down — founder request, 2026-09-16: "when i click
 // Business Overview first 4 cards from any tab, it should show data
 // according to that card data." One row per matching lead/booking/payment.
-export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received'
+export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
 export interface DrilldownRecord {
   id: string
   date: string | null           // the business date that qualified this record for the card
@@ -1037,6 +1037,23 @@ export async function getDashboardData(
             amount: Number(p.amount) || 0,
           }
         })
+      // Added 2026-09-16 alongside the Payment Received bucketing fix, so
+      // the founder can inspect the EXACT 15 bookings behind the funnel's
+      // "Completed" number and compare directly against the Payments tab's
+      // pickup-month view (which also includes non-'completed' confirmed-
+      // onward bookings, e.g. still 'delivered' but never advanced to the
+      // literal 'completed' status) — rather than guess-fixing the date
+      // logic without evidence.
+      case 'completed':
+        return completedInRange.map(b => ({
+          id: b.id,
+          date: bookingReportingDate(b),
+          customer_name: b.customer_name ?? null,
+          tracking_id: b.tracking_id ?? null,
+          route: routeFor(b),
+          status: b.status ?? null,
+          amount: b.total_amount ?? null,
+        }))
       default:
         return []
     }

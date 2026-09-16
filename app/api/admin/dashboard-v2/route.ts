@@ -14,12 +14,13 @@ export const runtime = 'nodejs'
 // Query params:
 //   range      = today | this_week | this_month | last_month | this_year | all_time | custom  (default this_month)
 //   date_from, date_to = 'YYYY-MM-DD', only used when range=custom
-//   drilldown  = total_inquiries | quotes_sent | confirmed_bookings | payments_received
-//                (optional — founder request 2026-09-16: clicking a Business
-//                Overview card asks for its exact record list, scoped to
-//                whichever range is currently selected)
+//   drilldown  = total_inquiries | quotes_sent | confirmed_bookings |
+//                payments_received | completed (optional — founder request
+//                2026-09-16: clicking a Business Overview card or the
+//                funnel's Completed tile asks for its exact record list,
+//                scoped to whichever range is currently selected)
 const VALID_PRESETS = new Set(['today', 'this_week', 'this_month', 'last_month', 'this_year', 'all_time', 'custom'])
-const VALID_DRILLDOWNS = new Set(['total_inquiries', 'quotes_sent', 'confirmed_bookings', 'payments_received'])
+const VALID_DRILLDOWNS = new Set(['total_inquiries', 'quotes_sent', 'confirmed_bookings', 'payments_received', 'completed'])
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
