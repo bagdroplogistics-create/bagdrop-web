@@ -259,26 +259,51 @@ export async function GET(req: NextRequest) {
   // enrichment.
   const pageBookingIds = [...new Set(page_.map(p => p.booking_id).filter((id): id is string => !!id))]
   let invoiceByBooking: Record<string, { invoice_number: string; total_amount: number }> = {}
+  let bookingTotalById: Record<string, number> = {}
   if (pageBookingIds.length > 0) {
-    const { data: invRows } = await supabaseAdmin
-      .from('invoices')
-      .select('booking_id, invoice_number, total_amount')
-      .in('booking_id', pageBookingIds)
+    const [{ data: invRows }, { data: bkRows }] = await Promise.all([
+      supabaseAdmin
+        .from('invoices')
+        .select('booking_id, invoice_number, total_amount')
+        .in('booking_id', pageBookingIds),
+      // Founder-reported 2026-09-16 (BDA-2026-0090): a ₹9,030 payment
+      // (matching the booking's full, CURRENT total_amount) showed
+      // "Unused Amount ₹1,890" because that booking's invoice had been
+      // generated earlier at ₹7,140 and never regenerated after the
+      // booking's total was later increased (e.g. an extra bag added).
+      // The invoice row is a snapshot taken at Generate-Invoice time — it
+      // can go stale the moment a booking's total_amount changes after
+      // that, while the payment amount (mirroring the booking's live
+      // total, real or synthetic) does not. bookings.total_amount is this
+      // app's live source of truth (same reasoning the dashboard/Payments
+      // Outstanding figures already use it, not a cached invoice figure),
+      // so it's fetched here too and preferred as the "how much of this
+      // payment is actually accounted for" ceiling whenever a booking is
+      // linked.
+      supabaseAdmin.from('bookings').select('id, total_amount').in('id', pageBookingIds),
+    ])
     invoiceByBooking = Object.fromEntries(
       (invRows ?? []).map(i => [i.booking_id as string, { invoice_number: i.invoice_number as string, total_amount: Number(i.total_amount ?? 0) }])
+    )
+    bookingTotalById = Object.fromEntries(
+      (bkRows ?? []).map(b => [b.id as string, Number(b.total_amount ?? 0)])
     )
   }
 
   const enriched = page_.map(p => {
     const inv = p.booking_id ? invoiceByBooking[p.booking_id] : undefined
-    // No invoice yet for this booking: the whole payment is "unused" (not
-    // applied against anything), matching Zoho's own definition. An
-    // invoice exists and covers the payment: fully applied (0 unused). An
-    // invoice exists but is smaller than the payment (overpayment): the
-    // difference is unused.
-    const unused_amount = !inv
+    // Ceiling for "how much of this payment has actually been applied":
+    // prefer the linked booking's live total_amount (never stale — see
+    // above); fall back to the invoice's own total only for a standalone
+    // manual invoice with no booking_id behind it. No booking AND no
+    // invoice: the whole payment is "unused" (not applied against
+    // anything), matching Zoho's own definition.
+    const ceiling = p.booking_id && bookingTotalById[p.booking_id] != null
+      ? bookingTotalById[p.booking_id]
+      : inv?.total_amount
+    const unused_amount = ceiling == null
       ? Number(p.amount)
-      : Math.max(0, Number(p.amount) - inv.total_amount)
+      : Math.max(0, Number(p.amount) - ceiling)
     return { ...p, invoice_number: inv?.invoice_number ?? null, unused_amount }
   })
 
