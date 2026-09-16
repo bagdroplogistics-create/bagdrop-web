@@ -57,6 +57,15 @@ interface Payment {
   receipt_whatsapp_status?:  string | null
   receipt_whatsapp_sent_at?: string | null
   receipt_whatsapp_error?:   string | null
+  // Which month this payment counts toward in the Monthly Breakdown / month
+  // filter — the linked booking's completed_month_override ?? pickup_date,
+  // computed server-side (GET /api/admin/payments). NOT the same thing as
+  // created_at (the Date column, still the real date the money was
+  // collected — untouched). Founder-reported 2026-09-16 (Ms. Kanak,
+  // BDP-2026-0017, ₹78,750 advance paid in Sept for a December pickup):
+  // confirmed the collection date shown is correct, but Month-wise Payment
+  // Received should report by the booking's operational month.
+  reporting_month_date?: string | null
 }
 
 // This filter/badge set covers two different value spaces that GET
@@ -105,11 +114,14 @@ function toDateInputValue(d: string) {
 }
 function fmtRs(n: number) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
 
-// Month-wise breakdown — groups by the payment's created_at (same field the
-// table's Date column and fmtDate above already use), not payment_date
-// (there's no such column on `payments`; the Record Payment modal's "Payment
-// Date" field isn't persisted separately today). "YYYY-MM" sorts correctly
-// as a plain string, so no numeric/Date parsing needed for the ordering.
+// Month-wise breakdown — groups by reporting_month_date (server-computed —
+// see that field's comment on the Payment interface above), NOT created_at
+// (the Date column, which stays the real date the money was collected).
+// Founder-reported 2026-09-16 (Ms. Kanak, ₹78,750 paid in Sept as an
+// advance for a December pickup): confirmed the collection date is
+// correct, but Month-wise Payment Received should count toward the
+// booking's own operational month instead. "YYYY-MM" sorts correctly as a
+// plain string, so no numeric/Date parsing needed for the ordering.
 function monthKey(iso: string) {
   const d = new Date(iso)
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
@@ -1167,7 +1179,7 @@ export default function PaymentsPage() {
   const monthlySummary = useMemo(() => {
     const map = new Map<string, { count: number; collected: number; pending: number }>()
     for (const p of payments) {
-      const key = monthKey(p.created_at)
+      const key = monthKey(p.reporting_month_date ?? p.created_at)
       const cur = map.get(key) ?? { count: 0, collected: 0, pending: 0 }
       cur.count += 1
       if (isCollectedHere(p)) cur.collected += Number(p.amount)
@@ -1182,10 +1194,14 @@ export default function PaymentsPage() {
   // Applies the month filter on top of whatever the server already
   // returned for the status/search filters — every summary card and the
   // table below read from this, so selecting a month narrows both
-  // consistently, same as the existing status filter already does.
+  // consistently, same as the existing status filter already does. Keyed
+  // by reporting_month_date (same field Monthly Breakdown groups by above)
+  // so clicking "December" in the breakdown actually shows Ms. Kanak's row
+  // even though its Date column reads 9 Sept — otherwise the breakdown and
+  // the filtered table would disagree about which month a payment is in.
   const visiblePayments = monthFilter === 'all'
     ? payments
-    : payments.filter(p => monthKey(p.created_at) === monthFilter)
+    : payments.filter(p => monthKey(p.reporting_month_date ?? p.created_at) === monthFilter)
 
   // isCollectedHere, not countsTowardTotalPaid — see that function's
   // comment above for why an 'upload' row still present in this

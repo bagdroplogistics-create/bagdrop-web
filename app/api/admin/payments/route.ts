@@ -49,6 +49,23 @@ interface PaymentRecord {
   // invoice ever sets it, so booking_id is the only reliable link).
   invoice_number?: string | null
   unused_amount?: number
+  // Founder-reported 2026-09-16 (Ms. Kanak, BDP-2026-0017): a ₹78,750
+  // payment genuinely collected on 9 Sept 2026 (an advance for a December
+  // pickup) was showing under September in the Payments tab's Monthly
+  // Breakdown. Confirmed with the founder: the Date column itself is
+  // correct (that IS when the money came in — created_at/Payment Date
+  // stays exactly as-is for display, editing, and the receipt), but
+  // Month-wise Payment Received should report by the booking's own
+  // pickup/operational month, not by when the payment happened to be
+  // logged — an advance paid months early should count toward the month
+  // of the job it's for. This is computed below via
+  // resolveReportingMonthDate() against the linked booking (same
+  // completed_month_override ?? pickup_date precedence already used for
+  // synthetic booking-derived rows and every other "which month does this
+  // booking belong to" figure in this codebase — see that function's own
+  // comment), and consumed only by the frontend's Monthly
+  // Breakdown/month-filter grouping — never by the Date column itself.
+  reporting_month_date?: string
 }
 
 
@@ -260,6 +277,10 @@ export async function GET(req: NextRequest) {
   const pageBookingIds = [...new Set(page_.map(p => p.booking_id).filter((id): id is string => !!id))]
   let invoiceByBooking: Record<string, { invoice_number: string; total_amount: number }> = {}
   let bookingTotalById: Record<string, number> = {}
+  // pickup_date/completed_month_override — for reporting_month_date below
+  // (Month-wise Payment Received grouping; see the PaymentRecord field's
+  // own comment).
+  let bookingReportingById: Record<string, { pickup_date: string | null; completed_month_override: string | null }> = {}
   if (pageBookingIds.length > 0) {
     const [{ data: invRows }, { data: bkRows }] = await Promise.all([
       supabaseAdmin
@@ -279,14 +300,18 @@ export async function GET(req: NextRequest) {
       // Outstanding figures already use it, not a cached invoice figure),
       // so it's fetched here too and preferred as the "how much of this
       // payment is actually accounted for" ceiling whenever a booking is
-      // linked.
-      supabaseAdmin.from('bookings').select('id, total_amount').in('id', pageBookingIds),
+      // linked. Also carries pickup_date/completed_month_override, reused
+      // for reporting_month_date below — one fetch covers both needs.
+      supabaseAdmin.from('bookings').select('id, total_amount, pickup_date, completed_month_override').in('id', pageBookingIds),
     ])
     invoiceByBooking = Object.fromEntries(
       (invRows ?? []).map(i => [i.booking_id as string, { invoice_number: i.invoice_number as string, total_amount: Number(i.total_amount ?? 0) }])
     )
     bookingTotalById = Object.fromEntries(
       (bkRows ?? []).map(b => [b.id as string, Number(b.total_amount ?? 0)])
+    )
+    bookingReportingById = Object.fromEntries(
+      (bkRows ?? []).map(b => [b.id as string, { pickup_date: (b.pickup_date as string | null) ?? null, completed_month_override: (b.completed_month_override as string | null) ?? null }])
     )
   }
 
@@ -304,7 +329,14 @@ export async function GET(req: NextRequest) {
     const unused_amount = ceiling == null
       ? Number(p.amount)
       : Math.max(0, Number(p.amount) - ceiling)
-    return { ...p, invoice_number: inv?.invoice_number ?? null, unused_amount }
+    // reporting_month_date — see the PaymentRecord field's own comment.
+    // completed_month_override ?? pickup_date, falling back to this
+    // payment's own created_at only when the linked booking is missing
+    // both (or there's no linked booking at all — a standalone manual
+    // invoice payment).
+    const reporting = p.booking_id ? bookingReportingById[p.booking_id] : undefined
+    const reporting_month_date = reporting?.completed_month_override ?? reporting?.pickup_date ?? p.created_at
+    return { ...p, invoice_number: inv?.invoice_number ?? null, unused_amount, reporting_month_date }
   })
 
   return NextResponse.json({ payments: enriched, total: merged.length, page, limit })
