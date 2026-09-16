@@ -12,7 +12,6 @@ import type { AdminRole } from '@/lib/admin-auth'
 import { formatCustomerName } from '@/lib/constants'
 import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
 import { amountInWords } from '@/lib/number-to-words'
-import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 
 interface Payment {
   id:                string
@@ -1142,6 +1141,25 @@ export default function PaymentsPage() {
     fetchPayments()
   }
 
+  // Counts as Collected on THIS page specifically — deliberately NOT the
+  // shared countsTowardTotalPaid (which also excludes payment_method ===
+  // 'upload'). Founder-reported 2026-09-16: Ms. Urmila Patel's approved
+  // ₹5,250 payment-proof upload (BDP-2026-0001, the ONLY payment ever
+  // recorded for her booking) was silently dropped from August's Collected
+  // total, undercounting real money received by exactly that amount.
+  // countsTowardTotalPaid's blanket "upload never counts" rule assumes an
+  // upload row always has a real, non-upload duplicate sitting alongside it
+  // for the same booking — true when recomputing a single booking's OWN
+  // ledger sum (lib/payment-status.ts), where a genuine duplicate really
+  // can still be present. It's NOT true here: `payments` (state above) came
+  // from GET /api/admin/payments, which has ALREADY removed every upload
+  // row that's redundant with a real payment for the same booking (see
+  // that route's "Hide a redundant payment-proof upload" block). So any
+  // upload row still present in this array is, by construction, the sole
+  // recorded payment for its booking — real money the Payments page's own
+  // Status column already shows as "Paid" — and must count here.
+  function isCollectedHere(p: Payment): boolean { return p.payment_status === 'paid' }
+
   // Month-wise breakdown — built from the FULL (status/search-filtered but
   // not month-filtered) list, so it always shows every month at a glance
   // regardless of which month is currently selected below. Clicking a row
@@ -1152,7 +1170,7 @@ export default function PaymentsPage() {
       const key = monthKey(p.created_at)
       const cur = map.get(key) ?? { count: 0, collected: 0, pending: 0 }
       cur.count += 1
-      if (countsTowardTotalPaid(p)) cur.collected += Number(p.amount)
+      if (isCollectedHere(p)) cur.collected += Number(p.amount)
       if (p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded') cur.pending += Number(p.amount)
       map.set(key, cur)
     }
@@ -1169,12 +1187,10 @@ export default function PaymentsPage() {
     ? payments
     : payments.filter(p => monthKey(p.created_at) === monthFilter)
 
-  // countsTowardTotalPaid excludes payment_method === 'upload' rows — a
-  // payment-proof screenshot is a verification record (proof a payment
-  // already logged elsewhere happened), never its own ledger entry, even
-  // once Accounts approves it (see lib/payment-ledger.ts, 2026-08-24 fix
-  // for the BDA-2026-0124 double-count).
-  const totalPaid    = visiblePayments.filter(countsTowardTotalPaid).reduce((s, p) => s + Number(p.amount), 0)
+  // isCollectedHere, not countsTowardTotalPaid — see that function's
+  // comment above for why an 'upload' row still present in this
+  // already-deduplicated list must count toward Collected on this page.
+  const totalPaid    = visiblePayments.filter(isCollectedHere).reduce((s, p) => s + Number(p.amount), 0)
   // Pending = confirmed/logged payments not yet paid and not refunded
   // (pending + approved_pending) — same definition used by the Payment
   // report in Reports & Analytics, so the two numbers agree. Upload rows
