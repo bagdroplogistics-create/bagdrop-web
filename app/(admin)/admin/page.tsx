@@ -1956,15 +1956,26 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* ── 8. Bookings by Service Type ── Confirmed-or-later bookings
-            only, date-filtered by pickup_date. */}
+        {/* ── 8. Bookings by Service Type ── Standalone card, deliberately
+            NOT affected by the Business Overview date-range buttons above
+            (founder request, 2026-09-16) — always every real completed
+            booking, all time, so total bags actually transferred per
+            service type reads the same no matter which period tab is
+            selected elsewhere on the page. See lib/dashboard-analytics-v2.ts
+            for the service-type label normalization that consolidates
+            "Doorstep → Airport" / "airport-delivery" / "Doorstep to
+            Airport" (three different raw spellings of the same real
+            service) into one row. */}
         <div className="mb-6">
-          <p className="mb-2 text-xs font-bold uppercase tracking-widest text-gray-400">Bookings by Service Type</p>
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-bold uppercase tracking-widest text-gray-400">Bookings by Service Type</p>
+            <p className="text-[11px] text-gray-400">All completed bookings, all time — not affected by the period filter above</p>
+          </div>
           <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
-                  <tr>{['Service Type', 'Bookings', 'Bags', 'Revenue'].map(h => (
+                  <tr>{['Service Type', 'Bags Transferred', 'Bookings', 'Revenue'].map(h => (
                     <th key={h} className="px-4 py-2 text-left text-[10px] font-semibold uppercase tracking-wide text-gray-500">{h}</th>
                   ))}</tr>
                 </thead>
@@ -1972,12 +1983,12 @@ export default function AdminDashboard() {
                   {dashLoading ? (
                     <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">Loading…</td></tr>
                   ) : (dashData?.service_types ?? []).length === 0 ? (
-                    <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">No confirmed bookings in this period</td></tr>
+                    <tr><td colSpan={4} className="py-8 text-center text-sm text-gray-400">No completed bookings yet</td></tr>
                   ) : (dashData?.service_types ?? []).map(s => (
                     <tr key={s.service_label} className="hover:bg-gray-50">
                       <td className="px-4 py-2 text-sm text-gray-700">{s.service_label}</td>
-                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.bookings}</td>
-                      <td className="px-4 py-2 text-sm text-gray-600">{s.bags}</td>
+                      <td className="px-4 py-2 text-sm font-semibold text-gray-900">{s.bags}</td>
+                      <td className="px-4 py-2 text-sm text-gray-600">{s.bookings}</td>
                       <td className="px-4 py-2 text-sm text-gray-600">{fmtINR(s.revenue)}</td>
                     </tr>
                   ))}

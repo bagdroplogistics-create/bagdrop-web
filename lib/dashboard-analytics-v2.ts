@@ -755,25 +755,70 @@ export async function getDashboardData(
     profit_margin: tripIncome > 0 ? ((tripIncome - tripExpense) / tripIncome) * 100 : 0,
   }
 
-  // ── Bookings by Service Type — scoped to Confirmed-or-later bookings
-  // (a bare inquiry that never paid has no real service-type revenue to
-  // report), date-filtered by pickup_date. ────────────────────────────────
-  const confirmedOrLater = bookings.filter(b => {
-    if (b.is_test) return false
-    if (!inDateStr(b.pickup_date, range)) return false
-    const i = idxOf(b.status)
-    return i !== -1 && i >= PAYMENT_RECEIVED_IDX
-  })
+  // ── Bookings by Service Type ──────────────────────────────────────────
+  // Founder request, 2026-09-16: a standalone card, NOT tied to the
+  // Business Overview date-range buttons above it — "this card shows from
+  // our all completed inquiry total bags transferred with service type."
+  // Deliberately ignores `range` entirely: scoped to every real (non-test)
+  // booking that actually reached 'completed' — a bag genuinely moved end
+  // to end — across all time, so it never changes when the admin clicks
+  // Today/This Week/etc. for the rest of the dashboard.
+  //
+  // Label normalization: bookings.service_type/service_label come from two
+  // different creation paths that were never unified (see lib/
+  // service-type.ts's header comment) — admin-created quotes store a
+  // directional pair ('doorstep-to-airport'), the public booking form
+  // stores a non-directional category id from lib/constants.ts SERVICE_
+  // TYPES ('airport-delivery', 'excess-baggage', ...), and some historical
+  // rows have a free-typed service_label ("Doorstep to Airport" — no
+  // arrow, different casing) that's really the same thing as the mapped
+  // "Doorstep → Airport" label. Without normalizing, the exact same real
+  // service type fragments into multiple rows (as seen in the founder's
+  // screenshot: "Doorstep → Airport", "airport-delivery", and "Doorstep to
+  // Airport" all showing up separately). canonicalServiceLabel() below
+  // resolves any of these spellings to ONE consistent display label.
+  const SERVICE_TYPE_LABELS: Record<string, string> = {
+    'doorstep-to-airport':  'Doorstep → Airport',
+    'door-to-airport':      'Doorstep → Airport',
+    'airport-to-doorstep':  'Airport → Doorstep',
+    'airport-to-door':      'Airport → Doorstep',
+    'doorstep-to-doorstep': 'Doorstep → Doorstep',
+    'door-to-door':         'Doorstep → Doorstep',
+    'airport-to-airport':   'Airport → Airport',
+    'airport-delivery':     'Airport Delivery',
+    'excess-baggage':       'Excess Baggage',
+    'destination-weddings': 'Destination Weddings',
+    'corporate-travel':     'Corporate Travel',
+    'student-relocation':   'Student Relocation',
+  }
+  const normalizeServiceKey = (s: string) => s.trim().toLowerCase().replace(/\s+/g, '-')
+  const titleCaseFallback = (s: string) =>
+    s.split(/[-_\s]+/).filter(Boolean).map(w => w[0].toUpperCase() + w.slice(1)).join(' ')
+  function canonicalServiceLabel(rawLabel: string | null, rawType: string | null): string {
+    for (const candidate of [rawLabel, rawType]) {
+      if (!candidate || !candidate.trim()) continue
+      const mapped = SERVICE_TYPE_LABELS[normalizeServiceKey(candidate)]
+      if (mapped) return mapped
+    }
+    const first = (rawLabel && rawLabel.trim()) || (rawType && rawType.trim()) || null
+    if (!first) return 'Unspecified'
+    // Already looks like a proper display label (has an arrow, or mixed
+    // case with spaces) — use as-is rather than re-title-casing it.
+    if (/→/.test(first) || /\s/.test(first)) return first
+    return titleCaseFallback(first)
+  }
+
+  const completedBookings = bookings.filter(b => !b.is_test && b.status === 'completed')
   const serviceTypeMap = new Map<string, { service_label: string; bookings: number; bags: number; revenue: number }>()
-  for (const b of confirmedOrLater) {
-    const label = b.service_label || b.service_type || 'Unspecified'
+  for (const b of completedBookings) {
+    const label = canonicalServiceLabel(b.service_label, b.service_type)
     const entry = serviceTypeMap.get(label) ?? { service_label: label, bookings: 0, bags: 0, revenue: 0 }
     entry.bookings += 1
     entry.bags += Number(b.total_bags) || 0
     entry.revenue += revenueForBooking(b)
     serviceTypeMap.set(label, entry)
   }
-  const serviceTypes = [...serviceTypeMap.values()].sort((a, b) => b.revenue - a.revenue)
+  const serviceTypes = [...serviceTypeMap.values()].sort((a, b) => b.bags - a.bags)
 
   // ── Inquiry Source Analytics — Inquiries dated by lead.created_at, Quotes
   // by quote date, Confirmed/Completed/Revenue by the same rules as above,
