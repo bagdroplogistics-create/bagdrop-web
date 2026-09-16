@@ -81,62 +81,106 @@ export interface ResolvedRange {
 }
 
 function pad2(n: number) { return String(n).padStart(2, '0') }
-function dstr(d: Date) { return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}` }
+
+// Server runs in UTC (Vercel/Node), but every date on this dashboard means
+// an IST calendar day to the person looking at it. Computing "today"/"this
+// week"/"this month" from a plain `new Date()` and its LOCAL getFullYear/
+// getMonth/getDate (server-local = UTC in production) silently shifts every
+// boundary by 5.5 hours — an inquiry created at 1am IST lands in
+// "yesterday," and near a week/month edge a whole day's worth of real
+// inquiries can drop out of the selected range entirely (founder-reported
+// 2026-09-16: Total Inquiries didn't match the real count). This codebase
+// already hit and fixed the identical bug once, in app/api/admin/
+// sales-followup-summary/route.ts (IST_OFFSET_MS) — same fix, reused here.
+//
+// All calendar math below works in plain (year, month, day) triples —
+// never round-tripping through a Date object's LOCAL getters, which would
+// silently reintroduce the same server-timezone bug when converting back to
+// a "YYYY-MM-DD" string. `ymd()` normalizes an out-of-range triple (day 0,
+// day 32, month -1, etc.) using Date.UTC/getUTC* only, which is pure
+// calendar arithmetic with zero timezone involvement.
+const IST_OFFSET_MS = (5 * 60 + 30) * 60000
+
+function ymd(y: number, m: number, d: number): { y: number; m: number; d: number } {
+  const dt = new Date(Date.UTC(y, m, d))
+  return { y: dt.getUTCFullYear(), m: dt.getUTCMonth(), d: dt.getUTCDate() }
+}
+function ymdStr(y: number, m: number, d: number): string {
+  const n = ymd(y, m, d)
+  return `${n.y}-${pad2(n.m + 1)}-${pad2(n.d)}`
+}
+// Real UTC instant for a given IST calendar day at 00:00 IST.
+function istMidnightUtc(y: number, m: number, d: number): Date {
+  const n = ymd(y, m, d)
+  return new Date(Date.UTC(n.y, n.m, n.d) - IST_OFFSET_MS)
+}
+// Today's IST calendar date, and IST day-of-week (0=Sun..6=Sat) — derived by
+// shifting the current UTC instant forward by the IST offset and reading
+// its UTC parts, which is exactly today's IST wall-clock date.
+function todayIst(): { y: number; m: number; d: number; dow: number } {
+  const shifted = new Date(Date.now() + IST_OFFSET_MS)
+  return { y: shifted.getUTCFullYear(), m: shifted.getUTCMonth(), d: shifted.getUTCDate(), dow: shifted.getUTCDay() }
+}
 
 // DATE columns (pickup_date, quote_date, payment_date, completed_month_
-// override) are plain "YYYY-MM-DD" strings with no time/timezone component.
-// Comparing them as STRINGS (not Date objects) is the same zero-timezone-
-// risk approach dashboard-analytics/route.ts already uses for exactly this
-// reason — do not change to Date-object comparison.
+// override) are plain "YYYY-MM-DD" strings with no time/timezone component
+// — the calendar day the admin picked, IST by convention throughout this
+// app. Comparing them as STRINGS (not Date objects) is the same zero-
+// timezone-risk approach dashboard-analytics/route.ts already uses for
+// exactly this reason — do not change to Date-object comparison.
 export function resolveDashboardRange(
   preset: DashboardRangePreset,
   customFrom?: string | null,
   customTo?: string | null,
 ): ResolvedRange {
-  const now = new Date()
-  let from: Date
-  let toExclusive: Date
+  const { y, m, d, dow } = todayIst()
+  let fromY: number, fromM: number, fromD: number
+  let lastY: number, lastM: number, lastD: number // last INCLUDED day
 
   switch (preset) {
     case 'today': {
-      from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      toExclusive = new Date(from.getFullYear(), from.getMonth(), from.getDate() + 1)
+      fromY = y; fromM = m; fromD = d
+      lastY = y; lastM = m; lastD = d
       break
     }
     case 'this_week': {
-      const day = now.getDay() // 0=Sun..6=Sat
-      const mondayOffset = day === 0 ? -6 : 1 - day
-      const monday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayOffset)
-      from = monday
-      toExclusive = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + 7)
+      const mondayOffset = dow === 0 ? -6 : 1 - dow
+      const monday = ymd(y, m, d + mondayOffset)
+      fromY = monday.y; fromM = monday.m; fromD = monday.d
+      const sunday = ymd(monday.y, monday.m, monday.d + 6)
+      lastY = sunday.y; lastM = sunday.m; lastD = sunday.d
       break
     }
     case 'last_month': {
-      from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      toExclusive = new Date(now.getFullYear(), now.getMonth(), 1)
+      fromY = y; fromM = m - 1; fromD = 1
+      const lastDay = ymd(y, m, 0) // day 0 of this month = last day of last month
+      lastY = lastDay.y; lastM = lastDay.m; lastD = lastDay.d
       break
     }
     case 'this_year': {
-      from = new Date(now.getFullYear(), 0, 1)
-      toExclusive = new Date(now.getFullYear() + 1, 0, 1)
+      fromY = y; fromM = 0; fromD = 1
+      lastY = y; lastM = 11; lastD = 31
       break
     }
     case 'custom': {
-      from = customFrom ? new Date(customFrom + 'T00:00:00') : new Date(now.getFullYear(), now.getMonth(), 1)
-      const to = customTo ? new Date(customTo + 'T00:00:00') : now
-      toExclusive = new Date(to.getFullYear(), to.getMonth(), to.getDate() + 1)
+      if (customFrom) { const [cy, cm, cd] = customFrom.split('-').map(Number); fromY = cy; fromM = cm - 1; fromD = cd }
+      else { fromY = y; fromM = m; fromD = 1 }
+      if (customTo) { const [cy, cm, cd] = customTo.split('-').map(Number); lastY = cy; lastM = cm - 1; lastD = cd }
+      else { lastY = y; lastM = m; lastD = d }
       break
     }
     case 'this_month':
     default: {
-      from = new Date(now.getFullYear(), now.getMonth(), 1)
-      toExclusive = new Date(now.getFullYear(), now.getMonth() + 1, 1)
+      fromY = y; fromM = m; fromD = 1
+      const lastDay = ymd(y, m + 1, 0) // day 0 of next month = last day of this month
+      lastY = lastDay.y; lastM = lastDay.m; lastD = lastDay.d
       break
     }
   }
 
-  const lastIncludedDay = new Date(toExclusive.getTime() - 24 * 60 * 60 * 1000)
-  return { preset, from, toExclusive, fromStr: dstr(from), toStr: dstr(lastIncludedDay) }
+  const from = istMidnightUtc(fromY, fromM, fromD)
+  const toExclusive = istMidnightUtc(lastY, lastM, lastD + 1)
+  return { preset, from, toExclusive, fromStr: ymdStr(fromY, fromM, fromD), toStr: ymdStr(lastY, lastM, lastD) }
 }
 
 function inTs(iso: string | null | undefined, r: ResolvedRange): boolean {
@@ -262,7 +306,6 @@ const QUOTE_SENT_IDX       = STATUS_ORDER.indexOf('quote_sent')
 const ACCEPTED_IDX         = STATUS_ORDER.indexOf('accepted')
 const PAYMENT_RECEIVED_IDX = STATUS_ORDER.indexOf('payment_received')
 const ACTIVE_STATUS_SET    = new Set(ACTIVE_BOOKING_STATUSES)
-const TERMINAL_LOST_STATUSES = new Set(['rejected', 'closed', 'cancelled'])
 
 function quoteDateOf(l: LeadRow): { iso: string | null; isTs: boolean } {
   if (l.quote_sent_at) return { iso: l.quote_sent_at, isTs: true }
@@ -531,7 +574,24 @@ export async function getDashboardData(
   const paymentsReceivedAmount = paymentsInRange.reduce((s, p) => s + (Number(p.amount) || 0), 0)
 
   // Live snapshot — not date-filtered, see module comment.
-  const outstandingBookings = bookings.filter(b => !b.is_test && !TERMINAL_LOST_STATUSES.has(b.status))
+  //
+  // Founder-reported 2026-09-16: this originally scoped to "every booking
+  // except rejected/closed/cancelled," which wrongly counted a bare
+  // inquiry or a quote the customer hasn't even responded to yet as
+  // outstanding debt for its full total_amount — a week with ₹15,330 of
+  // real paid revenue showed ₹11,37,272 "Outstanding" because every
+  // unanswered quote ever sent (all-time) was being added in. Outstanding
+  // only makes sense once a customer has actually committed to pay —
+  // i.e. the booking reached 'accepted' or later in STATUS_ORDER — through
+  // to 'completed' (a completed job with an unpaid balance is real money
+  // still owed, so it stays included, not excluded). Bookings still stuck
+  // at inquiry/quote_created/quote_sent (nobody has said yes yet) and the
+  // rejected/closed/cancelled terminal branches are both correctly out.
+  const outstandingBookings = bookings.filter(b => {
+    if (b.is_test) return false
+    const i = idxOf(b.status)
+    return i !== -1 && i >= ACCEPTED_IDX
+  })
   const outstandingAmount = outstandingBookings.reduce((s, b) => s + balanceFor(b), 0)
 
   const pendingVerificationAmount = payments
