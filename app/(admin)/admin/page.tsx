@@ -1737,7 +1737,11 @@ export default function AdminDashboard() {
         <p className="mt-0.5 text-sm text-gray-400">Full booking lifecycle management</p>
       </div>
 
-      <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6">
+      {/* Founder request, 2026-09-16: "make this dashboard in full view" —
+          was capped at max-w-7xl (1280px) and centered, leaving empty
+          space on wider monitors/office displays. Now stretches to the
+          full browser width instead. */}
+      <main className="w-full px-4 py-6 sm:px-6 lg:px-8">
 
         {/* Group / Wedding Booking module — standalone link card,
             deliberately NOT wired into the Dashboard Analytics KPI grid
