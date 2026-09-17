@@ -1125,11 +1125,26 @@ export default function PaymentsPage() {
   async function refundPayment(id: string) {
     const reason = prompt('Reason for refund?')
     if (!reason) return
+    // Founder-reported 2026-09-17 (BDA-2026-0163): this button used to only
+    // ever send payment_status + refund_reason, never refund_amount — so
+    // Dashboard Analytics' Refunds card (which filters on
+    // payments.refund_amount > 0, see lib/dashboard-analytics-v2.ts) never
+    // reflected a single refund issued through it. Defaults to the full
+    // payment amount (the common case) but is editable for a partial
+    // refund.
+    const row = payments.find(p => p.id === id)
+    const amtStr = prompt('Refund amount (₹)?', row ? String(row.amount) : '')
+    if (!amtStr) return
+    const refundAmount = Number(amtStr)
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+      alert('Enter a valid refund amount.')
+      return
+    }
     setUpdating(id)
     await fetch(`/api/admin/payments/${id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-      body: JSON.stringify({ payment_status: 'refunded', refund_reason: reason }),
+      body: JSON.stringify({ payment_status: 'refunded', refund_reason: reason, refund_amount: refundAmount }),
     })
     setUpdating(null)
     fetchPayments()

@@ -16,6 +16,7 @@ import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constant
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 import ReviewPanel from '@/components/admin/ReviewPanel'
 import CancelBookingPanel from '@/components/admin/CancelBookingPanel'
+import CancelConfirmedBookingPanel from '@/components/admin/CancelConfirmedBookingPanel'
 import { resolveSource } from '@/lib/lead-source'
 // 2026-08-24 fix: import from lib/booking-status.ts (zero imports, client-safe)
 // rather than lib/lifecycle-notifications.ts (which imports supabaseAdmin —
@@ -2367,6 +2368,25 @@ export default function AdminDashboard() {
                                 {UNCONFIRMED_BOOKING_STATUSES.includes(b.status) && (
                                   <div onClick={e => e.stopPropagation()}>
                                     <CancelBookingPanel
+                                      adminKey={adminKey}
+                                      target={{ bookingId: b.id, bookingStatus: b.status, trackingId: b.tracking_id }}
+                                      onCancelled={fetchData}
+                                    />
+                                  </div>
+                                )}
+
+                                {/* Cancel Confirmed Booking + Refund — founder
+                                    spec 2026-09-17 (BDA-2026-0163): a confirmed/
+                                    paid booking that needs cancelling after money
+                                    has already moved (e.g. customer medical
+                                    emergency, already refunded). Separate panel
+                                    from CancelBookingPanel above — that one stays
+                                    scoped to unconfirmed inquiries only, per its
+                                    own founder spec. See components/admin/
+                                    CancelConfirmedBookingPanel.tsx. */}
+                                {ACTIVE_BOOKING_STATUSES.includes(b.status) && (
+                                  <div onClick={e => e.stopPropagation()}>
+                                    <CancelConfirmedBookingPanel
                                       adminKey={adminKey}
                                       target={{ bookingId: b.id, bookingStatus: b.status, trackingId: b.tracking_id }}
                                       onCancelled={fetchData}
