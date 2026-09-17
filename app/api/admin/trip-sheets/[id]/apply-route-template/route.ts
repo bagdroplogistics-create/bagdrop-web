@@ -70,7 +70,10 @@ export async function POST(req: NextRequest, { params }: Params) {
   // writes to route_template_operations, so the master rate can never be
   // touched by this, and a later template rate change can never overwrite
   // an already-saved trip sheet's value (this only runs once, at creation).
-  type OperationOverride = { route_template_operation_id: string; rate_type: 'fixed' | 'per_bag'; unit_rate: number }
+  type OperationOverride = {
+    route_template_operation_id: string; rate_type: 'fixed' | 'per_bag'; unit_rate: number
+    from_location?: string | null; to_location?: string | null
+  }
   const operationOverrides = new Map<string, OperationOverride>(
     (Array.isArray(body?.operation_overrides) ? body.operation_overrides : [])
       .filter((o: unknown): o is OperationOverride =>
@@ -78,7 +81,12 @@ export async function POST(req: NextRequest, { params }: Params) {
         typeof (o as OperationOverride).route_template_operation_id === 'string' &&
         ((o as OperationOverride).rate_type === 'fixed' || (o as OperationOverride).rate_type === 'per_bag') &&
         Number.isFinite(Number((o as OperationOverride).unit_rate)) && Number((o as OperationOverride).unit_rate) >= 0)
-      .map((o: OperationOverride) => [o.route_template_operation_id, { ...o, unit_rate: Number(o.unit_rate) }])
+      .map((o: OperationOverride) => [o.route_template_operation_id, {
+        ...o,
+        unit_rate: Number(o.unit_rate),
+        from_location: typeof o.from_location === 'string' && o.from_location.trim() ? o.from_location.trim() : null,
+        to_location:   typeof o.to_location   === 'string' && o.to_location.trim()   ? o.to_location.trim()   : null,
+      }])
   )
 
   const { data: sheet, error: sheetErr } = await supabaseAdmin
@@ -148,8 +156,8 @@ export async function POST(req: NextRequest, { params }: Params) {
       trip_sheet_id:  tripSheetId,
       expense_type:   op.expense_type,
       mode:           op.mode,
-      from_location:  op.from_location,
-      to_location:    op.to_location,
+      from_location:  override?.from_location ?? op.from_location,
+      to_location:    override?.to_location   ?? op.to_location,
       vendor:         op.vendor_id ? (vendorNameById.get(op.vendor_id) ?? null) : null,
       description:    op.description,
       estimated_cost: cost,

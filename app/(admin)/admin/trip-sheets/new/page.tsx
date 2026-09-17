@@ -74,6 +74,8 @@ interface RouteTemplateOpLite {
   id: string
   expense_type: string
   operation_category: string
+  from_location: string | null
+  to_location:   string | null
   rate_type: 'fixed' | 'per_bag'
   rate: number
   vendor_id: string | null
@@ -329,9 +331,9 @@ export default function NewTripSheetPage() {
   // "Bags" field above (shared by every per-bag row) per spec item 6 —
   // "Preserve Actual Client Bag Calculation" — only Rate Type/Rate are
   // per-row-editable.
-  const [opOverrides,          setOpOverrides]         = useState<Map<string, { rate_type: 'fixed' | 'per_bag'; unit_rate: string }>>(new Map())
+  const [opOverrides,          setOpOverrides]         = useState<Map<string, { rate_type: 'fixed' | 'per_bag'; unit_rate: string; from_location: string; to_location: string }>>(new Map())
   const [editingOpId,          setEditingOpId]         = useState<string | null>(null)
-  const [editOpForm,           setEditOpForm]          = useState({ rate_type: 'fixed' as 'fixed' | 'per_bag', unit_rate: '' })
+  const [editOpForm,           setEditOpForm]          = useState({ rate_type: 'fixed' as 'fixed' | 'per_bag', unit_rate: '', from_location: '', to_location: '' })
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -574,6 +576,8 @@ export default function NewTripSheetPage() {
               route_template_operation_id,
               rate_type: ov.rate_type,
               unit_rate: Number(ov.unit_rate) || 0,
+              from_location: ov.from_location || null,
+              to_location:   ov.to_location   || null,
             })),
           }),
         })
@@ -884,7 +888,9 @@ export default function NewTripSheetPage() {
                       const ops = rt?.route_template_operations ?? []
                       const effective = (op: RouteTemplateOpLite) => {
                         const ov = opOverrides.get(op.id)
-                        return ov ? { rate_type: ov.rate_type, rate: Number(ov.unit_rate) || 0 } : { rate_type: op.rate_type, rate: Number(op.rate) || 0 }
+                        return ov
+                          ? { rate_type: ov.rate_type, rate: Number(ov.unit_rate) || 0, from_location: ov.from_location || op.from_location, to_location: ov.to_location || op.to_location }
+                          : { rate_type: op.rate_type, rate: Number(op.rate) || 0, from_location: op.from_location, to_location: op.to_location }
                       }
                       const total = ops
                         .filter(op => !excludedOpIds.has(op.id))
@@ -922,16 +928,24 @@ export default function NewTripSheetPage() {
                                     <span className={'flex-1 font-medium text-gray-700' + (excluded ? ' line-through' : '')}>
                                       {op.expense_type}
                                       {overridden && <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-600">EDITED</span>}
+                                      {(eff.from_location || eff.to_location) && (
+                                        <span className="ml-1.5 font-normal text-gray-400">
+                                          ({eff.from_location || '—'} → {eff.to_location || '—'})
+                                        </span>
+                                      )}
                                     </span>
                                     <span className="text-gray-400">{op.vendors?.vendor_name ?? 'In-house'}</span>
                                     <span className={'font-semibold text-gray-800' + (excluded ? ' line-through' : '')}>
                                       {eff.rate_type === 'per_bag' ? `${bags} × ₹${eff.rate} = ` : ''}{fmtRs(cost)}
                                     </span>
-                                    <button type="button" title="Edit rate for this trip sheet"
+                                    <button type="button" title="Edit rate/route for this trip sheet"
                                       onClick={() => {
                                         if (isEditing) { setEditingOpId(null); return }
                                         setEditingOpId(op.id)
-                                        setEditOpForm(overridden ? opOverrides.get(op.id)! : { rate_type: op.rate_type, unit_rate: String(op.rate) })
+                                        setEditOpForm(overridden ? opOverrides.get(op.id)! : {
+                                          rate_type: op.rate_type, unit_rate: String(op.rate),
+                                          from_location: op.from_location ?? '', to_location: op.to_location ?? '',
+                                        })
                                       }}
                                       className="shrink-0 rounded-md p-1 text-gray-300 hover:bg-orange-50 hover:text-orange-500 transition-colors">
                                       <Pencil className="h-3 w-3" />
@@ -940,6 +954,20 @@ export default function NewTripSheetPage() {
 
                                   {isEditing && (
                                     <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-orange-50/70 p-2">
+                                      <div>
+                                        <label className="mb-0.5 block text-[10px] font-semibold text-gray-500">From</label>
+                                        <input value={editOpForm.from_location}
+                                          onChange={e => setEditOpForm(f => ({ ...f, from_location: e.target.value }))}
+                                          placeholder="Origin"
+                                          className="w-28 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                      </div>
+                                      <div>
+                                        <label className="mb-0.5 block text-[10px] font-semibold text-gray-500">To</label>
+                                        <input value={editOpForm.to_location}
+                                          onChange={e => setEditOpForm(f => ({ ...f, to_location: e.target.value }))}
+                                          placeholder="Destination"
+                                          className="w-28 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                      </div>
                                       <div>
                                         <label className="mb-0.5 block text-[10px] font-semibold text-gray-500">Rate Type</label>
                                         <select value={editOpForm.rate_type}
@@ -964,7 +992,10 @@ export default function NewTripSheetPage() {
                                           onClick={() => {
                                             const r = Number(editOpForm.unit_rate)
                                             if (!Number.isFinite(r) || r < 0) return
-                                            setOpOverrides(prev => new Map(prev).set(op.id, { rate_type: editOpForm.rate_type, unit_rate: String(r) }))
+                                            setOpOverrides(prev => new Map(prev).set(op.id, {
+                                              rate_type: editOpForm.rate_type, unit_rate: String(r),
+                                              from_location: editOpForm.from_location.trim(), to_location: editOpForm.to_location.trim(),
+                                            }))
                                             setEditingOpId(null)
                                           }}
                                           className="rounded-lg bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-orange-600 transition-colors">
