@@ -63,6 +63,23 @@ export async function POST(req: NextRequest, { params }: Params) {
   const excludedOperationIds: string[] = Array.isArray(body?.excluded_operation_ids)
     ? body.excluded_operation_ids.filter((x: unknown) => typeof x === 'string')
     : []
+  // Per-application Rate Type/Rate overrides — founder spec 2026-09-17:
+  // "Admin should be able to edit the rate for this specific Tripsheet...
+  // The master template must remain unchanged." Each entry only ever
+  // affects the trip_expenses row built below; nothing here reads from or
+  // writes to route_template_operations, so the master rate can never be
+  // touched by this, and a later template rate change can never overwrite
+  // an already-saved trip sheet's value (this only runs once, at creation).
+  type OperationOverride = { route_template_operation_id: string; rate_type: 'fixed' | 'per_bag'; unit_rate: number }
+  const operationOverrides = new Map<string, OperationOverride>(
+    (Array.isArray(body?.operation_overrides) ? body.operation_overrides : [])
+      .filter((o: unknown): o is OperationOverride =>
+        !!o && typeof o === 'object' &&
+        typeof (o as OperationOverride).route_template_operation_id === 'string' &&
+        ((o as OperationOverride).rate_type === 'fixed' || (o as OperationOverride).rate_type === 'per_bag') &&
+        Number.isFinite(Number((o as OperationOverride).unit_rate)) && Number((o as OperationOverride).unit_rate) >= 0)
+      .map((o: OperationOverride) => [o.route_template_operation_id, { ...o, unit_rate: Number(o.unit_rate) }])
+  )
 
   const { data: sheet, error: sheetErr } = await supabaseAdmin
     .from('trip_sheets')
@@ -118,8 +135,9 @@ export async function POST(req: NextRequest, { params }: Params) {
   }
 
   const rows = appliedOperations.map(op => {
-    const rateType: 'fixed' | 'per_bag' = op.rate_type === 'per_bag' ? 'per_bag' : 'fixed'
-    const unitRate = Number(op.rate) || 0
+    const override = operationOverrides.get(op.id)
+    const rateType: 'fixed' | 'per_bag' = override ? override.rate_type : (op.rate_type === 'per_bag' ? 'per_bag' : 'fixed')
+    const unitRate = override ? override.unit_rate : (Number(op.rate) || 0)
     const cost = rateType === 'per_bag' ? totalBags * unitRate : unitRate
 
     let operationalDate: string | null = null

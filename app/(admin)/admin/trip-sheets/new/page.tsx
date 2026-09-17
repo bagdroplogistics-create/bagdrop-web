@@ -108,6 +108,11 @@ interface LocalExpense {
   operational_date:    string
   operational_time:    string
   operation_category:  OperationCategory
+  // Rate Type / Rate / Bags (founder spec 2026-09-17) — '' means "manual
+  // amount" (type Rate/Cost + Actual Cost directly, the original flow).
+  rate_type: '' | 'fixed' | 'per_bag'
+  unit_rate: string
+  bags:      string
 }
 
 type OperationCategory = 'pickup' | 'middle_mile' | 'delivery' | 'handling' | 'airport_delivery' | 'other'
@@ -161,7 +166,21 @@ function emptyLocalExpense(): LocalExpense {
     _id: uid(), expense_type: '', mode: '', from_location: '', to_location: '',
     vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending',
     vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other',
+    rate_type: '', unit_rate: '', bags: '',
   }
+}
+
+// Rate Type × Rate × Bags -> Amount — mirrors the Route Template preview's
+// own formula exactly (per_bag: bags × rate; fixed: rate, never multiplied
+// by bags). Returns null in manual-amount mode or on an invalid/negative
+// entry, so callers know not to overwrite the manually-typed cost fields.
+function computeRateAmount(rateType: '' | 'fixed' | 'per_bag', rate: string, bags: string): number | null {
+  const r = Number(rate)
+  if (!rateType || !Number.isFinite(r) || r < 0) return null
+  if (rateType === 'fixed') return r
+  const b = Number(bags)
+  if (!Number.isFinite(b) || b < 0) return null
+  return b * r
 }
 
 function fmtDate(d: string | null) {
@@ -300,6 +319,19 @@ export default function NewTripSheetPage() {
   // other inquiries on that route need it) — this lets the admin uncheck
   // one for THIS trip sheet only, without editing the Route Template.
   const [excludedOpIds,        setExcludedOpIds]       = useState<Set<string>>(new Set())
+  // Trip-specific Rate Type / Rate overrides per operation (founder spec
+  // 2026-09-17: "Admin should be able to edit the rate for this specific
+  // Tripsheet... The master template must remain unchanged"). Keyed by
+  // route_template_operations.id; only ever read/written here and sent
+  // alongside excluded_operation_ids to apply-route-template — nothing in
+  // this file ever writes back to route_templates/route_template_operations,
+  // so the master rate can never be affected by this. Bags stays the single
+  // "Bags" field above (shared by every per-bag row) per spec item 6 —
+  // "Preserve Actual Client Bag Calculation" — only Rate Type/Rate are
+  // per-row-editable.
+  const [opOverrides,          setOpOverrides]         = useState<Map<string, { rate_type: 'fixed' | 'per_bag'; unit_rate: string }>>(new Map())
+  const [editingOpId,          setEditingOpId]         = useState<string | null>(null)
+  const [editOpForm,           setEditOpForm]          = useState({ rate_type: 'fixed' as 'fixed' | 'per_bag', unit_rate: '' })
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -538,6 +570,11 @@ export default function NewTripSheetPage() {
             route_template_id: routeTemplateId,
             bags: routeBagsOverride,
             excluded_operation_ids: Array.from(excludedOpIds),
+            operation_overrides: Array.from(opOverrides.entries()).map(([route_template_operation_id, ov]) => ({
+              route_template_operation_id,
+              rate_type: ov.rate_type,
+              unit_rate: Number(ov.unit_rate) || 0,
+            })),
           }),
         })
         if (!applyRes.ok) {
@@ -570,6 +607,9 @@ export default function NewTripSheetPage() {
               operational_date:    e.operational_date || null,
               operational_time:    e.operational_time || null,
               operation_category:  e.operation_category,
+              rate_type: e.rate_type || null,
+              unit_rate: e.rate_type ? (Number(e.unit_rate) || 0) : null,
+              bags:      e.rate_type === 'per_bag' ? (Number(e.bags) || null) : null,
             }),
           })
         ))
@@ -812,7 +852,7 @@ export default function NewTripSheetPage() {
                       <div className="sm:col-span-2">
                         <label className={lbl}>Route Template</label>
                         <div className="relative">
-                          <select value={routeTemplateId} onChange={e => { setRouteTemplateId(e.target.value); setExcludedOpIds(new Set()) }}
+                          <select value={routeTemplateId} onChange={e => { setRouteTemplateId(e.target.value); setExcludedOpIds(new Set()); setOpOverrides(new Map()); setEditingOpId(null) }}
                             className={inp + ' appearance-none pr-8 bg-white'}>
                             <option value="">— No route template (manual expenses only) —</option>
                             {routeTemplates.map(rt => (
@@ -833,43 +873,121 @@ export default function NewTripSheetPage() {
                       <FInput label="Bags" value={routeTemplateBags} onChange={setRouteTemplateBags} type="number" placeholder="1" />
                     </div>
 
-                    {/* Live preview of what will be auto-generated */}
+                    {/* Live preview of what will be auto-generated. Each row
+                        can be excluded (checkbox) and/or have its Rate Type/
+                        Rate overridden for THIS trip sheet only (pencil ->
+                        inline edit) — founder spec 2026-09-17. Bags is the
+                        single "Bags" field above, per spec item 6. */}
                     {routeTemplateId && (() => {
                       const rt = routeTemplates.find(r => r.id === routeTemplateId)
                       const bags = Number(routeTemplateBags) || 1
                       const ops = rt?.route_template_operations ?? []
+                      const effective = (op: RouteTemplateOpLite) => {
+                        const ov = opOverrides.get(op.id)
+                        return ov ? { rate_type: ov.rate_type, rate: Number(ov.unit_rate) || 0 } : { rate_type: op.rate_type, rate: Number(op.rate) || 0 }
+                      }
                       const total = ops
                         .filter(op => !excludedOpIds.has(op.id))
-                        .reduce((s, op) => s + (op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)), 0)
+                        .reduce((s, op) => {
+                          const eff = effective(op)
+                          return s + (eff.rate_type === 'per_bag' ? bags * eff.rate : eff.rate)
+                        }, 0)
                       return (
                         <div className="mt-4 overflow-hidden rounded-xl border border-orange-200 bg-white">
                           <p className="border-b border-orange-100 bg-orange-50/60 px-3 py-1.5 text-[11px] text-orange-600/80">
-                            Uncheck any line this specific trip sheet doesn&apos;t need — the Route Template itself stays unchanged for future bookings.
+                            Uncheck any line this specific trip sheet doesn&apos;t need, or click <Pencil className="inline h-2.5 w-2.5" /> to change its rate for this trip only — the Route Template itself stays unchanged for future bookings.
                           </p>
-                          <div className="max-h-56 overflow-y-auto divide-y divide-orange-50">
+                          <div className="max-h-72 overflow-y-auto divide-y divide-orange-50">
                             {ops.map(op => {
-                              const cost = op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)
+                              const eff = effective(op)
+                              const cost = eff.rate_type === 'per_bag' ? bags * eff.rate : eff.rate
                               const excluded = excludedOpIds.has(op.id)
+                              const overridden = opOverrides.has(op.id)
+                              const isEditing = editingOpId === op.id
                               return (
-                                <label key={op.id} className={'flex items-center gap-2 px-3 py-2 text-xs cursor-pointer ' + (excluded ? 'opacity-40' : '')}>
-                                  <input
-                                    type="checkbox"
-                                    checked={!excluded}
-                                    onChange={() => {
-                                      setExcludedOpIds(prev => {
-                                        const next = new Set(prev)
-                                        if (next.has(op.id)) next.delete(op.id); else next.add(op.id)
-                                        return next
-                                      })
-                                    }}
-                                    className="h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-400"
-                                  />
-                                  <span className={'flex-1 font-medium text-gray-700' + (excluded ? ' line-through' : '')}>{op.expense_type}</span>
-                                  <span className="text-gray-400">{op.vendors?.vendor_name ?? 'In-house'}</span>
-                                  <span className={'font-semibold text-gray-800' + (excluded ? ' line-through' : '')}>
-                                    {op.rate_type === 'per_bag' ? `${bags} × ₹${op.rate} = ` : ''}{fmtRs(cost)}
-                                  </span>
-                                </label>
+                                <div key={op.id} className={'px-3 py-2 text-xs ' + (excluded ? 'opacity-40' : '')}>
+                                  <div className="flex items-center gap-2">
+                                    <input
+                                      type="checkbox"
+                                      checked={!excluded}
+                                      onChange={() => {
+                                        setExcludedOpIds(prev => {
+                                          const next = new Set(prev)
+                                          if (next.has(op.id)) next.delete(op.id); else next.add(op.id)
+                                          return next
+                                        })
+                                      }}
+                                      className="h-3.5 w-3.5 shrink-0 rounded border-orange-300 text-orange-600 focus:ring-orange-400"
+                                    />
+                                    <span className={'flex-1 font-medium text-gray-700' + (excluded ? ' line-through' : '')}>
+                                      {op.expense_type}
+                                      {overridden && <span className="ml-1.5 rounded-full bg-orange-100 px-1.5 py-0.5 text-[9px] font-bold text-orange-600">EDITED</span>}
+                                    </span>
+                                    <span className="text-gray-400">{op.vendors?.vendor_name ?? 'In-house'}</span>
+                                    <span className={'font-semibold text-gray-800' + (excluded ? ' line-through' : '')}>
+                                      {eff.rate_type === 'per_bag' ? `${bags} × ₹${eff.rate} = ` : ''}{fmtRs(cost)}
+                                    </span>
+                                    <button type="button" title="Edit rate for this trip sheet"
+                                      onClick={() => {
+                                        if (isEditing) { setEditingOpId(null); return }
+                                        setEditingOpId(op.id)
+                                        setEditOpForm(overridden ? opOverrides.get(op.id)! : { rate_type: op.rate_type, unit_rate: String(op.rate) })
+                                      }}
+                                      className="shrink-0 rounded-md p-1 text-gray-300 hover:bg-orange-50 hover:text-orange-500 transition-colors">
+                                      <Pencil className="h-3 w-3" />
+                                    </button>
+                                  </div>
+
+                                  {isEditing && (
+                                    <div className="mt-2 flex flex-wrap items-end gap-2 rounded-lg bg-orange-50/70 p-2">
+                                      <div>
+                                        <label className="mb-0.5 block text-[10px] font-semibold text-gray-500">Rate Type</label>
+                                        <select value={editOpForm.rate_type}
+                                          onChange={e => setEditOpForm(f => ({ ...f, rate_type: e.target.value as 'fixed' | 'per_bag' }))}
+                                          className="rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400">
+                                          <option value="fixed">Fixed (per trip)</option>
+                                          <option value="per_bag">Per Bag</option>
+                                        </select>
+                                      </div>
+                                      <div>
+                                        <label className="mb-0.5 block text-[10px] font-semibold text-gray-500">Rate (₹)</label>
+                                        <input type="number" value={editOpForm.unit_rate}
+                                          onChange={e => setEditOpForm(f => ({ ...f, unit_rate: e.target.value }))}
+                                          placeholder="0"
+                                          className="w-24 rounded-lg border border-gray-200 bg-white px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                      </div>
+                                      <span className="pb-1 text-[11px] text-gray-500">
+                                        = {fmtRs(editOpForm.rate_type === 'per_bag' ? bags * (Number(editOpForm.unit_rate) || 0) : (Number(editOpForm.unit_rate) || 0))}
+                                      </span>
+                                      <div className="ml-auto flex gap-1.5">
+                                        <button type="button"
+                                          onClick={() => {
+                                            const r = Number(editOpForm.unit_rate)
+                                            if (!Number.isFinite(r) || r < 0) return
+                                            setOpOverrides(prev => new Map(prev).set(op.id, { rate_type: editOpForm.rate_type, unit_rate: String(r) }))
+                                            setEditingOpId(null)
+                                          }}
+                                          className="rounded-lg bg-orange-500 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-orange-600 transition-colors">
+                                          Save
+                                        </button>
+                                        {overridden && (
+                                          <button type="button"
+                                            onClick={() => {
+                                              setOpOverrides(prev => { const next = new Map(prev); next.delete(op.id); return next })
+                                              setEditingOpId(null)
+                                            }}
+                                            className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-50 transition-colors">
+                                            Reset to template
+                                          </button>
+                                        )}
+                                        <button type="button" onClick={() => setEditingOpId(null)}
+                                          className="rounded-lg border border-gray-200 px-2.5 py-1 text-[11px] text-gray-500 hover:bg-gray-50 transition-colors">
+                                          Cancel
+                                        </button>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               )
                             })}
                           </div>
@@ -1168,6 +1286,53 @@ export default function NewTripSheetPage() {
                         <FInput label="Rate / Cost (₹)" value={expForm.estimated_cost}
                           onChange={v => setExpForm(f => ({ ...f, estimated_cost: v }))} type="number" placeholder="0" />
                       </div>
+
+                      {/* Rate Type / Rate / Bags -> auto-calculated Amount
+                          (founder spec 2026-09-17). Optional: leave Rate Type
+                          as "Manual amount" to keep typing Rate/Cost + Actual
+                          Cost directly, exactly as before. Trip-specific only. */}
+                      <div className="mt-3 rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                        <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-orange-500">Rate Calculation (optional)</p>
+                        <div className="grid gap-3 sm:grid-cols-4">
+                          <FSelect label="Rate Type" value={expForm.rate_type}
+                            onChange={v => setExpForm(f => {
+                              const rate_type = v as '' | 'fixed' | 'per_bag'
+                              const amt = computeRateAmount(rate_type, f.unit_rate, f.bags)
+                              return { ...f, rate_type, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                            })}
+                            options={[{ value: '', label: 'Manual amount' }, { value: 'fixed', label: 'Fixed (per trip)' }, { value: 'per_bag', label: 'Per Bag' }]} />
+                          <FInput label="Rate (₹)" value={expForm.unit_rate}
+                            onChange={v => setExpForm(f => {
+                              const amt = computeRateAmount(f.rate_type, v, f.bags)
+                              return { ...f, unit_rate: v, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                            })}
+                            type="number" placeholder="e.g. 200" />
+                          {expForm.rate_type === 'per_bag' && (
+                            <FInput label="Bags" value={expForm.bags}
+                              onChange={v => setExpForm(f => {
+                                const amt = computeRateAmount(f.rate_type, f.unit_rate, v)
+                                return { ...f, bags: v, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                              })}
+                              type="number" placeholder={routeTemplateBags || '1'} />
+                          )}
+                          {expForm.rate_type && (
+                            <div>
+                              <label className="mb-1 block text-xs font-semibold text-gray-500">Amount</label>
+                              <p className="rounded-lg bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
+                                {fmtRs(computeRateAmount(expForm.rate_type, expForm.unit_rate, expForm.bags) ?? 0)}
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                        <p className="mt-2 text-[11px] text-gray-400">
+                          {expForm.rate_type === 'per_bag'
+                            ? 'Amount = Bags × Rate — auto-fills Rate/Cost and Actual Cost above (still editable after).'
+                            : expForm.rate_type === 'fixed'
+                            ? 'Amount = Rate, regardless of bag count — auto-fills Rate/Cost and Actual Cost above (still editable after).'
+                            : 'Leave as "Manual amount" to type Rate/Cost and Actual Cost directly, exactly as before.'}
+                        </p>
+                      </div>
+
                       <div className="mt-3 grid gap-3 sm:grid-cols-5">
                         <FInput label="Actual Cost (₹)" value={expForm.actual_cost}
                           onChange={v => setExpForm(f => ({ ...f, actual_cost: v }))} type="number" placeholder="0" />
@@ -1242,6 +1407,8 @@ export default function NewTripSheetPage() {
                               <td className="px-4 py-3">
                                 <p className="text-sm font-medium text-gray-800">{e.expense_type}</p>
                                 {(e.vendor || e.description) && <p className="text-xs text-gray-400 mt-0.5">{[e.vendor, e.description].filter(Boolean).join(' · ')}</p>}
+                                {e.rate_type === 'per_bag' && <p className="mt-0.5 text-[11px] text-gray-400">{e.bags || 0} bag{e.bags !== '1' ? 's' : ''} × ₹{e.unit_rate || 0}</p>}
+                                {e.rate_type === 'fixed' && <p className="mt-0.5 text-[11px] text-gray-400">Fixed rate</p>}
                               </td>
                               <td className="px-4 py-3 text-sm text-gray-600">{e.from_location || <span className="text-gray-300">—</span>}</td>
                               <td className="px-4 py-3 text-sm text-gray-600">{e.to_location   || <span className="text-gray-300">—</span>}</td>
