@@ -14,7 +14,7 @@ const FAQS = [
     category: 'Booking',
     items: [
       { q: 'How far in advance do I need to book?', a: 'We recommend at least 24 hours for airport pickups and intercity. Same-day may be available in select cities — check at checkout.' },
-      { q: 'Can I change or cancel my booking?', a: 'Yes. Contact us on WhatsApp at least 6 hours before your pickup slot. Cancellations made more than 24 hours in advance are fully refunded.' },
+      { q: 'Can I change or cancel my booking?', a: 'Yes. Contact us on WhatsApp to change or cancel your booking. For a full refund: Mumbai pickups must be cancelled at least 5 days before the scheduled pick-up time; all other destinations must be cancelled at least 7 days before the scheduled pick-up time.' },
       { q: 'How do I book for multiple people or a group?', a: 'Use our Group / Wedding booking option. You can add up to 30 bags in a single booking. For larger volumes, contact us for a custom quote.' },
     ],
   },
