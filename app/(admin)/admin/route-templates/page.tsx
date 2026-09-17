@@ -248,6 +248,39 @@ export default function RouteTemplatesPage() {
     }
   }
 
+  // Founder request, 2026-09-17: "add Auto charges, porter charges, Cloak
+  // room charges (MGAS), Bus Freight (Metro Travels), Shree Shyam Travels
+  // (Mahipalpur-Delhi) expense in route templates" — applied to every
+  // existing route template (confirmed via follow-up), rate left at ₹0
+  // ("rate i will add later on"). Vendor names are carried in each row's
+  // Description (not linked to a real Vendor Master record, since this
+  // page can't confirm one already exists) — link the real vendor and set
+  // the rate per route afterward via Edit. Safe to re-click: skips any
+  // route/operation pair that already exists.
+  async function addCommonOperations() {
+    if (!confirm('Add Auto Charges, Porter Charges, Cloak Room Charges (MGAS), Bus Freight (Metro Travels), and Bus Freight (Shree Shyam Travels) to every route template that doesn\'t already have them? Rate stays ₹0 and Vendor stays unlinked (name noted in Description) until you fill those in per route.')) return
+    setImporting(true); setImportMsg('')
+    try {
+      const res = await fetch('/api/admin/route-templates/add-common-operations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({}),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { setImportMsg('Error: ' + (d.error ?? 'Failed to add operations')); return }
+      setImportMsg(
+        d.operations_created > 0
+          ? `Added ${d.operations_created} operation${d.operations_created !== 1 ? 's' : ''} across ${d.routes_updated} route${d.routes_updated !== 1 ? 's' : ''} — fill in Rate (and link the real Vendor) per route below.`
+          : 'Nothing to add — every route template already has all 5.'
+      )
+      fetchRoutes()
+    } catch {
+      setImportMsg('Error: network error, please try again')
+    } finally {
+      setImporting(false)
+    }
+  }
+
   useEffect(() => {
     if (!authed || !adminKey) return
     fetch(`/api/admin/vendors?key=${adminKey}`).then(r => r.json()).then(d => setVendors(d.vendors ?? [])).catch(() => {})
@@ -444,6 +477,12 @@ export default function RouteTemplatesPage() {
               className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
               {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
               Add Standard 6 Operations
+            </button>
+            <button onClick={addCommonOperations} disabled={importing}
+              title="Add Auto Charges, Porter Charges, Cloak Room Charges (MGAS), Bus Freight (Metro Travels), and Bus Freight (Shree Shyam Travels) to every route template that doesn't already have them"
+              className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2 text-sm font-semibold text-orange-600 hover:bg-orange-50 disabled:opacity-50 transition-colors">
+              {importing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Layers className="h-4 w-4" />}
+              Add Common Charges (All Routes)
             </button>
             <button onClick={startCreate}
               className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-600 transition-colors">
