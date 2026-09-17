@@ -60,7 +60,7 @@ const DEFAULT_TERMS_LIST = [
   'All bookings confirmed on receipt of full payment. A CN number will be issued for reference.',
   'Only services mentioned above are included. Company reserves the right to cancel at any point.',
   'Luggage must not contain items prohibited by law. All bags processed through Govt screening.',
-  'Cancellation (Mumbai): ≥5 days for full refund. All other destinations: ≥7 days.',
+  'Cancellation Policy — Mumbai Location: Cancellations must be made at least 5 days before the scheduled pick-up time to receive a full refund. All Other Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
   'Bagdrop is not liable for loss/damage during transit. Carry essential documents personally.',
   'Rates subject to change without prior notice and subject to availability at time of booking.',
 ]
