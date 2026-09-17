@@ -53,6 +53,16 @@ export async function POST(req: NextRequest, { params }: Params) {
   const body = await req.json().catch(() => null)
   const routeTemplateId: string | undefined = body?.route_template_id
   if (!routeTemplateId) return NextResponse.json({ error: 'route_template_id is required' }, { status: 400 })
+  // Per-application exclusions — lets the admin skip a specific operation
+  // (e.g. "Auto Charges (Mohanbhai)") for THIS trip sheet only, without
+  // touching the Route Template itself (other bookings on the same route
+  // still get the full template). Founder spec, 2026-09-17: "i have added
+  // this expense in route template ... but in other inquiry may be this
+  // expense is required." Purely additive — omitting this field keeps
+  // every prior caller's behaviour (apply everything) unchanged.
+  const excludedOperationIds: string[] = Array.isArray(body?.excluded_operation_ids)
+    ? body.excluded_operation_ids.filter((x: unknown) => typeof x === 'string')
+    : []
 
   const { data: sheet, error: sheetErr } = await supabaseAdmin
     .from('trip_sheets')
@@ -88,19 +98,26 @@ export async function POST(req: NextRequest, { params }: Params) {
     return NextResponse.json({ error: `Route template "${route.route_name}" has no operations configured yet — add some in Route Templates first.` }, { status: 400 })
   }
 
+  const appliedOperations = excludedOperationIds.length > 0
+    ? operations.filter(op => !excludedOperationIds.includes(op.id))
+    : operations
+  if (appliedOperations.length === 0) {
+    return NextResponse.json({ error: 'All operations in this route template were excluded — nothing to apply. Include at least one operation.' }, { status: 400 })
+  }
+
   const totalBags = Number(body.bags) || Number(sheet.total_bags) || 1
 
   // Resolve vendor names up front (for the legacy free-text `vendor` column
   // — belt-and-suspenders display compatibility; the modern Vendor column
   // on the Trip Sheet detail page resolves via vendor_id, not this field).
-  const vendorIds = [...new Set(operations.map(o => o.vendor_id).filter(Boolean))] as string[]
+  const vendorIds = [...new Set(appliedOperations.map(o => o.vendor_id).filter(Boolean))] as string[]
   const vendorNameById = new Map<string, string>()
   if (vendorIds.length > 0) {
     const { data: vendorRows } = await supabaseAdmin.from('vendors').select('id, vendor_name').in('id', vendorIds)
     for (const v of vendorRows ?? []) vendorNameById.set(v.id, v.vendor_name)
   }
 
-  const rows = operations.map(op => {
+  const rows = appliedOperations.map(op => {
     const rateType: 'fixed' | 'per_bag' = op.rate_type === 'per_bag' ? 'per_bag' : 'fixed'
     const unitRate = Number(op.rate) || 0
     const cost = rateType === 'per_bag' ? totalBags * unitRate : unitRate

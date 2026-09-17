@@ -294,6 +294,12 @@ export default function NewTripSheetPage() {
   const [routeTemplateId,      setRouteTemplateId]     = useState('')
   const [routeTemplateBags,    setRouteTemplateBags]   = useState('1')
   const [loadingRouteTemplates, setLoadingRouteTemplates] = useState(false)
+  // Per-application exclusions (founder spec, 2026-09-17): some operations
+  // on a route template are only needed for SOME bookings on that route
+  // (e.g. "Auto Charges (Mohanbhai)" was added to Vadodara→Mumbai because
+  // other inquiries on that route need it) — this lets the admin uncheck
+  // one for THIS trip sheet only, without editing the Route Template.
+  const [excludedOpIds,        setExcludedOpIds]       = useState<Set<string>>(new Set())
 
   // ── Auth ─────────────────────────────────────────────────────────────────
 
@@ -528,7 +534,11 @@ export default function NewTripSheetPage() {
         const applyRes = await fetch(`/api/admin/trip-sheets/${sheetId}/apply-route-template`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-          body: JSON.stringify({ route_template_id: routeTemplateId, bags: routeBagsOverride }),
+          body: JSON.stringify({
+            route_template_id: routeTemplateId,
+            bags: routeBagsOverride,
+            excluded_operation_ids: Array.from(excludedOpIds),
+          }),
         })
         if (!applyRes.ok) {
           const ad = await applyRes.json().catch(() => ({}))
@@ -802,7 +812,7 @@ export default function NewTripSheetPage() {
                       <div className="sm:col-span-2">
                         <label className={lbl}>Route Template</label>
                         <div className="relative">
-                          <select value={routeTemplateId} onChange={e => setRouteTemplateId(e.target.value)}
+                          <select value={routeTemplateId} onChange={e => { setRouteTemplateId(e.target.value); setExcludedOpIds(new Set()) }}
                             className={inp + ' appearance-none pr-8 bg-white'}>
                             <option value="">— No route template (manual expenses only) —</option>
                             {routeTemplates.map(rt => (
@@ -828,20 +838,38 @@ export default function NewTripSheetPage() {
                       const rt = routeTemplates.find(r => r.id === routeTemplateId)
                       const bags = Number(routeTemplateBags) || 1
                       const ops = rt?.route_template_operations ?? []
-                      const total = ops.reduce((s, op) => s + (op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)), 0)
+                      const total = ops
+                        .filter(op => !excludedOpIds.has(op.id))
+                        .reduce((s, op) => s + (op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)), 0)
                       return (
                         <div className="mt-4 overflow-hidden rounded-xl border border-orange-200 bg-white">
+                          <p className="border-b border-orange-100 bg-orange-50/60 px-3 py-1.5 text-[11px] text-orange-600/80">
+                            Uncheck any line this specific trip sheet doesn&apos;t need — the Route Template itself stays unchanged for future bookings.
+                          </p>
                           <div className="max-h-56 overflow-y-auto divide-y divide-orange-50">
                             {ops.map(op => {
                               const cost = op.rate_type === 'per_bag' ? bags * (Number(op.rate) || 0) : (Number(op.rate) || 0)
+                              const excluded = excludedOpIds.has(op.id)
                               return (
-                                <div key={op.id} className="flex items-center justify-between px-3 py-2 text-xs">
-                                  <span className="font-medium text-gray-700">{op.expense_type}</span>
+                                <label key={op.id} className={'flex items-center gap-2 px-3 py-2 text-xs cursor-pointer ' + (excluded ? 'opacity-40' : '')}>
+                                  <input
+                                    type="checkbox"
+                                    checked={!excluded}
+                                    onChange={() => {
+                                      setExcludedOpIds(prev => {
+                                        const next = new Set(prev)
+                                        if (next.has(op.id)) next.delete(op.id); else next.add(op.id)
+                                        return next
+                                      })
+                                    }}
+                                    className="h-3.5 w-3.5 rounded border-orange-300 text-orange-600 focus:ring-orange-400"
+                                  />
+                                  <span className={'flex-1 font-medium text-gray-700' + (excluded ? ' line-through' : '')}>{op.expense_type}</span>
                                   <span className="text-gray-400">{op.vendors?.vendor_name ?? 'In-house'}</span>
-                                  <span className="font-semibold text-gray-800">
+                                  <span className={'font-semibold text-gray-800' + (excluded ? ' line-through' : '')}>
                                     {op.rate_type === 'per_bag' ? `${bags} × ₹${op.rate} = ` : ''}{fmtRs(cost)}
                                   </span>
-                                </div>
+                                </label>
                               )
                             })}
                           </div>
