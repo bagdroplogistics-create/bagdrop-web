@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -450,6 +450,35 @@ export default function NewTripSheetPage() {
     setRouteTemplateBags(implied || '1')
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.booking_id, entryMode])
+
+  // Auto-select the Route Template matching the selected booking's route
+  // (founder request, 2026-09-17: "when we select any booking, Route
+  // template automatic select from dropdown according to that inquiry
+  // route and show that route template with all expenses"). Fires once per
+  // booking selection (tracked via the ref below) so it never fights an
+  // admin who deliberately picks a different template — or "No route
+  // template" — for that same booking afterward; picking a DIFFERENT
+  // booking gets a fresh chance to auto-match. "Baroda"/"Vadodara" are
+  // treated as the same city (see the 2026-09-15 standardization elsewhere
+  // in Route Pricing/Route Templates) so older booking data using either
+  // spelling still matches.
+  const autoMatchedBookingRef = useRef<string | null>(null)
+  useEffect(() => {
+    if (!selected || routeTemplates.length === 0) return
+    if (autoMatchedBookingRef.current === selected.booking_id) return
+    autoMatchedBookingRef.current = selected.booking_id
+    const norm = (s: string | null | undefined) =>
+      (s ?? '').trim().toLowerCase().replace(/^baroda$/, 'vadodara')
+    const from = norm(selected.from_city)
+    const to   = norm(selected.to_city)
+    if (!from || !to) return
+    const match = routeTemplates.find(rt => norm(rt.from_city) === from && norm(rt.to_city) === to && rt.status === 'active')
+    if (match) {
+      setRouteTemplateId(match.id)
+      setExcludedOpIds(new Set())
+      setOpOverrides(new Map())
+    }
+  }, [selected, routeTemplates])
 
   // Whenever a booking/lead is selected, check whether it already has a
   // (non-cancelled) trip sheet — the backend's own duplicate guard (see
