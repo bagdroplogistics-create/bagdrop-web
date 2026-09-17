@@ -52,6 +52,17 @@ export async function PATCH(req: NextRequest, { params }: Params) {
     // op on any other row, since estimated_cost is only auto-recomputed
     // below when unit_rate is present.
     'bags',
+    // Trip-specific Rate Type / Rate editing (founder spec 2026-09-17: "I
+    // only need the ability to edit existing expense rows and add new
+    // expense rows... this edit must apply only to the current Tripsheet,
+    // it must not change the original Route Template rate"). Editing these
+    // on a row that came from a route template only ever touches THIS
+    // trip_expenses row — route_template_operations (the master template)
+    // is a completely separate table this code path never writes to, so
+    // the master rate is untouched by construction, and a future template
+    // rate change can never overwrite an already-saved trip sheet's own
+    // value (nothing here re-reads the template after creation).
+    'rate_type', 'unit_rate',
   ]
   const updates: Record<string, unknown> = {}
   for (const key of allowed) {
@@ -64,25 +75,42 @@ export async function PATCH(req: NextRequest, { params }: Params) {
   // back to in-house) — 'vendor_id' in body with an empty/falsy value
   // means "unassign", not "leave unchanged".
   if ('vendor_id' in updates && !updates.vendor_id) updates.vendor_id = null
+  if ('rate_type' in updates && updates.rate_type !== 'per_bag' && updates.rate_type !== 'fixed') updates.rate_type = null
+  if ('unit_rate' in updates) updates.unit_rate = updates.unit_rate == null || updates.unit_rate === '' ? null : Number(updates.unit_rate) || 0
 
-  // Editing bags directly on a per-bag route-template row recomputes its
-  // Rate/Cost from that row's own stored unit_rate — same calculation the
-  // Trip Sheet-level bag-count cascade uses, just scoped to one row instead
-  // of every still-in-sync one. If the admin also sent an explicit
-  // estimated_cost/actual_cost in the same request, that wins (don't
-  // silently override a value they just typed).
-  if ('bags' in updates) {
-    updates.bags = Math.max(0, Number(updates.bags) || 0) || null
+  // Recompute Rate/Cost (and Actual Cost, if it's still tracking the plan)
+  // from rate_type × unit_rate × bags whenever any of those three changed —
+  // widened from the original bags-only version (2026-09-15) to also cover
+  // an admin editing the RATE itself or switching Fixed <-> Per Bag for
+  // this one trip sheet. Merges the incoming change(s) with whatever's
+  // already stored so a single-field edit (e.g. just the rate) still
+  // recomputes correctly against the row's existing bags/rate_type. If the
+  // admin also sent an explicit estimated_cost/actual_cost in the same
+  // request, that wins — never silently overrides a value they just typed.
+  if ('bags' in updates) updates.bags = Math.max(0, Number(updates.bags) || 0) || null
+  if ('bags' in updates || 'unit_rate' in updates || 'rate_type' in updates) {
     const { data: existing } = await supabaseAdmin
       .from('trip_expenses')
-      .select('rate_type, unit_rate, estimated_cost, actual_cost')
+      .select('rate_type, unit_rate, bags, estimated_cost, actual_cost')
       .eq('id', expenseId)
       .maybeSingle()
-    if (existing?.rate_type === 'per_bag' && existing.unit_rate != null && updates.bags) {
-      const newCost = Number(updates.bags) * Number(existing.unit_rate)
-      if (!('estimated_cost' in updates)) updates.estimated_cost = newCost
-      const actualStillTrackingPlan = Number(existing.actual_cost) === Number(existing.estimated_cost)
-      if (!('actual_cost' in updates) && actualStillTrackingPlan) updates.actual_cost = newCost
+    if (existing) {
+      const finalRateType = 'rate_type' in updates ? updates.rate_type : existing.rate_type
+      const finalUnitRate = 'unit_rate' in updates ? updates.unit_rate : existing.unit_rate
+      const finalBags     = 'bags'      in updates ? updates.bags      : existing.bags
+
+      let newCost: number | null = null
+      if (finalRateType === 'per_bag' && finalUnitRate != null && finalBags) {
+        newCost = Number(finalBags) * Number(finalUnitRate)
+      } else if (finalRateType === 'fixed' && finalUnitRate != null) {
+        newCost = Number(finalUnitRate) // fixed/per-trip — never multiplied by bags
+      }
+
+      if (newCost != null) {
+        if (!('estimated_cost' in updates)) updates.estimated_cost = newCost
+        const actualStillTrackingPlan = Number(existing.actual_cost) === Number(existing.estimated_cost)
+        if (!('actual_cost' in updates) && actualStillTrackingPlan) updates.actual_cost = newCost
+      }
     }
   }
 

@@ -199,6 +199,25 @@ function Select({ label, value, onChange, options }: {
   )
 }
 
+// Rate Type × Rate × Bags -> Amount, mirroring the exact formula
+// apply-route-template / the New Trip Sheet wizard's preview already use
+// (per_bag: bags × rate; fixed: rate, never multiplied by bags). Returns
+// null when rate_type is '' (manual-amount mode) or rate isn't a valid
+// number yet, so callers know not to overwrite the manually-typed cost
+// fields.
+function computeRateAmount(rateType: '' | 'fixed' | 'per_bag', rate: string, bags: string): number | null {
+  const r = Number(rate)
+  // Validation (founder spec §11): Rate must be a valid non-negative
+  // number; Bags/quantity cannot be negative either. An invalid or
+  // negative entry returns null rather than a NaN/negative amount, so
+  // callers simply leave the cost fields untouched until it's fixed.
+  if (!rateType || !Number.isFinite(r) || r < 0) return null
+  if (rateType === 'fixed') return r
+  const b = Number(bags)
+  if (!Number.isFinite(b) || b < 0) return null
+  return b * r
+}
+
 // ── Inner component (uses useSearchParams) ────────────────────
 function TripSheetDetail({ id }: { id: string }) {
   const router      = useRouter()
@@ -243,6 +262,12 @@ function TripSheetDetail({ id }: { id: string }) {
     to_location: '', vendor: '', description: '', estimated_cost: '',
     actual_cost: '', payment_status: 'pending',
     vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' as OperationCategory,
+    // Trip-specific Rate Type / Rate / Bags (founder spec 2026-09-17) —
+    // '' means "manual amount" (type Rate/Actual Cost directly, exactly
+    // the pre-existing flow). Choosing Fixed or Per Bag auto-fills
+    // Rate/Cost + Actual Cost below from rate × bags, same formula
+    // apply-route-template already uses.
+    rate_type: '' as '' | 'fixed' | 'per_bag', unit_rate: '', bags: '',
   })
   const [savingExp,    setSavingExp]    = useState(false)
   const [editingExp,   setEditingExp]   = useState<string | null>(null)
@@ -250,6 +275,7 @@ function TripSheetDetail({ id }: { id: string }) {
     expense_type: '', from_location: '', to_location: '',
     vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending',
     vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' as OperationCategory,
+    rate_type: '' as '' | 'fixed' | 'per_bag', unit_rate: '', bags: '',
   })
 
   // Vendor Master (for the Trip Expense vendor dropdown)
@@ -480,11 +506,14 @@ function TripSheetDetail({ id }: { id: string }) {
         vendor_id:        expForm.vendor_id || null,
         operational_date: expForm.operational_date || null,
         operational_time: expForm.operational_time || null,
+        rate_type: expForm.rate_type || null,
+        unit_rate: expForm.rate_type ? (Number(expForm.unit_rate) || 0) : null,
+        bags:      expForm.rate_type === 'per_bag' ? (Number(expForm.bags) || null) : null,
       }),
     })
     if (res.ok) {
       setShowExpForm(false)
-      setExpForm({ expense_type: 'Transportation', mode: '', from_location: '', to_location: '', vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending', vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other' })
+      setExpForm({ expense_type: 'Transportation', mode: '', from_location: '', to_location: '', vendor: '', description: '', estimated_cost: '', actual_cost: '', payment_status: 'pending', vendor_id: '', operational_date: '', operational_time: '', operation_category: 'other', rate_type: '', unit_rate: '', bags: '' })
       fetchSheet()
     }
     setSavingExp(false)
@@ -543,6 +572,13 @@ function TripSheetDetail({ id }: { id: string }) {
       operational_date:    e.operational_date   ?? '',
       operational_time:    e.operational_time   ?? '',
       operation_category:  e.operation_category ?? 'other',
+      // Trip-specific Rate Type / Rate / Bags — seeded from this row's own
+      // saved values (whether it came from a route template or was already
+      // manually rate-based). A plain manually-added row with none of these
+      // set defaults to '' (manual amount), preserving old behavior exactly.
+      rate_type: (e.rate_type ?? '') as '' | 'fixed' | 'per_bag',
+      unit_rate: e.unit_rate != null ? String(e.unit_rate) : '',
+      bags:      e.bags      != null ? String(e.bags)      : String(sheet?.total_bags ?? 1),
     })
   }
 
@@ -564,6 +600,9 @@ function TripSheetDetail({ id }: { id: string }) {
         operational_date:    editExpForm.operational_date || null,
         operational_time:    editExpForm.operational_time || null,
         operation_category:  editExpForm.operation_category,
+        rate_type: editExpForm.rate_type || null,
+        unit_rate: editExpForm.rate_type ? (Number(editExpForm.unit_rate) || 0) : null,
+        bags:      editExpForm.rate_type === 'per_bag' ? (Number(editExpForm.bags) || null) : null,
       }),
     })
     setEditingExp(null)
@@ -893,6 +932,66 @@ function TripSheetDetail({ id }: { id: string }) {
                     onChange={v => setExpForm(f => ({ ...f, estimated_cost: v }))}
                     type="number" placeholder="0" />
                 </div>
+
+                {/* Rate Type / Rate / Bags -> auto-calculated Amount (founder
+                    spec 2026-09-17). Optional: leave Rate Type as "Manual
+                    amount" to keep typing Rate/Cost + Actual Cost directly,
+                    exactly as before. Trip-specific only — never touches
+                    route_template_operations (the master Route Template). */}
+                <div className="mt-3 rounded-xl border border-orange-200/70 bg-white/60 p-3">
+                  <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-orange-500">Rate Calculation (optional)</p>
+                  <div className="grid gap-3 sm:grid-cols-4">
+                    <div>
+                      <label className="mb-1 block text-xs font-semibold text-gray-500">Rate Type</label>
+                      <div className="relative">
+                        <select value={expForm.rate_type}
+                          onChange={e => {
+                            const rate_type = e.target.value as '' | 'fixed' | 'per_bag'
+                            setExpForm(f => {
+                              const amt = computeRateAmount(rate_type, f.unit_rate, f.bags)
+                              return { ...f, rate_type, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                            })
+                          }}
+                          className="w-full appearance-none rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
+                          <option value="">Manual amount</option>
+                          <option value="fixed">Fixed (per trip)</option>
+                          <option value="per_bag">Per Bag</option>
+                        </select>
+                        <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+                      </div>
+                    </div>
+                    <Field label="Rate (₹)" value={expForm.unit_rate}
+                      onChange={v => setExpForm(f => {
+                        const amt = computeRateAmount(f.rate_type, v, f.bags)
+                        return { ...f, unit_rate: v, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                      })}
+                      type="number" placeholder="e.g. 200" />
+                    {expForm.rate_type === 'per_bag' && (
+                      <Field label="Bags" value={expForm.bags}
+                        onChange={v => setExpForm(f => {
+                          const amt = computeRateAmount(f.rate_type, f.unit_rate, v)
+                          return { ...f, bags: v, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                        })}
+                        type="number" placeholder={String(sheet?.total_bags ?? 1)} />
+                    )}
+                    {expForm.rate_type && (
+                      <div>
+                        <label className="mb-1 block text-xs font-semibold text-gray-500">Amount</label>
+                        <p className="rounded-lg bg-orange-50 px-3 py-2 text-sm font-bold text-orange-700">
+                          {fmt(computeRateAmount(expForm.rate_type, expForm.unit_rate, expForm.bags) ?? 0)}
+                        </p>
+                      </div>
+                    )}
+                  </div>
+                  <p className="mt-2 text-[11px] text-gray-400">
+                    {expForm.rate_type === 'per_bag'
+                      ? 'Amount = Bags × Rate — auto-fills Rate/Cost and Actual Cost above (still editable after).'
+                      : expForm.rate_type === 'fixed'
+                      ? 'Amount = Rate, regardless of bag count — auto-fills Rate/Cost and Actual Cost above (still editable after).'
+                      : 'Leave as "Manual amount" to type Rate/Cost and Actual Cost directly, exactly as before.'}
+                  </p>
+                </div>
+
                 <div className="mt-3 grid gap-3 sm:grid-cols-5">
                   <Field label="Actual Cost (₹)" value={expForm.actual_cost}
                     onChange={v => setExpForm(f => ({ ...f, actual_cost: v }))}
@@ -1015,6 +1114,44 @@ function TripSheetDetail({ id }: { id: string }) {
                               className="w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-orange-400" />
                           </td>
                           <td className="px-2 py-2">
+                            {/* Rate Type / Rate / Bags — trip-specific only,
+                                never writes to the master Route Template
+                                (founder spec 2026-09-17). "Manual" keeps the
+                                raw Rate/Cost input below directly editable,
+                                exactly as before. */}
+                            <select value={editExpForm.rate_type}
+                              onChange={ev => {
+                                const rate_type = ev.target.value as '' | 'fixed' | 'per_bag'
+                                setEditExpForm(f => {
+                                  const amt = computeRateAmount(rate_type, f.unit_rate, f.bags)
+                                  return { ...f, rate_type, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                                })
+                              }}
+                              className="mb-1 w-full appearance-none rounded-lg border border-gray-200 px-2 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-400">
+                              <option value="">Manual</option>
+                              <option value="fixed">Fixed/Trip</option>
+                              <option value="per_bag">Per Bag</option>
+                            </select>
+                            {editExpForm.rate_type && (
+                              <div className="mb-1 flex gap-1">
+                                <input type="number" value={editExpForm.unit_rate}
+                                  onChange={ev => setEditExpForm(f => {
+                                    const amt = computeRateAmount(f.rate_type, ev.target.value, f.bags)
+                                    return { ...f, unit_rate: ev.target.value, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                                  })}
+                                  placeholder="Rate ₹"
+                                  className="w-full rounded-lg border border-gray-200 px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                {editExpForm.rate_type === 'per_bag' && (
+                                  <input type="number" value={editExpForm.bags}
+                                    onChange={ev => setEditExpForm(f => {
+                                      const amt = computeRateAmount(f.rate_type, f.unit_rate, ev.target.value)
+                                      return { ...f, bags: ev.target.value, ...(amt != null ? { estimated_cost: String(amt), actual_cost: String(amt) } : {}) }
+                                    })}
+                                    placeholder="Bags"
+                                    className="w-16 rounded-lg border border-gray-200 px-1.5 py-1 text-[11px] focus:outline-none focus:ring-1 focus:ring-orange-400" />
+                                )}
+                              </div>
+                            )}
                             <input type="number" value={editExpForm.estimated_cost}
                               onChange={ev => setEditExpForm(f => ({ ...f, estimated_cost: ev.target.value }))}
                               placeholder="0"
