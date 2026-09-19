@@ -28,7 +28,7 @@ const SECTIONS = [
   },
   {
     title: '6. Cancellation Policy',
-    text: 'Cancellations made more than 24 hours before the scheduled pickup are eligible for a credit voucher (see Refund Policy). Cancellations made within 24 hours of pickup are not eligible for any credit or refund. No-shows at the pickup location will be treated as a cancellation within 24 hours.',
+    text: 'For all destinations, cancellations made at least 7 days before the scheduled pickup are eligible for a credit voucher (see Refund Policy). Cancellations made within 7 days of pickup are not eligible for any credit or refund. No-shows at the pickup location will be treated as a cancellation within 7 days.',
   },
   {
     title: '7. Customer Responsibilities',
