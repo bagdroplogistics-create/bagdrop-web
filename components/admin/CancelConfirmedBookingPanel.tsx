@@ -42,9 +42,15 @@
 //      (nothing new introduced here).
 //   4. If no real paid payment row exists for this booking (e.g. it was
 //      marked paid via an admin bypass with no logged payment — see
-//      lib/dashboard-analytics-v2.ts's synthetic-payments handling), the
-//      booking still cancels but the admin is told plainly that no refund
-//      could be recorded automatically, so they can log it manually.
+//      lib/dashboard-analytics-v2.ts's synthetic-payments handling), or the
+//      entered refund amount exceeds what those rows cover, a brand-new
+//      payment row is created (POST /api/admin/payments) for the leftover
+//      amount and immediately PATCHed to payment_status: 'refunded' the
+//      same way — so the refund still lands on the Dashboard's Refunds
+//      card even when there was nothing to attach it to. Founder-reported
+//      2026-09-19 (BDA-2026-0163, Mr. Rakesh Patel, ₹5,250): this used to
+//      just alert the admin to "log it manually," which is exactly what
+//      silently never happened.
 
 import { useEffect, useState } from 'react'
 import { Ban, X, Loader2 } from 'lucide-react'
@@ -54,6 +60,8 @@ export interface CancelConfirmedBookingTarget {
   bookingId: string
   bookingStatus: string
   trackingId: string
+  customerName: string
+  customerPhone: string
 }
 
 const CANCELLATION_REASONS: { value: string; label: string }[] = [
@@ -174,12 +182,55 @@ export default function CancelConfirmedBookingPanel({ target, adminKey, onCancel
         }
       }
 
+      // ── Leftover amount with no real payment row to attach it to (either
+      // this booking had no paid ledger row at all, or the entered refund
+      // exceeds what its paid rows cover) — create one, then immediately
+      // mark it refunded, so the amount still reaches the Dashboard's
+      // Refunds card instead of silently going nowhere.
+      let createdSyntheticRow = false
+      let syntheticRowFailed = false
+      if (remaining > 0) {
+        try {
+          const createRes = await fetch('/api/admin/payments', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+            body: JSON.stringify({
+              customer_name:  target.customerName || target.trackingId,
+              customer_phone: target.customerPhone || '',
+              booking_id:     target.bookingId,
+              amount:         remaining,
+              payment_method: 'refund',
+              payment_status: 'pending', // set below via PATCH, same as every other refund on this page
+              notes:          `Refund on cancellation — ${note}`,
+            }),
+          })
+          const createData = await createRes.json().catch(() => ({}))
+          if (createRes.ok && createData?.payment?.id) {
+            const refundRes = await fetch(`/api/admin/payments/${createData.payment.id}`, {
+              method: 'PATCH',
+              headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+              body: JSON.stringify({ payment_status: 'refunded', refund_reason: note, refund_amount: remaining }),
+            })
+            if (refundRes.ok) { createdSyntheticRow = true; remaining = 0 }
+            else syntheticRowFailed = true
+          } else {
+            syntheticRowFailed = true
+          }
+        } catch {
+          syntheticRowFailed = true
+        }
+      }
+
       setStep('closed')
       setSubmitting(false)
       if (failedRows.length > 0) {
         alert(`Booking was cancelled, but ${failedRows.length} payment record(s) could not be marked refunded automatically. Please mark them refunded manually on the Payments page.`)
-      } else if (remaining > 0 && Number(refundAmount) > 0) {
-        alert(`Booking was cancelled. ₹${remaining.toLocaleString('en-IN')} of the entered refund amount couldn't be applied — no matching paid payment record was found for the remainder. Log it manually on the Payments page if needed.`)
+      } else if (syntheticRowFailed) {
+        alert(`Booking was cancelled. ₹${remaining.toLocaleString('en-IN')} of the refund couldn't be recorded automatically — please log it manually on the Payments page (Record Payment, then Refund).`)
+      } else if (createdSyntheticRow) {
+        // Silent success — same as every other refunded row on this page;
+        // it now shows on the Payments page and the Dashboard's Refunds
+        // card like any other refund.
       }
       onCancelled()
     } catch {
@@ -247,7 +298,7 @@ export default function CancelConfirmedBookingPanel({ target, adminKey, onCancel
                       <p className="text-[11px] text-amber-700/80">
                         {paidRows.length > 0
                           ? `₹${totalPaid.toLocaleString('en-IN')} was collected on this booking — pre-filled as a full refund. Edit for a partial refund.`
-                          : 'No paid payment record was found for this booking — the amount entered here will not be applied automatically. Log it manually on the Payments page.'}
+                          : 'No paid payment record was found for this booking — a new payment record will be created automatically and marked Refunded for whatever amount you enter.'}
                       </p>
                       <p className="text-[11px] text-amber-700/80">
                         A non-zero amount here marks the linked payment(s) as Refunded so it shows in the Dashboard&apos;s Refunds card for this month.

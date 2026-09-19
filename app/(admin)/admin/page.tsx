@@ -2388,7 +2388,10 @@ export default function AdminDashboard() {
                                   <div onClick={e => e.stopPropagation()}>
                                     <CancelConfirmedBookingPanel
                                       adminKey={adminKey}
-                                      target={{ bookingId: b.id, bookingStatus: b.status, trackingId: b.tracking_id }}
+                                      target={{
+                                        bookingId: b.id, bookingStatus: b.status, trackingId: b.tracking_id,
+                                        customerName: b.customer_name ?? '', customerPhone: b.customer_phone ?? '',
+                                      }}
                                       onCancelled={fetchData}
                                     />
                                   </div>
