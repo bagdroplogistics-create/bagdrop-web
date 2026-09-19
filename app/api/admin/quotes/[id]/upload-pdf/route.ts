@@ -159,7 +159,7 @@ function QuotePDF({ q }: { q: Quote }) {
     'All bookings are confirmed on receipt of full payment. A CN number will be issued for reference.',
     'Only the services mentioned above are included. Company reserves the right to cancel at any point.',
     'Luggage must not contain prohibited items. Alcohol and illegal substances are strictly prohibited.',
-    'Cancellation Policy — Mumbai Location: Cancellations must be made at least 5 days before the scheduled pick-up time to receive a full refund. All Other Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+    'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
     'Bagdrop is not liable for loss, damage or theft during transit. Carry valuables personally.',
     'Rates are subject to change. Services subject to availability at time of booking.',
   ]
