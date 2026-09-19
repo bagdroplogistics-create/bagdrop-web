@@ -1150,6 +1150,32 @@ export default function PaymentsPage() {
     fetchPayments()
   }
 
+  // Repairs a row that's already marked Refunded but has no refund_amount
+  // on it (₹0/blank) — the exact leftover state from every refund issued
+  // through this button BEFORE the 2026-09-17 fix above (e.g. BDP-2026-0013,
+  // Mr. Rakesh Patel: status Refunded, amount ₹5,250, but refund_amount
+  // never got set, so it never counted on Dashboard Analytics' Refunds
+  // card). The button above only ever shows for payment_status === 'paid',
+  // so an already-refunded row like this had no way to be corrected — this
+  // just PATCHes the missing refund_amount in directly, nothing else.
+  async function fixRefundAmount(p: Payment) {
+    const amtStr = prompt('This payment is marked Refunded but has no refund amount recorded. Enter the correct refund amount (₹):', String(p.amount))
+    if (!amtStr) return
+    const refundAmount = Number(amtStr)
+    if (!Number.isFinite(refundAmount) || refundAmount <= 0) {
+      alert('Enter a valid refund amount.')
+      return
+    }
+    setUpdating(p.id)
+    await fetch(`/api/admin/payments/${p.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ refund_amount: refundAmount }),
+    })
+    setUpdating(null)
+    fetchPayments()
+  }
+
   function startEditDate(p: Payment) {
     setEditingDateId(p.id)
     setEditingDateValue(toDateInputValue(p.created_at))
@@ -1458,6 +1484,13 @@ export default function PaymentsPage() {
                                 <button onClick={() => refundPayment(p.id)} disabled={updating === p.id}
                                   className="rounded-lg bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-600 hover:bg-purple-100 disabled:opacity-40">
                                   Refund
+                                </button>
+                              )}
+                              {p.payment_status === 'refunded' && (!p.refund_amount || p.refund_amount <= 0) && can('ISSUE_REFUND', role) && (
+                                <button onClick={() => fixRefundAmount(p)} disabled={updating === p.id}
+                                  title="This row is marked Refunded but has no refund amount recorded — won't show on the Dashboard's Refunds card until fixed"
+                                  className="rounded-lg bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-100 disabled:opacity-40">
+                                  Fix Amount
                                 </button>
                               )}
                             </>
