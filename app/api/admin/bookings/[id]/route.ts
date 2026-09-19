@@ -537,7 +537,33 @@ export async function PATCH(
   // notification behavior (wa.me links, payment emails, etc.). `data` is the
   // just-updated row (select() with no args returns every column), so it has
   // everything sendLifecycleWhatsApp needs. Never throws.
-  if (shouldSendLifecycleWhatsApp && status && data) {
+  //
+  // Founder-reported 2026-09-19 (BDA-2026-0187, Mr. Sachin Patel, ₹10,500):
+  // the customer got TWO different "we got your payment" WhatsApp messages
+  // a minute apart — the Payment Receipt Acknowledgment (with the PDF
+  // receipt attached, sent by lib/payment-receipt-notification.ts the
+  // moment a payment is recorded/verified as 'paid') AND this generic
+  // 'payment_received' lifecycle template, fired separately when the
+  // Booking Workflow step is advanced to 'payment_received'. Both are real,
+  // legitimately different code paths — not the same duplicate-submission
+  // bug fixed on 2026-09-16 — they've just always overlapped in meaning
+  // for any booking where an admin records the payment AND advances the
+  // workflow status (the normal two-step flow). The receipt-with-PDF
+  // message is the richer, more complete one, so it wins: if any payment
+  // on this booking already has a sent receipt WhatsApp, skip this plainer
+  // duplicate rather than sending both.
+  let skipRedundantPaymentReceivedWhatsApp = false
+  if (status === 'payment_received') {
+    const { data: existingReceipt } = await supabaseAdmin
+      .from('payments')
+      .select('id')
+      .eq('booking_id', id)
+      .eq('receipt_whatsapp_status', 'sent')
+      .limit(1)
+      .maybeSingle()
+    skipRedundantPaymentReceivedWhatsApp = !!existingReceipt
+  }
+  if (shouldSendLifecycleWhatsApp && status && data && !skipRedundantPaymentReceivedWhatsApp) {
     await sendLifecycleWhatsApp(status, data)
   }
 
