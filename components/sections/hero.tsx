@@ -27,7 +27,7 @@ const SLIDES = [
     headline1: 'Your Wedding Day.',
     headline2: 'Bag-Free.',
     body: 'Coordinating wedding luggage across cities is stressful enough. Let Bagdrop handle every piece — for you, your family, and your guests.',
-    cta1: { label: 'Plan Wedding Logistics', href: '/services/destination-weddings' },
+    cta1: { label: 'Plan Wedding Logistics', href: '/destination-weddings' },
     cta2: { label: 'Get a Quote', href: '/book' },
   },
   {
@@ -37,7 +37,7 @@ const SLIDES = [
     headline1: 'Moving For College?',
     headline2: "We've Got Your Bags.",
     body: "From Mumbai to Bangalore, Delhi to Pune — we ship your bags door-to-door so you can focus on your first day, not your luggage.",
-    cta1: { label: 'Ship Student Bags', href: '/services/student-relocation' },
+    cta1: { label: 'Ship Student Bags', href: '/student-relocation' },
     cta2: { label: 'See Pricing', href: '/book' },
   },
 ]

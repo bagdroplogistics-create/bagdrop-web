@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Link from 'next/link'
 
 export const metadata: Metadata = {
-  title: 'Excess Baggage Delivery Service in Mumbai — Bagdrop',
+  title: 'Excess Baggage Delivery Service in Mumbai',
   description: 'Bagdrop offers door-to-door excess baggage delivery in Mumbai. Pick up from your home or office — delivered to Mumbai Airport (BOM/CSIA) or any city in India. Save 40–60% vs airline fees.',
   alternates: {
     canonical: 'https://www.bagdrop.co/mumbai',

@@ -3,7 +3,7 @@ import Link from 'next/link'
 import { Package, MessageCircle } from 'lucide-react'
 
 export const metadata: Metadata = {
-  title: 'Bag Tracking — Coming Soon | Bagdrop',
+  title: 'Bag Tracking — Coming Soon',
   description: 'Bagdrop live bag tracking is coming soon. In the meantime, get real-time WhatsApp and email updates at every stage of your delivery.',
   alternates: {
     canonical: 'https://www.bagdrop.co/track',

@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Refund Policy — Bagdrop',
+  title: 'Refund Policy',
   description: 'Understand how Bagdrop handles cancellations and refunds through our credit voucher system.',
 }
 

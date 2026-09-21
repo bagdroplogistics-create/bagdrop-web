@@ -1,7 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Privacy Policy — Bagdrop',
+  title: 'Privacy Policy',
   description: 'How Bagdrop collects, uses, and protects your personal information.',
 }
 

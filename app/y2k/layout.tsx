@@ -28,7 +28,7 @@ export const metadata: Metadata = {
   // (no couple names, no #Y2K) per Founder request. The on-page hero still
   // shows the couple's names and wedding branding; this only controls what
   // shows in the tab, search results, and link previews.
-  title: 'Wedding Excess Luggage Delivery | Bagdrop',
+  title: 'Wedding Excess Luggage Delivery',
   description:
     'Exclusive luggage concierge service for destination wedding guests — pickup, delivery and safe handling of excess baggage across India.',
   openGraph: {

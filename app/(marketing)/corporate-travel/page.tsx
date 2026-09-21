@@ -3,7 +3,7 @@ import { Briefcase } from 'lucide-react'
 import { ServicePage } from '@/components/sections/service-page'
 
 export const metadata: Metadata = {
-  title: 'Corporate Baggage & Luggage Delivery Service India | Bagdrop',
+  title: 'Corporate Baggage & Luggage Delivery Service India',
   description: 'Corporate baggage delivery service across India. Volume rates, GST invoicing, monthly billing, and dedicated account management for business travel teams.',
   alternates: { canonical: 'https://www.bagdrop.co/corporate-travel' },
   keywords: [

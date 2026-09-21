@@ -3,7 +3,7 @@ import { Heart } from 'lucide-react'
 import { ServicePage } from '@/components/sections/service-page'
 
 export const metadata: Metadata = {
-  title: 'Destination Wedding Luggage Delivery Service India | Bagdrop',
+  title: 'Destination Wedding Luggage Delivery Service India',
   description: 'White-glove luggage delivery service for destination weddings across India. Bagdrop handles all guest baggage — pickup from every home, delivered to the venue.',
   alternates: { canonical: 'https://www.bagdrop.co/destination-weddings' },
   keywords: [

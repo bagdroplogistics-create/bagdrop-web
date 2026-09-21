@@ -20,7 +20,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
-  title: 'Excess Baggage Delivery Service in India | Door-to-Door Luggage Delivery | Bagdrop',
+  title: 'Excess Baggage Delivery Service in India | Door-to-Door Luggage Delivery',
   description:
     'Bagdrop offers fast, secure, and affordable excess baggage delivery across India. Door-to-door luggage pickup, airport transfers, and nationwide baggage shipping.',
   alternates: {

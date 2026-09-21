@@ -3,7 +3,7 @@ import { PlaneLanding } from 'lucide-react'
 import { ServicePage } from '@/components/sections/service-page'
 
 export const metadata: Metadata = {
-  title: 'Airport to Doorstep Baggage Delivery Service India | Bagdrop',
+  title: 'Airport to Doorstep Baggage Delivery Service India',
   description: 'Airport baggage delivery service across Mumbai, Delhi & Ahmedabad. We collect bags at arrivals & deliver to your home, hotel or office — or pick up from your door before your flight.',
   alternates: {
     canonical: 'https://www.bagdrop.co/airport-delivery',

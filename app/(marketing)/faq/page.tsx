@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import Script from 'next/script'
 
 export const metadata: Metadata = {
-  title: 'FAQ — Excess Baggage Delivery Service Questions Answered | Bagdrop',
+  title: 'FAQ — Excess Baggage Delivery Service Questions Answered',
   description: 'Common questions about Bagdrop\'s excess baggage & luggage delivery service — pricing, pickup, coverage, and how much you save vs airline fees.',
   alternates: {
     canonical: 'https://www.bagdrop.co/faq',
