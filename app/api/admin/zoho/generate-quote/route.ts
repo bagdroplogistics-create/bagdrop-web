@@ -30,6 +30,14 @@
  *   custom_price_per_bag number   (required if pricing_mode === 'custom' and no explicit_line_items)
  *   pickup_datetime      string   "YYYY-MM-DD HH:mm"
  *   delivery_date        string   "YYYY-MM-DD"
+ *   delivery_time        string   "HH:mm" (or any free-text time-of-day) — for a
+ *                                 return-quote (is_return_quote: true) call, this
+ *                                 and delivery_date write to leads.return_delivery_*
+ *                                 and the return-leg booking's delivery_date/
+ *                                 delivery_time_slot. Onward/primary quotes only
+ *                                 store delivery_date today (no delivery_time column
+ *                                 on the primary leg yet) — this field is a no-op
+ *                                 there.
  *   flight_datetime      string   "YYYY-MM-DD HH:mm"
  *   pickup_address       string
  *   from_city            string
@@ -239,6 +247,7 @@ export async function POST(req: NextRequest) {
     custom_price_per_bag,
     pickup_datetime:      pickupDtOverride,
     delivery_date:        deliveryDateOverride,
+    delivery_time:        deliveryTimeOverride,
     flight_datetime:      flightDtOverride,
     pickup_address:       pickupAddrOverride,
     drop_address:         dropAddrOverride,
@@ -264,6 +273,7 @@ export async function POST(req: NextRequest) {
     custom_price_per_bag?: number
     pickup_datetime?:      string
     delivery_date?:        string
+    delivery_time?:        string
     flight_datetime?:      string
     pickup_address?:       string
     drop_address?:         string
@@ -438,6 +448,8 @@ export async function POST(req: NextRequest) {
         return_pickup_date: pickupDtOverride.slice(0, 10),
         return_pickup_time: pickupDtOverride.slice(11, 16),
       } : {}),
+      ...(deliveryDateOverride ? { return_delivery_date: deliveryDateOverride } : {}),
+      ...(deliveryTimeOverride ? { return_delivery_time: deliveryTimeOverride } : {}),
     }
   } else {
     // ── PRIMARY QUOTE: write to main quote fields ──────────────────
@@ -708,6 +720,7 @@ export async function POST(req: NextRequest) {
           to_city:        toCity   || '',
           pickup_date:    returnPickupDate,
           delivery_date:  deliveryDateOverride ?? null,
+          delivery_time_slot: deliveryTimeOverride ?? null,
           time_slot:      returnPickupTime,
           pickup_address: pickupAddrOverride ?? null,
           drop_address:   dropAddrOverride ?? null,
@@ -771,6 +784,7 @@ export async function POST(req: NextRequest) {
         returnBookingUpdates.time_slot   = returnPickupTime
       }
       if (deliveryDateOverride) returnBookingUpdates.delivery_date = deliveryDateOverride
+      if (deliveryTimeOverride) returnBookingUpdates.delivery_time_slot = deliveryTimeOverride
 
       const { error: bookingErr } = await supabaseAdmin
         .from('bookings')

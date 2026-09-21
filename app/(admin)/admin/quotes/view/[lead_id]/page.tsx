@@ -83,6 +83,8 @@ interface Lead {
   return_to_city:          string | null
   return_bags_count:       number | null
   return_pickup_date:      string | null
+  return_delivery_date:    string | null
+  return_delivery_time:    string | null
   return_discount_pct:     number | null
   return_discount_amt:     number | null
   return_quote_notes:      string | null
@@ -636,6 +638,7 @@ export default function QuoteViewPage() {
             returnToCity:     lead.return_to_city,
             returnBagsCount:  lead.return_bags_count,
             returnPickupDate: lead.return_pickup_date,
+            returnDeliveryDate: lead.return_delivery_date,
             returnLineItems:  lead.return_quote_line_items ?? [],
             returnSubtotal:   lead.return_quote_subtotal ?? 0,
             returnTax:        lead.return_quote_tax ?? 0,
@@ -3224,6 +3227,7 @@ export default function QuoteViewPage() {
                         return_bags_count: null, return_discount_amt: null,
                         return_discount_pct: null, return_quote_notes: null,
                         return_pickup_address: null, return_pickup_date: null,
+                        return_delivery_date: null, return_delivery_time: null,
                         return_booking_id: null,
                       }),
                     })

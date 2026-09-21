@@ -300,6 +300,7 @@ export interface QuotePDFProps {
   returnToCity?:      string | null
   returnBagsCount?:   number | null
   returnPickupDate?:  string | null
+  returnDeliveryDate?: string | null
   returnLineItems?:   { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[]
   returnSubtotal?:    number
   returnTax?:         number
@@ -601,7 +602,7 @@ export default function QuotePDF(p: QuotePDFProps) {
           <>
             <View style={{ margin: '4 28 4' }}>
               <Text style={s.journeyLabel}>
-                Journey 2 — Return  ·  {p.returnFromCity ?? '—'}-to-{p.returnToCity ?? '—'}{p.returnPickupDate ? `  ·  ${fmtDate(p.returnPickupDate)}` : ''}{p.returnBagsCount ? `  ·  ${p.returnBagsCount} bag${p.returnBagsCount !== 1 ? 's' : ''}` : ''}
+                Journey 2 — Return  ·  {p.returnFromCity ?? '—'}-to-{p.returnToCity ?? '—'}{p.returnPickupDate ? `  ·  Pickup ${fmtDate(p.returnPickupDate)}` : ''}{p.returnDeliveryDate ? `  ·  Delivery ${fmtDate(p.returnDeliveryDate)}` : ''}{p.returnBagsCount ? `  ·  ${p.returnBagsCount} bag${p.returnBagsCount !== 1 ? 's' : ''}` : ''}
               </Text>
             </View>
 

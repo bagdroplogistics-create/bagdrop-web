@@ -436,6 +436,14 @@ function QuotePageInner() {
   const [returnBagsCount,   setReturnBagsCount]   = useState('1')
   const [returnPickupDate,  setReturnPickupDate]  = useState('')
   const [returnPickupTime,  setReturnPickupTime]  = useState('')
+  // Return Delivery Date/Time — founder-reported 2026-09-21: the Add Return
+  // Quote form had a Return Pickup Date/Time pair but no way to record when
+  // the return leg is actually delivered (only the onward/primary leg had a
+  // Delivery Date field). See RETURN_DELIVERY_MIGRATION.sql for the new
+  // leads.return_delivery_date/return_delivery_time + bookings.
+  // delivery_time_slot columns this writes to.
+  const [returnDeliveryDate, setReturnDeliveryDate] = useState('')
+  const [returnDeliveryTime, setReturnDeliveryTime] = useState('')
   const [returnPickupAddr,  setReturnPickupAddr]  = useState('')
   const [returnDropAddr,    setReturnDropAddr]    = useState('')
   const [returnNotes,       setReturnNotes]       = useState('')
@@ -1090,6 +1098,8 @@ function QuotePageInner() {
         send_email: false,
       }
       if (returnPickupDT)     returnPayload.pickup_datetime  = returnPickupDT
+      if (returnDeliveryDate) returnPayload.delivery_date    = returnDeliveryDate
+      if (returnDeliveryTime) returnPayload.delivery_time    = returnDeliveryTime
       if (returnNotes.trim()) returnPayload.customer_notes   = returnNotes.trim()
       if (salesperson)        returnPayload.salesperson_name = salesperson
       if (agentName.trim())   returnPayload.agent_name       = agentName.trim()
@@ -1296,6 +1306,8 @@ function QuotePageInner() {
         send_email: false,
       }
       if (returnPickupDT)       returnPayload.pickup_datetime = returnPickupDT
+      if (returnDeliveryDate)   returnPayload.delivery_date   = returnDeliveryDate
+      if (returnDeliveryTime)   returnPayload.delivery_time   = returnDeliveryTime
       if (returnNotes.trim())   returnPayload.customer_notes  = returnNotes.trim()
       if (salesperson)          returnPayload.salesperson_name = salesperson
       if (agentName.trim())    returnPayload.agent_name       = agentName.trim()
@@ -2138,6 +2150,17 @@ function QuotePageInner() {
                 <div>
                   <label className={lbl}>Return Pickup Time</label>
                   <select value={returnPickupTime} onChange={e => setReturnPickupTime(e.target.value)} className={inp}>
+                    <option value="">-- Time --</option>
+                    {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <label className={lbl}>Return Delivery Date</label>
+                  <input type="date" value={returnDeliveryDate} onChange={e => setReturnDeliveryDate(e.target.value)} className={inp} />
+                </div>
+                <div>
+                  <label className={lbl}>Return Delivery Time</label>
+                  <select value={returnDeliveryTime} onChange={e => setReturnDeliveryTime(e.target.value)} className={inp}>
                     <option value="">-- Time --</option>
                     {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                   </select>

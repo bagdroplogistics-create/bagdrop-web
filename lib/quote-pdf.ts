@@ -65,6 +65,7 @@ export interface LeadRowForPdf {
   return_to_city?: string | null
   return_bags_count?: number | null
   return_pickup_date?: string | null
+  return_delivery_date?: string | null
   return_quote_line_items?: { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[] | null
   return_quote_subtotal?: number | null
   return_quote_tax?: number | null
@@ -119,6 +120,7 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf): Promise<Buffer> 
       returnToCity:     lead.return_to_city,
       returnBagsCount:  lead.return_bags_count,
       returnPickupDate: lead.return_pickup_date,
+      returnDeliveryDate: lead.return_delivery_date,
       returnLineItems:  lead.return_quote_line_items ?? [],
       returnSubtotal:   lead.return_quote_subtotal ?? 0,
       returnTax:        lead.return_quote_tax ?? 0,
