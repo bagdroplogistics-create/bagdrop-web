@@ -88,6 +88,14 @@ export async function PATCH(
     // without `status`, so it's never blocked by the completed-booking
     // lock below (that lock only guards status transitions).
     completed_month_override,
+    // Test Mode (Founder spec 2026-09-22) — lets an admin retroactively flag
+    // an already-created real booking as a dummy/test record from the lead
+    // detail page. This is the flag lib/lifecycle-notifications.ts and
+    // lib/payment-receipt-notification.ts actually check before sending any
+    // status-change or payment-receipt WhatsApp/email — see is_test handling
+    // further down in this file (existingRes select + isTest passed to
+    // notifyBookingStatus).
+    is_test,
   } = body
 
   if (approved_without_payment && role !== 'admin') {
@@ -115,6 +123,7 @@ export async function PATCH(
     }
     updates.title = title
   }
+  if (is_test              !== undefined) updates.is_test              = Boolean(is_test)
   if (total_amount         !== undefined) updates.total_amount         = Number(total_amount)
   if (customer_name        !== undefined) updates.customer_name        = customer_name.trim()
   if (customer_phone       !== undefined) {

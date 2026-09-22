@@ -8,7 +8,7 @@ import {
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
   RotateCcw, Save, ShieldCheck, Trash2, Pencil,
-  MessageCircle,
+  MessageCircle, FlaskConical,
 } from 'lucide-react'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
@@ -103,6 +103,14 @@ interface Lead {
   // stay data-only for now.
   customer_type?:  string | null
   business_name?:  string | null
+  // Test Mode — Founder request 2026-09-22 ("keep this only as a test
+  // inquiry, don't send any messages for this inquiry"). Same flag/column
+  // already used by Group Booking's "Test Mode" checkbox (see
+  // supabase/migrations/20260904_group_bookings.sql, lib/lead-acknowledgment.ts).
+  // Exposed here so an *existing* real inquiry (created via the public
+  // website form, not the Group Booking flow) can be retroactively flagged
+  // as a dummy/test lead from this page, without DB access.
+  is_test?: boolean | null
 }
 
 interface Booking {
@@ -137,6 +145,11 @@ interface Booking {
   flight_datetime:      string | null
   driver_details_sent_at:      string | null
   driver_details_scheduled_at: string | null
+  // Test Mode — see Lead.is_test above. bookings.is_test is the flag
+  // actually checked by lib/lifecycle-notifications.ts and
+  // lib/payment-receipt-notification.ts, so it must be set alongside
+  // leads.is_test for a linked booking to stay fully silent going forward.
+  is_test?: boolean | null
 }
 
 interface Invoice {
@@ -404,6 +417,9 @@ export default function QuoteViewPage() {
   const [acting, setActing]                     = useState<string | null>(null)
   const [actionSuccess, setActionSuccess]       = useState<string | null>(null)
   const [actionError, setActionError]           = useState<string | null>(null)
+
+  // Test Mode toggle (Founder spec 2026-09-22) — see doToggleTestMode below.
+  const [togglingTestMode, setTogglingTestMode] = useState(false)
   const [paymentRef, setPaymentRef]             = useState('')
   const [showPaymentInput, setShowPaymentInput] = useState(false)
   const [upiId, setUpiId]                       = useState('')
@@ -1013,6 +1029,63 @@ export default function QuoteViewPage() {
       setActionError('Failed to record response')
     } finally {
       setActing(null)
+    }
+  }
+
+  // Test Mode (Founder spec 2026-09-22): "keep this only as a test inquiry,
+  // don't send any messages for this inquiry." Sets is_test on the lead AND
+  // (if a booking is already linked) on the booking too, since the two are
+  // checked independently: lib/lead-acknowledgment.ts gates the initial
+  // acknowledgment on lead.is_test, while lib/lifecycle-notifications.ts and
+  // lib/payment-receipt-notification.ts gate every later status-change /
+  // payment-receipt send on booking.is_test. Toggling this OFF is also
+  // supported, in case it's flagged by mistake — it does not retroactively
+  // "unsend" anything already skipped, it only affects sends from this point
+  // forward. This cannot suppress a message that already went out before the
+  // flag was set.
+  async function doToggleTestMode() {
+    if (!lead || !key) return
+    const next = !lead.is_test
+    if (!confirm(
+      next
+        ? `Mark "${lead.name}" (${lead.lead_number}) as a Test Mode inquiry? No real email or WhatsApp messages will be sent for this lead${booking ? ' or its linked booking' : ''} going forward.`
+        : `Turn OFF Test Mode for "${lead.name}" (${lead.lead_number})? Real customer email/WhatsApp sends will resume for this lead${booking ? ' and its linked booking' : ''}.`
+    )) return
+    setTogglingTestMode(true)
+    setActionError(null)
+    try {
+      const leadRes = await fetch(`/api/admin/leads/${lead.id}?key=${encodeURIComponent(key)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ is_test: next }),
+      })
+      const leadData = await leadRes.json().catch(() => ({}))
+      if (!leadRes.ok) {
+        setActionError(leadData.error ?? 'Failed to update Test Mode on lead')
+        return
+      }
+      setLead(prev => prev ? { ...prev, is_test: next } : prev)
+
+      if (booking) {
+        const bookingRes = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_test: next }),
+        })
+        const bookingData = await bookingRes.json().catch(() => ({}))
+        if (!bookingRes.ok) {
+          setActionError(bookingData.error ?? 'Lead updated, but failed to update Test Mode on the linked booking')
+          return
+        }
+        setBooking(prev => prev ? { ...prev, is_test: next } : prev)
+      }
+
+      setActionSuccess('toggle_test_mode')
+      setTimeout(() => setActionSuccess(null), 4000)
+    } catch {
+      setActionError('Failed to update Test Mode')
+    } finally {
+      setTogglingTestMode(false)
     }
   }
 
@@ -1766,6 +1839,11 @@ export default function QuoteViewPage() {
               {STATUS_LABEL[booking.status] ?? booking.status}
             </span>
           )}
+          {lead.is_test && (
+            <span className="flex items-center gap-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700">
+              <FlaskConical className="h-3 w-3" /> Test Mode
+            </span>
+          )}
           {/* Pending/Received payment toggle removed from this header per
               request — same reasoning as the Leads table (see
               app/(admin)/admin/leads/page.tsx): payment status is now only
@@ -1774,6 +1852,23 @@ export default function QuoteViewPage() {
               lead.payment_status itself is untouched. */}
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={doToggleTestMode}
+            disabled={togglingTestMode}
+            title={lead.is_test
+              ? 'Test Mode is ON — no real email/WhatsApp sends for this lead or its booking'
+              : 'Mark this inquiry as Test Mode — no real email/WhatsApp will be sent for it'}
+            className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold disabled:opacity-60 ${
+              lead.is_test
+                ? 'border-purple-300 bg-purple-50 text-purple-700 hover:bg-purple-100'
+                : 'border-gray-200 text-gray-700 hover:bg-gray-50'
+            }`}
+          >
+            {togglingTestMode
+              ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Updating…</>
+              : <><FlaskConical className="h-3.5 w-3.5" /> {lead.is_test ? 'Test Mode: ON' : 'Mark as Test'}</>
+            }
+          </button>
           <button onClick={() => window.print()}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-700 hover:bg-gray-50">
             <Printer className="h-3.5 w-3.5" /> Print

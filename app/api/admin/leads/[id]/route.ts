@@ -94,6 +94,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     // existing Individual fields above. See
     // supabase/migrations/20260807_business_customer_fields.sql.
     'customer_type', 'business_name', 'business_address', 'gst_number', 'payment_terms',
+    // Test Mode (Founder spec 2026-09-22) — lets an admin retroactively flag
+    // an already-created real lead (e.g. one submitted via the public
+    // website form) as a dummy/test inquiry from the lead detail page, using
+    // the same is_test column Group Booking's "Test Mode" checkbox already
+    // writes at creation time. See lib/lead-acknowledgment.ts, which skips
+    // all real email/WhatsApp sends whenever lead.is_test is true.
+    'is_test',
   ]
 
   const updates: Record<string, unknown> = {}
