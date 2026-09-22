@@ -280,10 +280,10 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
   const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName
 
   const steps = [
-    'Our team will contact you shortly to confirm your pickup details.',
-    'A Bagdrop representative will arrive at your location at the scheduled time.',
-    'Your bags are sealed, photographed, and insured for the journey.',
-    'WhatsApp and email updates will be sent at every stage of your delivery.',
+    'Request Review — our team will review your baggage delivery request and the details you submitted.',
+    'Availability & Quote — we will check the requested service and route and provide the applicable quotation.',
+    'Customer Approval — you can review the quotation and let us know if you would like to proceed.',
+    'Booking Confirmation — your booking is only confirmed once you approve the quotation and complete the required confirmation/payment process.',
   ]
 
   const stepsHtml = steps.map((step, i) =>
@@ -296,16 +296,17 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
   ).join('')
 
   const body =
-    '<h1 style="margin:0 0 4px;font-size:22px;font-weight:800;color:#111;">Booking Request Received!</h1>' +
-    '<p style="margin:0 0 28px;font-size:15px;color:#555;">Hi ' + displayName + ', we have received your booking request and our team will contact you shortly to confirm.</p>' +
+    '<h1 style="margin:0 0 4px;font-size:22px;font-weight:800;color:#111;">Booking Request Received</h1>' +
+    '<p style="margin:0 0 12px;font-size:15px;color:#555;">Hi ' + displayName + ', we have received your booking request. Our team will review the details and contact you regarding availability, quotation, and next steps.</p>' +
+    '<p style="margin:0 0 28px;font-size:13px;font-weight:600;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:10px 14px;">Please note: submission of this form does not confirm your booking. Your booking will only be confirmed after you approve the quotation and complete the required confirmation/payment process.</p>' +
 
     '<div style="background:#fff7f0;border:2px solid ' + BRAND + ';border-radius:10px;padding:16px 20px;margin-bottom:28px;text-align:center;">' +
-    '<p style="margin:0;font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;">Booking ID</p>' +
+    '<p style="margin:0;font-size:12px;color:#888;letter-spacing:1px;text-transform:uppercase;">Request ID</p>' +
     '<p style="margin:4px 0 0;font-size:28px;font-weight:900;color:' + BRAND + ';letter-spacing:2px;">' + data.trackingId + '</p>' +
     '<p style="margin:6px 0 0;font-size:12px;color:#888;">Please quote this ID when contacting us on WhatsApp or email.</p>' +
     '</div>' +
 
-    '<h3 style="margin:0 0 12px;font-size:13px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Booking Summary</h3>' +
+    '<h3 style="margin:0 0 12px;font-size:13px;font-weight:700;color:#111;text-transform:uppercase;letter-spacing:0.5px;">Request Summary</h3>' +
     '<table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">' +
     row('Service', data.serviceLabel) +
     row('Route', data.fromCity + ' → ' + data.toCity) +
@@ -321,13 +322,13 @@ export async function sendCustomerConfirmation(data: BookingEmailData) {
     '</table>' +
 
     '<div style="text-align:center;margin-bottom:20px;">' +
-    '<a href="https://wa.me/916357115711?text=Hi! My Bagdrop Booking ID is ' + data.trackingId + '. Can you confirm my booking?" style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">WhatsApp Us</a>' +
+    '<a href="https://wa.me/916357115711?text=Hi! My Bagdrop request ID is ' + data.trackingId + '. I\'d like to follow up on my booking request." style="display:inline-block;background:' + BRAND + ';color:#fff;font-size:14px;font-weight:700;padding:14px 32px;border-radius:8px;text-decoration:none;">WhatsApp Us</a>' +
     '</div>' +
 
     '<p style="margin:20px 0 0;font-size:12px;color:#aaa;text-align:center;">Questions? WhatsApp us or email <a href="mailto:info@bagdrop.co" style="color:' + BRAND + ';">info@bagdrop.co</a></p>'
 
   if (!data.customerEmail) return
-  await sendEmail(data.customerEmail, 'Booking Confirmed | Bagdrop', baseTemplate(body), data.trackingId)
+  await sendEmail(data.customerEmail, 'Booking Request Received | Bagdrop', baseTemplate(body), data.trackingId)
 }
 
 // ── Inquiry Acknowledgment (to customer) ───────────────────────────────

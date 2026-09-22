@@ -384,7 +384,7 @@ export function BookingOtpModal({ phone, countryIso2 = DEFAULT_COUNTRY_ISO2, onV
                 >
                   {status === 'verifying'
                     ? <span className="h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent" />
-                    : <><ShieldCheck className="h-4 w-4" /> Verify &amp; Confirm Booking</>
+                    : <><ShieldCheck className="h-4 w-4" /> Verify &amp; Submit Request</>
                   }
                 </button>
 

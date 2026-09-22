@@ -31,7 +31,7 @@ interface StepReviewProps {
 
 export function StepReview({
   state, onChange, onBack, onBook,
-  submitLabel = 'Confirm Booking', hideVerificationNote = false,
+  submitLabel = 'Submit Booking Request', hideVerificationNote = false,
 }: StepReviewProps) {
   const valid = isStep4Valid(state)
 
