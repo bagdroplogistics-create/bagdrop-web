@@ -79,6 +79,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_pickup_address', 'return_pickup_date', 'return_booking_id',
     // Return-journey delivery date/time — see RETURN_DELIVERY_MIGRATION.sql
     'return_delivery_date', 'return_delivery_time',
+    // Independent return-quote commercial status (Founder spec 2026-09-22,
+    // "Separate Onward and Return Quotations") — see
+    // RETURN_QUOTE_STATUS_MIGRATION.sql. Deliberately separate from
+    // bookings.status, which still drives the combined-payment
+    // operational Booking Workflow.
+    'return_quote_status', 'return_quote_sent_at', 'return_quote_accepted_at',
+    'return_quote_rejected_at', 'return_rejection_reason', 'return_rejection_comment',
     // Sales Follow-up & Reminder System — set by the "Mark Customer
     // Responded" action to stop the response-track reminder for this
     // lead. See lib/sales-followup-reminders.ts.
@@ -114,6 +121,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_bags_count', 'return_discount_amt', 'return_discount_pct',
     'return_quote_notes', 'return_pickup_address', 'return_pickup_date',
     'return_delivery_date', 'return_delivery_time',
+    'return_quote_status', 'return_quote_sent_at', 'return_quote_accepted_at',
+    'return_quote_rejected_at', 'return_rejection_reason', 'return_rejection_comment',
     'customer_responded_at',
     'business_name', 'business_address', 'gst_number', 'payment_terms',
   ]

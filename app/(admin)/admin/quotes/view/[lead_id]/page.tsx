@@ -8,6 +8,7 @@ import {
   Package, Loader2, ChevronRight,
   FileText, Mail, ExternalLink, Truck,
   RotateCcw, Save, ShieldCheck, Trash2, Pencil,
+  MessageCircle,
 } from 'lucide-react'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
@@ -85,6 +86,12 @@ interface Lead {
   return_pickup_date:      string | null
   return_delivery_date:    string | null
   return_delivery_time:    string | null
+  return_quote_status:         string | null
+  return_quote_sent_at:        string | null
+  return_quote_accepted_at:    string | null
+  return_quote_rejected_at:    string | null
+  return_rejection_reason:     string | null
+  return_rejection_comment:    string | null
   return_discount_pct:     number | null
   return_discount_amt:     number | null
   return_quote_notes:      string | null
@@ -476,6 +483,14 @@ export default function QuoteViewPage() {
   // "Generating PDF…" state.
   const [sendingQuoteWhatsApp, setSendingQuoteWhatsApp] = useState(false)
 
+  // Independent Return Quote send/accept/reject state (Founder spec
+  // 2026-09-22, "Separate Onward and Return Quotations") — deliberately
+  // separate from the primary quote's state above, so acting on one
+  // quote's UI never touches the other's.
+  const [sendingReturnQuoteWhatsApp, setSendingReturnQuoteWhatsApp] = useState(false)
+  const [returnQuoteActing, setReturnQuoteActing]   = useState<string | null>(null)
+  const [returnQuoteError, setReturnQuoteError]     = useState<string | null>(null)
+
   // Outstanding Amount (spec item 14) — booking total minus the sum of
   // this booking's actually-approved ('paid') payments rows. Recomputed
   // fresh from the payments ledger every time, never manually decremented,
@@ -628,22 +643,16 @@ export default function QuoteViewPage() {
           notes:        lead.quote_notes,
           terms:        lead.quote_terms,
           isFOC:        lead.billing_type === 'foc',
-          // Return Trip — only present when this lead has a return quote
-          // (Trip Type = Return Trip on New Quote). QuotePDF renders the
-          // Journey 1 / Journey 2 + combined summary layout only when
-          // returnLineItems is non-empty; a plain one-way quote leaves all
-          // of these undefined and renders exactly as before.
-          ...(lead.return_quote_number ? {
-            returnFromCity:   lead.return_from_city,
-            returnToCity:     lead.return_to_city,
-            returnBagsCount:  lead.return_bags_count,
-            returnPickupDate: lead.return_pickup_date,
-            returnDeliveryDate: lead.return_delivery_date,
-            returnLineItems:  lead.return_quote_line_items ?? [],
-            returnSubtotal:   lead.return_quote_subtotal ?? 0,
-            returnTax:        lead.return_quote_tax ?? 0,
-            returnTotal:      lead.return_quote_total ?? 0,
-          } : {}),
+          // Founder spec 2026-09-22 ("Separate Onward and Return
+          // Quotations") — this button now always downloads the ONWARD
+          // leg only, never combined with Journey 2/Return. The Return
+          // Journey Quote card further down the page has its own
+          // "Download Return PDF" button (leg=return, via
+          // /api/admin/leads/[id]/quote-pdf) for the return leg's own
+          // standalone document. journeyBadge only renders (small
+          // "ONWARD JOURNEY" tag) when a companion return quote exists,
+          // so a plain one-way quote's PDF is visually unchanged.
+          journeyBadge: lead.return_quote_number ? 'onward' as const : undefined,
         })
       ).toBlob()
 
@@ -1015,6 +1024,114 @@ export default function QuoteViewPage() {
       rejection_comment: rejectComment.trim() || null,
     })
     if (ok) setShowRejectForm(false)
+  }
+
+  // ── Independent Return Quote actions ────────────────────────────────
+  // Founder spec 2026-09-22 ("Separate Onward and Return Quotations"):
+  // the return quote must be independently sendable and independently
+  // accepted/rejected — never inferred from the primary quote's status,
+  // and never touching bookings.status (which still drives the combined-
+  // payment operational Booking Workflow via patchBooking() above — see
+  // RETURN_QUOTE_STATUS_MIGRATION.sql's header comment for why that's
+  // deliberately left alone here). All three PATCH leads.return_quote_*
+  // fields directly, completely independent of `booking`/patchBooking.
+  async function patchLeadReturnQuote(actionKey: string, payload: Record<string, unknown>): Promise<boolean> {
+    if (!lead || !key) return false
+    setReturnQuoteActing(actionKey)
+    setReturnQuoteError(null)
+    try {
+      const r = await fetch(`/api/admin/leads/${lead.id}?key=${encodeURIComponent(key)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (r.ok) {
+        setLead(prev => prev ? { ...prev, ...payload } : prev)
+        return true
+      }
+      setReturnQuoteError(d.error ?? 'Failed to update return quote')
+      return false
+    } catch {
+      setReturnQuoteError('Failed to update return quote')
+      return false
+    } finally {
+      setReturnQuoteActing(null)
+    }
+  }
+
+  // Standalone RETURN-leg PDF (lib/quote-pdf.ts leg='return') + WhatsApp
+  // send — mirrors doSendQuoteWhatsApp() above but for the return leg's
+  // own route/dates/bags/total, never the onward ones.
+  async function doSendReturnQuoteWhatsApp() {
+    if (!lead || !key) return
+    setSendingReturnQuoteWhatsApp(true)
+    setReturnQuoteError(null)
+    try {
+      let pdfUrl: string
+      try {
+        const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}&leg=return`, {
+          method: 'POST',
+          headers: { 'x-admin-key': key },
+        })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
+        pdfUrl = d.url
+      } catch (err) {
+        console.error('[doSendReturnQuoteWhatsApp] PDF generation/upload failed:', err)
+        setReturnQuoteError('Unable to attach Return Quote PDF. Please try again.')
+        return
+      }
+
+      const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
+      const qnum  = lead.return_quote_number ?? `${lead.lead_number}-R`
+      const from  = lead.return_from_city ?? ''
+      const to    = lead.return_to_city   ?? ''
+      const bags  = lead.return_bags_count ?? 1
+      const total = lead.return_quote_total ?? 0
+      const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
+      const phone = (lead.phone ?? '').replace(/\D/g, '')
+      const e164  = phone.startsWith('91') ? phone : '91' + phone
+      const msg = [
+        `Hi ${name}! 👋`,
+        '',
+        `Your Bagdrop RETURN journey quote is ready. Here's the summary:`,
+        '',
+        `👤 Customer Name: ${name}`,
+        `📋 Quote No: ${qnum}`,
+        `🗺️ Route: ${from} → ${to}`,
+        `🧳 No. of Bags: ${bags}`,
+        `💰 Total Amount: ${fmt(Number(total))}`,
+        '',
+        `📄 Download your return quote PDF:`, pdfUrl, '',
+        'To confirm this return journey, simply reply to this message or call/WhatsApp us anytime.',
+        '',
+        '— Team Bagdrop',
+      ].join('\n')
+      const ok = await patchLeadReturnQuote('send_return_quote', {
+        return_quote_status: 'sent',
+        return_quote_sent_at: new Date().toISOString(),
+      })
+      if (ok) window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
+    } finally {
+      setSendingReturnQuoteWhatsApp(false)
+    }
+  }
+
+  async function doMarkReturnQuoteAccepted() {
+    await patchLeadReturnQuote('accept_return_quote', {
+      return_quote_status: 'accepted',
+      return_quote_accepted_at: new Date().toISOString(),
+    })
+  }
+
+  async function doMarkReturnQuoteRejected() {
+    const reason = prompt('Reason for rejecting the return quote (optional):') ?? ''
+    await patchLeadReturnQuote('reject_return_quote', {
+      return_quote_status: 'rejected',
+      return_quote_rejected_at: new Date().toISOString(),
+      return_rejection_comment: reason.trim() || null,
+    })
   }
 
   async function doSendPaymentRequest() {
@@ -3197,6 +3314,23 @@ export default function QuoteViewPage() {
               <span className="ml-1 rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-semibold text-purple-700 font-mono">
                 {lead.return_quote_number}
               </span>
+              {/* Independent return-quote status — see
+                  RETURN_QUOTE_STATUS_MIGRATION.sql. Separate from the
+                  primary quote's "Quote Sent"/"Quote Accepted" badge
+                  (driven by bookings.status) shown elsewhere on this page. */}
+              <span className={
+                'rounded-full px-2.5 py-0.5 text-xs font-semibold ' + (
+                  lead.return_quote_status === 'accepted' ? 'bg-green-100 text-green-700' :
+                  lead.return_quote_status === 'rejected' ? 'bg-red-100 text-red-700' :
+                  lead.return_quote_status === 'sent'     ? 'bg-blue-100 text-blue-700' :
+                  'bg-gray-100 text-gray-500'
+                )
+              }>
+                {lead.return_quote_status === 'accepted' ? 'Return Accepted' :
+                 lead.return_quote_status === 'rejected' ? 'Return Rejected' :
+                 lead.return_quote_status === 'sent'     ? 'Return Sent' :
+                 'Not Sent Yet'}
+              </span>
               <span className="ml-auto text-xs text-purple-500">{fmtDate(lead.return_quote_date)}</span>
               <button
                 onClick={async () => {
@@ -3228,6 +3362,9 @@ export default function QuoteViewPage() {
                         return_discount_pct: null, return_quote_notes: null,
                         return_pickup_address: null, return_pickup_date: null,
                         return_delivery_date: null, return_delivery_time: null,
+                        return_quote_status: null, return_quote_sent_at: null,
+                        return_quote_accepted_at: null, return_quote_rejected_at: null,
+                        return_rejection_reason: null, return_rejection_comment: null,
                         return_booking_id: null,
                       }),
                     })
@@ -3316,6 +3453,65 @@ export default function QuoteViewPage() {
               {lead.return_quote_notes && (
                 <p className="mt-3 text-xs text-gray-500 italic">{lead.return_quote_notes}</p>
               )}
+
+              {/* ── Independent Return Quote actions — Founder spec
+                  2026-09-22 ("Separate Onward and Return Quotations").
+                  Send/Accept/Reject here only ever touch
+                  leads.return_quote_* — never bookings.status, never the
+                  primary quote's own Sent/Accepted/Rejected state above. ── */}
+              <div className="mt-4 rounded-lg border border-purple-100 bg-purple-50/50 px-4 py-3">
+                <p className="mb-2 text-xs font-bold uppercase tracking-widest text-purple-500">Return Quote Actions</p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={doSendReturnQuoteWhatsApp}
+                    disabled={!!returnQuoteActing || sendingReturnQuoteWhatsApp}
+                    className="flex items-center gap-1.5 rounded-lg bg-green-600 px-3 py-2 text-xs font-semibold text-white hover:bg-green-700 disabled:opacity-50 transition-colors"
+                  >
+                    {sendingReturnQuoteWhatsApp ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <MessageCircle className="h-3.5 w-3.5" />}
+                    {sendingReturnQuoteWhatsApp ? 'Generating PDF…' : lead.return_quote_status ? 'Resend Return Quote' : 'Send Return Quote via WhatsApp'}
+                  </button>
+                  <button
+                    onClick={async () => {
+                      if (!lead || !key) return
+                      try {
+                        const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}&leg=return`, {
+                          method: 'POST', headers: { 'x-admin-key': key },
+                        })
+                        const d = await r.json().catch(() => ({}))
+                        if (r.ok && d.url) window.open(d.url, '_blank')
+                        else setReturnQuoteError(d.error ?? 'Failed to generate return quote PDF')
+                      } catch {
+                        setReturnQuoteError('Failed to generate return quote PDF')
+                      }
+                    }}
+                    className="flex items-center gap-1.5 rounded-lg border border-purple-200 bg-white px-3 py-2 text-xs font-semibold text-purple-600 hover:bg-purple-50 transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" /> Download Return PDF
+                  </button>
+                  {lead.return_quote_status === 'sent' && (
+                    <>
+                      <button
+                        onClick={doMarkReturnQuoteAccepted}
+                        disabled={!!returnQuoteActing}
+                        className="flex items-center gap-1.5 rounded-lg bg-green-100 px-3 py-2 text-xs font-semibold text-green-700 hover:bg-green-200 disabled:opacity-50 transition-colors"
+                      >
+                        Return Accepted ✓
+                      </button>
+                      <button
+                        onClick={doMarkReturnQuoteRejected}
+                        disabled={!!returnQuoteActing}
+                        className="flex items-center gap-1.5 rounded-lg bg-red-100 px-3 py-2 text-xs font-semibold text-red-700 hover:bg-red-200 disabled:opacity-50 transition-colors"
+                      >
+                        Return Rejected ✕
+                      </button>
+                    </>
+                  )}
+                </div>
+                {returnQuoteError && <p className="mt-2 text-xs font-semibold text-red-600">{returnQuoteError}</p>}
+                {lead.return_rejection_comment && lead.return_quote_status === 'rejected' && (
+                  <p className="mt-2 text-xs text-red-500">Reason: {lead.return_rejection_comment}</p>
+                )}
+              </div>
 
               {/* Combined total */}
               {(lead.quote_total ?? 0) > 0 && (lead.return_quote_total ?? 0) > 0 && (

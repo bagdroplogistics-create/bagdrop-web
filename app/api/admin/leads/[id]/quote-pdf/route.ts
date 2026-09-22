@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { getQuotePdfUrl, type LeadRowForPdf } from '@/lib/quote-pdf'
+import { getQuotePdfUrl, type LeadRowForPdf, type QuotePdfLeg } from '@/lib/quote-pdf'
 
 // POST /api/admin/leads/[id]/quote-pdf
 //
@@ -24,6 +24,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
   const { id } = await params
 
+  // Optional ?leg=return — Founder spec 2026-09-22 (Separate Onward and
+  // Return Quotations). Defaults to 'onward', matching every existing
+  // caller's behavior exactly (no query param sent).
+  const legParam = req.nextUrl.searchParams.get('leg')
+  const leg: QuotePdfLeg = legParam === 'return' ? 'return' : 'onward'
+
   const { data: lead, error } = await supabaseAdmin
     .from('leads')
     .select('*')
@@ -34,8 +40,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'Lead not found' }, { status: 404 })
   }
 
-  if (!lead.quote_number && !lead.zoho_estimate_number) {
+  if (leg === 'onward' && !lead.quote_number && !lead.zoho_estimate_number) {
     return NextResponse.json({ error: 'This lead has no quote yet — generate a quote first.' }, { status: 400 })
+  }
+  if (leg === 'return' && !lead.return_quote_number) {
+    return NextResponse.json({ error: 'This lead has no return quote yet — generate a return quote first.' }, { status: 400 })
   }
 
   try {
@@ -43,7 +52,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     // this lead's CURRENT row and re-uploads (upsert) to the same
     // deterministic storage path, so the URL returned here can never be an
     // old/previous version of the quote — see its own doc comment.
-    const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf)
+    const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf, leg)
     return NextResponse.json({ url, filename })
   } catch (err) {
     console.error('[leads/quote-pdf] PDF generation/upload error:', err)

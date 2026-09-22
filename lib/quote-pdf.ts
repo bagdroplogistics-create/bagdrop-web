@@ -66,23 +66,61 @@ export interface LeadRowForPdf {
   return_bags_count?: number | null
   return_pickup_date?: string | null
   return_delivery_date?: string | null
+  return_pickup_address?: string | null
+  return_drop_address?: string | null
   return_quote_line_items?: { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[] | null
   return_quote_subtotal?: number | null
   return_quote_tax?: number | null
   return_quote_total?: number | null
 }
 
-export function quotePdfFilename(lead: Pick<LeadRowForPdf, 'quote_number' | 'zoho_estimate_number' | 'lead_number'>): string {
-  const qn = lead.quote_number ?? lead.zoho_estimate_number ?? lead.lead_number
+// Which leg of the trip to render a standalone PDF for. Defaults to
+// 'onward' everywhere for full backward compatibility — every existing
+// caller (email attachments, the Fast2SMS 'quote_sent' send, the manual
+// "Send Quote via WhatsApp" button) keeps generating exactly the PDF it
+// always has, with one change: it no longer also shows the Journey 2
+// (Return) section, even when a return quote exists. Founder spec
+// 2026-09-22 ("Separate Onward and Return Quotations"): onward and
+// return must never be combined into one quotation PDF. 'return' is a
+// new, explicit opt-in — only requested by the new "Send Return Quote"
+// button — that builds a standalone document for the return leg using
+// the exact same QuotePDF layout/branding, just fed the return leg's
+// own data in the primary slots (so it reads like any other one-way
+// quote, not an appendix to the onward one).
+export type QuotePdfLeg = 'onward' | 'return'
+
+export function quotePdfFilename(
+  lead: Pick<LeadRowForPdf, 'quote_number' | 'zoho_estimate_number' | 'lead_number' | 'return_quote_number'>,
+  leg: QuotePdfLeg = 'onward',
+): string {
+  const qn = leg === 'return'
+    ? (lead.return_quote_number ?? `${lead.lead_number}-R`)
+    : (lead.quote_number ?? lead.zoho_estimate_number ?? lead.lead_number)
   return `${qn.replace(/\//g, '-')}.pdf`
 }
 
-export async function buildQuotePdfBuffer(lead: LeadRowForPdf): Promise<Buffer> {
-  const lineItems  = lead.quote_line_items ?? []
-  const subtotal   = lead.quote_subtotal   ?? lineItems.reduce((s, i) => s + i.amount, 0)
-  const taxTotal   = lead.quote_tax        ?? Math.round(subtotal * 5) / 100
-  const grandTotal = lead.quote_total      ?? (subtotal + taxTotal)
-  const qn         = lead.quote_number ?? lead.zoho_estimate_number ?? lead.lead_number
+export async function buildQuotePdfBuffer(lead: LeadRowForPdf, leg: QuotePdfLeg = 'onward'): Promise<Buffer> {
+  const isReturn = leg === 'return'
+
+  const lineItems  = (isReturn ? lead.return_quote_line_items : lead.quote_line_items) ?? []
+  const subtotal   = (isReturn ? lead.return_quote_subtotal : lead.quote_subtotal)
+    ?? lineItems.reduce((s, i) => s + i.amount, 0)
+  const taxTotal   = (isReturn ? lead.return_quote_tax : lead.quote_tax) ?? Math.round(subtotal * 5) / 100
+  const grandTotal = (isReturn ? lead.return_quote_total : lead.quote_total) ?? (subtotal + taxTotal)
+  const qn         = isReturn
+    ? (lead.return_quote_number ?? `${lead.lead_number}-R`)
+    : (lead.quote_number ?? lead.zoho_estimate_number ?? lead.lead_number)
+
+  // Subject: onward keeps the exact saved quote_subject untouched (no
+  // behavior change for existing one-way quotes). Return has no saved
+  // subject of its own, so build one from the standard pattern using the
+  // return leg's own route — never reuses the onward subject verbatim,
+  // which would show the wrong cities.
+  const subject = isReturn
+    ? (lead.return_from_city && lead.return_to_city
+        ? `Transportation of Goods From ${lead.return_from_city} to ${lead.return_to_city} — Return`
+        : 'Return Journey Quotation')
+    : lead.quote_subject
 
   const element = React.createElement(QuotePDF, {
     quoteNumber:   qn,
@@ -91,41 +129,36 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf): Promise<Buffer> 
     leadNumber:    lead.lead_number,
     salesperson:   lead.salesperson_name,
     agentName:     lead.agent_name,
-    subject:       lead.quote_subject,
+    subject,
     customerName:  formatCustomerName(lead.title ?? null, lead.name) || lead.name,
     customerPhone: lead.phone,
     customerEmail: lead.email,
     businessName:  lead.customer_type === 'business' ? (lead.business_name ?? null) : null,
-    fromCity:      lead.from_city,
-    toCity:        lead.to_city,
-    bagsCount:     lead.bags_count,
-    pickupDate:    lead.pickup_date,
-    pickupTime:    lead.pickup_time,
-    deliveryDate:  lead.delivery_date,
-    flightNumber:  lead.flight_number,
-    pnr:           lead.pnr,
-    pickupAddress: lead.pickup_address,
-    dropAddress:   lead.drop_address,
+    fromCity:      isReturn ? (lead.return_from_city  ?? null) : lead.from_city,
+    toCity:        isReturn ? (lead.return_to_city    ?? null) : lead.to_city,
+    bagsCount:     isReturn ? (lead.return_bags_count ?? null) : lead.bags_count,
+    pickupDate:    isReturn ? (lead.return_pickup_date ?? null) : lead.pickup_date,
+    pickupTime:    isReturn ? null : lead.pickup_time,
+    deliveryDate:  isReturn ? (lead.return_delivery_date ?? null) : lead.delivery_date,
+    flightNumber:  isReturn ? null : lead.flight_number,
+    pnr:           isReturn ? null : lead.pnr,
+    pickupAddress: isReturn ? (lead.return_pickup_address ?? null) : lead.pickup_address,
+    dropAddress:   isReturn ? (lead.return_drop_address   ?? null) : lead.drop_address,
     lineItems,
     subtotal,
-    discountAmt: lead.quote_discount_amt ?? undefined,
-    discountPct: lead.quote_discount_pct ?? undefined,
+    discountAmt: isReturn ? undefined : (lead.quote_discount_amt ?? undefined),
+    discountPct: isReturn ? undefined : (lead.quote_discount_pct ?? undefined),
     tax:    taxTotal,
     total:  grandTotal,
-    notes:  lead.quote_notes,
+    notes:  isReturn ? null : lead.quote_notes,
     terms:  lead.quote_terms,
     isFOC:  lead.billing_type === 'foc',
-    ...(lead.return_quote_number ? {
-      returnFromCity:   lead.return_from_city,
-      returnToCity:     lead.return_to_city,
-      returnBagsCount:  lead.return_bags_count,
-      returnPickupDate: lead.return_pickup_date,
-      returnDeliveryDate: lead.return_delivery_date,
-      returnLineItems:  lead.return_quote_line_items ?? [],
-      returnSubtotal:   lead.return_quote_subtotal ?? 0,
-      returnTax:        lead.return_quote_tax ?? 0,
-      returnTotal:      lead.return_quote_total ?? 0,
-    } : {}),
+    journeyBadge: isReturn ? 'return' as const : undefined,
+    // Deliberately NO returnXxx props on either leg — each leg's PDF is
+    // now always a standalone document, never a combined Journey 1 +
+    // Journey 2 view. (The combined view is still available separately,
+    // where explicitly wanted — see hasReturn usage in the "view quote"
+    // page's own live preview, which is unchanged by this file.)
   })
 
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -159,10 +192,13 @@ export interface QuotePdfUrlResult {
 // whatsapp.com can't attach real files) and lib/lifecycle-notifications.ts's
 // automated Fast2SMS 'quote_sent' send (2026-08-25 — a real Document-header
 // PDF attachment, since that template has one configured).
-export async function getQuotePdfUrl(lead: LeadRowForPdf): Promise<QuotePdfUrlResult> {
-  const pdfBuffer    = await buildQuotePdfBuffer(lead)
-  const filename     = quotePdfFilename(lead)
-  const storagePath  = `leads/${lead.id}/${filename}`
+export async function getQuotePdfUrl(lead: LeadRowForPdf, leg: QuotePdfLeg = 'onward'): Promise<QuotePdfUrlResult> {
+  const pdfBuffer    = await buildQuotePdfBuffer(lead, leg)
+  const filename     = quotePdfFilename(lead, leg)
+  // Onward keeps the exact original path (leg-less callers are unaffected).
+  // Return gets its own distinct path so the two never collide/overwrite
+  // each other in storage.
+  const storagePath  = leg === 'return' ? `leads/${lead.id}/return-${filename}` : `leads/${lead.id}/${filename}`
 
   const { error: uploadError } = await supabaseAdmin.storage
     .from('quotes')

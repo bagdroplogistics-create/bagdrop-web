@@ -301,6 +301,12 @@ export interface QuotePDFProps {
   returnBagsCount?:   number | null
   returnPickupDate?:  string | null
   returnDeliveryDate?: string | null
+
+  // Standalone single-leg PDF marker (Founder spec 2026-09-22 — Separate
+  // Onward and Return Quotations). Set by lib/quote-pdf.ts when rendering
+  // a leg-specific document; undefined for the existing combined-view
+  // callers, which render exactly as before.
+  journeyBadge?: 'onward' | 'return'
   returnLineItems?:   { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[]
   returnSubtotal?:    number
   returnTax?:         number
@@ -361,6 +367,11 @@ export default function QuotePDF(p: QuotePDFProps) {
             <Text style={s.logoSub}>India&apos;s First Digital Baggage Infrastructure</Text>
           </View>
           <View>
+            {p.journeyBadge && (
+              <Text style={{ fontSize: 8, fontFamily: 'Helvetica-Bold', color: '#fff', backgroundColor: 'rgba(0,0,0,0.28)', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 6, letterSpacing: 0.5, marginBottom: 3, alignSelf: 'flex-end' }}>
+                {p.journeyBadge === 'return' ? 'RETURN JOURNEY' : 'ONWARD JOURNEY'}
+              </Text>
+            )}
             <Text style={s.qnLabel}>Estimate</Text>
             <Text style={s.qnValue}>{p.quoteNumber}</Text>
             {/* Header date — Pickup Date, not the quote's own created/issue
