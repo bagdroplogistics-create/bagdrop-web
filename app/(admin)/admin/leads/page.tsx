@@ -6,7 +6,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
-  Printer, Mail, MessageCircle,
+  Printer, Mail, MessageCircle, FlaskConical,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -65,6 +65,12 @@ interface Lead {
   billing_type?:        'paid' | 'foc' | null
   updated_at?:          string | null
   acknowledgment_sent_at?: string | null
+  // Test Mode — Founder spec 2026-09-22 ("keep this only as a test inquiry,
+  // don't send any messages for this inquiry"). Same is_test column Group
+  // Booking's "Test Mode" checkbox writes at creation time; toggleable here
+  // for any lead (including one already created via the public website
+  // form, which has no such checkbox). See lib/lead-acknowledgment.ts.
+  is_test?:             boolean | null
   communication_log?:   CommunicationLogEntry[] | null
   // Sales Follow-up & Reminder System — see
   // lib/sales-followup-reminders.ts / app/api/admin/sales-followup-summary/route.ts.
@@ -941,6 +947,7 @@ function LeadsPageInner() {
   const [pageSize, setPageSize] = useState(20)
   const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting]       = useState<string | null>(null)
+  const [togglingTest, setTogglingTest] = useState<string | null>(null)
   const [deleteConfirm, setDeleteConfirm] = useState<Lead | null>(null)
   // Read-only Communication Log viewer (2026-09-01 — founder reported an
   // acknowledgment WhatsApp not arriving for an international-number lead
@@ -1123,6 +1130,55 @@ function LeadsPageInner() {
     })
     setDeleting(null)
     fetchLeads()
+  }
+
+  // Test Mode toggle (Founder spec 2026-09-22): "keep this only as a test
+  // inquiry, don't send any messages for this inquiry." Flags leads.is_test
+  // (gates the initial acknowledgment, lib/lead-acknowledgment.ts) AND, if a
+  // booking is already linked, bookings.is_test too (gates every later
+  // status-change / payment-receipt send — lib/lifecycle-notifications.ts,
+  // lib/payment-receipt-notification.ts — which check the booking's own
+  // flag, not the lead's). Reachable directly from this table so it works
+  // for a lead with no quote yet, unlike the quote-view page's own toggle.
+  // Does not un-send anything already sent before the flag was set — only
+  // affects sends from this point forward.
+  async function toggleTestMode(l: Lead) {
+    if (!adminKey) return
+    const next = !l.is_test
+    if (!confirm(
+      next
+        ? `Mark "${formatCustomerName(l.title, l.name) || l.name}" (${l.lead_number ?? l.id}) as a Test Mode inquiry? No real email or WhatsApp messages will be sent for this lead${l.booking_id ? ' or its linked booking' : ''} going forward.`
+        : `Turn OFF Test Mode for "${formatCustomerName(l.title, l.name) || l.name}" (${l.lead_number ?? l.id})? Real customer email/WhatsApp sends will resume.`
+    )) return
+    setTogglingTest(l.id)
+    try {
+      const leadRes = await fetch('/api/admin/leads/' + l.id, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ is_test: next }),
+      })
+      if (!leadRes.ok) {
+        const d = await leadRes.json().catch(() => ({}))
+        alert('Failed to update Test Mode: ' + (d.error ?? 'Unknown error'))
+        return
+      }
+      if (l.booking_id) {
+        const bookingRes = await fetch('/api/admin/bookings/' + l.booking_id, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ is_test: next }),
+        })
+        if (!bookingRes.ok) {
+          const d = await bookingRes.json().catch(() => ({}))
+          alert('Lead updated, but failed to update Test Mode on the linked booking: ' + (d.error ?? 'Unknown error'))
+        }
+      }
+      setLeads(prev => prev.map(x => x.id === l.id ? { ...x, is_test: next } : x))
+    } catch {
+      alert('Failed to update Test Mode')
+    } finally {
+      setTogglingTest(null)
+    }
   }
 
   function formatDate(d: string | null) {
@@ -1579,6 +1635,11 @@ function LeadsPageInner() {
                         {l.is_confirmed ? (
                           <p className="mt-0.5 text-[11px] font-semibold" style={{ color: '#ff6300' }}>Confirmed</p>
                         ) : null}
+                        {l.is_test ? (
+                          <span className="mt-0.5 inline-flex items-center gap-1 rounded-full bg-purple-100 px-2 py-0.5 text-[11px] font-semibold text-purple-700">
+                            <FlaskConical className="h-2.5 w-2.5" /> Test Mode
+                          </span>
+                        ) : null}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600">
                         {l.service_interest ?? l.service_type ?? '—'}
@@ -1761,6 +1822,22 @@ function LeadsPageInner() {
                                 title="Edit"
                                 className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
                                 <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              {/* Test Mode toggle — see toggleTestMode() above. Reachable
+                                  for every lead regardless of quote status, unlike the
+                                  quote-view page's own toggle. */}
+                              <button
+                                onClick={() => toggleTestMode(l)}
+                                disabled={togglingTest === l.id}
+                                title={l.is_test ? 'Test Mode is ON — click to turn off' : 'Mark as Test Mode — no real messages will be sent'}
+                                className={`rounded-lg border p-1.5 transition-colors disabled:opacity-40 ${
+                                  l.is_test
+                                    ? 'border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100'
+                                    : 'border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-purple-600'
+                                }`}>
+                                {togglingTest === l.id
+                                  ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+                                  : <FlaskConical className="h-3.5 w-3.5" />}
                               </button>
                               {/* Send Quote via Email / WhatsApp — only once a quote actually
                                   exists for this lead (zoho_estimate_number set) and it has a
