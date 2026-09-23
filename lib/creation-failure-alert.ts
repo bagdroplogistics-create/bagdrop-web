@@ -45,8 +45,49 @@ export interface CreationFailureDetails {
 }
 
 export async function alertCreationFailure(details: CreationFailureDetails): Promise<void> {
-  let alertSent = false
+  // ── Write the audit row FIRST, not after the email ──────────────────────
+  // 2026-09-23 fix: this used to send the email, THEN attempt the DB insert
+  // and only console.warn() if it failed — invisible to the founder, who has
+  // no routine access to server logs. Real incident: Sanya Chandwani's two
+  // failed inquiries (BDA-2026-0214, BDA-2026-0215) both alerted by email
+  // exactly as designed, but NEITHER audit row was ever written (confirmed
+  // empty in Supabase Table Editor) — so /api/admin/repair/recreate-lost-inquiry
+  // had nothing to recreate from, and the founder had no way to even know
+  // the raw_payload was gone until asking "how will i recover inquiry" and
+  // getting an empty result. The underlying cause of THAT specific insert
+  // failure is still unknown (no server-log access from this environment to
+  // see the real Postgres error) — but the silence itself was the bigger
+  // bug: the one thing telling the founder "the raw payload was NOT saved,
+  // don't rely on the recreate tool for this one" is now baked directly
+  // into the alert email itself, computed BEFORE the email is sent, so it
+  // can never go stale/be missed again.
+  let auditRowSaved = false
+  let auditError: string | null = null
+  try {
+    const { error } = await supabaseAdmin.from('inquiry_creation_failures').insert({
+      source:         details.source,
+      tracking_id:    details.trackingId ?? null,
+      lead_number:    details.leadNumber ?? null,
+      failure_stage:  details.failureStage,
+      customer_name:  details.customerName ?? null,
+      customer_phone: details.customerPhone ?? null,
+      customer_email: details.customerEmail ?? null,
+      error_message:  details.errorMessage,
+      alert_sent:     false, // corrected below once we know the email actually sent
+      raw_payload:    details.rawPayload ?? null,
+    })
+    if (error) {
+      auditError = error.message
+      console.warn('[CreationFailureAlert] Could not write audit row (has 20260822_inquiry_creation_failures.sql been run?):', error.message)
+    } else {
+      auditRowSaved = true
+    }
+  } catch (err) {
+    auditError = err instanceof Error ? err.message : String(err)
+    console.error('[CreationFailureAlert] Audit insert threw:', err)
+  }
 
+  let alertSent = false
   try {
     const subject = `⚠️ Inquiry creation failed — ${details.trackingId ?? details.leadNumber ?? 'number burned with no record'}`
     const html = `
@@ -64,17 +105,23 @@ export async function alertCreationFailure(details: CreationFailureDetails): Pro
           <tr><td style="color:#6b7280">Customer Email</td><td style="font-weight:600">${escapeHtml(details.customerEmail ?? '—')}</td></tr>
           <tr><td style="color:#6b7280">Error</td><td style="font-weight:600;color:#dc2626">${escapeHtml(details.errorMessage)}</td></tr>
         </table>
+        ${auditRowSaved ? '' : `
+        <p style="margin-top:16px;padding:10px 14px;background:#fef2f2;border:1px solid #fecaca;border-radius:8px;color:#dc2626;font-weight:600">
+          ⚠️ The audit log row itself also failed to save${auditError ? ' — ' + escapeHtml(auditError) : ''}.
+          The Lost Inquiries admin tool will have NOTHING to recreate from for this one —
+          you'll need to contact the customer directly using the phone/email above and
+          collect their route/dates/bags again by hand.
+        </p>`}
         <p style="margin-top:16px;color:#6b7280">
           If this looks like a real customer (not a bot probe), reach out to them
           directly using the phone/email above — their inquiry never made it into
           the system. If a booking record exists for this tracking ID with no
           linked lead, it can be repaired via
           <code>/api/admin/repair/create-lead-for-booking</code>. If NOTHING was
-          saved at all (no booking, no lead), the full original submission
-          ${details.rawPayload ? 'was captured and is saved in the inquiry_creation_failures table (raw_payload column) — recreate it exactly via' : 'was NOT captured — recreate it from whatever details you have via'}
-          <code>/api/admin/repair/recreate-lost-inquiry</code>, using this
-          same tracking ID/lead number so the customer's original inquiry
-          number is preserved.
+          saved at all (no booking, no lead), ${auditRowSaved
+            ? 'the full original submission was captured and is saved in the inquiry_creation_failures table (raw_payload column), and can be one-click recreated from the <a href="https://www.bagdrop.co/admin/repair/lost-inquiries">Lost Inquiries</a> admin page.'
+            : 'the full original submission was NOT captured this time (see the red note above) — recreate it from whatever details you gather from the customer via'}
+          ${auditRowSaved ? '' : ' <code>/api/admin/repair/recreate-lost-inquiry</code>, using this same tracking ID/lead number so the customer\'s original inquiry number is preserved.'}
         </p>
       </div>
     `
@@ -89,24 +136,21 @@ export async function alertCreationFailure(details: CreationFailureDetails): Pro
     console.error('[CreationFailureAlert] Email send threw:', err)
   }
 
-  try {
-    const { error } = await supabaseAdmin.from('inquiry_creation_failures').insert({
-      source:         details.source,
-      tracking_id:    details.trackingId ?? null,
-      lead_number:    details.leadNumber ?? null,
-      failure_stage:  details.failureStage,
-      customer_name:  details.customerName ?? null,
-      customer_phone: details.customerPhone ?? null,
-      customer_email: details.customerEmail ?? null,
-      error_message:  details.errorMessage,
-      alert_sent:     alertSent,
-      raw_payload:    details.rawPayload ?? null,
-    })
-    if (error) {
-      console.warn('[CreationFailureAlert] Could not write audit row (has 20260822_inquiry_creation_failures.sql been run?):', error.message)
+  // Best-effort correction of alert_sent now that we actually know — the
+  // row was necessarily inserted with alert_sent:false above since the
+  // email hadn't been attempted yet at that point.
+  if (auditRowSaved && alertSent) {
+    try {
+      await supabaseAdmin
+        .from('inquiry_creation_failures')
+        .update({ alert_sent: true })
+        .eq('tracking_id', details.trackingId ?? '')
+        .is('resolved_at', null)
+        .order('created_at', { ascending: false })
+        .limit(1)
+    } catch (err) {
+      console.warn('[CreationFailureAlert] Could not backfill alert_sent (non-fatal):', err)
     }
-  } catch (err) {
-    console.error('[CreationFailureAlert] Audit insert threw:', err)
   }
 }
 

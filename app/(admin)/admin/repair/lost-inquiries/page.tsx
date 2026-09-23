@@ -20,7 +20,22 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { AlertTriangle, Loader2, RotateCcw, CheckCircle2, XCircle, Ban } from 'lucide-react'
+import { AlertTriangle, Loader2, RotateCcw, CheckCircle2, XCircle, Ban, PencilLine } from 'lucide-react'
+import { TITLE_OPTIONS } from '@/lib/constants'
+
+// Manual recovery — for a failure whose raw_payload was never captured (an
+// older failure from before raw_payload existed, OR the DB audit-row write
+// itself failed even though the alert email sent — see the 2026-09-23 fix
+// in lib/creation-failure-alert.ts for that second case). There's nothing
+// to auto-fill from, so the admin re-collects the customer's details
+// directly (by calling/WhatsApping them, using the phone/email already
+// shown on the card) and types them in here — still under the ORIGINAL
+// tracking ID, still zero curl/Postman/Supabase-table-editor needed.
+const EMPTY_MANUAL_FORM = {
+  title: 'Mr.', name: '', phone: '', email: '',
+  service_type: '', from_city: '', to_city: '',
+  pickup_date: '', delivery_date: '', total_bags: '1', notes: '',
+}
 
 interface RawBookingPayload {
   booking?: Record<string, unknown>
@@ -78,6 +93,8 @@ export default function LostInquiriesPage() {
   const [acting,   setActing]   = useState<string | null>(null)
   const [rowError, setRowError] = useState<Record<string, string>>({})
   const [rowSuccess, setRowSuccess] = useState<Record<string, string>>({})
+  const [manualFormFor, setManualFormFor] = useState<string | null>(null)
+  const [manualForm, setManualForm] = useState(EMPTY_MANUAL_FORM)
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -120,6 +137,67 @@ export default function LostInquiriesPage() {
       if (res.ok && d.success) {
         setRowSuccess(s => ({ ...s, [row.id]: `Recreated as ${d.tracking_id} / ${d.lead_number}` }))
         setRows(rs => rs.map(r => r.id === row.id ? { ...r, resolved_at: new Date().toISOString() } : r))
+      } else {
+        setRowError(e => ({ ...e, [row.id]: d.error ?? 'Recreate failed' }))
+      }
+    } catch {
+      setRowError(e => ({ ...e, [row.id]: 'Recreate failed — network error' }))
+    } finally {
+      setActing(null)
+    }
+  }
+
+  function openManualForm(row: FailureRow) {
+    setManualForm({
+      ...EMPTY_MANUAL_FORM,
+      name:  row.customer_name  ?? '',
+      phone: row.customer_phone ?? '',
+      email: row.customer_email ?? '',
+    })
+    setManualFormFor(row.id)
+    setRowError(e => ({ ...e, [row.id]: '' }))
+  }
+
+  async function recreateManual(row: FailureRow) {
+    if (!row.tracking_id) {
+      setRowError(e => ({ ...e, [row.id]: 'No tracking_id was captured for this failure — cannot recreate.' }))
+      return
+    }
+    if (!manualForm.name.trim() || !manualForm.phone.trim()) {
+      setRowError(e => ({ ...e, [row.id]: 'Name and phone are required.' }))
+      return
+    }
+    setActing(row.id)
+    setRowError(e => ({ ...e, [row.id]: '' }))
+    try {
+      const res = await fetch('/api/admin/repair/recreate-lost-inquiry', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({
+          tracking_id:    row.tracking_id,
+          lead_number:    row.lead_number ?? undefined,
+          failure_id:     row.id,
+          source:         row.source === 'mobile-app-booking' ? 'mobile-app' : 'website',
+          reason:         `Lost Inquiries tool (manual entry — no raw_payload captured) — original error: ${row.error_message}`,
+          submitted_at:   row.created_at,
+          title:          manualForm.title,
+          customer_name:  manualForm.name.trim(),
+          customer_phone: manualForm.phone.trim(),
+          customer_email: manualForm.email.trim() || undefined,
+          service_type:   manualForm.service_type.trim() || undefined,
+          from_city:      manualForm.from_city.trim() || undefined,
+          to_city:        manualForm.to_city.trim() || undefined,
+          pickup_date:    manualForm.pickup_date || undefined,
+          delivery_date:  manualForm.delivery_date || undefined,
+          total_bags:     manualForm.total_bags || undefined,
+          notes:          manualForm.notes.trim() || undefined,
+        }),
+      })
+      const d = await res.json().catch(() => ({}))
+      if (res.ok && d.success) {
+        setRowSuccess(s => ({ ...s, [row.id]: `Recreated as ${d.tracking_id} / ${d.lead_number}` }))
+        setRows(rs => rs.map(r => r.id === row.id ? { ...r, resolved_at: new Date().toISOString() } : r))
+        setManualFormFor(null)
       } else {
         setRowError(e => ({ ...e, [row.id]: d.error ?? 'Recreate failed' }))
       }
@@ -222,10 +300,16 @@ export default function LostInquiriesPage() {
                         className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
                         {acting === row.id ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Recreating…</> : <><RotateCcw className="h-3.5 w-3.5" /> Recreate under original number</>}
                       </button>
+                    ) : row.tracking_id ? (
+                      <button
+                        onClick={() => manualFormFor === row.id ? setManualFormFor(null) : openManualForm(row)}
+                        className="flex items-center gap-1.5 rounded-lg border border-orange-200 bg-orange-50 px-3 py-1.5 text-xs font-semibold text-orange-600 hover:bg-orange-100">
+                        <PencilLine className="h-3.5 w-3.5" /> {manualFormFor === row.id ? 'Cancel manual entry' : 'Recover manually'}
+                      </button>
                     ) : (
                       <span className="flex items-center gap-1.5 text-xs text-gray-400">
                         <XCircle className="h-3.5 w-3.5" />
-                        {row.raw_payload ? 'No automatic recreation for this source yet — recover manually from the details above.' : 'No raw submission was captured — recover manually from the customer contact details above.'}
+                        No tracking_id was captured for this failure — nothing to recreate under.
                       </span>
                     )}
                     <button
@@ -233,6 +317,79 @@ export default function LostInquiriesPage() {
                       disabled={acting === row.id}
                       className="flex items-center gap-1.5 rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-500 hover:bg-gray-50 disabled:opacity-60">
                       <Ban className="h-3.5 w-3.5" /> Mark resolved (bot / ignore)
+                    </button>
+                  </div>
+                )}
+
+                {manualFormFor === row.id && (
+                  <div className="mt-4 rounded-lg border border-orange-200 bg-orange-50/50 p-4">
+                    <p className="mb-3 text-xs font-semibold text-orange-700">
+                      No original submission was captured for this one — call/WhatsApp the customer at {row.customer_phone ?? 'the number above'} to confirm these details, then enter what they tell you. This will still be saved under the original number {row.tracking_id}.
+                    </p>
+                    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                      <label className="text-xs text-gray-600">
+                        Title
+                        <select value={manualForm.title} onChange={e => setManualForm(f => ({ ...f, title: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm">
+                          {TITLE_OPTIONS.map(t => <option key={t} value={t}>{t}</option>)}
+                        </select>
+                      </label>
+                      <label className="col-span-2 text-xs text-gray-600">
+                        Name *
+                        <input value={manualForm.name} onChange={e => setManualForm(f => ({ ...f, name: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Phone *
+                        <input value={manualForm.phone} onChange={e => setManualForm(f => ({ ...f, phone: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="col-span-2 text-xs text-gray-600">
+                        Email
+                        <input value={manualForm.email} onChange={e => setManualForm(f => ({ ...f, email: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Service type
+                        <input value={manualForm.service_type} onChange={e => setManualForm(f => ({ ...f, service_type: e.target.value }))}
+                          placeholder="e.g. airport-delivery" className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        From city
+                        <input value={manualForm.from_city} onChange={e => setManualForm(f => ({ ...f, from_city: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        To city
+                        <input value={manualForm.to_city} onChange={e => setManualForm(f => ({ ...f, to_city: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Pickup date
+                        <input type="date" value={manualForm.pickup_date} onChange={e => setManualForm(f => ({ ...f, pickup_date: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Delivery date
+                        <input type="date" value={manualForm.delivery_date} onChange={e => setManualForm(f => ({ ...f, delivery_date: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="text-xs text-gray-600">
+                        Bags
+                        <input type="number" min={1} value={manualForm.total_bags} onChange={e => setManualForm(f => ({ ...f, total_bags: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                      <label className="col-span-2 text-xs text-gray-600 sm:col-span-3">
+                        Notes
+                        <input value={manualForm.notes} onChange={e => setManualForm(f => ({ ...f, notes: e.target.value }))}
+                          className="mt-1 w-full rounded-lg border border-gray-200 px-2 py-1.5 text-sm" />
+                      </label>
+                    </div>
+                    <button
+                      onClick={() => recreateManual(row)}
+                      disabled={acting === row.id}
+                      className="mt-3 flex items-center gap-1.5 rounded-lg bg-orange-500 px-3 py-1.5 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-60">
+                      {acting === row.id ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Recreating…</> : <><RotateCcw className="h-3.5 w-3.5" /> Recreate under {row.tracking_id}</>}
                     </button>
                   </div>
                 )}
