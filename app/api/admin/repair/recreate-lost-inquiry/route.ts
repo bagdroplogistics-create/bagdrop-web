@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/admin-auth'
+import { SERVICE_TYPES, COVERAGE_CITIES, TIME_SLOTS, TITLE_OPTIONS, DEFAULT_TITLE, type TitleId } from '@/lib/constants'
+import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
+import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 
 // Kept in sync with app/api/bookings/route.ts's sanitizeFlightDateTime — a
 // bare "HH:MM" (no date) reaching bookings.flight_datetime (timestamptz)
@@ -9,6 +12,68 @@ import { requireAdmin } from '@/lib/admin-auth'
 function sanitizeFlightDateTime(value: unknown): string | null {
   if (typeof value !== 'string' || !value.trim()) return null
   return value.includes('T') ? value : null
+}
+
+// ── raw_booking_payload transform (2026-09-23) ──────────────────────────
+// inquiry_creation_failures.raw_payload for source 'website-booking' /
+// 'mobile-app-booking' is the EXACT { booking, pricing } object the public
+// booking form posted (see app/api/bookings/route.ts) — a completely
+// different shape from this route's own flat customer_name/from_city/etc.
+// fields (camelCase BookingState, city/service IDs not labels, a `bags`
+// array instead of total_bags, etc.). Added so the new Lost Inquiries admin
+// tool (app/(admin)/admin/repair/lost-inquiries) can recreate a lost
+// website/mobile-app booking with ONE click straight from its captured
+// raw_payload, instead of an admin hand-copying ~15 fields out of a JSON
+// blob into a form. Mirrors app/api/bookings/route.ts's own insert mapping
+// exactly, field for field, so the recreated record matches what would
+// have been saved if the original insert hadn't failed.
+//
+// Purely additive: callers that already pass the flat fields directly
+// (the original, still-supported shape) are completely unaffected — this
+// only runs when the caller sends `raw_booking_payload` instead.
+function flattenRawBookingPayload(raw: { booking?: Record<string, unknown>; pricing?: Record<string, unknown> }) {
+  const booking = raw.booking ?? {}
+  const pricing = raw.pricing ?? {}
+
+  const countryIso2 = (booking.countryIso2 as string) || DEFAULT_COUNTRY_ISO2
+  const rawPhone     = String(booking.phone ?? '').replace(/\D/g, '')
+  const customerPhone = isValidPhoneForCountry(rawPhone, countryIso2) ? toE164(rawPhone, countryIso2) : ('+91' + rawPhone)
+
+  const serviceLabel  = SERVICE_TYPES.find(s => s.id === booking.serviceId)?.label ?? (booking.serviceId as string) ?? 'Standard Delivery'
+  const fromCityLabel = COVERAGE_CITIES.find(c => c.id === booking.fromCity)?.label ?? (booking.fromCity as string) ?? ''
+  const toCityLabel   = COVERAGE_CITIES.find(c => c.id === booking.toCity)?.label   ?? (booking.toCity as string)   ?? ''
+  const timeSlotObj   = TIME_SLOTS.find(t => t.id === booking.timeSlotId)
+  const timeSlotLabel = timeSlotObj
+    ? (timeSlotObj.label + (timeSlotObj.range ? ' (' + timeSlotObj.range + ')' : ''))
+    : ((booking.timeSlotId as string) ?? '')
+
+  const title: TitleId = TITLE_OPTIONS.includes(booking.title as TitleId) ? (booking.title as TitleId) : DEFAULT_TITLE
+  const bags = Array.isArray(booking.bags) ? booking.bags as Array<{ quantity?: number }> : null
+  const totalBags = (pricing.totalBags as number)
+    ?? (bags ? bags.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0) : undefined)
+    ?? 1
+
+  return {
+    title,
+    customer_name:  String(booking.name ?? '').trim(),
+    customer_phone: customerPhone,
+    phone_country_code: countryIso2,
+    phone_national:     rawPhone,
+    customer_email: String(booking.email ?? '').trim().toLowerCase() || undefined,
+    service_type:   (booking.serviceId as string) ?? '',
+    service_label:  serviceLabel,
+    from_city:      fromCityLabel,
+    to_city:        toCityLabel,
+    pickup_address: (booking.pickupAddress as string) ?? undefined,
+    drop_address:   (booking.dropAddress as string) ?? undefined,
+    pickup_date:    (booking.date as string) ?? undefined,
+    delivery_date:  (booking.deliveryDate as string) ?? undefined,
+    pickup_time:    timeSlotLabel || undefined,
+    flight_number:  (booking.flightNumber as string) ?? undefined,
+    flight_datetime: sanitizeFlightDateTime(booking.flightDateTime) ?? undefined,
+    total_bags:     totalBags,
+    notes:          (booking.notes as string)?.trim() || undefined,
+  }
 }
 
 /**
@@ -59,8 +124,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized — full admin key required' }, { status: 401 })
   }
 
-  const body = await req.json().catch(() => null)
+  let body = await req.json().catch(() => null)
   if (!body) return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
+
+  // Raw-payload path (Lost Inquiries admin tool) — flatten the captured
+  // { booking, pricing } object into this route's normal flat fields first.
+  // Explicit flat fields on `body` (if any) still win over the derived
+  // ones, so a caller can override a specific field without re-deriving
+  // the whole payload.
+  if (body.raw_booking_payload && typeof body.raw_booking_payload === 'object') {
+    const flattened = flattenRawBookingPayload(body.raw_booking_payload)
+    body = { ...flattened, ...body }
+  }
 
   const trackingId: string | undefined = body.tracking_id?.trim()
   if (!trackingId || !/^BDA-\d{4}-\d{4}$/.test(trackingId)) {
@@ -188,6 +263,20 @@ export async function POST(req: NextRequest) {
   }
 
   // Deliberately NO notifications of any kind — see module comment above.
+
+  // Mark the originating inquiry_creation_failures row resolved, when the
+  // caller (Lost Inquiries admin tool) tells us which one this recreated —
+  // best-effort, never blocks the response the founder is waiting on.
+  if (typeof body.failure_id === 'string' && body.failure_id.trim()) {
+    const { error: resolveErr } = await supabaseAdmin
+      .from('inquiry_creation_failures')
+      .update({
+        resolved_at:   new Date().toISOString(),
+        resolved_note: `Recreated as ${newBooking.tracking_id} / ${newLead.lead_number} via recreate-lost-inquiry.`,
+      })
+      .eq('id', body.failure_id.trim())
+    if (resolveErr) console.warn('[recreate-lost-inquiry] Could not mark failure row resolved:', resolveErr.message)
+  }
 
   return NextResponse.json({
     success:     true,

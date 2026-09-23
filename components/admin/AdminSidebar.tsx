@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact, Route,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact, Route, AlertTriangle,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -63,6 +63,17 @@ const NAV = [
       // ROUTE-TEMPLATE-001, 2026-09-15) — "select route + enter bags" auto-
       // generation of Trip Expenses. See app/(admin)/admin/route-templates.
       { label: 'Route Templates', href: '/admin/route-templates', icon: Route },
+    ],
+  },
+  {
+    // Rare-use recovery tool, not day-to-day workflow — own small section so
+    // it doesn't get lost inside Configuration, but stays visually separate
+    // from the operational nav above it (2026-09-23, after a second/third
+    // "Inquiry creation failed" incident made a one-click fix worth its own
+    // entry — see app/(admin)/admin/repair/lost-inquiries).
+    group: 'Tools',
+    items: [
+      { label: 'Lost Inquiries', href: '/admin/repair/lost-inquiries', icon: AlertTriangle },
     ],
   },
 ]
