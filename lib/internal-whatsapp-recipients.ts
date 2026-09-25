@@ -18,7 +18,7 @@
 // list, e.g. "+916357335733,+919130063884,+919998665328" — falls back to
 // DEFAULT_INTERNAL_WHATSAPP_NUMBERS when the setting is unset/empty.
 
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateMeta } from './notifications'
 
 export const DEFAULT_INTERNAL_WHATSAPP_NUMBERS = ['+916357335733', '+919130063884', '+919998665328']
 
@@ -49,10 +49,19 @@ export interface FanOutResult {
  * Sends the same approved WhatsApp template to every recipient in the
  * list, sequentially (matches the existing single-recipient sequential-
  * loop convention already used for cron-triggered batches — see the
- * timeout comment in lib/notifications.ts's sendWhatsAppTemplateFast2SMS),
+ * timeout comment in lib/notifications.ts's sendWhatsAppTemplateMeta),
  * and aggregates the per-recipient outcomes into one result. Never throws
- * — each individual send is already non-throwing (sendWhatsAppTemplateFast2SMS
+ * — each individual send is already non-throwing (sendWhatsAppTemplateMeta
  * returns a { success, error } shape rather than rejecting).
+ *
+ * 2026-09-25: routed to sendWhatsAppTemplateMeta (direct Meta Cloud API)
+ * instead of the old Fast2SMS sender — Founder decision to drop Fast2SMS
+ * for WhatsApp entirely (see lib/notifications.ts's sendWhatsAppTemplate
+ * module comment for the full incident writeup). The `templateId` param
+ * below is now the actual Meta-approved template NAME (e.g.
+ * 'ops_pickup_reminder'), not a Fast2SMS numeric message_id — every
+ * caller was updated to pass the name directly instead of reading a
+ * FAST2SMS_*_MESSAGE_ID env var.
  *
  * Overall status is "sent" the moment AT LEAST ONE recipient succeeds —
  * these DB rows exist to gate idempotency/retries for the notification
@@ -68,8 +77,9 @@ export async function sendToAllRecipients(
   mediaUrl?: string
 ): Promise<FanOutResult> {
   const perRecipient: RecipientSendResult[] = []
+  const header = mediaUrl ? { type: 'image' as const, url: mediaUrl } : undefined
   for (const phone of recipients) {
-    const result = await sendWhatsAppTemplateFast2SMS(phone, templateId, variables, mediaUrl)
+    const result = await sendWhatsAppTemplateMeta(phone, templateId, variables, header)
     perRecipient.push({ phone, success: result.success, error: result.error, requestId: result.requestId })
   }
   const successCount = perRecipient.filter(r => r.success).length

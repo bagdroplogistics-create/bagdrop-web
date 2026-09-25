@@ -547,7 +547,15 @@ export async function sendWhatsAppTemplateMeta(
   phone: string,
   templateName: string,
   variables: string[],
-  header?: { type: 'image' | 'document'; url: string; filename?: string }
+  header?: { type: 'image' | 'document'; url: string; filename?: string },
+  // CTA URL button support (2026-09-25) — added while migrating every
+  // WhatsApp send off Fast2SMS onto this direct Meta path (Founder
+  // decision, after the Fast2SMS/Meta partner-sharing connection could not
+  // be restored — see the Sep 22-25 WhatsApp outage investigation).
+  // Mirrors sendWhatsAppTemplateFast2SMSv2's identical `buttons` param —
+  // that function was the only caller needing it (payment-verification-
+  // notification.ts's "Approve Payment" CTA), now migrated here too.
+  buttons?: WhatsAppCtaButton[]
 ): Promise<{ success: boolean; error?: string; requestId?: string }> {
   const token   = process.env.WHATSAPP_ACCESS_TOKEN
   const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '995935626929789'
@@ -589,6 +597,16 @@ export async function sendWhatsAppTemplateMeta(
     type: 'body',
     parameters: sanitizedVariables.map(text => ({ type: 'text', text })),
   })
+  if (buttons) {
+    for (const b of buttons) {
+      components.push({
+        type:       'button',
+        sub_type:   'url',
+        index:      String(b.index),
+        parameters: [{ type: 'payload', payload: b.payload }],
+      })
+    }
+  }
 
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 10_000)
@@ -637,27 +655,31 @@ export async function sendWhatsAppTemplateMeta(
 
 // ── Shared dispatcher — every customer-facing WhatsApp template send should
 // call THIS, not either sender directly ─────────────────────────────────
-// Routes by the recipient's actual stored country code (via
-// parseStoredPhone, the same helper buildInternationalRecipient() uses):
-// Indian numbers → Fast2SMS (sendWhatsAppTemplateFast2SMSv2 — cheaper,
-// already working, unaffected by any of this). Every other country →
-// direct Meta Cloud API (sendWhatsAppTemplateMeta — bypasses Fast2SMS's
-// India-only restriction entirely, same underlying WABA/number). This
-// single choke point means every caller (lead-acknowledgment.ts,
-// lifecycle-notifications.ts, driver-details.ts, indemnity-notifications.ts,
-// the manual Resend Acknowledgment route) gets the right routing for free
-// and never has to know which provider is behind it.
+// 2026-09-25 — Founder decision to drop Fast2SMS entirely for WhatsApp
+// after their partner-app connection to our WABA broke (uninstalled
+// 22 Sept, could not be re-shared — "Unable to assign assets" / "This
+// number can't be shared with this app", unresolved after a full Meta
+// Business Manager investigation: number Connected, business Verified,
+// yet Fast2SMS's own app still blocked). Rather than depend on Fast2SMS
+// support to fix their side, every send now goes straight to Meta's own
+// Cloud API (sendWhatsAppTemplateMeta) using Bagdrop's OWN app/System User
+// token (WHATSAPP_ACCESS_TOKEN) against the SAME WABA/phone number
+// (995935626929789) — no more India/international branching, since the
+// direct Meta path has always worked for both (it's what every
+// international customer send already used). This single choke point
+// means every caller (lead-acknowledgment.ts, lifecycle-notifications.ts,
+// driver-details.ts, indemnity-notifications.ts, the manual Resend
+// Acknowledgment route, vendor-notifications.ts) gets this for free.
+// sendWhatsAppTemplateFast2SMS/sendWhatsAppTemplateFast2SMSv2 above are
+// left defined (harmless, dead code) rather than deleted, in case Fast2SMS
+// is ever reconnected and worth reusing for its lower per-message cost —
+// nothing currently calls either.
 export async function sendWhatsAppTemplate(
   phone: string,
   templateName: string,
   variables: string[],
   header?: { type: 'image' | 'document'; url: string; filename?: string }
 ): Promise<{ success: boolean; error?: string; requestId?: string; provider?: 'fast2sms' | 'meta' }> {
-  const { dialCode } = parseStoredPhone(phone)
-  if (dialCode === '91') {
-    const result = await sendWhatsAppTemplateFast2SMSv2(phone, templateName, variables, header)
-    return { ...result, provider: 'fast2sms' }
-  }
   const result = await sendWhatsAppTemplateMeta(phone, templateName, variables, header)
   return { ...result, provider: 'meta' }
 }

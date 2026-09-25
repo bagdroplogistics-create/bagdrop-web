@@ -32,7 +32,7 @@
 // actually flips bookings.payment_verification_status to 'verified'.
 
 import { sendEmail } from './email'
-import { sendWhatsAppTemplateFast2SMSv2 } from './notifications'
+import { sendWhatsAppTemplateMeta } from './notifications'
 import { supabaseAdmin } from './supabase'
 
 const ACCOUNTS_EMAIL             = 'anil@bagdrop.co'
@@ -191,7 +191,7 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
       fmtDateTime(data.paymentDate),
       proofVariable,
     ]
-    const result = await sendWhatsAppTemplateFast2SMSv2(accountsNumber, templateName, variables, undefined, [
+    const result = await sendWhatsAppTemplateMeta(accountsNumber, templateName, variables, undefined, [
       { index: 0, payload: data.reviewToken },
     ])
     console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp ` +

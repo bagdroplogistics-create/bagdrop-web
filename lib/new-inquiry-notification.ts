@@ -88,12 +88,13 @@ async function recordStatus(inquiryNumber: string, status: 'sent' | 'failed' | '
  */
 export async function sendNewInquiryWhatsApp(data: InquiryEmailData): Promise<void> {
   try {
-    const templateId = process.env.FAST2SMS_NEW_INQUIRY_MESSAGE_ID
-    if (!templateId) {
-      console.log(`[NewInquiryWhatsApp] ${data.inquiryNumber} — skipped: template not configured (FAST2SMS_NEW_INQUIRY_MESSAGE_ID)`)
-      await recordStatus(data.inquiryNumber, 'skipped', 'FAST2SMS_NEW_INQUIRY_MESSAGE_ID not set')
-      return
-    }
+    // 2026-09-25: template name is now hardcoded (Meta-approved template,
+    // same one used since it was submitted — see FAST2SMS_TEMPLATES.md)
+    // instead of read from FAST2SMS_NEW_INQUIRY_MESSAGE_ID, which held a
+    // Fast2SMS-specific numeric message_id that has no meaning to the
+    // direct Meta Cloud API this now sends through — see
+    // lib/notifications.ts's sendWhatsAppTemplate module comment.
+    const templateId = 'new_inquiry_notification'
 
     const opsNumbers  = await getNewInquiryWhatsAppNumbers()
     const displayName = formatCustomerName(data.customerTitle, data.customerName) || data.customerName

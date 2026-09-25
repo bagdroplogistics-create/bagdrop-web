@@ -37,7 +37,7 @@
 import { supabaseAdmin } from './supabase'
 import { sendEmail } from './email'
 import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
-import { sendWhatsAppTemplateFast2SMS } from './notifications'
+import { sendWhatsAppTemplateMeta } from './notifications'
 
 // NOTE: "24" here is a fixed internal tier KEY (matches the
 // quote_pending_24h/response_24h reminder_type values already locked into
@@ -407,9 +407,12 @@ async function sendDuePending(): Promise<{ processed: number }> {
             detail: `Client quote follow-up (${row.reminder_type}) skipped — Test Mode lead, no real message sent`,
           })
         } else {
-          const templateId = process.env.FAST2SMS_CLIENT_QUOTE_FOLLOWUP_MESSAGE_ID ?? ''
+          // 2026-09-25: hardcoded Meta-approved template name, replacing
+          // FAST2SMS_CLIENT_QUOTE_FOLLOWUP_MESSAGE_ID (Fast2SMS-only
+          // numeric id) — see lib/notifications.ts's sendWhatsAppTemplate
+          // module comment.
           const variables = [lead.name || 'Customer', lead.quote_number || lead.lead_number]
-          const result = await sendWhatsAppTemplateFast2SMS(lead.phone, templateId, variables)
+          const result = await sendWhatsAppTemplateMeta(lead.phone, 'quote_follow_up_2_hours', variables)
           await supabaseAdmin.from('lead_followups').update({
             status: result.success ? 'sent' : 'failed',
             delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),
@@ -425,9 +428,11 @@ async function sendDuePending(): Promise<{ processed: number }> {
       }
 
       if (row.channel === 'whatsapp') {
-        const templateId = isQuoteTrack
-          ? (process.env.FAST2SMS_QUOTE_PENDING_MESSAGE_ID ?? '')
-          : (process.env.FAST2SMS_SALES_FOLLOWUP_MESSAGE_ID ?? '')
+        // 2026-09-25: hardcoded Meta-approved template names, replacing
+        // FAST2SMS_QUOTE_PENDING_MESSAGE_ID / FAST2SMS_SALES_FOLLOWUP_MESSAGE_ID
+        // (Fast2SMS-only numeric ids) — see lib/notifications.ts's
+        // sendWhatsAppTemplate module comment.
+        const templateId = isQuoteTrack ? 'quote_pending_reminder' : 'sales_followup_reminder'
         // Both approved templates (confirmed from the Fast2SMS dashboard)
         // have exactly 5 placeholders each — neither carries a "Reminder
         // Stage" variable, despite the original 6-variable spec this code

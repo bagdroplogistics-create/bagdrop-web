@@ -354,7 +354,10 @@ export async function sendDueReminders(): Promise<{ processed: number }> {
       }
 
       const settings = await getReminderSettings()
-      const templateId = process.env.FAST2SMS_OPS_REMINDER_MESSAGE_ID ?? ''
+      // 2026-09-25: hardcoded Meta-approved template name, replacing
+      // FAST2SMS_OPS_REMINDER_MESSAGE_ID (a Fast2SMS-only numeric id) — see
+      // lib/notifications.ts's sendWhatsAppTemplate module comment.
+      const templateId = 'ops_pickup_reminder'
       const result = await sendToAllRecipients(settings.whatsapp, templateId, buildReminderVariables(booking))
 
       await supabaseAdmin.from('booking_reminders')

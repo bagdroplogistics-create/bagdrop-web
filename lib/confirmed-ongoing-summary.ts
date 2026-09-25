@@ -356,15 +356,17 @@ export async function runScheduledSummary(
     .from('settings').select('key, value').eq('key', 'confirmed_ongoing_summary_whatsapp')
   const recipients = parseWhatsAppRecipients(settingsRows?.[0]?.value as string | undefined)
 
-  const templateId = process.env.FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID ?? ''
+  // 2026-09-25: hardcoded Meta-approved template name, replacing
+  // FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID (a Fast2SMS-only numeric id) —
+  // see lib/notifications.ts's sendWhatsAppTemplate module comment. The
+  // old "skip if not configured" branch is gone since the name is no
+  // longer optional/env-driven — sendWhatsAppTemplateMeta itself already
+  // reports a clean 'WhatsApp not configured' error per-recipient if
+  // WHATSAPP_ACCESS_TOKEN is ever missing, so nothing silently no-ops.
+  const templateId = 'confirmed_ongoing_summary'
   const fastResults: FanOutResult[] = []
-
-  if (templateId) {
-    for (const vars of messages) {
-      fastResults.push(await sendToAllRecipients(recipients, templateId, vars))
-    }
-  } else {
-    console.log('[confirmed-ongoing-summary] skipped: FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID not set')
+  for (const vars of messages) {
+    fastResults.push(await sendToAllRecipients(recipients, templateId, vars))
   }
 
   const success = fastResults.length > 0 && fastResults.every(r => r.anySuccess)
@@ -377,7 +379,7 @@ export async function runScheduledSummary(
       fast2sms_response: fastResults,
       success,
       error: success ? null : (fastResults.length === 0
-        ? 'No template configured (FAST2SMS_CONFIRMED_ONGOING_MESSAGE_ID unset)'
+        ? 'No messages were built for this report run (unexpected — messages[] was empty)'
         : fastResults.map(r => r.summary).join(' | ')),
       completed_at: new Date().toISOString(),
     })
