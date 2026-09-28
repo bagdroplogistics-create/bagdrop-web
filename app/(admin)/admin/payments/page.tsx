@@ -1001,6 +1001,54 @@ export default function PaymentsPage() {
   // fetch a receipt for.
   const [viewingPaymentId, setViewingPaymentId] = useState<string | null>(null)
   const [fixingDuplicates, setFixingDuplicates] = useState(false)
+  // Bulk "Log as Paid from confirmation date" — Founder-confirmed
+  // 2026-09-28: a large batch of "From Booking / no payment logged" rows
+  // were actually paid at booking-confirmation time and just never
+  // individually logged. Keyed by booking_id (Set) since that's what the
+  // bulk endpoint needs; only ever populated with is_synthetic rows whose
+  // payment_status is exactly 'pending' — see eligibleForBulk below, which
+  // deliberately excludes 'approved_pending' (Skybird approved-without-
+  // payment — must never be silently marked Paid).
+  const [selectedForBulk, setSelectedForBulk] = useState<Set<string>>(new Set())
+  const [bulkLogging, setBulkLogging] = useState(false)
+  function eligibleForBulk(p: Payment): boolean { return !!p.is_synthetic && p.payment_status === 'pending' && !!p.booking_id }
+  function toggleBulk(bookingId: string) {
+    setSelectedForBulk(prev => {
+      const next = new Set(prev)
+      if (next.has(bookingId)) next.delete(bookingId); else next.add(bookingId)
+      return next
+    })
+  }
+  async function runBulkLog() {
+    if (selectedForBulk.size === 0) return
+    const names = visiblePayments.filter(p => p.booking_id && selectedForBulk.has(p.booking_id)).map(p => p.customer_name)
+    if (!confirm(
+      `Log ${selectedForBulk.size} booking(s) as Paid, backdated to each booking's own confirmation date (from status_history)?\n\n` +
+      names.slice(0, 8).join(', ') + (names.length > 8 ? `, +${names.length - 8} more` : '') +
+      `\n\nNo customer notification will be sent — these are backdated bookkeeping corrections, not new payment events.`
+    )) return
+    setBulkLogging(true)
+    try {
+      const res = await fetch('/api/admin/payments/bulk-log-from-confirmation', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ booking_ids: Array.from(selectedForBulk) }),
+      })
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { alert(j.error ?? 'Bulk log failed'); return }
+      const skippedLines = (j.skipped ?? []).map((s: { tracking_id: string | null; reason: string }) => `${s.tracking_id ?? '?'}: ${s.reason}`)
+      alert(
+        `Logged ${j.loggedCount} payment(s) as Paid.` +
+        (j.skippedCount ? `\n\nSkipped ${j.skippedCount}:\n${skippedLines.join('\n')}` : '')
+      )
+      setSelectedForBulk(new Set())
+      fetchPayments()
+    } catch {
+      alert('Network error — please try again')
+    } finally {
+      setBulkLogging(false)
+    }
+  }
   // Inline Payment Date correction — founder-reported 2026-09-05: a real
   // payment (Dinesh Patel, completed in August) had been logged a few days
   // late, so its created_at defaulted to today instead of the actual
@@ -1254,6 +1302,42 @@ export default function PaymentsPage() {
   // excluded here too — they're a verification trail, not money owed.
   const totalPending = visiblePayments.filter(p => p.payment_method !== 'upload' && p.payment_status !== 'paid' && p.payment_status !== 'refunded').reduce((s, p) => s + Number(p.amount), 0)
 
+  // Founder-reported 2026-09-28: asked to "check all the data according to
+  // paid status" for June/July/August after the Monthly Breakdown showed a
+  // suspiciously large Pending figure for July. There was no way to hand
+  // over the exact row-by-row data behind that total — the founder had to
+  // eyeball the on-screen table one page at a time. This exports exactly
+  // what's currently visible (respects the month/status/search filters
+  // already applied above) as a CSV, including whether each row is a real
+  // logged payment or a synthetic "booking confirmed, nothing logged yet"
+  // row — that distinction is the difference between "genuinely
+  // uncollected" and "collected but never recorded," which is the actual
+  // question being asked.
+  function exportCSV() {
+    const header = ['Reporting Month', 'Date', 'Payment#', 'Customer', 'Phone', 'Amount', 'Status', 'Source', 'Booking ID']
+    const rows = visiblePayments.map(p => [
+      monthLabel(monthKey(p.reporting_month_date ?? p.created_at)),
+      fmtDate(p.created_at),
+      p.payment_id,
+      p.customer_name,
+      p.customer_phone,
+      String(Number(p.amount)),
+      STATUS_CFG[p.payment_status]?.label ?? p.payment_status,
+      p.is_synthetic ? 'NOT LOGGED — booking confirmed, no payment recorded' : 'Logged payment',
+      p.booking_id ?? '',
+    ])
+    const csv = [header, ...rows]
+      .map(r => r.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
+      .join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `bagdrop-payments-${monthFilter === 'all' ? 'all' : monthFilter}-${todayStr()}.csv`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
   if (!authed) return null
 
   return (
@@ -1278,6 +1362,12 @@ export default function PaymentsPage() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <button onClick={exportCSV}
+              title="Download the currently visible rows (respects the month/status/search filters above) as a CSV — marks each row as a real logged payment or a synthetic 'booking confirmed, nothing logged yet' row"
+              className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50">
+              <Download className="h-4 w-4" />
+              Export CSV
+            </button>
             <button onClick={fixDuplicatePayments} disabled={fixingDuplicates}
               title="Scans for a payment-proof upload and a manually-recorded payment that duplicate the same real payment, and merges each pair into one entry"
               className="flex items-center gap-2 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-60">
@@ -1378,6 +1468,28 @@ export default function PaymentsPage() {
           </button>
         </div>
 
+        {/* Bulk "Log as Paid from confirmation date" bar — only appears once
+            at least one eligible row is checked. See eligibleForBulk/
+            runBulkLog above and app/api/admin/payments/bulk-log-from-
+            confirmation/route.ts for the full explanation. */}
+        {selectedForBulk.size > 0 && (
+          <div className="mb-4 flex items-center justify-between rounded-xl border border-orange-200 bg-orange-50 px-4 py-3">
+            <p className="text-sm font-semibold text-orange-800">
+              {selectedForBulk.size} booking{selectedForBulk.size === 1 ? '' : 's'} selected
+            </p>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setSelectedForBulk(new Set())} className="text-xs font-semibold text-orange-700 hover:underline">
+                Clear selection
+              </button>
+              <button onClick={runBulkLog} disabled={bulkLogging}
+                className="flex items-center gap-2 rounded-lg bg-orange-600 px-4 py-2 text-sm font-semibold text-white hover:bg-orange-700 disabled:opacity-50">
+                {bulkLogging ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                Log as Paid (from confirmation date)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Table */}
         <div className="overflow-hidden rounded-xl border border-gray-100 bg-white shadow-sm">
           {loading ? (
@@ -1394,6 +1506,17 @@ export default function PaymentsPage() {
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-gray-100 bg-gray-50">
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-gray-500">
+                      <input
+                        type="checkbox"
+                        title="Select all eligible unlogged rows currently visible"
+                        checked={visiblePayments.some(eligibleForBulk) && visiblePayments.filter(eligibleForBulk).every(p => p.booking_id && selectedForBulk.has(p.booking_id))}
+                        onChange={e => {
+                          const eligible = visiblePayments.filter(eligibleForBulk).map(p => p.booking_id!) as string[]
+                          setSelectedForBulk(e.target.checked ? new Set(eligible) : new Set())
+                        }}
+                      />
+                    </th>
                     {['Date', 'Payment#', 'Reference#', 'Customer Name', 'Invoice#', 'Mode', 'Amount', 'Unused Amount', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
                     ))}
@@ -1402,6 +1525,15 @@ export default function PaymentsPage() {
                 <tbody className="divide-y divide-gray-50">
                   {visiblePayments.map(p => (
                     <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
+                      <td className="px-4 py-3">
+                        {eligibleForBulk(p) && (
+                          <input
+                            type="checkbox"
+                            checked={selectedForBulk.has(p.booking_id!)}
+                            onChange={() => toggleBulk(p.booking_id!)}
+                          />
+                        )}
+                      </td>
                       <td className="px-4 py-3 text-xs text-gray-500">
                         {editingDateId === p.id ? (
                           <div className="flex items-center gap-1">
