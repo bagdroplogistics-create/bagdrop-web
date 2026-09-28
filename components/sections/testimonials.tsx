@@ -186,7 +186,7 @@ export function Testimonials() {
                 <div className="relative h-72 w-full bg-stone-100">
                   <Image
                     src={client.image}
-                    alt={client.name}
+                    alt={`${client.name}, Bagdrop customer, ${client.route} delivery (${client.bags} bags)`}
                     fill
                     className="object-cover object-top"
                     sizes="(max-width: 640px) 78vw, (max-width: 1024px) 33vw, 25vw"

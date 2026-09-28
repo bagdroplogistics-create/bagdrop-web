@@ -23,7 +23,7 @@ const POSTS = [
     date:      'May 2025',
     readTime:  '4 min read',
     title:     'Why Airline Excess Baggage Fees Are Broken — And What Comes Next',
-    excerpt:   'Airlines charge Rs. 400–800 per kg for excess baggage. A standard 10kg excess bag from Mumbai to Delhi costs more than some budget tickets. The model is broken. Here\'s how the industry is evolving.',
+    excerpt:   'Airlines charge ₹400–800 per kg for excess baggage. A standard 10kg excess bag from Mumbai to Delhi costs more than some budget tickets. The model is broken. Here\'s how the industry is evolving.',
     image:     'https://images.unsplash.com/photo-1553413077-190dd305871c?w=800&q=80&auto=format&fit=crop',
   },
   {

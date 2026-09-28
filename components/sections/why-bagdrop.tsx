@@ -9,7 +9,7 @@ const REASONS = [
     stat:        '60%',
     statLabel:   'cheaper than airline excess fees',
     title:       'Skip the airline fees',
-    description: 'Airlines charge Rs. 3,000–8,000 for excess baggage. Bagdrop ships the same bag for significantly less — and picks it up from your door.',
+    description: 'Airlines charge ₹3,000–8,000 for excess baggage. Bagdrop ships the same bag for significantly less — and picks it up from your door.',
   },
   {
     Icon:        Radio,

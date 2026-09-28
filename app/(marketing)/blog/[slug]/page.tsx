@@ -31,7 +31,7 @@ const POSTS: Record<string, {
       },
       {
         heading: 'The Market Timing Is Right',
-        body: "Three things are converging in India right now that make this the right moment to build this infrastructure layer.\n\nFirst, airport privatisation. The shift of major airports to private operators has introduced a commercial mandate that didn't exist before — these operators now need to grow non-aero revenue, and passenger services like baggage handling are a natural category.\n\nSecond, the rise of digital-native passengers. India's middle class is increasingly booking everything online — flights, hotels, cabs. Adding baggage to that digital booking flow is a natural extension of behaviour that already exists.\n\nThird, the cost arbitrage. Domestic excess baggage fees on Indian carriers range from Rs. 400 to Rs. 800 per kg. For a 10kg excess bag, that's Rs. 4,000–8,000. Bagdrop's door-to-door price for the same bag on the same route is typically Rs. 1,500–2,500. The value proposition is mathematically obvious.",
+        body: "Three things are converging in India right now that make this the right moment to build this infrastructure layer.\n\nFirst, airport privatisation. The shift of major airports to private operators has introduced a commercial mandate that didn't exist before — these operators now need to grow non-aero revenue, and passenger services like baggage handling are a natural category.\n\nSecond, the rise of digital-native passengers. India's middle class is increasingly booking everything online — flights, hotels, cabs. Adding baggage to that digital booking flow is a natural extension of behaviour that already exists.\n\nThird, the cost arbitrage. Domestic excess baggage fees on Indian carriers range from ₹400 to ₹800 per kg. For a 10kg excess bag, that's ₹4,000–8,000. Bagdrop's door-to-door price for the same bag on the same route is typically ₹1,500–2,500. The value proposition is mathematically obvious.",
       },
       {
         heading: 'Where We Are Today',
@@ -46,11 +46,11 @@ const POSTS: Record<string, {
     date:     'May 2025',
     readTime: '4 min read',
     title:    'Why Airline Excess Baggage Fees Are Broken — And What Comes Next',
-    excerpt:  'Airlines charge Rs. 400–800 per kg for excess baggage. A standard 10kg excess bag from Mumbai to Delhi costs more than some budget tickets. The model is broken. Here\'s how the industry is evolving.',
+    excerpt:  'Airlines charge ₹400–800 per kg for excess baggage. A standard 10kg excess bag from Mumbai to Delhi costs more than some budget tickets. The model is broken. Here\'s how the industry is evolving.',
     image:    'https://images.unsplash.com/photo-1553413077-190dd305871c?w=1200&q=80&auto=format&fit=crop',
     content: [
       {
-        body: "Book a flight from Mumbai to Delhi on a budget carrier. The base fare might be Rs. 2,500. Add a 15kg check-in bag: another Rs. 600–900, depending on when you add it. Exceed that allowance at the airport counter by 10kg, and you're paying Rs. 400–800 per kg in excess fees — a surcharge that could cost more than the original ticket. This is the excess baggage problem, and it's costing Indian travellers thousands of crores of rupees every year.",
+        body: "Book a flight from Mumbai to Delhi on a budget carrier. The base fare might be ₹2,500. Add a 15kg check-in bag: another ₹600–900, depending on when you add it. Exceed that allowance at the airport counter by 10kg, and you're paying ₹400–800 per kg in excess fees — a surcharge that could cost more than the original ticket. This is the excess baggage problem, and it's costing Indian travellers thousands of crores of rupees every year.",
       },
       {
         heading: 'How We Got Here',
@@ -58,7 +58,7 @@ const POSTS: Record<string, {
       },
       {
         heading: 'The Arbitrage That Already Exists',
-        body: "The economics of third-party baggage shipping have quietly become compelling. Door-to-door bag delivery services can move a 15kg bag between Indian cities for Rs. 800–1,500, depending on the route. An airline charges Rs. 600–900 just to add that same bag as checked luggage — before any excess penalties apply.\n\nFor passengers carrying 20–30kg of total luggage, the third-party route is often cheaper, more convenient, and less stressful. You check in at the airport with a personal item, board the aircraft faster, skip the carousel on arrival, and your bags are delivered to your door while you're still in the taxi home.",
+        body: "The economics of third-party baggage shipping have quietly become compelling. Door-to-door bag delivery services can move a 15kg bag between Indian cities for ₹800–1,500, depending on the route. An airline charges ₹600–900 just to add that same bag as checked luggage — before any excess penalties apply.\n\nFor passengers carrying 20–30kg of total luggage, the third-party route is often cheaper, more convenient, and less stressful. You check in at the airport with a personal item, board the aircraft faster, skip the carousel on arrival, and your bags are delivered to your door while you're still in the taxi home.",
       },
       {
         heading: 'What This Means for the Traveller',
@@ -81,7 +81,7 @@ const POSTS: Record<string, {
       },
       {
         heading: 'The True Cost of Flying Home',
-        body: "A typical NRI family of four, flying in for a three-week stay, might check in with 8–10 bags between them. On the outbound journey, excess fees can add Rs. 15,000–30,000 to the cost of the trip. On the return, after two weeks of gifts and purchases, the number can be even higher.\n\nThis is money that leaves India — paid to international carriers as penalty fees. It's also a logistical headache: managing overweight bags, repacking at the check-in counter, arguing with airline staff, and still not knowing if everything will arrive undamaged.",
+        body: "A typical NRI family of four, flying in for a three-week stay, might check in with 8–10 bags between them. On the outbound journey, excess fees can add ₹15,000–30,000 to the cost of the trip. On the return, after two weeks of gifts and purchases, the number can be even higher.\n\nThis is money that leaves India — paid to international carriers as penalty fees. It's also a logistical headache: managing overweight bags, repacking at the check-in counter, arguing with airline staff, and still not knowing if everything will arrive undamaged.",
       },
       {
         heading: 'A Different Way to Handle the Homecoming',
@@ -166,7 +166,7 @@ const POSTS: Record<string, {
       },
       {
         heading: 'The Typical Student Relocation Load',
-        body: "A student moving to a new city typically carries: two to four large bags of clothes and personal items, a small appliance or two (a fan, an iron, a kettle), books and stationery, and miscellaneous bedding or kitchen items if the accommodation isn't fully furnished.\n\nThat's 30–60 kg of goods, often more. Moving this on a train is physically exhausting. Sending it via standard courier risks damage and requires professional packing. Airlines charge excess baggage fees that can add Rs. 2,000–5,000 to the trip cost for this volume.",
+        body: "A student moving to a new city typically carries: two to four large bags of clothes and personal items, a small appliance or two (a fan, an iron, a kettle), books and stationery, and miscellaneous bedding or kitchen items if the accommodation isn't fully furnished.\n\nThat's 30–60 kg of goods, often more. Moving this on a train is physically exhausting. Sending it via standard courier risks damage and requires professional packing. Airlines charge excess baggage fees that can add ₹2,000–5,000 to the trip cost for this volume.",
       },
       {
         heading: 'How Bagdrop Makes the Move Easier',

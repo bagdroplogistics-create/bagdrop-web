@@ -69,7 +69,7 @@ const jsonLd = {
           name: 'How much does excess baggage delivery cost in Mumbai?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Bagdrop pricing in Mumbai is significantly lower than airline excess fees. Customers typically save 40–60%. A bag that costs Rs.4,000–8,000 in airline excess typically costs Rs.1,500–2,800 with Bagdrop. Get an exact quote on our booking page.',
+            text: 'Bagdrop pricing in Mumbai is significantly lower than airline excess fees. Customers typically save 40–60%. A bag that costs ₹4,000–8,000 in airline excess typically costs ₹1,500–2,800 with Bagdrop. Get an exact quote on our booking page.',
           },
         },
         {
@@ -309,7 +309,7 @@ export default function MumbaiPage() {
                 },
                 {
                   q: 'Is my luggage insured during delivery?',
-                  a: 'Yes. Every bag is covered with Rs.50,000 standard insurance. We photograph bags at pickup for documentation. High-value upgrades are available on request.',
+                  a: 'Yes. Every bag is covered with ₹50,000 standard insurance. We photograph bags at pickup for documentation. High-value upgrades are available on request.',
                 },
                 {
                   q: 'Which cities can I send luggage to from Mumbai?',

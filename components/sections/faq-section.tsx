@@ -14,7 +14,7 @@ const FAQS = [
   {
     question: 'What happens if my bag is damaged or lost?',
     answer:
-      'Every Bagdrop delivery includes standard insurance coverage. If anything happens to your bag, we initiate a claim immediately. You can also buy up to Rs. 50,000 premium coverage at checkout for high-value items.',
+      'Every Bagdrop delivery includes standard insurance coverage. If anything happens to your bag, we initiate a claim immediately. You can also buy up to ₹50,000 premium coverage at checkout for high-value items.',
   },
   {
     question: 'Which cities do you currently operate in?',

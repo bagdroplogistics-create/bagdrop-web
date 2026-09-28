@@ -68,7 +68,7 @@ const jsonLd = {
           name: 'How much does excess baggage delivery cost in Vadodara?',
           acceptedAnswer: {
             '@type': 'Answer',
-            text: 'Bagdrop pricing in Vadodara starts significantly lower than airline excess fees. On most routes, customers save 40–60% compared to airline charges. For example, a bag that an airline charges Rs.4,000–6,000 for typically costs Rs.1,200–2,500 with Bagdrop. Get an exact quote on our booking page.',
+            text: 'Bagdrop pricing in Vadodara starts significantly lower than airline excess fees. On most routes, customers save 40–60% compared to airline charges. For example, a bag that an airline charges ₹4,000–6,000 for typically costs ₹1,200–2,500 with Bagdrop. Get an exact quote on our booking page.',
           },
         },
         {
@@ -295,7 +295,7 @@ export default function VadodaraPage() {
                 },
                 {
                   q: 'How much does excess baggage delivery cost in Vadodara?',
-                  a: 'Pricing depends on your route and bag count. On average, customers save 40–60% compared to airline excess fees. A bag that an airline charges Rs.4,000–6,000 for typically costs Rs.1,200–2,500 with Bagdrop. Book online to see your exact price.',
+                  a: 'Pricing depends on your route and bag count. On average, customers save 40–60% compared to airline excess fees. A bag that an airline charges ₹4,000–6,000 for typically costs ₹1,200–2,500 with Bagdrop. Book online to see your exact price.',
                 },
                 {
                   q: 'How early should I book before my flight?',
@@ -307,7 +307,7 @@ export default function VadodaraPage() {
                 },
                 {
                   q: 'Is my luggage insured during delivery?',
-                  a: 'Yes. Every bag we handle comes with Rs.50,000 standard insurance coverage. You can upgrade for high-value items. We also photograph bags at pickup for documentation.',
+                  a: 'Yes. Every bag we handle comes with ₹50,000 standard insurance coverage. You can upgrade for high-value items. We also photograph bags at pickup for documentation.',
                 },
                 {
                   q: 'Which cities can I send luggage to from Vadodara?',

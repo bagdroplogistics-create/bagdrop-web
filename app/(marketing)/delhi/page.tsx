@@ -302,7 +302,7 @@ export default function DelhiPage() {
                 },
                 {
                   q: 'Is my luggage insured during delivery?',
-                  a: 'Yes. Every bag is covered with Rs.50,000 standard insurance. We photograph bags at pickup for documentation. High-value upgrades are available on request.',
+                  a: 'Yes. Every bag is covered with ₹50,000 standard insurance. We photograph bags at pickup for documentation. High-value upgrades are available on request.',
                 },
                 {
                   q: 'Which cities can I send luggage to from Delhi?',

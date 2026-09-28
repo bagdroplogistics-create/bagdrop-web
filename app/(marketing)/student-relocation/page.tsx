@@ -26,7 +26,7 @@ export default function StudentRelocationPage() {
       heroImagePos="center 30%"
       icon={GraduationCap}
       benefits={[
-        { title: 'Save Rs.8,000+ in fees', desc: 'Airlines charge Rs.3,000 to 8,000 per bag for excess. Bagdrop ships the same bag door-to-door for significantly less.' },
+        { title: 'Save ₹8,000+ in fees', desc: 'Airlines charge ₹3,000 to 8,000 per bag for excess. Bagdrop ships the same bag door-to-door for significantly less.' },
         { title: 'Any size, any weight', desc: 'Books. Clothes. Appliances. Sports gear. We handle everything a student needs to move.' },
         { title: 'Delivery to hostels and PGs', desc: 'We coordinate with hostel wardens and PG owners for smooth delivery, even if you have not arrived yet.' },
         { title: 'Abroad shipments', desc: 'Moving to the UK, US, Canada, or Australia? We partner with international logistics for cross-border student moves.' },
@@ -42,7 +42,7 @@ export default function StudentRelocationPage() {
       faqs={[
         { q: 'Can my parents arrange the pickup without me?', a: 'Absolutely. Your parents can hand over the bags and we will keep both of you updated via WhatsApp and email at every stage.' },
         { q: 'Do you deliver to hostel rooms?', a: 'We deliver to the hostel reception or main gate. Coordinate with your warden in advance for smooth handover.' },
-        { q: 'What is cheaper, Bagdrop or airline excess?', a: 'Bagdrop almost always wins. Airlines charge per kg over the limit. Bagdrop charges per bag regardless of weight. Most students save Rs.5,000 to 12,000.' },
+        { q: 'What is cheaper, Bagdrop or airline excess?', a: 'Bagdrop almost always wins. Airlines charge per kg over the limit. Bagdrop charges per bag regardless of weight. Most students save ₹5,000 to 12,000.' },
       ]}
       ctaHeadline="Ship your bags. Fly free."
       ctaBody="Special student rates available. No excess fee surprises."

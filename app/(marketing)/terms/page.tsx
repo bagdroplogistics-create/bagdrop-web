@@ -24,7 +24,7 @@ const SECTIONS = [
   },
   {
     title: '5. Liability & Compensation',
-    text: 'Bagdrop takes the utmost care in handling your baggage. In the unlikely event of loss or damage, our liability is limited to a maximum of Rs. 5,000 per bag unless the customer has declared a higher value and paid the applicable surcharge at the time of booking. We are not liable for damage to items inadequately packed, inherently fragile items, or items resulting from delays caused by third parties, weather, or force majeure events.',
+    text: 'Bagdrop takes the utmost care in handling your baggage. In the unlikely event of loss or damage, our liability is limited to a maximum of ₹5,000 per bag unless the customer has declared a higher value and paid the applicable surcharge at the time of booking. We are not liable for damage to items inadequately packed, inherently fragile items, or items resulting from delays caused by third parties, weather, or force majeure events.',
   },
   {
     title: '6. Cancellation Policy',

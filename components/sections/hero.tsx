@@ -13,6 +13,7 @@ const SLIDES = [
   {
     id: 'airport',
     image: '/images/web-slider.jpg',
+    alt: 'Traveler walking through an airport terminal without luggage — Bagdrop airport baggage delivery',
     badge: 'Airport Delivery',
     headline1: 'Travel Light.',
     headline2: 'Arrive Stress-Free.',
@@ -23,6 +24,7 @@ const SLIDES = [
   {
     id: 'wedding',
     image: '/images/wedding-slide.jpg',
+    alt: 'Destination wedding luggage being handled by Bagdrop for the couple, family, and guests',
     badge: 'Destination Weddings',
     headline1: 'Your Wedding Day.',
     headline2: 'Bag-Free.',
@@ -33,6 +35,7 @@ const SLIDES = [
   {
     id: 'student',
     image: '/images/student-slide.jpg',
+    alt: 'Student\'s bags packed and ready for door-to-door relocation shipping by Bagdrop',
     badge: 'Student Relocation',
     headline1: 'Moving For College?',
     headline2: "We've Got Your Bags.",
@@ -184,7 +187,7 @@ export function HeroSection() {
         >
           <Image
             src={slide.image}
-            alt=""
+            alt={slide.alt}
             fill
             priority={current === 0}
             sizes="100vw"
