@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { BarChart2, TrendingUp, RefreshCw, Calendar, Download, FileSpreadsheet, FileText, Printer } from 'lucide-react'
 import DetailedReportView from '@/components/admin/DetailedReportView'
+import MonthDetailExport from '@/components/admin/MonthDetailExport'
 import { downloadCSV, downloadExcel, downloadPDF, printReport } from '@/lib/report-export'
 
 // Report tabs — Revenue (below) is the original, unchanged report. The other
@@ -252,8 +253,11 @@ export default function ReportsPage() {
       {activeTab !== 'revenue' && (
         <div className="px-6 py-6">
           {activeTab === 'monthly_summary' && (
-            <DetailedReportView adminKey={adminKey} type="monthly_summary" title="Monthly Summary Report"
-              subtitle="June 2026 (software go-live) to now — Total Inquiries, Confirmed Bookings, Payments Received, Pending Payment" />
+            <>
+              <DetailedReportView adminKey={adminKey} type="monthly_summary" title="Monthly Summary Report"
+                subtitle="June 2026 (software go-live) to now — Total Inquiries, Confirmed Bookings, Payments Received, Pending Payment" />
+              <MonthDetailExport adminKey={adminKey} />
+            </>
           )}
           {activeTab === 'inquiry_source' && (
             <DetailedReportView adminKey={adminKey} type="inquiry_source" title="Inquiry Source Report"

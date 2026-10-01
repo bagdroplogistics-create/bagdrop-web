@@ -74,6 +74,30 @@ export async function downloadExcel(columns: ReportColumn[], rows: ReportRow[], 
   triggerDownload(blob, safeFilename(filenameBase, 'xlsx'))
 }
 
+// Multi-sheet Excel — Founder request, 2026-10-01: a single month-wise
+// download file covering Total Inquiries / Confirmed Bookings / Payments
+// Received record-level detail together, not three separate exports. One
+// workbook, one sheet per category, so the admin gets the whole month's
+// data in one file.
+export async function downloadExcelMultiSheet(
+  sheets: { name: string; columns: ReportColumn[]; rows: ReportRow[] }[],
+  filenameBase: string,
+) {
+  const XLSX = await import('xlsx')
+  const wb = XLSX.utils.book_new()
+  for (const sheet of sheets) {
+    const aoa = [
+      sheet.columns.map(c => c.label),
+      ...sheet.rows.map(r => sheet.columns.map(c => cellText(r[c.key]))),
+    ]
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    XLSX.utils.book_append_sheet(wb, ws, sheet.name.slice(0, 31)) // Excel sheet-name length cap
+  }
+  const buf = XLSX.write(wb, { type: 'array', bookType: 'xlsx' })
+  const blob = new Blob([buf], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
+  triggerDownload(blob, safeFilename(filenameBase, 'xlsx'))
+}
+
 // ── PDF ──────────────────────────────────────────────────────────────────
 export async function downloadPDF(
   columns: ReportColumn[],
