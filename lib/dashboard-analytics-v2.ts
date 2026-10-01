@@ -1219,6 +1219,10 @@ export { SOURCE_LABELS }
 // downloadable as Excel/PDF (the Payments tab's own "Monthly Breakdown"
 // table was the visual reference, but that table only covers Collected/
 // Pending — this adds the funnel-level Inquiries and Confirmed counts too).
+// Founder follow-up, same day: restrict the range to "June 2026 to till
+// now" ("we have started using this software from june 2026" — software
+// go-live, not the company's 2025 founding date the first cut used), and
+// add a Pending Payments column.
 //
 // Deliberately calls getDashboardData() itself, once per calendar month
 // (via its existing 'custom' range preset), rather than re-deriving the
@@ -1237,17 +1241,93 @@ export interface MonthlySummaryRow {
   confirmed_bookings: number
   payments_received_count: number
   payments_received_amount: number
+  pending_payments_amount: number
 }
 
 const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
 
-// Earliest month to report from — matches the "2025 Bagdrop Founded"
-// milestone on the public /about page (app/(marketing)/about/page.tsx),
-// since no real bookings/leads exist before the company existed. Not a
-// live MIN(created_at) query, same reasoning as resolveDashboardRange's
-// 'all_time' preset floor above.
-const EARLIEST_REPORT_YEAR = 2025
-const EARLIEST_REPORT_MONTH = 0 // January, 0-indexed
+// Earliest month to report from — founder-confirmed 2026-10-01: "we have
+// started using this software from june 2026," so earlier months (even
+// though the company itself was founded in 2025, per the /about page) have
+// no real data in this system and must not appear as empty/zero rows.
+const EARLIEST_REPORT_YEAR = 2026
+const EARLIEST_REPORT_MONTH = 5 // June, 0-indexed
+
+// Pending Payments, per month — Founder request 2026-10-01: "show pending
+// payment as well." Deliberately NOT sourced from getDashboardData's
+// outstanding_amount (that figure is an intentionally LIVE, current-balance
+// snapshot — see that field's own module comment — so calling it per month
+// would return the exact same today's-total for every row, which is not
+// what "pending payment [for that month]" means). Instead this replicates
+// the Payments tab's own "Monthly Breakdown" Pending column exactly
+// (app/(admin)/admin/payments/page.tsx's monthlySummary + GET /api/admin/
+// payments' fetchUnloggedBookingPayments): every payments row AND every
+// confirmed-or-approved booking with no payments row at all, that is not
+// yet 'paid'/'refunded' and not an 'upload' proof row, summed by that
+// booking's own operational reporting month (completed_month_override ??
+// pickup_date ?? created_at) — the same source the visual reference table
+// the founder pointed at already uses, so the two numbers can never
+// disagree for the same month.
+async function getPendingByMonth(): Promise<Map<string, number>> {
+  const CONFIRMED_ONWARD_SET = new Set(STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed')))
+  const PAID_WITHOUT_LEDGER_ROW_STATUSES = new Set(['paid', 'approved_pending'])
+
+  const { data: bookingRows } = await supabaseAdmin
+    .from('bookings')
+    .select('id, status, total_amount, payment_status, pickup_date, completed_month_override, created_at, is_test')
+    .limit(20000)
+  const bRows = (bookingRows ?? []) as unknown as {
+    id: string; status: string; total_amount: number | null; payment_status: string | null
+    pickup_date: string | null; completed_month_override: string | null; created_at: string; is_test: boolean
+  }[]
+  const bookingsById = new Map(bRows.map(b => [b.id, b]))
+  const testIds = new Set(bRows.filter(b => b.is_test).map(b => b.id))
+
+  const { data: paymentRows } = await supabaseAdmin
+    .from('payments')
+    .select('id, booking_id, amount, payment_status, payment_method, created_at')
+    .limit(20000)
+  const pRows = (paymentRows ?? []) as unknown as {
+    id: string; booking_id: string | null; amount: number | null; payment_status: string; payment_method: string | null; created_at: string
+  }[]
+
+  const reportDate = (b: { completed_month_override: string | null; pickup_date: string | null; created_at: string }) =>
+    b.completed_month_override ?? b.pickup_date ?? b.created_at
+
+  const pendingByMonth = new Map<string, number>()
+  const addPending = (dateStr: string, amount: number) => {
+    const key = dateStr.slice(0, 7) // 'YYYY-MM'
+    pendingByMonth.set(key, (pendingByMonth.get(key) ?? 0) + amount)
+  }
+
+  const bookingIdsWithRealPayment = new Set(
+    pRows.filter(p => p.booking_id && !testIds.has(p.booking_id)).map(p => p.booking_id as string)
+  )
+
+  // Real payment rows still owed.
+  for (const p of pRows) {
+    if (p.booking_id && testIds.has(p.booking_id)) continue
+    if (p.payment_method === 'upload') continue
+    if (p.payment_status === 'paid' || p.payment_status === 'refunded') continue
+    const b = p.booking_id ? bookingsById.get(p.booking_id) : undefined
+    addPending(b ? reportDate(b) : p.created_at, Number(p.amount) || 0)
+  }
+
+  // Synthetic — confirmed/approved bookings with no payments row logged at
+  // all yet (same slice as fetchUnloggedBookingPayments in app/api/admin/
+  // payments/route.ts).
+  for (const b of bRows) {
+    if (b.is_test) continue
+    if (bookingIdsWithRealPayment.has(b.id)) continue
+    const reachedConfirmed = CONFIRMED_ONWARD_SET.has(b.status)
+    const paidWithoutLedger = PAID_WITHOUT_LEDGER_ROW_STATUSES.has(b.payment_status ?? '')
+    if (!reachedConfirmed && !paidWithoutLedger) continue
+    if (b.payment_status === 'paid' || b.payment_status === 'refunded') continue
+    addPending(reportDate(b), Number(b.total_amount) || 0)
+  }
+
+  return pendingByMonth
+}
 
 export async function getMonthlySummaryReport(): Promise<MonthlySummaryRow[]> {
   const now = new Date(Date.now() + IST_OFFSET_MS)
@@ -1261,6 +1341,8 @@ export async function getMonthlySummaryReport(): Promise<MonthlySummaryRow[]> {
     for (let m = startM; m <= endM; m++) months.push({ y, m })
   }
 
+  const pendingByMonth = await getPendingByMonth()
+
   // Sequential, not Promise.all — each call does its own full leads/
   // bookings/payments/trip_sheets/group_bags fetch, and this report is
   // loaded on-demand (not on every Dashboard page view), so bounding peak
@@ -1272,13 +1354,15 @@ export async function getMonthlySummaryReport(): Promise<MonthlySummaryRow[]> {
     const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
     const to = `${y}-${pad2(m + 1)}-${pad2(lastDay)}`
     const data = await getDashboardData('custom', from, to)
+    const monthKey = `${y}-${pad2(m + 1)}`
     rows.push({
-      month: `${y}-${pad2(m + 1)}`,
+      month: monthKey,
       label: `${MONTH_NAMES[m]} ${y}`,
       total_inquiries: data.business_overview.total_inquiries,
       confirmed_bookings: data.business_overview.confirmed_bookings,
       payments_received_count: data.business_overview.payments_received_count,
       payments_received_amount: data.business_overview.payments_received_amount,
+      pending_payments_amount: pendingByMonth.get(monthKey) ?? 0,
     })
   }
 

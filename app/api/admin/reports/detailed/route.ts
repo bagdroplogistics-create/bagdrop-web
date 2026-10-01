@@ -550,6 +550,7 @@ async function buildMonthlySummary(f: Filters): Promise<ReportResult> {
     { key: 'confirmed_bookings', label: 'Confirmed Bookings' },
     { key: 'payments_received_count', label: 'Payments Received (Count)' },
     { key: 'payments_received_amount', label: 'Payments Received (Amount)' },
+    { key: 'pending_payments_amount', label: 'Pending Payment' },
   ]
   const rows: Row[] = months.map(r => ({
     label: r.label,
@@ -557,12 +558,14 @@ async function buildMonthlySummary(f: Filters): Promise<ReportResult> {
     confirmed_bookings: r.confirmed_bookings,
     payments_received_count: r.payments_received_count,
     payments_received_amount: fmtRs(r.payments_received_amount),
+    pending_payments_amount: r.pending_payments_amount > 0 ? fmtRs(r.pending_payments_amount) : '—',
   }))
   const summary: SummaryItem[] = [
     { label: 'Months', value: String(months.length) },
     { label: 'Total Inquiries (All Months)', value: String(months.reduce((s, r) => s + r.total_inquiries, 0)) },
     { label: 'Total Confirmed (All Months)', value: String(months.reduce((s, r) => s + r.confirmed_bookings, 0)) },
     { label: 'Total Payments Received', value: fmtRs(months.reduce((s, r) => s + r.payments_received_amount, 0)) },
+    { label: 'Total Pending', value: fmtRs(months.reduce((s, r) => s + r.pending_payments_amount, 0)) },
   ]
   return { columns, rows, summary }
 }

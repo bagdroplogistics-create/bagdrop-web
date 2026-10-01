@@ -253,7 +253,7 @@ export default function ReportsPage() {
         <div className="px-6 py-6">
           {activeTab === 'monthly_summary' && (
             <DetailedReportView adminKey={adminKey} type="monthly_summary" title="Monthly Summary Report"
-              subtitle="Every month since launch — Total Inquiries, Confirmed Bookings, Payments Received" />
+              subtitle="June 2026 (software go-live) to now — Total Inquiries, Confirmed Bookings, Payments Received, Pending Payment" />
           )}
           {activeTab === 'inquiry_source' && (
             <DetailedReportView adminKey={adminKey} type="inquiry_source" title="Inquiry Source Report"
