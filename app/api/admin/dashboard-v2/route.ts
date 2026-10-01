@@ -15,14 +15,15 @@ export const runtime = 'nodejs'
 //   range      = today | this_week | this_month | last_month | this_year | all_time | custom  (default this_month)
 //   date_from, date_to = 'YYYY-MM-DD', only used when range=custom
 //   drilldown  = total_inquiries | quotes_sent | confirmed_bookings |
-//                total_confirmed_bookings | payments_received | completed
-//                (optional — founder request 2026-09-16: clicking a
-//                Business Overview card or the funnel's Completed tile asks
-//                for its exact record list, scoped to whichever range is
-//                currently selected. total_confirmed_bookings added
-//                2026-10-01 — see its comment in dashboard-analytics-v2.ts)
+//                payments_received | completed (optional — founder request
+//                2026-09-16: clicking a Business Overview card or the
+//                funnel's Completed tile asks for its exact record list,
+//                scoped to whichever range is currently selected.
+//                confirmed_bookings redefined 2026-10-01 — see its comment
+//                in dashboard-analytics-v2.ts — single permanent-once-
+//                confirmed definition, no separate "period" variant anymore)
 const VALID_PRESETS = new Set(['today', 'this_week', 'this_month', 'last_month', 'this_year', 'all_time', 'custom'])
-const VALID_DRILLDOWNS = new Set(['total_inquiries', 'quotes_sent', 'confirmed_bookings', 'total_confirmed_bookings', 'payments_received', 'completed'])
+const VALID_DRILLDOWNS = new Set(['total_inquiries', 'quotes_sent', 'confirmed_bookings', 'payments_received', 'completed'])
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {

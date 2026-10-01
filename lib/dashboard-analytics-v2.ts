@@ -338,11 +338,6 @@ export interface DashboardData {
     total_inquiries: number
     quotes_sent: number
     confirmed_bookings: number
-    // Additive, NOT a replacement for confirmed_bookings above — see the
-    // module comment on totalConfirmedInRange. Every booking whose first
-    // payment_received fell in this period, permanently, regardless of
-    // current status (mirrors how "completed" behaves).
-    total_confirmed_bookings: number
     payments_received_count: number
     payments_received_amount: number
     outstanding_amount: number
@@ -424,7 +419,7 @@ export interface DashboardData {
 // Business Overview drill-down — founder request, 2026-09-16: "when i click
 // Business Overview first 4 cards from any tab, it should show data
 // according to that card data." One row per matching lead/booking/payment.
-export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'total_confirmed_bookings' | 'payments_received' | 'completed'
+export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
 export interface DrilldownRecord {
   id: string
   date: string | null           // the business date that qualified this record for the card
@@ -680,58 +675,57 @@ export async function getDashboardData(
     return d ? inDateStr(d, range) : false
   }).length
 
-  // "Confirmed" — same definition as the legacy Dashboard's proven-correct
-  // "Total Confirmed Bookings" (ACTIVE_BOOKING_STATUSES + must have a real
-  // quote), now date-scoped by the real status_history timestamp of the
-  // first transition into that range instead of being all-time.
+  // isConfirmed — kept for the OTHER places in this file that still use the
+  // live-snapshot definition on purpose (status_counts cohort breakdown
+  // around line ~895, and the per-source "confirmed" column around line
+  // ~1025) — neither was part of the founder's 2026-10-01 correction below,
+  // so their behavior is deliberately left untouched.
   function isConfirmed(b: BookingRow | undefined | null, hasQuote: boolean): boolean {
     return !!b && ACTIVE_STATUS_SET.has(b.status) && hasQuote
   }
-  const confirmedBookingsInRange = bookings.filter(b => {
-    if (b.is_test) return false
-    if (!isConfirmed(b, leads.some(l => l.booking_id === b.id && !!l.quote_number))) return false
-    const ts = firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received'))
-    return ts ? inTs(ts, range) : false
-  })
 
   // Bookings with a real refund logged against them (payments.refund_amount
   // > 0) — Founder correction, 2026-10-01: "first Rakesh Patel had sent
   // payment and after some days he got a medical issue so he cancelled the
-  // inquiry and we sent a refund to him... why count that as confirmed/
-  // completed, it is a cancelled inquiry." A booking that was paid, then
-  // cancelled-and-refunded, must NOT count toward either "Total Confirmed
-  // This Period" or "Completed" — money came in and went back out, net
-  // zero, not a fulfilled booking. Belt-and-suspenders with the status
-  // check below: status should already have moved to the terminal
-  // 'cancelled' branch for these, but a logged refund is the more direct,
-  // harder-to-miss signal and is checked independently either way.
+  // inquiry and we sent a refund to him... why count that as confirmed, it
+  // is a cancelled inquiry." A booking that was paid, then
+  // cancelled-and-refunded, must NOT count as Confirmed — money came in and
+  // went back out, net zero, not a fulfilled booking.
   const bookingIdsWithRefund = new Set(
     payments.filter(p => p.booking_id && Number(p.refund_amount) > 0).map(p => p.booking_id as string)
   )
 
-  // "Total Confirmed This Period" — Founder request, 2026-10-01: the
-  // existing "Confirmed Bookings" card above is a LIVE snapshot (only
-  // counts bookings whose CURRENT status is still in ACTIVE_BOOKING_STATUSES,
-  // i.e. 'completed' bookings drop out of it even though they definitely
-  // received payment within the period). Founder explicitly wants a second,
-  // additive number that behaves like "Completed" does — permanent once the
-  // milestone (first payment_received) is reached in range, regardless of
-  // what the booking's status does afterward — EXCEPT a booking that was
-  // later cancelled and refunded (see bookingIdsWithRefund above, and the
-  // 'cancelled'/'rejected' terminal-status check below — those statuses
-  // aren't in STATUS_ORDER at all, so idxOf returns -1 for them). Same
-  // gating as confirmedBookingsInRange otherwise (is_test excluded, must
-  // have a real quote, dated by the real first payment_received
-  // status_history timestamp). Deliberately NOT replacing
-  // confirmedBookingsInRange — see business_overview below, both numbers
-  // are surfaced side by side.
-  const totalConfirmedInRange = bookings.filter(b => {
+  // "Confirmed Bookings" — Founder spec, finalized 2026-10-01 after two
+  // rounds of correction. ONE card/number, not a live snapshot: once a
+  // booking is confirmed it counts permanently for the period it was
+  // confirmed in, the same way "Completed" already behaves — a booking that
+  // later progresses to Completed, or to any later operational status,
+  // never drops back out. Founder's own words: "once we got the payment,
+  // that inquiry count as a confirmed booking" and "keep only one card of
+  // confirmed booking."
+  //
+  // Anchored on the booking's own 'confirmed' status_history milestone
+  // (STATUS_ORDER's 'confirmed' step, right after payment_received/
+  // payment_approved) rather than strictly on payment_received, so this
+  // also correctly includes an FOC (Free of Charge, billing_type='foc') or
+  // VIP/Admin "approved without payment" (payment_status='approved_pending')
+  // booking once it reaches Confirmed in the workflow — founder explicitly
+  // confirmed September's real total (20) includes one FOC inquiry, which a
+  // payment-only definition would have wrongly excluded.
+  //
+  // Explicitly excludes (founder's Rakesh Patel correction): any booking
+  // currently in a terminal 'cancelled'/'rejected' branch, or carrying a
+  // logged refund (bookingIdsWithRefund above) — checked independently so
+  // either signal alone is enough, even if the other wasn't logged yet.
+  const CONFIRMED_IDX = STATUS_ORDER.indexOf('confirmed')
+  const confirmedBookingsInRange = bookings.filter(b => {
     if (b.is_test) return false
     if (b.status === 'cancelled' || b.status === 'rejected') return false
     if (bookingIdsWithRefund.has(b.id)) return false
     const hasQuote = leads.some(l => l.booking_id === b.id && !!l.quote_number)
     if (!hasQuote) return false
-    const ts = firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received'))
+    if (!everReachedStage(b, CONFIRMED_IDX)) return false
+    const ts = firstReachedTimestamp(b, CONFIRMED_IDX)
     return ts ? inTs(ts, range) : false
   })
 
@@ -1100,17 +1094,7 @@ export async function getDashboardData(
       case 'confirmed_bookings':
         return confirmedBookingsInRange.map(b => ({
           id: b.id,
-          date: firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received')),
-          customer_name: b.customer_name ?? null,
-          tracking_id: b.tracking_id ?? null,
-          route: routeFor(b),
-          status: b.status ?? null,
-          amount: b.total_amount ?? null,
-        }))
-      case 'total_confirmed_bookings':
-        return totalConfirmedInRange.map(b => ({
-          id: b.id,
-          date: firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received')),
+          date: firstReachedTimestamp(b, CONFIRMED_IDX),
           customer_name: b.customer_name ?? null,
           tracking_id: b.tracking_id ?? null,
           route: routeFor(b),
@@ -1172,7 +1156,6 @@ export async function getDashboardData(
       total_inquiries: totalInquiries,
       quotes_sent: quotesSent,
       confirmed_bookings: confirmedBookingsInRange.length,
-      total_confirmed_bookings: totalConfirmedInRange.length,
       payments_received_count: paymentsReceivedCount,
       payments_received_amount: paymentsReceivedAmount,
       outstanding_amount: outstandingAmount,
