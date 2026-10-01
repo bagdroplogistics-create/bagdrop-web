@@ -694,6 +694,21 @@ export async function getDashboardData(
     return ts ? inTs(ts, range) : false
   })
 
+  // Bookings with a real refund logged against them (payments.refund_amount
+  // > 0) — Founder correction, 2026-10-01: "first Rakesh Patel had sent
+  // payment and after some days he got a medical issue so he cancelled the
+  // inquiry and we sent a refund to him... why count that as confirmed/
+  // completed, it is a cancelled inquiry." A booking that was paid, then
+  // cancelled-and-refunded, must NOT count toward either "Total Confirmed
+  // This Period" or "Completed" — money came in and went back out, net
+  // zero, not a fulfilled booking. Belt-and-suspenders with the status
+  // check below: status should already have moved to the terminal
+  // 'cancelled' branch for these, but a logged refund is the more direct,
+  // harder-to-miss signal and is checked independently either way.
+  const bookingIdsWithRefund = new Set(
+    payments.filter(p => p.booking_id && Number(p.refund_amount) > 0).map(p => p.booking_id as string)
+  )
+
   // "Total Confirmed This Period" — Founder request, 2026-10-01: the
   // existing "Confirmed Bookings" card above is a LIVE snapshot (only
   // counts bookings whose CURRENT status is still in ACTIVE_BOOKING_STATUSES,
@@ -701,14 +716,19 @@ export async function getDashboardData(
   // received payment within the period). Founder explicitly wants a second,
   // additive number that behaves like "Completed" does — permanent once the
   // milestone (first payment_received) is reached in range, regardless of
-  // what the booking's status does afterward. Same gating as
-  // confirmedBookingsInRange (is_test excluded, must have a real quote,
-  // dated by the real first payment_received status_history timestamp) —
-  // just without the ACTIVE_STATUS_SET current-status gate. Deliberately
-  // NOT replacing confirmedBookingsInRange — see business_overview below,
-  // both numbers are surfaced side by side.
+  // what the booking's status does afterward — EXCEPT a booking that was
+  // later cancelled and refunded (see bookingIdsWithRefund above, and the
+  // 'cancelled'/'rejected' terminal-status check below — those statuses
+  // aren't in STATUS_ORDER at all, so idxOf returns -1 for them). Same
+  // gating as confirmedBookingsInRange otherwise (is_test excluded, must
+  // have a real quote, dated by the real first payment_received
+  // status_history timestamp). Deliberately NOT replacing
+  // confirmedBookingsInRange — see business_overview below, both numbers
+  // are surfaced side by side.
   const totalConfirmedInRange = bookings.filter(b => {
     if (b.is_test) return false
+    if (b.status === 'cancelled' || b.status === 'rejected') return false
+    if (bookingIdsWithRefund.has(b.id)) return false
     const hasQuote = leads.some(l => l.booking_id === b.id && !!l.quote_number)
     if (!hasQuote) return false
     const ts = firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received'))
