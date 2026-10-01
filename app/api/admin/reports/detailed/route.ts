@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { getMonthlySummaryReport } from '@/lib/dashboard-analytics-v2'
 
 export const runtime = 'nodejs'
 
@@ -524,6 +525,48 @@ async function buildCancellation(f: Filters): Promise<ReportResult> {
   return { columns, rows, summary, warnings: warnings.length ? warnings : undefined }
 }
 
+// Monthly Summary report — Founder request, 2026-10-01: every month's
+// Total Inquiries / Confirmed Bookings / Payments Received, in one
+// downloadable table. Calls getMonthlySummaryReport() (lib/
+// dashboard-analytics-v2.ts), which itself calls the SAME getDashboardData()
+// the main Dashboard uses, one month at a time — see that function's own
+// comment for why this report deliberately does not re-derive the
+// Confirmed Bookings / Payments Received logic independently here.
+//
+// `from`/`to` optionally narrow which month ROWS are returned (by month
+// start falling in range) — every other filter (service/source/status/
+// partner/city) doesn't apply to a month-level report and is ignored here.
+async function buildMonthlySummary(f: Filters): Promise<ReportResult> {
+  const allMonths = await getMonthlySummaryReport()
+  const months = allMonths.filter(r => {
+    if (f.from && r.month + '-01' < f.from) return false
+    if (f.to && r.month + '-01' > f.to) return false
+    return true
+  })
+
+  const columns: Column[] = [
+    { key: 'label', label: 'Month' },
+    { key: 'total_inquiries', label: 'Total Inquiries' },
+    { key: 'confirmed_bookings', label: 'Confirmed Bookings' },
+    { key: 'payments_received_count', label: 'Payments Received (Count)' },
+    { key: 'payments_received_amount', label: 'Payments Received (Amount)' },
+  ]
+  const rows: Row[] = months.map(r => ({
+    label: r.label,
+    total_inquiries: r.total_inquiries,
+    confirmed_bookings: r.confirmed_bookings,
+    payments_received_count: r.payments_received_count,
+    payments_received_amount: fmtRs(r.payments_received_amount),
+  }))
+  const summary: SummaryItem[] = [
+    { label: 'Months', value: String(months.length) },
+    { label: 'Total Inquiries (All Months)', value: String(months.reduce((s, r) => s + r.total_inquiries, 0)) },
+    { label: 'Total Confirmed (All Months)', value: String(months.reduce((s, r) => s + r.confirmed_bookings, 0)) },
+    { label: 'Total Payments Received', value: fmtRs(months.reduce((s, r) => s + r.payments_received_amount, 0)) },
+  ]
+  return { columns, rows, summary }
+}
+
 const BUILDERS: Record<string, (f: Filters) => Promise<ReportResult>> = {
   inquiry_source:    buildInquirySource,
   booking_status:    buildBookingStatus,
@@ -534,6 +577,7 @@ const BUILDERS: Record<string, (f: Filters) => Promise<ReportResult>> = {
   driver_ops:        buildDriverOps,
   document:          buildDocument,
   cancellation:      buildCancellation,
+  monthly_summary:   buildMonthlySummary,
 }
 
 export async function GET(req: NextRequest) {

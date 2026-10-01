@@ -14,6 +14,7 @@ import { downloadCSV, downloadExcel, downloadPDF, printReport } from '@/lib/repo
 // /admin/reports/operations).
 const REPORT_TABS = [
   { key: 'revenue',           label: 'Revenue' },
+  { key: 'monthly_summary',   label: 'Monthly Summary' },
   { key: 'inquiry_source',    label: 'Inquiry Source' },
   { key: 'booking_status',    label: 'Booking Status' },
   { key: 'route_performance', label: 'Route Performance' },
@@ -250,6 +251,10 @@ export default function ReportsPage() {
 
       {activeTab !== 'revenue' && (
         <div className="px-6 py-6">
+          {activeTab === 'monthly_summary' && (
+            <DetailedReportView adminKey={adminKey} type="monthly_summary" title="Monthly Summary Report"
+              subtitle="Every month since launch — Total Inquiries, Confirmed Bookings, Payments Received" />
+          )}
           {activeTab === 'inquiry_source' && (
             <DetailedReportView adminKey={adminKey} type="inquiry_source" title="Inquiry Source Report"
               subtitle="Leads by channel — website, referral, partner, and more"

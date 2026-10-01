@@ -1212,3 +1212,75 @@ export async function getDashboardData(
 }
 
 export { SOURCE_LABELS }
+
+// ── Monthly Summary Report ──────────────────────────────────────────────
+// Founder request, 2026-10-01: one report on /admin/reports showing EVERY
+// month's Total Inquiries, Confirmed Bookings, and Payments Received,
+// downloadable as Excel/PDF (the Payments tab's own "Monthly Breakdown"
+// table was the visual reference, but that table only covers Collected/
+// Pending — this adds the funnel-level Inquiries and Confirmed counts too).
+//
+// Deliberately calls getDashboardData() itself, once per calendar month
+// (via its existing 'custom' range preset), rather than re-deriving the
+// Confirmed Bookings / Payments Received business logic a second time in
+// this file. Confirmed Bookings alone was corrected THREE times earlier
+// today (excluding cancelled-and-refunded bookings, including FOC
+// approvals, bucketing by operational/pickup month instead of when
+// confirmed) — a parallel re-implementation here would be one more place
+// for those same fixes to silently drift out of sync next time the
+// definition changes. This guarantees the monthly report can never
+// disagree with what the Dashboard itself shows for that same month.
+export interface MonthlySummaryRow {
+  month:  string // 'YYYY-MM'
+  label:  string // 'September 2026'
+  total_inquiries: number
+  confirmed_bookings: number
+  payments_received_count: number
+  payments_received_amount: number
+}
+
+const MONTH_NAMES = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December']
+
+// Earliest month to report from — matches the "2025 Bagdrop Founded"
+// milestone on the public /about page (app/(marketing)/about/page.tsx),
+// since no real bookings/leads exist before the company existed. Not a
+// live MIN(created_at) query, same reasoning as resolveDashboardRange's
+// 'all_time' preset floor above.
+const EARLIEST_REPORT_YEAR = 2025
+const EARLIEST_REPORT_MONTH = 0 // January, 0-indexed
+
+export async function getMonthlySummaryReport(): Promise<MonthlySummaryRow[]> {
+  const now = new Date(Date.now() + IST_OFFSET_MS)
+  const curY = now.getUTCFullYear()
+  const curM = now.getUTCMonth()
+
+  const months: { y: number; m: number }[] = []
+  for (let y = EARLIEST_REPORT_YEAR; y <= curY; y++) {
+    const startM = y === EARLIEST_REPORT_YEAR ? EARLIEST_REPORT_MONTH : 0
+    const endM = y === curY ? curM : 11
+    for (let m = startM; m <= endM; m++) months.push({ y, m })
+  }
+
+  // Sequential, not Promise.all — each call does its own full leads/
+  // bookings/payments/trip_sheets/group_bags fetch, and this report is
+  // loaded on-demand (not on every Dashboard page view), so bounding peak
+  // load on Supabase matters more here than shaving a few seconds of
+  // latency off an explicit "open Reports" click.
+  const rows: MonthlySummaryRow[] = []
+  for (const { y, m } of months) {
+    const from = `${y}-${pad2(m + 1)}-01`
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate()
+    const to = `${y}-${pad2(m + 1)}-${pad2(lastDay)}`
+    const data = await getDashboardData('custom', from, to)
+    rows.push({
+      month: `${y}-${pad2(m + 1)}`,
+      label: `${MONTH_NAMES[m]} ${y}`,
+      total_inquiries: data.business_overview.total_inquiries,
+      confirmed_bookings: data.business_overview.confirmed_bookings,
+      payments_received_count: data.business_overview.payments_received_count,
+      payments_received_amount: data.business_overview.payments_received_amount,
+    })
+  }
+
+  return rows.reverse() // newest first — matches the Payments tab's Monthly Breakdown convention
+}
