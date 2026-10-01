@@ -695,23 +695,35 @@ export async function getDashboardData(
     payments.filter(p => p.booking_id && Number(p.refund_amount) > 0).map(p => p.booking_id as string)
   )
 
-  // "Confirmed Bookings" — Founder spec, finalized 2026-10-01 after two
+  // "Confirmed Bookings" — Founder spec, finalized 2026-10-01 after three
   // rounds of correction. ONE card/number, not a live snapshot: once a
-  // booking is confirmed it counts permanently for the period it was
-  // confirmed in, the same way "Completed" already behaves — a booking that
-  // later progresses to Completed, or to any later operational status,
-  // never drops back out. Founder's own words: "once we got the payment,
-  // that inquiry count as a confirmed booking" and "keep only one card of
-  // confirmed booking."
+  // booking is confirmed it counts permanently, the same way "Completed"
+  // already behaves — a booking that later progresses to Completed, or to
+  // any later operational status, never drops back out. Founder's own
+  // words: "once we got the payment, that inquiry count as a confirmed
+  // booking" and "keep only one card of confirmed booking."
   //
-  // Anchored on the booking's own 'confirmed' status_history milestone
-  // (STATUS_ORDER's 'confirmed' step, right after payment_received/
-  // payment_approved) rather than strictly on payment_received, so this
-  // also correctly includes an FOC (Free of Charge, billing_type='foc') or
-  // VIP/Admin "approved without payment" (payment_status='approved_pending')
-  // booking once it reaches Confirmed in the workflow — founder explicitly
-  // confirmed September's real total (20) includes one FOC inquiry, which a
-  // payment-only definition would have wrongly excluded.
+  // Gated on reaching the booking's own 'confirmed' status_history
+  // milestone (STATUS_ORDER's 'confirmed' step, right after
+  // payment_received/payment_approved) rather than strictly requiring real
+  // payment, so this also correctly includes an FOC (Free of Charge,
+  // billing_type='foc') or VIP/Admin "approved without payment"
+  // (payment_status='approved_pending') booking once it reaches Confirmed
+  // in the workflow — founder explicitly confirmed September's real total
+  // (20) includes one FOC inquiry, which a payment-only gate would have
+  // wrongly excluded.
+  //
+  // THIRD correction, 2026-10-01: bucketed by month like every other
+  // operational KPI on this dashboard — bookingReportingDate(b)
+  // (completed_month_override ?? pickup_date), NOT by when the booking was
+  // confirmed/paid. Founder: "if any inquiry comes in Sep but delivery date
+  // is in October, it should count as an October Confirmed Booking, not
+  // September" — e.g. Shyamal Badani/Dhwanish Shah/Viraj Gohil were
+  // confirmed (paid) in September but have an October pickup, and were
+  // wrongly showing up in September's Confirmed count. Exactly the same
+  // dimension completedInRange and paymentReceivedStage already use below,
+  // for the same reason (see their own comments) — a booking belongs to
+  // the month it's operationally happening in, not the month money moved.
   //
   // Explicitly excludes (founder's Rakesh Patel correction): any booking
   // currently in a terminal 'cancelled'/'rejected' branch, or carrying a
@@ -725,8 +737,8 @@ export async function getDashboardData(
     const hasQuote = leads.some(l => l.booking_id === b.id && !!l.quote_number)
     if (!hasQuote) return false
     if (!everReachedStage(b, CONFIRMED_IDX)) return false
-    const ts = firstReachedTimestamp(b, CONFIRMED_IDX)
-    return ts ? inTs(ts, range) : false
+    const d = bookingReportingDate(b)
+    return d ? inDateStr(d, range) : false
   })
 
   const completedInRange = bookings.filter(b => {
@@ -1094,7 +1106,7 @@ export async function getDashboardData(
       case 'confirmed_bookings':
         return confirmedBookingsInRange.map(b => ({
           id: b.id,
-          date: firstReachedTimestamp(b, CONFIRMED_IDX),
+          date: bookingReportingDate(b),
           customer_name: b.customer_name ?? null,
           tracking_id: b.tracking_id ?? null,
           route: routeFor(b),
