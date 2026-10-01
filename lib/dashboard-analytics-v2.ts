@@ -338,6 +338,11 @@ export interface DashboardData {
     total_inquiries: number
     quotes_sent: number
     confirmed_bookings: number
+    // Additive, NOT a replacement for confirmed_bookings above — see the
+    // module comment on totalConfirmedInRange. Every booking whose first
+    // payment_received fell in this period, permanently, regardless of
+    // current status (mirrors how "completed" behaves).
+    total_confirmed_bookings: number
     payments_received_count: number
     payments_received_amount: number
     outstanding_amount: number
@@ -419,7 +424,7 @@ export interface DashboardData {
 // Business Overview drill-down — founder request, 2026-09-16: "when i click
 // Business Overview first 4 cards from any tab, it should show data
 // according to that card data." One row per matching lead/booking/payment.
-export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
+export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'total_confirmed_bookings' | 'payments_received' | 'completed'
 export interface DrilldownRecord {
   id: string
   date: string | null           // the business date that qualified this record for the card
@@ -685,6 +690,27 @@ export async function getDashboardData(
   const confirmedBookingsInRange = bookings.filter(b => {
     if (b.is_test) return false
     if (!isConfirmed(b, leads.some(l => l.booking_id === b.id && !!l.quote_number))) return false
+    const ts = firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received'))
+    return ts ? inTs(ts, range) : false
+  })
+
+  // "Total Confirmed This Period" — Founder request, 2026-10-01: the
+  // existing "Confirmed Bookings" card above is a LIVE snapshot (only
+  // counts bookings whose CURRENT status is still in ACTIVE_BOOKING_STATUSES,
+  // i.e. 'completed' bookings drop out of it even though they definitely
+  // received payment within the period). Founder explicitly wants a second,
+  // additive number that behaves like "Completed" does — permanent once the
+  // milestone (first payment_received) is reached in range, regardless of
+  // what the booking's status does afterward. Same gating as
+  // confirmedBookingsInRange (is_test excluded, must have a real quote,
+  // dated by the real first payment_received status_history timestamp) —
+  // just without the ACTIVE_STATUS_SET current-status gate. Deliberately
+  // NOT replacing confirmedBookingsInRange — see business_overview below,
+  // both numbers are surfaced side by side.
+  const totalConfirmedInRange = bookings.filter(b => {
+    if (b.is_test) return false
+    const hasQuote = leads.some(l => l.booking_id === b.id && !!l.quote_number)
+    if (!hasQuote) return false
     const ts = firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received'))
     return ts ? inTs(ts, range) : false
   })
@@ -1061,6 +1087,16 @@ export async function getDashboardData(
           status: b.status ?? null,
           amount: b.total_amount ?? null,
         }))
+      case 'total_confirmed_bookings':
+        return totalConfirmedInRange.map(b => ({
+          id: b.id,
+          date: firstReachedTimestamp(b, STATUS_ORDER.indexOf('payment_received')),
+          customer_name: b.customer_name ?? null,
+          tracking_id: b.tracking_id ?? null,
+          route: routeFor(b),
+          status: b.status ?? null,
+          amount: b.total_amount ?? null,
+        }))
       case 'payments_received':
         return [
           ...paymentsInRange.map(p => {
@@ -1116,6 +1152,7 @@ export async function getDashboardData(
       total_inquiries: totalInquiries,
       quotes_sent: quotesSent,
       confirmed_bookings: confirmedBookingsInRange.length,
+      total_confirmed_bookings: totalConfirmedInRange.length,
       payments_received_count: paymentsReceivedCount,
       payments_received_amount: paymentsReceivedAmount,
       outstanding_amount: outstandingAmount,

@@ -247,6 +247,7 @@ interface DashboardV2Data {
   range: { preset: string; from: string; to: string }
   business_overview: {
     total_inquiries: number; quotes_sent: number; confirmed_bookings: number
+    total_confirmed_bookings: number
     payments_received_count: number; payments_received_amount: number
     outstanding_amount: number; revenue: number
   }
@@ -286,7 +287,7 @@ interface DashboardV2Data {
 // bookings behind the funnel's Completed tile — see that DrilldownKey
 // case's comment in lib/dashboard-analytics-v2.ts for why (comparing
 // against the Payments tab's broader confirmed-onward population).
-type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
+type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'total_confirmed_bookings' | 'payments_received' | 'completed'
 interface DrilldownRecord {
   id: string
   date: string | null
@@ -300,6 +301,7 @@ const DRILLDOWN_TITLES: Record<DrilldownKey, string> = {
   total_inquiries:    'Total Inquiries',
   quotes_sent:        'Quotes Sent',
   confirmed_bookings: 'Confirmed Bookings',
+  total_confirmed_bookings: 'Total Confirmed (This Period)',
   payments_received:  'Payments Received',
   completed:          'Completed',
 }
@@ -1800,11 +1802,12 @@ export default function AdminDashboard() {
                 className="rounded-lg border border-gray-200 px-3 py-1.5 text-sm text-gray-700 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
             </div>
           )}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-7">
             {[
               { label: 'Total Inquiries',    value: dashData?.business_overview.total_inquiries,     icon: <Users className="h-4 w-4" />,       color: '#2563eb', bg: '#dbeafe', drilldown: 'total_inquiries' as DrilldownKey },
               { label: 'Quotes Sent',        value: dashData?.business_overview.quotes_sent,          icon: <FileText className="h-4 w-4" />,    color: '#6d28d9', bg: '#ede9fe', drilldown: 'quotes_sent' as DrilldownKey },
               { label: 'Confirmed Bookings', value: dashData?.business_overview.confirmed_bookings,   icon: <Truck className="h-4 w-4" />,        color: '#0891b2', bg: '#cffafe', drilldown: 'confirmed_bookings' as DrilldownKey },
+              { label: 'Total Confirmed (Period)', value: dashData?.business_overview.total_confirmed_bookings, icon: <Truck className="h-4 w-4" />, color: '#0d9488', bg: '#ccfbf1', drilldown: 'total_confirmed_bookings' as DrilldownKey },
               { label: 'Payments Received',  value: dashData?.business_overview.payments_received_count, sub: dashData ? fmtINR(dashData.business_overview.payments_received_amount) : undefined, icon: <CreditCard className="h-4 w-4" />, color: '#16a34a', bg: '#dcfce7', drilldown: 'payments_received' as DrilldownKey },
               { label: 'Outstanding',        value: dashData ? fmtOrDash(dashData.business_overview.outstanding_amount) : undefined, icon: <AlertCircle className="h-4 w-4" />, color: '#d97706', bg: '#fef3c7' },
               { label: 'Revenue',            value: dashData ? fmtOrDash(dashData.business_overview.revenue) : undefined, icon: <IndianRupee className="h-4 w-4" />, color: '#7c3aed', bg: '#ede9fe' },
