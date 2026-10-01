@@ -16,7 +16,7 @@ const VALUES = [
 
 const MILESTONES = [
   { year: '2025', event: 'Bagdrop Founded' },
-  { year: '2025', event: 'Pickup Services Launched Inside Mumbai T2' },
+  { year: '2025', event: 'Pick up Services Launched from Mumbai T2' },
   { year: '2025', event: 'Expanded Operations — Mumbai · Delhi · Goa · Gujarat · Rajasthan · Hyderabad · Bangalore' },
   { year: '2025–2026', event: '12,000+ Bags Delivered' },
   { year: '2026', event: 'National Rollout Across 15 Cities' },
