@@ -628,7 +628,7 @@ export default function IconiqaPage() {
         <a href="#top" style={{ display:'flex', alignItems:'center', gap:16 }}>
           <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:52, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
           <span style={{ width:1, height:30, background:'currentColor', opacity:0.3, display:'block' }} />
-          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:40, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }} />
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:75, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }} />
         </a>
         <div className="icq-desktop-nav" style={{ display:'flex', alignItems:'center', gap:30, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase' }}>
           <a href="#services">Services</a>
@@ -847,7 +847,7 @@ export default function IconiqaPage() {
         <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:68, width:'auto', margin:'0 auto 16px', display:'block' }} />
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, margin:'0 0 28px' }}>
           <span style={{ fontFamily:FONT_BODY, fontSize:14, letterSpacing:'0.14em', textTransform:'uppercase', color:C.brassLight }}>Baggage Delivery by</span>
-          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:34, width:'auto', display:'block', filter:'brightness(0) invert(1)' }} />
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:80, width:'auto', display:'block', filter:'brightness(0) invert(1)' }} />
         </div>
         <p style={{ fontFamily:FONT_BODY, fontSize:16, margin:'0 0 6px' }}>
           <a href="mailto:info@bagdrop.co" style={{ color:'inherit' }}>info@bagdrop.co</a>
