@@ -718,8 +718,11 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── CORRIDOR BANNER ───────────────────────────────── */}
-      <section style={{ position:'relative', minHeight:340, display:'flex', alignItems:'center', overflow:'hidden' }}>
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 30%' }} />
+      <section style={{ position:'relative', minHeight:'clamp(420px,56vw,560px)', display:'flex', alignItems:'center', overflow:'hidden' }}>
+        {/* Taller section + lower backgroundPosition than the first cut — the
+            source photo is a square crop with the guests' suitcases in the
+            lower half, which a short wide banner was cropping out entirely. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 68%' }} />
         <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'linear-gradient(90deg, rgba(16,20,28,0.82) 0%, rgba(16,20,28,0.5) 55%, rgba(16,20,28,0.2) 100%)' }} />
         <Reveal style={{ position:'relative', zIndex:2, padding:'48px clamp(20px,5vw,56px)', maxWidth:560 }}>
           <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, letterSpacing:'0.28em', textTransform:'uppercase', color:C.brassLight }}>From Lobby to Departure Gate</span>
