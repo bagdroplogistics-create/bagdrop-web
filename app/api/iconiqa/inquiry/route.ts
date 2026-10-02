@@ -127,6 +127,16 @@ export async function POST(req: NextRequest) {
       const { data: savedBooking, error: dbError } = await supabaseAdmin.from('bookings').insert({
         tracking_id:    trackingId,
         status:         'inquiry',
+        // Founder request (2026-10-02): test submissions should still be
+        // easy to spot and bulk-clean-up later. is_test is the existing
+        // column every admin list/report/Dashboard metric already filters
+        // on by default (see app/api/admin/bookings/route.ts's
+        // `if (!includeTest) query = query.eq('is_test', false)`), so
+        // setting it here means a test ICONIQA inquiry is automatically
+        // excluded from real numbers without anyone remembering to toggle
+        // it by hand afterward — and it's findable/deletable via the
+        // existing Test Mode filter on the Leads/Bookings admin pages.
+        is_test:        isTestMode,
         customer_name:  name.trim(),
         customer_email: email?.trim().toLowerCase() || null,
         customer_phone: '+91' + digits,
@@ -209,6 +219,7 @@ export async function POST(req: NextRequest) {
 
           const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,
+            is_test:          isTestMode,
             name:             name.trim(),
             phone:            '+91' + digits,
             email:            email?.trim().toLowerCase() || null,
@@ -247,27 +258,32 @@ export async function POST(req: NextRequest) {
             })
           } else {
             console.log(`[iconiqa/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
-            if (!isTestMode) {
-              await sendNewInquiryWhatsApp({
-                inquiryNumber:   leadNumber,
-                source:          'ICONIQA Hotel',
-                customerName:    name.trim(),
-                customerPhone:   '+91' + digits,
-                customerEmail:   email?.trim().toLowerCase() || null,
-                serviceType:     svc.label,
-                fromCity:        resolvedPickupLocation,
-                toCity:          resolvedDeliveryLocation,
-                pickupAddress:   pickupAddress?.trim() || null,
-                deliveryAddress: svc.fixedTo ? null : (deliveryAddress?.trim() || null),
-                pickupDate:      pickupDate,
-                bagsCount:       bagsCount,
-                deliveryDate:    deliveryDate || pickupDate,
-                notes:           `ICONIQA Hotel landing page — ${svc.label} — ${trackingId}`,
-                submittedAt:     new Date().toISOString(),
-              })
-            } else {
-              console.log(`[iconiqa/inquiry] Test submission ${trackingId} — skipped ops WhatsApp ping`)
-            }
+            // Founder request (2026-10-02): test submissions should still
+            // trigger the real ops WhatsApp ping (to both internal numbers —
+            // see lib/new-inquiry-notification.ts) so the Founder can verify
+            // end-to-end delivery actually works, not just that the DB rows
+            // were created. The tracking/lead number itself already carries
+            // "TEST" (BDA-TEST-xxx / BDL-TEST-xxx — see generateTestTrackingId
+            // above), so the ping is unmistakably a test; is_test:true on the
+            // booking/lead above keeps it out of real Dashboard numbers
+            // regardless, and makes it easy to find and delete afterward.
+            await sendNewInquiryWhatsApp({
+              inquiryNumber:   leadNumber,
+              source:          isTestMode ? 'ICONIQA Hotel [TEST]' : 'ICONIQA Hotel',
+              customerName:    name.trim(),
+              customerPhone:   '+91' + digits,
+              customerEmail:   email?.trim().toLowerCase() || null,
+              serviceType:     svc.label,
+              fromCity:        resolvedPickupLocation,
+              toCity:          resolvedDeliveryLocation,
+              pickupAddress:   pickupAddress?.trim() || null,
+              deliveryAddress: svc.fixedTo ? null : (deliveryAddress?.trim() || null),
+              pickupDate:      pickupDate,
+              bagsCount:       bagsCount,
+              deliveryDate:    deliveryDate || pickupDate,
+              notes:           `ICONIQA Hotel landing page — ${svc.label} — ${trackingId}`,
+              submittedAt:     new Date().toISOString(),
+            })
           }
         }
       } catch (leadErr) {
@@ -276,10 +292,15 @@ export async function POST(req: NextRequest) {
     }
 
     // ── Notification email to info@bagdrop.co ──────────────────
+    // Founder request (2026-10-02): send this in test mode too (previously
+    // skipped entirely), so the Founder can confirm the email path actually
+    // works end-to-end, not just the WhatsApp path. Subject/banner below are
+    // prefixed "TEST —" whenever isTestMode so it's unmistakable in the
+    // inbox and safe to delete once verified.
     const apiKey = process.env.RESEND_API_KEY
     let emailSent = false
 
-    if (apiKey && !isTestMode) {
+    if (apiKey) {
       const html = `<!DOCTYPE html><html><head><meta charset="utf-8"></head>
 <body style="margin:0;padding:0;background:#F6F4F0;font-family:Georgia,serif">
 <table width="100%" cellpadding="0" cellspacing="0" style="background:#F6F4F0;padding:32px 0">
@@ -292,6 +313,9 @@ export async function POST(req: NextRequest) {
   <tr><td style="background:#C9A96E;padding:10px 40px;text-align:center">
     <p style="margin:0;font-size:13px;font-weight:700;color:#1C2230;letter-spacing:1px">NEW BOOKING REQUEST — ${trackingId}</p>
   </td></tr>
+  ${isTestMode ? `<tr><td style="background:#B3261E;padding:10px 40px;text-align:center">
+    <p style="margin:0;font-size:12px;font-weight:700;color:#fff;letter-spacing:1px">⚠ TEST SUBMISSION — not a real guest. Safe to delete once verified.</p>
+  </td></tr>` : ''}
   <tr><td style="padding:36px 40px">
     <p style="margin:0 0 24px;font-size:15px;color:#4A4A45;line-height:1.6">A guest from <strong>ICONIQA Hotel, Mumbai International Airport</strong> has submitted a baggage delivery request.</p>
     <table width="100%" cellpadding="0" cellspacing="0" style="border:1px solid #EBE6DA;border-radius:12px;overflow:hidden;margin-bottom:24px">
@@ -332,7 +356,7 @@ export async function POST(req: NextRequest) {
           body: JSON.stringify({
             from: 'BagDrop <info@bagdrop.co>',
             to: ['info@bagdrop.co'],
-            subject: `🧳 ICONIQA Hotel Booking Request — ${name.trim()} (${trackingId})`,
+            subject: `${isTestMode ? '[TEST] ' : ''}🧳 ICONIQA Hotel Booking Request — ${name.trim()} (${trackingId})`,
             html,
           }),
         })
