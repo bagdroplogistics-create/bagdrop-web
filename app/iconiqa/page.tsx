@@ -38,6 +38,10 @@ const IMG_HOTEL_EXTERIOR_NIGHT = '/images/iconiqa-hotel-exterior-night.jpg'
 // filter:brightness(0) to flip it to a black silhouette on the fly rather
 // than needing a second exported asset from the Founder.
 const IMG_LOGO = '/images/iconiqa-logo-white.png'
+// Bagdrop's existing white wordmark (already used the same way on
+// app/y2k/page.tsx) — shown next to the ICONIQA mark instead of a plain
+// "× Bagdrop" text label.
+const IMG_BAGDROP_LOGO = '/logo-full-white.png'
 // Additional founder-supplied ICONIQA photos (2026-10-02) — all real,
 // unedited property photography, no stock/fabricated images used anywhere
 // on this page. The *-luggage photos are real guests with real suitcases
@@ -614,12 +618,10 @@ export default function IconiqaPage() {
 
       {/* ── NAV ───────────────────────────────────────────── */}
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:84, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(20px,5vw,56px)', background: scrolled ? 'rgba(246,244,239,0.94)' : 'transparent', color: scrolled ? C.ink : '#fff', boxShadow: scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none', backdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', transition:'background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease' }}>
-        <a href="#top" style={{ display:'flex', alignItems:'center', gap:10 }}>
-          <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:34, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
-          <span style={{ display:'flex', flexDirection:'column', lineHeight:1.1, borderLeft:'1px solid currentColor', paddingLeft:10, opacity:0.75 }}>
-            <span style={{ fontFamily:FONT_BODY, fontSize:10.5, fontWeight:700, letterSpacing:'0.04em' }}>× Bagdrop</span>
-            <span style={{ fontFamily:FONT_BODY, fontSize:8.5, letterSpacing:'0.18em', textTransform:'uppercase', opacity:0.8 }}>Mumbai Airport</span>
-          </span>
+        <a href="#top" style={{ display:'flex', alignItems:'center', gap:16 }}>
+          <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:52, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
+          <span style={{ width:1, height:30, background:'currentColor', opacity:0.3, display:'block' }} />
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:26, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
         </a>
         <div className="icq-desktop-nav" style={{ display:'flex', alignItems:'center', gap:30, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase' }}>
           <a href="#services">Services</a>
@@ -643,7 +645,10 @@ export default function IconiqaPage() {
       <div onClick={()=>setMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:110, background:'rgba(10,12,18,0.5)', backdropFilter:'blur(4px)', opacity: menuOpen?1:0, pointerEvents: menuOpen?'auto':'none', transition:'opacity 0.35s ease' }}/>
       <aside style={{ position:'fixed', top:0, right:0, bottom:0, zIndex:120, width:'min(82vw, 340px)', background:C.navy, color:'#fff', transform: menuOpen ? 'translateX(0)' : 'translateX(100%)', transition:'transform 0.42s cubic-bezier(0.22,1,0.36,1)', display:'flex', flexDirection:'column', padding:'28px 30px', boxShadow:'-20px 0 60px rgba(0,0,0,0.3)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:44 }}>
-          <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:36, width:'auto', display:'block' }} />
+          <div style={{ display:'flex', alignItems:'center', gap:12 }}>
+            <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:44, width:'auto', display:'block' }} />
+            <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:20, width:'auto', display:'block' }} />
+          </div>
           <button type="button" onClick={()=>setMenuOpen(false)} aria-label="Close menu" style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:40, height:40, borderRadius:'50%', fontSize:20, cursor:'pointer', lineHeight:1 }}>×</button>
         </div>
         <nav style={{ display:'flex', flexDirection:'column', gap:4, fontFamily:FONT_DISPLAY }}>
@@ -743,8 +748,8 @@ export default function IconiqaPage() {
         {/* Real ICONIQA Hotel night-exterior photo as a backdrop, with a navy
             gradient over it (same approach as the hero) so the step grid
             stays easily readable — not a flat navy fill anymore. */}
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR_NIGHT})`, backgroundSize:'cover', backgroundPosition:'center 25%' }} />
-        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, ${C.navyDeep}ee 0%, ${C.navy}f2 40%, ${C.navy}f5 100%)` }} />
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR_NIGHT})`, backgroundSize:'cover', backgroundPosition:'center 20%' }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, ${C.navyDeep}b3 0%, ${C.navy}99 40%, ${C.navy}cc 100%)` }} />
         <div style={{ position:'relative', zIndex:2 }}>
           <Reveal>
             <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -759,9 +764,9 @@ export default function IconiqaPage() {
             {HOW_IT_WORKS.map((s, i) => (
               <Reveal key={s.n} style={{ transitionDelay:`${i*0.08}s` }}>
                 <div style={{ textAlign:'center' }}>
-                  <span style={{ fontFamily:FONT_DISPLAY, fontSize:38, color:C.brassLight, fontWeight:600 }}>{s.n}</span>
-                  <h3 style={{ fontFamily:FONT_BODY, fontSize:15.5, fontWeight:700, margin:'10px 0 8px', color:'#fff' }}>{s.title}</h3>
-                  <p style={{ fontFamily:FONT_BODY, fontSize:13.5, lineHeight:1.6, color:'rgba(255,255,255,0.7)', margin:0 }}>{s.desc}</p>
+                  <span style={{ fontFamily:FONT_DISPLAY, fontSize:38, color:C.brassLight, fontWeight:600, textShadow:'0 2px 12px rgba(0,0,0,0.5)' }}>{s.n}</span>
+                  <h3 style={{ fontFamily:FONT_BODY, fontSize:15.5, fontWeight:700, margin:'10px 0 8px', color:'#fff', textShadow:'0 2px 12px rgba(0,0,0,0.5)' }}>{s.title}</h3>
+                  <p style={{ fontFamily:FONT_BODY, fontSize:13.5, lineHeight:1.6, color:'rgba(255,255,255,0.85)', margin:0, textShadow:'0 1px 8px rgba(0,0,0,0.5)' }}>{s.desc}</p>
                 </div>
               </Reveal>
             ))}
@@ -829,13 +834,16 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── FOOTER ────────────────────────────────────────── */}
-      <footer style={{ background:C.navyDeep, color:'rgba(255,255,255,0.7)', padding:'44px clamp(20px,5vw,56px) 28px', textAlign:'center' }}>
-        <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:44, width:'auto', margin:'0 auto 10px', display:'block' }} />
-        <p style={{ fontFamily:FONT_BODY, fontSize:12, letterSpacing:'0.14em', textTransform:'uppercase', color:C.brassLight, margin:'0 0 24px' }}>Baggage Delivery by Bagdrop</p>
-        <p style={{ fontFamily:FONT_BODY, fontSize:13, margin:'0 0 4px' }}>
+      <footer style={{ background:C.navyDeep, color:'rgba(255,255,255,0.75)', padding:'64px clamp(20px,5vw,56px) 36px', textAlign:'center' }}>
+        <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:68, width:'auto', margin:'0 auto 16px', display:'block' }} />
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, margin:'0 0 28px' }}>
+          <span style={{ fontFamily:FONT_BODY, fontSize:14, letterSpacing:'0.14em', textTransform:'uppercase', color:C.brassLight }}>Baggage Delivery by</span>
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:22, width:'auto', display:'block' }} />
+        </div>
+        <p style={{ fontFamily:FONT_BODY, fontSize:16, margin:'0 0 6px' }}>
           <a href="mailto:info@bagdrop.co" style={{ color:'inherit' }}>info@bagdrop.co</a>
         </p>
-        <p style={{ fontFamily:FONT_BODY, fontSize:11.5, color:'rgba(255,255,255,0.4)', margin:'20px 0 0' }}>© {new Date().getFullYear()} Bagdrop — Aviation Infrastructure Company. All rights reserved.</p>
+        <p style={{ fontFamily:FONT_BODY, fontSize:13.5, color:'rgba(255,255,255,0.45)', margin:'26px 0 0' }}>© {new Date().getFullYear()} Bagdrop — Aviation Infrastructure Company. All rights reserved.</p>
       </footer>
     </div>
   )
