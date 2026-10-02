@@ -722,15 +722,21 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── CORRIDOR BANNER ───────────────────────────────── */}
-      <section style={{ position:'relative', minHeight:'clamp(520px,78vw,760px)', display:'flex', alignItems:'flex-end', overflow:'hidden' }}>
-        {/* Founder feedback: the previous crop (minHeight 420-560, position
-            'center 68%') cut the guests off at the neck — the source photo is
-            a square (1080x1080) with the couple's full height from chandelier
-            to shoes, so a short wide banner was always going to crop most of
-            it away. Made the section noticeably taller (clamp 520-760px,
-            scaling with viewport width) and centered the crop at 50% so both
-            the guests' heads and their suitcases stay in frame together. */}
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 50%' }} />
+      {/* Founder screenshot showed the photo boxed in with the page's ivory
+          background visible as blank bars on both sides — not a full-bleed
+          cover image. Forcing the section to break out to the true viewport
+          width (100vw + negative-margin centering trick, independent of any
+          ancestor padding/max-width) guarantees it can never happen again,
+          regardless of what was causing it. */}
+      <section style={{ position:'relative', width:'100vw', marginLeft:'calc(50% - 50vw)', marginRight:'calc(50% - 50vw)', minHeight:'clamp(520px,78vw,760px)', display:'flex', alignItems:'flex-end', overflow:'hidden' }}>
+        {/* The previous crop (minHeight 420-560, position 'center 68%') cut
+            the guests off at the neck — the source photo is a square
+            (1080x1080) with the couple's full height from chandelier to
+            shoes, so a short wide banner was always going to crop most of it
+            away. Section is noticeably taller (clamp 520-760px, scaling with
+            viewport width) and the crop is centered at 50% so both the
+            guests' heads and their suitcases stay in frame together. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 50%', backgroundRepeat:'no-repeat' }} />
         {/* Overlay lightened per Founder feedback ("too dark, reduce
             opacity") — now a bottom-up scrim (text sits at the bottom of the
             frame) instead of a strong left-to-right wash over the whole photo. */}
