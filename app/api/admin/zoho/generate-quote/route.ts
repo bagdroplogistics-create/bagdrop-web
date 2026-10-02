@@ -470,6 +470,13 @@ export async function POST(req: NextRequest) {
       // from. Re-stamped on every regenerate/resend, which correctly
       // restarts the follow-up countdown from the latest send.
       quote_sent_at:        new Date().toISOString(),
+      // Auto Estimate Quote (Founder spec, 2026-10-02) — this lead now has
+      // a real Final Quote, so freeze whatever auto-estimate it had: it
+      // becomes a historical record and lib/estimate-quote.ts will never
+      // recalculate or overwrite it again, even if the inquiry is edited
+      // later. Only meaningful if the lead actually had one — harmless no-op
+      // otherwise (estimate_status was already null).
+      estimate_status:      'converted',
       payment_status:       paymentStatusIn ?? 'pending',
       billing_type:         isFOC ? 'foc' : 'paid',
       zoho_estimate_id:     null,

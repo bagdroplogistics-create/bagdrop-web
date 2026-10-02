@@ -5,6 +5,7 @@ import { parseStoredPhone } from '@/lib/phone-format'
 import { TITLE_OPTIONS } from '@/lib/constants'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
+import { generateEstimateForLead } from '@/lib/estimate-quote'
 
 // Statuses at/after 'accepted' in STATUS_ORDER — i.e. the customer has
 // acted on the quote (accepted, paid, or further along). 'cancelled' and
@@ -211,6 +212,17 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     .single()
 
   if (leadErr) return NextResponse.json({ error: leadErr.message }, { status: 500 })
+
+  // ── Auto Estimate Quote: recalculate on relevant edits ─────────────
+  // Founder spec (2026-10-02), §11: "If important inquiry information
+  // changes before the final quote is created, the estimate should be
+  // recalculated." generateEstimateForLead() itself re-fetches the
+  // lead and is a no-op once a real Final Quote exists (estimate_status
+  // 'converted' / quote_number set) — safe to call unconditionally
+  // whenever a field the estimate depends on was part of this PATCH.
+  if ('from_city' in updates || 'to_city' in updates || 'bags_count' in updates) {
+    await generateEstimateForLead(id)
+  }
 
   // ── Sync key fields to the linked booking ────────────────────────
   if (lead.booking_id) {

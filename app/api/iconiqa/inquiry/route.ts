@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
+import { generateEstimateForLead } from '@/lib/estimate-quote'
 
 // BAGDROP — ICONIQA Hotel, Mumbai International Airport × Bagdrop landing
 // page inquiry endpoint (app/iconiqa/page.tsx).
@@ -217,7 +218,7 @@ export async function POST(req: NextRequest) {
           // identical comment for why (keeps BDA/BDL suffixes in sync).
           const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
-          const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
+          const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,
             is_test:          isTestMode,
             name:             name.trim(),
@@ -236,7 +237,7 @@ export async function POST(req: NextRequest) {
             bags_count:       bagsCount,
             notes:            `Auto-created from ICONIQA Hotel landing page inquiry ${trackingId} — ${svc.label}`,
             booking_id:       savedBookingId,
-          })
+          }).select('id').single()
 
           if (leadInsertErr) {
             console.error('[iconiqa/inquiry] Lead insert error:', leadInsertErr.message)
@@ -258,6 +259,12 @@ export async function POST(req: NextRequest) {
             })
           } else {
             console.log(`[iconiqa/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
+            // Auto Estimate Quote (Founder spec, 2026-10-02) — only fires
+            // when this exact pickup/delivery route already has active
+            // pricing in Route/Pricing Master; otherwise a no-op. See
+            // lib/estimate-quote.ts. Awaited (cheap single select+update)
+            // so it isn't dropped if the function terminates right after.
+            if (newLead) await generateEstimateForLead(newLead.id)
             // Founder request (2026-10-02): test submissions should still
             // trigger the real ops WhatsApp ping (to both internal numbers —
             // see lib/new-inquiry-notification.ts) so the Founder can verify

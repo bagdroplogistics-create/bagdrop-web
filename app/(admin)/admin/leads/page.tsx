@@ -93,6 +93,14 @@ interface Lead {
   return_quote_number?:    string | null
   customer_responded_at?:  string | null
   deleted_at?:             string | null
+  // Auto Estimate Quote (Founder spec, 2026-10-02) — see
+  // lib/estimate-quote.ts / supabase/migrations/20261002_lead_auto_estimate.sql.
+  // 'generated' = live auto-estimate, shown as a distinct ESTIMATE badge
+  // below (never confused with quote_total, the real Final Quote amount).
+  // 'converted' = a real Final Quote now exists; quote_total takes over and
+  // this is no longer shown. null = no route match / no bag count yet.
+  estimate_status?:        'generated' | 'converted' | null
+  estimate_total?:         number | null
 }
 
 interface CommunicationLogEntry {
@@ -1681,7 +1689,28 @@ function LeadsPageInner() {
                         })()}
                       </td>
                       <td className="px-4 py-3 text-sm font-semibold text-gray-900">
-                        {l.quote_total != null ? '₹' + Math.round(Number(l.quote_total)).toLocaleString('en-IN') : <span className="text-gray-400 font-normal">—</span>}
+                        {l.quote_total != null ? (
+                          '₹' + Math.round(Number(l.quote_total)).toLocaleString('en-IN')
+                        ) : l.estimate_status === 'generated' && l.estimate_total != null ? (
+                          // Auto Estimate Quote — deliberately NOT styled like
+                          // a real Quote Amount (different color, explicit
+                          // "ESTIMATE" badge + tooltip) so Admin can never
+                          // mistake this for a final quotation at a glance.
+                          // See lib/estimate-quote.ts.
+                          <span
+                            className="inline-flex items-center gap-1.5 font-normal"
+                            title="Auto-calculated estimate from Route/Pricing Master — not a final quotation. Final price may vary based on exact pickup/drop addresses."
+                          >
+                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
+                              Estimate
+                            </span>
+                            <span className="text-amber-700">
+                              ₹{Math.round(Number(l.estimate_total)).toLocaleString('en-IN')}
+                            </span>
+                          </span>
+                        ) : (
+                          <span className="text-gray-400 font-normal">—</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex flex-col gap-1">

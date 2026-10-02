@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
+import { generateEstimateForLead } from '@/lib/estimate-quote'
 
 // Y2K booking form restrictions — mirrors the constants of the same name in
 // app/y2k/page.tsx. This is the Y2K-only inquiry route (the regular BagDrop
@@ -216,7 +217,7 @@ export async function POST(req: NextRequest) {
           // lib/number-series.ts).
           const leadNumber = trackingId.replace(/^BDA-/, 'BDL-')
 
-          const { error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
+          const { data: newLead, error: leadInsertErr } = await supabaseAdmin.from('leads').insert({
             lead_number:      leadNumber,
             name:             name.trim(),
             phone:            '+91' + digits,
@@ -243,7 +244,7 @@ export async function POST(req: NextRequest) {
               ? `Return Pickup — linked to onward booking ${originalTrackingId || 'unknown'} — Auto-created from #Y2K wedding page inquiry ${trackingId}`
               : `Auto-created from #Y2K wedding page inquiry ${trackingId}`,
             booking_id:       savedBookingId,
-          })
+          }).select('id').single()
 
           if (leadInsertErr) {
             console.error('[y2k/inquiry] Lead insert error:', leadInsertErr.message)
@@ -269,6 +270,11 @@ export async function POST(req: NextRequest) {
             })
           } else {
             console.log(`[y2k/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
+            // Auto Estimate Quote (Founder spec, 2026-10-02) — only fires
+            // when this exact route already has active pricing in
+            // Route/Pricing Master; otherwise a no-op. See
+            // lib/estimate-quote.ts.
+            if (newLead) await generateEstimateForLead(newLead.id)
             // Internal ops WhatsApp ping — this route only ever emailed
             // info@bagdrop.co, same gap as the contact form had (see
             // app/api/contact/route.ts). Added so every inquiry source

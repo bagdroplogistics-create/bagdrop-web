@@ -8,6 +8,7 @@ import { isValidPhoneForCountry, toE164 } from '@/lib/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
+import { generateEstimateForLead } from '@/lib/estimate-quote'
 
 // Defensive last line of defense for bookings.flight_datetime (timestamptz).
 // A real incident (BDA-2026-0175, 2026-09-12) traced back to the flight
@@ -190,6 +191,7 @@ export async function POST(req: Request) {
     // Every website booking gets its own lead row.
     // We check by booking_id (not phone) so repeat customers also appear in leads.
     let ackPromise: Promise<void> = Promise.resolve()
+    let estimatePromise: Promise<void> = Promise.resolve()
     if (savedBooking) {
       try {
         // Guard against duplicate lead on API retry: check by booking_id
@@ -260,6 +262,13 @@ export async function POST(req: Request) {
                 phone: customerPhone,
                 email: customerEmail,
               })
+              // Auto Estimate Quote (Founder spec, 2026-10-02) — only fires
+              // when this exact route already has active pricing AND a bag
+              // count was given; otherwise a no-op, existing manual quote
+              // workflow is unaffected. See lib/estimate-quote.ts. Awaited
+              // below (via emailResults) same as ackPromise, so Vercel
+              // doesn't terminate the function before the lead write lands.
+              estimatePromise = generateEstimateForLead(newLead.id)
             }
           }
         } else {
@@ -325,6 +334,8 @@ export async function POST(req: Request) {
       sendNewInquiryWhatsApp(inquiryData),
       // Customer acknowledgment (email + WhatsApp) — see lib/lead-acknowledgment.ts
       ackPromise,
+      // Auto Estimate Quote — see lib/estimate-quote.ts
+      estimatePromise,
     ])
     emailResults.forEach((r, i) => {
       if (r.status === 'rejected') {
