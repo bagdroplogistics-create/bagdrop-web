@@ -14,18 +14,22 @@ import { useState, useEffect, useRef } from 'react'
 // Display/Inter typography (app/iconiqa/layout.tsx) — no wedding styling,
 // colors, or copy carried over.
 //
-// No ICONIQA photography, logo, or other brand assets are used anywhere
-// on this page — none were supplied/approved for this build (Founder spec
-// section 14). Every visual below is original CSS/SVG built for this page,
-// not a stock photo or placeholder presented as real ICONIQA imagery. Swap
-// in real ICONIQA photography/logo later by replacing the IMG_* constants
-// and the <HeroVisual>/<JourneyVisual> components once assets are approved.
+// Founder-supplied ICONIQA Hotel exterior photo (2026-10-02) is used as the
+// hero background below — the only real ICONIQA asset supplied/approved so
+// far. Every OTHER visual on this page (service cards, How It Works,
+// guest-journey diagram) is still original CSS/SVG. No image-generation
+// tool is available in this environment, so additional real photography
+// (e.g. bags in the hotel corridor/lobby, the porte-cochère, a guest room)
+// would need to be supplied by the Founder before those sections can be
+// swapped from original CSS/SVG to real photos, the same way this hero was.
 //
 // Submitting this form creates a `bookings` row with status 'inquiry' via
 // app/api/iconiqa/inquiry/route.ts — never a confirmed booking. See that
 // route's own header comment for the full reasoning and the existing
 // quotation → approval → payment workflow this feeds into.
 // ─────────────────────────────────────────────────────────────
+
+const IMG_HOTEL_EXTERIOR = '/images/iconiqa-hotel-building.jpg'
 
 const ICONIQA_HOTEL_ADDRESS = 'ICONIQA Hotel, Mumbai International Airport'
 const ICONIQA_AIRPORT_ADDRESS = 'Mumbai International Airport'
@@ -141,11 +145,12 @@ function Eyebrow({ children, light }: { children: React.ReactNode; light?: boole
   )
 }
 
-// ── Original SVG hero visual — Hotel → Airport → Destination flow.
-// Replaces real photography (none supplied/approved — see file header). ──
+// Original SVG diagram — Hotel → Airport flow — used in the "How It Works"
+// section below. Not a substitute for real photography anywhere; the hero
+// above now uses the real ICONIQA Hotel exterior photo supplied 2026-10-02.
 function HeroVisual() {
   return (
-    <svg viewBox="0 0 600 420" style={{ width: '100%', maxWidth: 520, height: 'auto' }} aria-hidden="true">
+    <svg viewBox="0 0 600 420" style={{ width: '100%', maxWidth: 420, height: 'auto' }} aria-hidden="true">
       <defs>
         <linearGradient id="icv-sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#232C3F" />
@@ -582,8 +587,6 @@ export default function IconiqaPage() {
         @media (max-width:860px) {
           .icq-desktop-nav { display:none !important; }
           .icq-hamburger { display:flex !important; }
-          .icq-hero-cols { grid-template-columns:1fr !important; text-align:center; }
-          .icq-hero-visual { order:-1; margin:0 auto 32px; }
         }
         @media (max-width:640px) {
           .icq-grid, .icq-service-grid { grid-template-columns:1fr !important; }
@@ -633,28 +636,26 @@ export default function IconiqaPage() {
       </aside>
 
       {/* ── HERO ──────────────────────────────────────────── */}
-      <header id="top" style={{ position:'relative', minHeight:'92svh', display:'flex', alignItems:'center', padding:'120px clamp(20px,5vw,56px) 64px', background:`linear-gradient(165deg, ${C.navy} 0%, ${C.navyDeep} 100%)`, color:'#fff', overflow:'hidden' }}>
-        <div style={{ position:'absolute', inset:0, opacity:0.5, backgroundImage:'radial-gradient(circle at 15% 20%, rgba(173,140,86,0.18), transparent 45%), radial-gradient(circle at 85% 80%, rgba(173,140,86,0.14), transparent 50%)' }} />
-        <div className="icq-hero-cols" style={{ position:'relative', zIndex:2, maxWidth:1200, margin:'0 auto', display:'grid', gridTemplateColumns:'1.1fr 0.9fr', gap:'clamp(32px,5vw,64px)', alignItems:'center', width:'100%' }}>
-          <div>
-            <span style={{ fontFamily:FONT_BODY, fontSize:11.5, fontWeight:700, letterSpacing:'0.32em', textTransform:'uppercase', color:C.brassLight }}>ICONIQA Hotel × Bagdrop</span>
-            <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(40px,6.4vw,76px)', lineHeight:1.05, margin:'20px 0 20px' }}>Travel Light.<br/>We&apos;ll Handle Your Bags.</h1>
-            <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.6vw,18px)', lineHeight:1.75, color:'rgba(255,255,255,0.78)', maxWidth:'46ch', margin:'0 0 36px' }}>
-              Enjoy a seamless journey from ICONIQA Hotel, Mumbai International Airport, while Bagdrop takes care of your baggage delivery.
-            </p>
-            <div style={{ display:'flex', flexWrap:'wrap', gap:16, justifyContent:'inherit' }}>
-              <a href="#book" style={{ background:C.brass, color:'#fff', fontFamily:FONT_BODY, fontSize:13.5, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', padding:'16px 30px', borderRadius:999, display:'inline-block', transition:'transform 0.2s ease, box-shadow 0.2s ease' }}
-                onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 32px rgba(173,140,86,0.35)' }}
-                onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' }}>
-                Book Baggage Delivery
-              </a>
-              <a href="#how-it-works" style={{ border:'1px solid rgba(255,255,255,0.35)', color:'#fff', fontFamily:FONT_BODY, fontSize:13.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', padding:'16px 30px', borderRadius:999, display:'inline-block' }}>
-                How It Works ↓
-              </a>
-            </div>
-          </div>
-          <div className="icq-hero-visual" style={{ display:'flex', justifyContent:'center' }}>
-            <HeroVisual />
+      <header id="top" style={{ position:'relative', minHeight:'92svh', display:'flex', alignItems:'center', padding:'120px clamp(20px,5vw,56px) 64px', color:'#fff', overflow:'hidden' }}>
+        {/* Real ICONIQA Hotel exterior photo, founder-supplied 2026-10-02 */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR})`, backgroundSize:'cover', backgroundPosition:'center 38%' }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, rgba(16,20,28,0.72) 0%, rgba(16,20,28,0.52) 35%, rgba(16,20,28,0.6) 65%, rgba(16,20,28,0.9) 100%)` }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'radial-gradient(circle at 15% 20%, rgba(173,140,86,0.16), transparent 45%)' }} />
+        <div style={{ position:'relative', zIndex:2, maxWidth:780, margin:'0 auto', textAlign:'center' }}>
+          <span style={{ fontFamily:FONT_BODY, fontSize:11.5, fontWeight:700, letterSpacing:'0.32em', textTransform:'uppercase', color:C.brassLight }}>ICONIQA Hotel × Bagdrop</span>
+          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(40px,6.4vw,76px)', lineHeight:1.05, margin:'20px 0 20px', textShadow:'0 2px 24px rgba(0,0,0,0.4)' }}>Travel Light.<br/>We&apos;ll Handle Your Bags.</h1>
+          <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.6vw,18px)', lineHeight:1.75, color:'rgba(255,255,255,0.85)', maxWidth:'46ch', margin:'0 auto 36px' }}>
+            Enjoy a seamless journey from ICONIQA Hotel, Mumbai International Airport, while Bagdrop takes care of your baggage delivery.
+          </p>
+          <div style={{ display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
+            <a href="#book" style={{ background:C.brass, color:'#fff', fontFamily:FONT_BODY, fontSize:13.5, fontWeight:700, letterSpacing:'0.08em', textTransform:'uppercase', padding:'16px 30px', borderRadius:999, display:'inline-block', transition:'transform 0.2s ease, box-shadow 0.2s ease' }}
+              onMouseEnter={e=>{ e.currentTarget.style.transform='translateY(-2px)'; e.currentTarget.style.boxShadow='0 14px 32px rgba(173,140,86,0.35)' }}
+              onMouseLeave={e=>{ e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' }}>
+              Book Baggage Delivery
+            </a>
+            <a href="#how-it-works" style={{ border:'1px solid rgba(255,255,255,0.4)', color:'#fff', fontFamily:FONT_BODY, fontSize:13.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase', padding:'16px 30px', borderRadius:999, display:'inline-block' }}>
+              How It Works ↓
+            </a>
           </div>
         </div>
       </header>
@@ -702,6 +703,9 @@ export default function IconiqaPage() {
             <Eyebrow light>Process</Eyebrow>
             <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(28px,4.4vw,42px)', margin:'14px 0 0' }}>How It Works</h2>
           </div>
+        </Reveal>
+        <Reveal style={{ display:'flex', justifyContent:'center', marginBottom:48 }}>
+          <HeroVisual />
         </Reveal>
         <div className="icq-service-grid" style={{ maxWidth:1080, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:24 }}>
           {HOW_IT_WORKS.map((s, i) => (
