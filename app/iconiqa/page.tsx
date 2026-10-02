@@ -55,7 +55,11 @@ const IMG_BAGDROP_LOGO = '/logo-white.png'
 // in the ICONIQA lobby/corridor (not staged by us) — used in place of the
 // earlier empty-room shots now that these were supplied.
 const IMG_LOBBY_RECEPTION = '/images/iconiqa-guests-lobby-luggage.png'
-const IMG_ENTRANCE_CORRIDOR = '/images/iconiqa-guests-corridor-luggage.png'
+// Founder replaced the original (1080x1080 square) corridor photo with a
+// proper widescreen shot (1672x941, ~16:9 — matches the banner's own wide/
+// short aspect far better), fixing the aggressive zoom/crop the square
+// source needed to fill a wide short section.
+const IMG_ENTRANCE_CORRIDOR = '/images/iconiqa-guests-corridor-luggage-wide.png'
 const IMG_AIRPORT_VIEW = '/images/mumbai-airport-view-from-hotel.jpg'
 const IMG_AIRPORT_NIGHT = '/images/mumbai-airport-night-tarmac.jpg'
 
@@ -722,21 +726,16 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── CORRIDOR BANNER ───────────────────────────────── */}
-      {/* Founder screenshot showed the photo boxed in with the page's ivory
-          background visible as blank bars on both sides — not a full-bleed
-          cover image. Forcing the section to break out to the true viewport
-          width (100vw + negative-margin centering trick, independent of any
-          ancestor padding/max-width) guarantees it can never happen again,
-          regardless of what was causing it. */}
-      <section style={{ position:'relative', width:'100vw', marginLeft:'calc(50% - 50vw)', marginRight:'calc(50% - 50vw)', minHeight:'clamp(520px,78vw,760px)', display:'flex', alignItems:'flex-end', overflow:'hidden' }}>
-        {/* The previous crop (minHeight 420-560, position 'center 68%') cut
-            the guests off at the neck — the source photo is a square
-            (1080x1080) with the couple's full height from chandelier to
-            shoes, so a short wide banner was always going to crop most of it
-            away. Section is noticeably taller (clamp 520-760px, scaling with
-            viewport width) and the crop is centered at 50% so both the
-            guests' heads and their suitcases stay in frame together. */}
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 50%', backgroundRepeat:'no-repeat' }} />
+      {/* Full-bleed breakout (width:100vw + negative-margin centering trick,
+          independent of any ancestor padding/max-width) guarantees this
+          section always spans the true viewport edge to edge. */}
+      <section style={{ position:'relative', width:'100vw', marginLeft:'calc(50% - 50vw)', marginRight:'calc(50% - 50vw)', minHeight:'clamp(380px,42vw,620px)', display:'flex', alignItems:'flex-end', overflow:'hidden' }}>
+        {/* Founder replaced the original square (1080x1080) corridor photo
+            with a proper widescreen one (~16:9, see IMG_ENTRANCE_CORRIDOR
+            above) — this needs far less aggressive cropping to fill a wide
+            short banner than the square source did, so the section height
+            was also brought back down from the square-image workaround. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center center', backgroundRepeat:'no-repeat' }} />
         {/* Overlay lightened per Founder feedback ("too dark, reduce
             opacity") — now a bottom-up scrim (text sits at the bottom of the
             frame) instead of a strong left-to-right wash over the whole photo. */}
