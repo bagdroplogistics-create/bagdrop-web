@@ -41,7 +41,7 @@ const BOOKING_STATUS_OPTIONS = [
 // app/api/admin/reports/detailed/route.ts's buildPayment for why.
 const PAYMENT_STATUS_OPTIONS = ['pending', 'paid', 'approved_pending', 'refunded']
 const DOCUMENT_STATUS_OPTIONS = ['pending', 'approved', 'rejected', 'resubmission_requested']
-const LEAD_SOURCE_OPTIONS = ['manual', 'website', 'mobile-app', 'contact-form', 'referral', 'b2b', 'walk-in', 'skybird']
+const LEAD_SOURCE_OPTIONS = ['manual', 'website', 'mobile-app', 'contact-form', 'referral', 'b2b', 'walk-in', 'skybird', 'iconiqa-hotel']
 
 interface Summary {
   totalBookings:   number

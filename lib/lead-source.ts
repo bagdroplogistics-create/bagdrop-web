@@ -46,6 +46,11 @@ export const SOURCE_LABELS: Record<string, string> = {
   // with this source so it's identifiable in the Leads table / reports
   // without needing a join to group_booking_details.
   'group-wedding': 'Group/Wedding',
+  // ICONIQA Hotel, Mumbai Airport landing page (app/iconiqa/page.tsx,
+  // app/api/iconiqa/inquiry/route.ts) — Founder spec, 2026-10-02: every
+  // inquiry from this page must have a clearly identifiable source across
+  // Dashboard/Leads/Reports, not lumped into "Website"/"Contact Form".
+  'iconiqa-hotel': 'ICONIQA Hotel',
 }
 
 // Display color for the Dashboard's Source pill, keyed by the *label*
@@ -61,6 +66,7 @@ export const SOURCE_LABEL_COLORS: Record<string, { color: string; bg: string }> 
   'Walk-in':     { color: '#6b7280', bg: '#f3f4f6' },
   Skybird:       { color: '#0369a1', bg: '#e0f2fe' },
   'Group/Wedding': { color: '#be185d', bg: '#fce7f3' },
+  'ICONIQA Hotel': { color: '#92400e', bg: '#fef3c7' },
 }
 
 const UNRESOLVED = { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
