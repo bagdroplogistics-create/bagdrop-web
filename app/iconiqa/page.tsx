@@ -32,6 +32,7 @@ import { useState, useEffect, useRef } from 'react'
 
 const IMG_HOTEL_EXTERIOR = '/images/iconiqa-hotel-building.jpg'
 const IMG_HOTEL_EXTERIOR_NIGHT = '/images/iconiqa-hotel-exterior-night.jpg'
+const IMG_ROOFTOP_POOL = '/images/iconiqa-rooftop-pool-airport-view.webp'
 // Founder-supplied ICONIQA logo — white mark + wordmark on a transparent
 // background. Used as-is on dark backgrounds (hero/drawer/footer); on the
 // nav bar, which turns light once the page is scrolled, it's rendered with
@@ -40,8 +41,14 @@ const IMG_HOTEL_EXTERIOR_NIGHT = '/images/iconiqa-hotel-exterior-night.jpg'
 const IMG_LOGO = '/images/iconiqa-logo-white.png'
 // Bagdrop's existing white wordmark (already used the same way on
 // app/y2k/page.tsx) — shown next to the ICONIQA mark instead of a plain
-// "× Bagdrop" text label.
-const IMG_BAGDROP_LOGO = '/logo-full-white.png'
+// "× Bagdrop" text label. Root-cause fix (2026-10-02): the file is the
+// logo in its natural orange color, not pre-whitened — rendering it
+// directly (or with a plain brightness(0), which only darkens it) is why
+// it was unreadable. app/y2k/page.tsx's own pattern is the fix: apply
+// `brightness(0) invert(1)` to force a white silhouette on dark
+// backgrounds, and plain `brightness(0)` for black once the nav goes
+// light — see every <img src={IMG_BAGDROP_LOGO}> usage below.
+const IMG_BAGDROP_LOGO = '/logo-white.png'
 // Additional founder-supplied ICONIQA photos (2026-10-02) — all real,
 // unedited property photography, no stock/fabricated images used anywhere
 // on this page. The *-luggage photos are real guests with real suitcases
@@ -621,7 +628,7 @@ export default function IconiqaPage() {
         <a href="#top" style={{ display:'flex', alignItems:'center', gap:16 }}>
           <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:52, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
           <span style={{ width:1, height:30, background:'currentColor', opacity:0.3, display:'block' }} />
-          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:26, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:40, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'brightness(0) invert(1)', transition:'filter 0.4s ease' }} />
         </a>
         <div className="icq-desktop-nav" style={{ display:'flex', alignItems:'center', gap:30, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase' }}>
           <a href="#services">Services</a>
@@ -647,7 +654,7 @@ export default function IconiqaPage() {
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:44 }}>
           <div style={{ display:'flex', alignItems:'center', gap:12 }}>
             <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:44, width:'auto', display:'block' }} />
-            <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:20, width:'auto', display:'block' }} />
+            <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:32, width:'auto', display:'block', filter:'brightness(0) invert(1)' }} />
           </div>
           <button type="button" onClick={()=>setMenuOpen(false)} aria-label="Close menu" style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:40, height:40, borderRadius:'50%', fontSize:20, cursor:'pointer', lineHeight:1 }}>×</button>
         </div>
@@ -745,11 +752,13 @@ export default function IconiqaPage() {
 
       {/* ── HOW IT WORKS ──────────────────────────────────── */}
       <section id="how-it-works" style={{ position:'relative', color:'#fff', padding:'clamp(64px,8vw,100px) clamp(20px,5vw,56px)', overflow:'hidden' }}>
-        {/* Real ICONIQA Hotel night-exterior photo as a backdrop, with a navy
-            gradient over it (same approach as the hero) so the step grid
-            stays easily readable — not a flat navy fill anymore. */}
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR_NIGHT})`, backgroundSize:'cover', backgroundPosition:'center 20%' }} />
-        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, ${C.navyDeep}b3 0%, ${C.navy}99 40%, ${C.navy}cc 100%)` }} />
+        {/* Founder-supplied rooftop-pool photo (overlooking the airport at
+            dusk) as a backdrop, with a light navy tint over it — not a
+            gradient curtain, just enough of a wash for the white step text
+            to stay readable while the photo itself stays clearly visible. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ROOFTOP_POOL})`, backgroundSize:'cover', backgroundPosition:'center 55%' }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`${C.navyDeep}66` }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, transparent 0%, ${C.navyDeep}73 100%)` }} />
         <div style={{ position:'relative', zIndex:2 }}>
           <Reveal>
             <div style={{ textAlign:'center', marginBottom:48 }}>
@@ -838,7 +847,7 @@ export default function IconiqaPage() {
         <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:68, width:'auto', margin:'0 auto 16px', display:'block' }} />
         <div style={{ display:'flex', alignItems:'center', justifyContent:'center', gap:12, margin:'0 0 28px' }}>
           <span style={{ fontFamily:FONT_BODY, fontSize:14, letterSpacing:'0.14em', textTransform:'uppercase', color:C.brassLight }}>Baggage Delivery by</span>
-          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:22, width:'auto', display:'block' }} />
+          <img src={IMG_BAGDROP_LOGO} alt="Bagdrop" style={{ height:34, width:'auto', display:'block', filter:'brightness(0) invert(1)' }} />
         </div>
         <p style={{ fontFamily:FONT_BODY, fontSize:16, margin:'0 0 6px' }}>
           <a href="mailto:info@bagdrop.co" style={{ color:'inherit' }}>info@bagdrop.co</a>
