@@ -31,11 +31,20 @@ import { useState, useEffect, useRef } from 'react'
 // ─────────────────────────────────────────────────────────────
 
 const IMG_HOTEL_EXTERIOR = '/images/iconiqa-hotel-building.jpg'
+const IMG_HOTEL_EXTERIOR_NIGHT = '/images/iconiqa-hotel-exterior-night.jpg'
+// Founder-supplied ICONIQA logo — white mark + wordmark on a transparent
+// background. Used as-is on dark backgrounds (hero/drawer/footer); on the
+// nav bar, which turns light once the page is scrolled, it's rendered with
+// filter:brightness(0) to flip it to a black silhouette on the fly rather
+// than needing a second exported asset from the Founder.
+const IMG_LOGO = '/images/iconiqa-logo-white.png'
 // Additional founder-supplied ICONIQA photos (2026-10-02) — all real,
 // unedited property photography, no stock/fabricated images used anywhere
-// on this page.
-const IMG_LOBBY_RECEPTION = '/images/iconiqa-hotel-lobby-reception.jpg'
-const IMG_ENTRANCE_CORRIDOR = '/images/iconiqa-hotel-entrance-corridor.jpg'
+// on this page. The *-luggage photos are real guests with real suitcases
+// in the ICONIQA lobby/corridor (not staged by us) — used in place of the
+// earlier empty-room shots now that these were supplied.
+const IMG_LOBBY_RECEPTION = '/images/iconiqa-guests-lobby-luggage.png'
+const IMG_ENTRANCE_CORRIDOR = '/images/iconiqa-guests-corridor-luggage.png'
 const IMG_AIRPORT_VIEW = '/images/mumbai-airport-view-from-hotel.jpg'
 const IMG_AIRPORT_NIGHT = '/images/mumbai-airport-night-tarmac.jpg'
 
@@ -605,9 +614,12 @@ export default function IconiqaPage() {
 
       {/* ── NAV ───────────────────────────────────────────── */}
       <nav style={{ position:'fixed', top:0, left:0, right:0, zIndex:100, height:84, display:'flex', alignItems:'center', justifyContent:'space-between', padding:'0 clamp(20px,5vw,56px)', background: scrolled ? 'rgba(246,244,239,0.94)' : 'transparent', color: scrolled ? C.ink : '#fff', boxShadow: scrolled ? '0 1px 0 rgba(0,0,0,0.06)' : 'none', backdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(12px)' : 'none', transition:'background 0.4s ease, color 0.4s ease, box-shadow 0.4s ease' }}>
-        <a href="#top" style={{ display:'flex', flexDirection:'column', lineHeight:1.1 }}>
-          <span style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:20 }}>ICONIQA <span style={{ fontWeight:400, opacity:0.75 }}>×</span> Bagdrop</span>
-          <span style={{ fontFamily:FONT_BODY, fontSize:9.5, letterSpacing:'0.22em', textTransform:'uppercase', opacity:0.65 }}>Mumbai International Airport</span>
+        <a href="#top" style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:34, width:'auto', display:'block', filter: scrolled ? 'brightness(0)' : 'none', transition:'filter 0.4s ease' }} />
+          <span style={{ display:'flex', flexDirection:'column', lineHeight:1.1, borderLeft:'1px solid currentColor', paddingLeft:10, opacity:0.75 }}>
+            <span style={{ fontFamily:FONT_BODY, fontSize:10.5, fontWeight:700, letterSpacing:'0.04em' }}>× Bagdrop</span>
+            <span style={{ fontFamily:FONT_BODY, fontSize:8.5, letterSpacing:'0.18em', textTransform:'uppercase', opacity:0.8 }}>Mumbai Airport</span>
+          </span>
         </a>
         <div className="icq-desktop-nav" style={{ display:'flex', alignItems:'center', gap:30, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.08em', textTransform:'uppercase' }}>
           <a href="#services">Services</a>
@@ -631,7 +643,7 @@ export default function IconiqaPage() {
       <div onClick={()=>setMenuOpen(false)} style={{ position:'fixed', inset:0, zIndex:110, background:'rgba(10,12,18,0.5)', backdropFilter:'blur(4px)', opacity: menuOpen?1:0, pointerEvents: menuOpen?'auto':'none', transition:'opacity 0.35s ease' }}/>
       <aside style={{ position:'fixed', top:0, right:0, bottom:0, zIndex:120, width:'min(82vw, 340px)', background:C.navy, color:'#fff', transform: menuOpen ? 'translateX(0)' : 'translateX(100%)', transition:'transform 0.42s cubic-bezier(0.22,1,0.36,1)', display:'flex', flexDirection:'column', padding:'28px 30px', boxShadow:'-20px 0 60px rgba(0,0,0,0.3)' }}>
         <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:44 }}>
-          <span style={{ fontFamily:FONT_DISPLAY, fontSize:20, fontWeight:600 }}>ICONIQA × Bagdrop</span>
+          <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:36, width:'auto', display:'block' }} />
           <button type="button" onClick={()=>setMenuOpen(false)} aria-label="Close menu" style={{ background:'rgba(255,255,255,0.1)', border:'none', color:'#fff', width:40, height:40, borderRadius:'50%', fontSize:20, cursor:'pointer', lineHeight:1 }}>×</button>
         </div>
         <nav style={{ display:'flex', flexDirection:'column', gap:4, fontFamily:FONT_DISPLAY }}>
@@ -687,7 +699,7 @@ export default function IconiqaPage() {
           </Reveal>
           <Reveal style={{ transitionDelay:'0.08s' }}>
             <div style={{ borderRadius:20, overflow:'hidden', boxShadow:'0 24px 60px rgba(23,27,34,0.14)', aspectRatio:'4/3' }}>
-              <img src={IMG_LOBBY_RECEPTION} alt="ICONIQA Hotel lobby reception desk" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
+              <img src={IMG_LOBBY_RECEPTION} alt="Guests with luggage in the ICONIQA Hotel lobby" style={{ width:'100%', height:'100%', objectFit:'cover', display:'block' }} />
             </div>
           </Reveal>
         </div>
@@ -727,26 +739,33 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── HOW IT WORKS ──────────────────────────────────── */}
-      <section id="how-it-works" style={{ background:C.navy, color:'#fff', padding:'clamp(64px,8vw,100px) clamp(20px,5vw,56px)' }}>
-        <Reveal>
-          <div style={{ textAlign:'center', marginBottom:48 }}>
-            <Eyebrow light>Process</Eyebrow>
-            <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(28px,4.4vw,42px)', margin:'14px 0 0', color:'#fff' }}>How It Works</h2>
+      <section id="how-it-works" style={{ position:'relative', color:'#fff', padding:'clamp(64px,8vw,100px) clamp(20px,5vw,56px)', overflow:'hidden' }}>
+        {/* Real ICONIQA Hotel night-exterior photo as a backdrop, with a navy
+            gradient over it (same approach as the hero) so the step grid
+            stays easily readable — not a flat navy fill anymore. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR_NIGHT})`, backgroundSize:'cover', backgroundPosition:'center 25%' }} />
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, ${C.navyDeep}ee 0%, ${C.navy}f2 40%, ${C.navy}f5 100%)` }} />
+        <div style={{ position:'relative', zIndex:2 }}>
+          <Reveal>
+            <div style={{ textAlign:'center', marginBottom:48 }}>
+              <Eyebrow light>Process</Eyebrow>
+              <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(28px,4.4vw,42px)', margin:'14px 0 0', color:'#fff' }}>How It Works</h2>
+            </div>
+          </Reveal>
+          <Reveal style={{ display:'flex', justifyContent:'center', marginBottom:48 }}>
+            <HeroVisual />
+          </Reveal>
+          <div className="icq-service-grid" style={{ maxWidth:1080, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:24 }}>
+            {HOW_IT_WORKS.map((s, i) => (
+              <Reveal key={s.n} style={{ transitionDelay:`${i*0.08}s` }}>
+                <div style={{ textAlign:'center' }}>
+                  <span style={{ fontFamily:FONT_DISPLAY, fontSize:38, color:C.brassLight, fontWeight:600 }}>{s.n}</span>
+                  <h3 style={{ fontFamily:FONT_BODY, fontSize:15.5, fontWeight:700, margin:'10px 0 8px', color:'#fff' }}>{s.title}</h3>
+                  <p style={{ fontFamily:FONT_BODY, fontSize:13.5, lineHeight:1.6, color:'rgba(255,255,255,0.7)', margin:0 }}>{s.desc}</p>
+                </div>
+              </Reveal>
+            ))}
           </div>
-        </Reveal>
-        <Reveal style={{ display:'flex', justifyContent:'center', marginBottom:48 }}>
-          <HeroVisual />
-        </Reveal>
-        <div className="icq-service-grid" style={{ maxWidth:1080, margin:'0 auto', display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:24 }}>
-          {HOW_IT_WORKS.map((s, i) => (
-            <Reveal key={s.n} style={{ transitionDelay:`${i*0.08}s` }}>
-              <div style={{ textAlign:'center' }}>
-                <span style={{ fontFamily:FONT_DISPLAY, fontSize:38, color:C.brassLight, fontWeight:600 }}>{s.n}</span>
-                <h3 style={{ fontFamily:FONT_BODY, fontSize:15.5, fontWeight:700, margin:'10px 0 8px', color:'#fff' }}>{s.title}</h3>
-                <p style={{ fontFamily:FONT_BODY, fontSize:13.5, lineHeight:1.6, color:'rgba(255,255,255,0.7)', margin:0 }}>{s.desc}</p>
-              </div>
-            </Reveal>
-          ))}
         </div>
       </section>
 
@@ -811,7 +830,7 @@ export default function IconiqaPage() {
 
       {/* ── FOOTER ────────────────────────────────────────── */}
       <footer style={{ background:C.navyDeep, color:'rgba(255,255,255,0.7)', padding:'44px clamp(20px,5vw,56px) 28px', textAlign:'center' }}>
-        <p style={{ fontFamily:FONT_DISPLAY, fontSize:22, fontWeight:600, color:'#fff', margin:'0 0 4px' }}>ICONIQA Hotel</p>
+        <img src={IMG_LOGO} alt="ICONIQA Hotels and Resorts" style={{ height:44, width:'auto', margin:'0 auto 10px', display:'block' }} />
         <p style={{ fontFamily:FONT_BODY, fontSize:12, letterSpacing:'0.14em', textTransform:'uppercase', color:C.brassLight, margin:'0 0 24px' }}>Baggage Delivery by Bagdrop</p>
         <p style={{ fontFamily:FONT_BODY, fontSize:13, margin:'0 0 4px' }}>
           <a href="mailto:info@bagdrop.co" style={{ color:'inherit' }}>info@bagdrop.co</a>
