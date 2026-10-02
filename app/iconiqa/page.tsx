@@ -672,7 +672,11 @@ export default function IconiqaPage() {
       <header id="top" style={{ position:'relative', minHeight:'92svh', display:'flex', alignItems:'center', padding:'120px clamp(20px,5vw,56px) 64px', color:'#fff', overflow:'hidden' }}>
         {/* Real ICONIQA Hotel exterior photo, founder-supplied 2026-10-02 */}
         <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_HOTEL_EXTERIOR})`, backgroundSize:'cover', backgroundPosition:'center 38%' }} />
-        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, rgba(16,20,28,0.78) 0%, rgba(16,20,28,0.68) 35%, rgba(16,20,28,0.74) 65%, rgba(16,20,28,0.92) 100%)` }} />
+        {/* Lightened per Founder feedback ("too dark, reduce opacity") — was
+            up to 92% opaque. Now a lighter, bottom-weighted wash (photo stays
+            clearly visible at the top/middle) with a stronger text-shadow on
+            the headline below doing the readability work instead. */}
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:`linear-gradient(180deg, rgba(16,20,28,0.48) 0%, rgba(16,20,28,0.38) 35%, rgba(16,20,28,0.46) 65%, rgba(16,20,28,0.72) 100%)` }} />
         <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'radial-gradient(circle at 15% 20%, rgba(173,140,86,0.16), transparent 45%)' }} />
         <div style={{ position:'relative', zIndex:2, maxWidth:780, margin:'0 auto', textAlign:'center' }}>
           <span style={{ fontFamily:FONT_BODY, fontSize:11.5, fontWeight:700, letterSpacing:'0.32em', textTransform:'uppercase', color:C.brassLight }}>ICONIQA Hotel × Bagdrop</span>
@@ -680,8 +684,8 @@ export default function IconiqaPage() {
               rule to every heading site-wide, which (being a declared value on the element itself)
               overrides the inherited white from this header's color:'#fff', not just lower specificity.
               Any heading on a dark/photo background in this file needs this same explicit override. */}
-          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(40px,6.4vw,76px)', lineHeight:1.05, margin:'20px 0 20px', color:'#fff', textShadow:'0 2px 28px rgba(0,0,0,0.55)' }}>Travel Light.<br/>We&apos;ll Handle Your Bags.</h1>
-          <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.6vw,18px)', lineHeight:1.75, color:'rgba(255,255,255,0.85)', maxWidth:'46ch', margin:'0 auto 36px' }}>
+          <h1 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(40px,6.4vw,76px)', lineHeight:1.05, margin:'20px 0 20px', color:'#fff', textShadow:'0 2px 10px rgba(0,0,0,0.65), 0 4px 40px rgba(0,0,0,0.6)' }}>Travel Light.<br/>We&apos;ll Handle Your Bags.</h1>
+          <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.6vw,18px)', lineHeight:1.75, color:'rgba(255,255,255,0.92)', maxWidth:'46ch', margin:'0 auto 36px', textShadow:'0 2px 10px rgba(0,0,0,0.6)' }}>
             Enjoy a seamless journey from ICONIQA Hotel, Mumbai International Airport, while Bagdrop takes care of your baggage delivery.
           </p>
           <div style={{ display:'flex', flexWrap:'wrap', gap:16, justifyContent:'center' }}>
@@ -718,15 +722,22 @@ export default function IconiqaPage() {
       </section>
 
       {/* ── CORRIDOR BANNER ───────────────────────────────── */}
-      <section style={{ position:'relative', minHeight:'clamp(420px,56vw,560px)', display:'flex', alignItems:'center', overflow:'hidden' }}>
-        {/* Taller section + lower backgroundPosition than the first cut — the
-            source photo is a square crop with the guests' suitcases in the
-            lower half, which a short wide banner was cropping out entirely. */}
-        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 68%' }} />
-        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'linear-gradient(90deg, rgba(16,20,28,0.82) 0%, rgba(16,20,28,0.5) 55%, rgba(16,20,28,0.2) 100%)' }} />
-        <Reveal style={{ position:'relative', zIndex:2, padding:'48px clamp(20px,5vw,56px)', maxWidth:560 }}>
-          <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, letterSpacing:'0.28em', textTransform:'uppercase', color:C.brassLight }}>From Lobby to Departure Gate</span>
-          <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(24px,3.4vw,34px)', lineHeight:1.2, margin:'14px 0 0', color:'#fff' }}>Your bags leave through the same doors you do — we take it from there.</h2>
+      <section style={{ position:'relative', minHeight:'clamp(520px,78vw,760px)', display:'flex', alignItems:'flex-end', overflow:'hidden' }}>
+        {/* Founder feedback: the previous crop (minHeight 420-560, position
+            'center 68%') cut the guests off at the neck — the source photo is
+            a square (1080x1080) with the couple's full height from chandelier
+            to shoes, so a short wide banner was always going to crop most of
+            it away. Made the section noticeably taller (clamp 520-760px,
+            scaling with viewport width) and centered the crop at 50% so both
+            the guests' heads and their suitcases stay in frame together. */}
+        <div style={{ position:'absolute', inset:0, zIndex:0, backgroundImage:`url(${IMG_ENTRANCE_CORRIDOR})`, backgroundSize:'cover', backgroundPosition:'center 50%' }} />
+        {/* Overlay lightened per Founder feedback ("too dark, reduce
+            opacity") — now a bottom-up scrim (text sits at the bottom of the
+            frame) instead of a strong left-to-right wash over the whole photo. */}
+        <div style={{ position:'absolute', inset:0, zIndex:1, pointerEvents:'none', background:'linear-gradient(0deg, rgba(16,20,28,0.78) 0%, rgba(16,20,28,0.35) 38%, rgba(16,20,28,0.05) 70%, transparent 100%)' }} />
+        <Reveal style={{ position:'relative', zIndex:2, padding:'32px clamp(20px,5vw,56px) 40px', maxWidth:640 }}>
+          <span style={{ fontFamily:FONT_BODY, fontSize:11, fontWeight:700, letterSpacing:'0.28em', textTransform:'uppercase', color:C.brassLight, textShadow:'0 2px 10px rgba(0,0,0,0.7)' }}>From Lobby to Departure Gate</span>
+          <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:600, fontSize:'clamp(24px,3.4vw,34px)', lineHeight:1.2, margin:'14px 0 0', color:'#fff', textShadow:'0 2px 14px rgba(0,0,0,0.75)' }}>Your bags leave through the same doors you do — we take it from there.</h2>
         </Reveal>
       </section>
 
