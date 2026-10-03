@@ -4,6 +4,7 @@ import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { generateAutoQuoteForLead } from '@/lib/auto-quote'
+import { TIME_OPTIONS, fmtTimeLabel } from '@/lib/time-options'
 
 // BAGDROP — ICONIQA Hotel, Mumbai International Airport × Bagdrop landing
 // page inquiry endpoint (app/iconiqa/page.tsx).
@@ -39,7 +40,12 @@ const SERVICE_MAP: Record<string, { serviceType: string; label: string; fixedFro
   'airport-to-destination':{ serviceType: 'airport-to-doorstep',  label: 'Airport → Destination',        fixedFrom: ICONIQA_AIRPORT_ADDRESS, fixedTo: null },
 }
 
-const TIME_SLOTS = ['morning', 'afternoon', 'evening']
+// Pickup/delivery time validation (Founder request, 2026-10-03) — was a
+// coarse 3-slot picker; now validates against the same precise 30-minute
+// TIME_OPTIONS (06:00 AM … 05:30 AM, 24h "HH:MM" values) the main booking
+// form's "Preferred pickup time" field already uses, since an airport
+// transfer needs to match a specific flight time, not a broad window.
+const VALID_TIME_VALUES = new Set(TIME_OPTIONS.map(t => t.value))
 const ADDRESS_MAX_LEN = 300
 const NOTES_MAX_LEN = 1000
 
@@ -92,7 +98,7 @@ export async function POST(req: NextRequest) {
     if (!pickupDate) {
       return NextResponse.json({ error: 'Please select a pickup date.' }, { status: 400 })
     }
-    if (!pickupTime || !TIME_SLOTS.includes(pickupTime)) {
+    if (!pickupTime || !VALID_TIME_VALUES.has(pickupTime)) {
       return NextResponse.json({ error: 'Please select a pickup time.' }, { status: 400 })
     }
 
@@ -158,7 +164,7 @@ export async function POST(req: NextRequest) {
           '[ICONIQA Hotel, Mumbai International Airport landing page]',
           `Service: ${svc.label}`,
           whatsappDigits !== digits ? `WhatsApp: +91${whatsappDigits}` : '',
-          deliveryTime   ? `Preferred delivery time: ${deliveryTime}` : '',
+          deliveryTime   ? `Preferred delivery time: ${fmtTimeLabel(deliveryTime)}` : '',
           flightNumber   ? `Flight number: ${flightNumber}` : '',
           airline        ? `Airline: ${airline}` : '',
           pnr            ? `PNR: ${pnr}` : '',
@@ -342,7 +348,7 @@ export async function POST(req: NextRequest) {
         ['Pickup', resolvedPickupLocation],
         ['Delivery', resolvedDeliveryLocation],
         ['Pickup Date', pickupDate],
-        ['Pickup Time', pickupTime],
+        ['Pickup Time', fmtTimeLabel(pickupTime)],
         ['Flight', flightNumber || '—'],
         ['Room Number', roomNumber || '—'],
       ].map(([l, v]) => `<tr><td style="padding:10px 16px;font-size:13px;color:#8A8578;border-top:1px solid #F0EDE2;width:40%">${l}</td><td style="padding:10px 16px;font-size:13px;font-weight:600;color:#232323;border-top:1px solid #F0EDE2">${v}</td></tr>`).join('')}

@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import { TIME_OPTIONS } from '@/lib/time-options'
 
 // ─────────────────────────────────────────────────────────────
 // ICONIQA Hotel, Mumbai International Airport × Bagdrop
@@ -118,11 +119,15 @@ const SERVICES = [
 ] as const
 type ServiceKey = typeof SERVICES[number]['key']
 
-const TIME_SLOTS = [
-  { id: 'morning',   label: 'Morning',   range: '8 AM – 12 PM' },
-  { id: 'afternoon', label: 'Afternoon', range: '12 PM – 4 PM' },
-  { id: 'evening',   label: 'Evening',   range: '4 PM – 9 PM' },
-]
+// Pickup/delivery time field (Founder request, 2026-10-03: "pickup time
+// and delivery time change as per main booking form bcoz flight time
+// fixed time so change this time field") — was a coarse 3-slot picker
+// (Morning/Afternoon/Evening), which doesn't work for an airport transfer
+// tied to a specific flight time. Now reuses the exact same precise
+// 30-minute time picker (lib/time-options.ts's TIME_OPTIONS, 06:00 AM …
+// 05:30 AM) already used by the main booking form's "Preferred pickup
+// time" field (components/booking/step-schedule.tsx) — same values stored
+// the same way (raw 24h "HH:MM" string straight into bookings.time_slot).
 
 const HOW_IT_WORKS = [
   { n: '01', title: 'Book', desc: 'Submit your baggage delivery request.' },
@@ -504,8 +509,8 @@ function BookingForm() {
                     <label style={label}>Pickup Time</label>
                     <div style={{ position: 'relative' }}>
                       <select value={form.pickupTime} onChange={e => field('pickupTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding: '0 40px 0 16px' }}>
-                        <option value="" disabled>Select a slot</option>
-                        {TIME_SLOTS.map(t => <option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
+                        <option value="" disabled>Select time</option>
+                        {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
                       <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.brass, fontSize: 11 }}>▾</span>
                     </div>
@@ -522,7 +527,7 @@ function BookingForm() {
                     <div style={{ position: 'relative' }}>
                       <select value={form.deliveryTime} onChange={e => field('deliveryTime')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding: '0 40px 0 16px' }}>
                         <option value="">No preference</option>
-                        {TIME_SLOTS.map(t => <option key={t.id} value={t.id}>{t.label} · {t.range}</option>)}
+                        {TIME_OPTIONS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                       </select>
                       <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.brass, fontSize: 11 }}>▾</span>
                     </div>
