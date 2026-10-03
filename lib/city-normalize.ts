@@ -58,6 +58,28 @@ export function normalizeCity(raw: string | null | undefined): string {
   // though the route itself was correctly configured.
   s = s.replace(/\bterminal\s*[12]\b/g, ' ')
   s = s.replace(/\bt[12]\b/g, ' ')
+  // Fix (2026-10-03) — found while diagnosing why Automatic Estimate Quote
+  // (lib/estimate-quote.ts) never fired for ICONIQA Hotel inquiries even
+  // though Mumbai↔Vadodara pricing is configured. ICONIQA's fixed pickup/
+  // drop address constants (app/api/iconiqa/inquiry/route.ts) are
+  // "ICONIQA Hotel, Mumbai International Airport" and "Mumbai
+  // International Airport (Chhatrapati Shivaji Maharaj International
+  // Airport)" — neither reduced to "mumbai" before this fix: "airport"
+  // alone was stripped, but not "international", and the comma plus
+  // "ICONIQA Hotel"/"Hotel" prefix glued onto "mumbai" once all
+  // whitespace was collapsed below ("iconiqahotel,mumbaiinternational").
+  // That silently broke every route_pricing/findRouteMatch lookup for an
+  // ICONIQA lead — not just the new estimate feature, but also
+  // app/api/admin/route-pricing/calculate/route.ts's "Reset from route
+  // pricing" and the real Final Quote generator's route lookup. "hotel"/
+  // "international" are safe to strip generically (no real city is named
+  // either), and stripping the ICONIQA brand word itself is scoped
+  // narrowly to this one spelling rather than any generic "strip brand
+  // names" rule.
+  s = s.replace(/\biconiqa\b/g, ' ')
+  s = s.replace(/\bhotel\b/g, ' ')
+  s = s.replace(/\binternational\b/g, ' ')
+  s = s.replace(/,/g, ' ')
   // Collapse whitespace, then strip it entirely so multi-word variants
   // ("New Delhi") key the same as single-word aliases below.
   s = s.replace(/\s+/g, '').trim()

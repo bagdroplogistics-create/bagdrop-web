@@ -6,7 +6,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
-  Printer, Mail, MessageCircle, FlaskConical,
+  Printer, Mail, MessageCircle, FlaskConical, Calculator,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -1007,6 +1007,29 @@ function LeadsPageInner() {
     }
   }
   const [showDeleted, setShowDeleted] = useState(false)
+  // Backfill Automatic Estimate Quotes (one-time, 2026-10-03) — see
+  // app/api/admin/leads/backfill-estimates/route.ts's module comment.
+  const [backfillingEstimates, setBackfillingEstimates] = useState(false)
+  async function backfillEstimates() {
+    setBackfillingEstimates(true)
+    try {
+      const res = await fetch('/api/admin/leads/backfill-estimates', {
+        method: 'POST',
+        headers: { 'x-admin-key': adminKey },
+      })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        alert(d.error ?? 'Backfill failed')
+      } else {
+        alert(`Checked ${d.leads_checked} open lead(s). ${d.now_have_estimate} lead(s) now have an Estimate.`)
+        fetchLeads()
+      }
+    } catch {
+      alert('Network error — request never reached the server')
+    } finally {
+      setBackfillingEstimates(false)
+    }
+  }
   const [highlightId, setHighlightId] = useState<string | null>(null)
   const handledOpenParam = useRef(false)
   const scrolledToId     = useRef<string | null>(null)
@@ -1548,6 +1571,11 @@ function LeadsPageInner() {
           <button onClick={fetchLeads}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
+          </button>
+          <button onClick={backfillEstimates} disabled={backfillingEstimates}
+            title="One-time catch-up: calculate an Estimate for every open lead that doesn't have one yet (e.g. leads created before this feature shipped). Safe to run more than once."
+            className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
+            <Calculator className="h-3.5 w-3.5" /> {backfillingEstimates ? 'Calculating…' : 'Backfill Estimates'}
           </button>
           <button onClick={openPrintView} disabled={leads.length === 0}
             title="Print the current Leads list (respects filters/search/sort above)"
