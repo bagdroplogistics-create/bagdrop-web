@@ -6,7 +6,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
-  Printer, Mail, MessageCircle, FlaskConical, Calculator,
+  Printer, Mail, MessageCircle, FlaskConical, Calculator, AlertTriangle,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -108,6 +108,13 @@ interface Lead {
   estimate_number?:          string | null
   estimate_is_unknown_route?: boolean | null
   estimate_needs_review?:     boolean | null
+  // Automatic Quote Generation (Founder spec, 2026-10-03, follow-up) —
+  // the auto-generated quote is now a REAL quote_number (QT-), created via
+  // lib/auto-quote.ts. These two flags are purely informational: they
+  // never change pricing/workflow, just drive the small "Review" marker
+  // below for a quote that used the ₹10,000/2-bag unknown-route fallback.
+  quote_auto_generated?:     boolean | null
+  quote_needs_review?:       boolean | null
 }
 
 interface CommunicationLogEntry {
@@ -1028,7 +1035,7 @@ function LeadsPageInner() {
       if (!res.ok) {
         alert(d.error ?? 'Backfill failed')
       } else {
-        alert(`Checked ${d.leads_checked} open lead(s). ${d.now_have_estimate} lead(s) now have an Estimate.`)
+        alert(`Checked ${d.leads_checked} open lead(s). ${d.now_have_a_quote} lead(s) now have an auto-generated Quote.`)
         fetchLeads()
       }
     } catch {
@@ -1580,9 +1587,9 @@ function LeadsPageInner() {
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>
           <button onClick={backfillEstimates} disabled={backfillingEstimates}
-            title="One-time catch-up: calculate an Estimate for every open lead that doesn't have one yet (e.g. leads created before this feature shipped). Safe to run more than once."
+            title="One-time catch-up: auto-generate a real Quote for every open lead that doesn't have one yet (e.g. leads created before this feature shipped). Safe to run more than once."
             className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
-            <Calculator className="h-3.5 w-3.5" /> {backfillingEstimates ? 'Calculating…' : 'Backfill Estimates'}
+            <Calculator className="h-3.5 w-3.5" /> {backfillingEstimates ? 'Generating…' : 'Backfill Quotes'}
           </button>
           <button onClick={openPrintView} disabled={leads.length === 0}
             title="Print the current Leads list (respects filters/search/sort above)"
@@ -1791,6 +1798,21 @@ function LeadsPageInner() {
                                 <ExternalLink className="h-3 w-3" />
                                 {l.zoho_estimate_number}
                               </Link>
+                              {/* Automatic Quote Generation (Founder spec, 2026-10-03) —
+                                  this quote was auto-generated from the ₹10,000/2-bag
+                                  unknown-route fallback (no Route/Pricing Master match
+                                  at inquiry time), not a real priced route. Everything
+                                  else about this row (the blue QT- badge, View Booking)
+                                  looks exactly like a manually created quote, per
+                                  Founder request — this is just a small extra nudge to
+                                  check the price before sending it. */}
+                              {l.quote_needs_review && (
+                                <span
+                                  title="Auto-generated from the ₹10,000/2-bag unknown-route starting estimate — check/correct the price before sending."
+                                  className="inline-flex items-center gap-1 rounded-full bg-red-50 border border-red-200 px-2 py-0.5 text-[10px] font-bold text-red-600">
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Review Price
+                                </span>
+                              )}
                               {(l.quote_discount_amt ?? 0) > 0 && (
                                 <span className="inline-flex items-center rounded-full bg-red-50 border border-red-100 px-2 py-0.5 text-[10px] font-bold text-red-600">
                                   {l.quote_discount_pct

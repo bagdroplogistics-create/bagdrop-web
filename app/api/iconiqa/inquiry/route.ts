@@ -3,7 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
-import { generateEstimateForLead } from '@/lib/estimate-quote'
+import { generateAutoQuoteForLead } from '@/lib/auto-quote'
 
 // BAGDROP — ICONIQA Hotel, Mumbai International Airport × Bagdrop landing
 // page inquiry endpoint (app/iconiqa/page.tsx).
@@ -259,12 +259,12 @@ export async function POST(req: NextRequest) {
             })
           } else {
             console.log(`[iconiqa/inquiry] Auto-created lead ${leadNumber} for booking ${trackingId}`)
-            // Auto Estimate Quote (Founder spec, 2026-10-02) — only fires
-            // when this exact pickup/delivery route already has active
-            // pricing in Route/Pricing Master; otherwise a no-op. See
-            // lib/estimate-quote.ts. Awaited (cheap single select+update)
-            // so it isn't dropped if the function terminates right after.
-            if (newLead) await generateEstimateForLead(newLead.id)
+            // Automatic Quote Generation (Founder spec, 2026-10-03) —
+            // creates a REAL quote (QT-YYYY-NNNN) + updates the linked
+            // booking, using route pricing when known or a flagged
+            // ₹10,000 starting figure when not. Never emails/WhatsApps the
+            // customer. See lib/auto-quote.ts.
+            if (newLead) await generateAutoQuoteForLead(newLead.id)
             // Founder request (2026-10-02): test submissions should still
             // trigger the real ops WhatsApp ping (to both internal numbers —
             // see lib/new-inquiry-notification.ts) so the Founder can verify

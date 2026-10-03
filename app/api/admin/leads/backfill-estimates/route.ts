@@ -1,30 +1,24 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
-import { generateEstimateForLead } from '@/lib/estimate-quote'
+import { generateAutoQuoteForLead } from '@/lib/auto-quote'
 
 export const runtime = 'nodejs'
 
 // ============================================================================
-// BAGDROP — Backfill Automatic Estimate Quotes (one-time admin action)
+// BAGDROP — Backfill Automatic Quote Generation (one-time admin action)
 //
-// Founder report (2026-10-03): after deploying Automatic Estimate Quote
-// (lib/estimate-quote.ts), existing open leads created BEFORE that deploy
-// showed no Estimate badge in the Leads dashboard. By design,
-// generateEstimateForLead() only ever fires at inquiry-creation time or on
-// a from_city/to_city/bags_count edit — it never runs retroactively on its
-// own. This route is the one-time catch-up: it walks every open lead (no
-// real quote_number yet, not soft-deleted) and runs the exact same
-// generateEstimateForLead() used everywhere else, so leads that predate
-// the feature — or that only ever lacked an estimate because of the
-// ICONIQA city-normalization gap fixed the same day (lib/city-normalize.ts,
-// 2026-10-03) — pick one up retroactively wherever a real route_pricing
-// match now exists.
+// Originally built for the v1 Automatic Estimate (lib/estimate-quote.ts,
+// a separate EST- shadow record). Superseded 2026-10-03 per Founder
+// follow-up: the auto-generation now creates a REAL quote (QT-YYYY-NNNN)
+// + updates the linked booking — see lib/auto-quote.ts. Kept at the same
+// URL/button (Leads page "Backfill Estimates") since the job is the same:
+// catch up any existing open lead (no real quote yet) that was created
+// before this feature shipped, or that was skipped earlier for a reason
+// since fixed (e.g. the 2026-10-03 ICONIQA city-normalization bug).
 //
-// Safe to run more than once: generateEstimateForLead() is itself a no-op
-// for any lead that already has a real quote (quote_number set /
-// estimate_status 'converted'), and simply recalculates (not duplicates)
-// the estimate for everything else.
+// Safe to run more than once: generateAutoQuoteForLead() is itself a
+// no-op for any lead that already has a real quote_number.
 // ============================================================================
 
 export async function POST(req: NextRequest) {
@@ -43,18 +37,18 @@ export async function POST(req: NextRequest) {
 
   let processed = 0
   for (const lead of leads ?? []) {
-    await generateEstimateForLead(lead.id)
+    await generateAutoQuoteForLead(lead.id)
     processed++
   }
 
-  const { count: estimatedCount } = await supabaseAdmin
+  const { count: quotedCount } = await supabaseAdmin
     .from('leads')
     .select('id', { count: 'exact', head: true })
-    .eq('estimate_status', 'generated')
+    .eq('quote_auto_generated', true)
 
   return NextResponse.json({
-    success:         true,
-    leads_checked:   processed,
-    now_have_estimate: estimatedCount ?? 0,
+    success:            true,
+    leads_checked:      processed,
+    now_have_a_quote:   quotedCount ?? 0,
   })
 }
