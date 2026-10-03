@@ -101,6 +101,13 @@ interface Lead {
   // this is no longer shown. null = no route match / no bag count yet.
   estimate_status?:        'generated' | 'converted' | null
   estimate_total?:         number | null
+  // v2 (Founder spec, 2026-10-03) — every inquiry now gets an estimate,
+  // known route or not. estimate_number is the permanent EST-YYYY-NNNN
+  // identifier (never the same series as quote_number); is_unknown_route
+  // drives the extra "UNKNOWN ROUTE" sub-badge below.
+  estimate_number?:          string | null
+  estimate_is_unknown_route?: boolean | null
+  estimate_needs_review?:     boolean | null
 }
 
 interface CommunicationLogEntry {
@@ -1727,11 +1734,18 @@ function LeadsPageInner() {
                           // See lib/estimate-quote.ts.
                           <span
                             className="inline-flex items-center gap-1.5 font-normal"
-                            title="Auto-calculated estimate from Route/Pricing Master — not a final quotation. Final price may vary based on exact pickup/drop addresses."
+                            title={l.estimate_is_unknown_route
+                              ? 'Unknown Route — default ₹10,000/2-bag starting estimate. Admin review required before sending the final quotation.'
+                              : 'Auto-calculated estimate from Route/Pricing Master — not a final quotation. Final price may vary based on exact pickup/drop addresses.'}
                           >
                             <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-amber-700">
                               Estimate
                             </span>
+                            {l.estimate_is_unknown_route && (
+                              <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                                Unknown Route
+                              </span>
+                            )}
                             <span className="text-amber-700">
                               ₹{Math.round(Number(l.estimate_total)).toLocaleString('en-IN')}
                             </span>

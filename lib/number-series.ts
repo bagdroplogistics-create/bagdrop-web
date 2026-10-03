@@ -12,7 +12,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 // tracking ID, a new lead needing a lead number) — never call it again for
 // an existing record. Editing an existing lead/quote/booking, previewing,
 // or resending must all reuse the number already stored on that row.
-async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ' | 'BDP' | 'GBL' | 'GBAG'): Promise<string> {
+async function nextSeriesNumber(series: 'BDA' | 'BDL' | 'BDQ' | 'BDP' | 'GBL' | 'GBAG' | 'EST'): Promise<string> {
   const { data, error } = await supabaseAdmin.rpc('next_series_number', { p_series: series })
   if (error || !data) {
     throw new Error(
@@ -42,6 +42,18 @@ export function nextLeadNumber(): Promise<string> {
 // condition-prone pattern this file replaced everywhere else.
 export function nextQuoteNumber(): Promise<string> {
   return nextSeriesNumber('BDQ')
+}
+
+// EST-YYYY-NNNN — Automatic Estimate Quote identifier (Founder spec,
+// 2026-10-03: "Active Estimate: EST-2026-0240"). Deliberately a SEPARATE
+// series from BDQ (the real Final Quote number, QT-YYYY-NNNN in the
+// leads.quote_number column) — an estimate must never be mistaken for, or
+// collide with, a real quote number. See lib/estimate-quote.ts. Minted
+// exactly ONCE per lead the first time an estimate is generated for it —
+// every subsequent recalculation reuses the same estimate_number already
+// stored on the lead, never mints a second one.
+export function nextEstimateNumber(): Promise<string> {
+  return nextSeriesNumber('EST')
 }
 
 // BDP-YYYY-NNNN — payment ID for a new `payments` row. Consolidated here

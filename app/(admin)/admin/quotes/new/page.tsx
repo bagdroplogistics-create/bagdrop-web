@@ -6,8 +6,9 @@ import Link from 'next/link'
 import {
   ArrowLeft, FileText, ExternalLink, CheckCircle, AlertTriangle,
   Loader2, Send, Plus, Trash2, RotateCcw, User, Phone, Mail, Save, Search,
-  Building2, Package,
+  Building2, Package, AlertCircle,
 } from 'lucide-react'
+import { UNKNOWN_ROUTE_DEFAULT_BASE } from '@/lib/estimate-constants'
 import { TIME_OPTIONS } from '@/lib/time-options'
 import { searchItems, BAGDROP_ITEMS, type BagdropItem } from '@/lib/bagdrop-items'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -67,6 +68,13 @@ interface Lead {
   business_address?:    string | null
   gst_number?:          string | null
   payment_terms?:       string | null
+  // Automatic Estimate Quote (Founder spec, 2026-10-03) — see
+  // lib/estimate-quote.ts. estimate_status is 'generated' while the
+  // estimate is still live (not yet converted to a real Final Quote);
+  // estimate_is_unknown_route drives the unknown-route pre-fill below.
+  estimate_status?:           'generated' | 'converted' | null
+  estimate_is_unknown_route?: boolean | null
+  estimate_bags_count?:       number | null
 }
 
 interface RoutePrice {
@@ -831,6 +839,14 @@ function QuotePageInner() {
           const bagsChangedSinceFill = lastAutoFillBags.current !== null && lastAutoFillBags.current !== wantBags
           if (p.found && p.base_price != null && (!itemsFromPricing.current || bagsChangedSinceFill)) {
             populateItemsFromRoute(p, fromCity, toCity, wantBags)
+          } else if (!p.found && lead?.estimate_status === 'generated' && lead.estimate_is_unknown_route && (!itemsFromPricing.current || bagsChangedSinceFill)) {
+            // Automatic Estimate Quote (Founder spec, 2026-10-03) — this
+            // lead already has an unknown-route estimate (no route_pricing
+            // match), so pre-fill the SAME ₹10,000 starting figure instead
+            // of leaving the editor blank. Admin edits/overrides freely
+            // from here — this is just the starting point, same as the
+            // known-route auto-fill above.
+            populateItemsFromRoute({ found: true, base_price: UNKNOWN_ROUTE_DEFAULT_BASE, per_bag_rate: 0 }, fromCity, toCity, wantBags)
           }
         } else setRoutePrice({ found: false })
       } catch { setRoutePrice({ found: false }) }
@@ -1956,6 +1972,22 @@ function QuotePageInner() {
             <input type="text" value={subject} onChange={e => setSubject(e.target.value)}
               placeholder="Let your customer know what this Quote is for" className={inp} />
           </div>
+
+          {/* ── Automatic Estimate: Unknown Route disclaimer (Founder spec,
+               2026-10-03 §12) — only shown while the estimate is still live
+               (not yet converted into this very Final Quote) and was
+               calculated from the ₹10,000/2-bag fallback rather than a real
+               Route/Pricing Master match. */}
+          {lead?.estimate_status === 'generated' && lead.estimate_is_unknown_route && (
+            <div className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+              <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0 text-red-500" />
+              <span>
+                <strong>Unknown Route</strong> — this route isn&apos;t in Route/Pricing Master yet, so the amounts below
+                are a default ₹{UNKNOWN_ROUTE_DEFAULT_BASE.toLocaleString('en-IN')} starting estimate, not a real price.
+                Please review and correct the Item Table before generating the Final Quote.
+              </span>
+            </div>
+          )}
 
           {/* ── Item Table ── */}
           <div className={sect + ' overflow-x-auto'}>
