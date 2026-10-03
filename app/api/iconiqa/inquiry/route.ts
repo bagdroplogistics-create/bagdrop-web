@@ -5,6 +5,7 @@ import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { generateAutoQuoteForLead } from '@/lib/auto-quote'
 import { TIME_OPTIONS, fmtTimeLabel } from '@/lib/time-options'
+import { ICONIQA_AIRPORT_LOCATIONS } from '@/lib/iconiqa-locations'
 
 // BAGDROP — ICONIQA Hotel, Mumbai International Airport × Bagdrop landing
 // page inquiry endpoint (app/iconiqa/page.tsx).
@@ -26,19 +27,27 @@ import { TIME_OPTIONS, fmtTimeLabel } from '@/lib/time-options'
 // Service Type → underlying directional `service_type` (lib/service-type.ts
 // already recognizes these 4 directional values from admin-created
 // quotes — reused here rather than inventing a 5th category):
-//   hotel-to-airport     → doorstep-to-airport   (pickup = hotel, fixed)
-//   airport-to-hotel     → airport-to-doorstep   (delivery = hotel, fixed)
-//   hotel-to-destination → doorstep-to-doorstep  (pickup = hotel, fixed; delivery = guest-entered)
-//   airport-to-destination → airport-to-doorstep (pickup = Mumbai Airport, fixed; delivery = guest-entered)
+//   hotel-to-airport     → doorstep-to-airport   (pickup = hotel, fixed; delivery = guest-selected airport)
+//   airport-to-hotel     → airport-to-doorstep   (pickup = guest-selected airport; delivery = hotel, fixed)
+//   hotel-to-destination → doorstep-to-doorstep  (pickup = hotel, fixed; delivery = guest-selected airport)
+//   airport-to-destination → airport-to-doorstep (pickup = guest-selected airport; delivery = guest-selected airport)
+//
+// fixedFrom/fixedTo null (2026-10-03, Founder request) = that leg is no
+// longer a single hardcoded "Mumbai International Airport" value — the
+// guest now picks one of ICONIQA_AIRPORT_LOCATIONS (Mumbai T2, NMIA,
+// Delhi T1/T2/T3, Bangalore, Hyderabad) instead, submitted as
+// pickupLocation/deliveryLocation exactly like the existing free-text
+// "→ Destination" delivery field already worked.
 const ICONIQA_HOTEL_ADDRESS = 'ICONIQA Hotel, Mumbai International Airport'
-const ICONIQA_AIRPORT_ADDRESS = 'Mumbai International Airport (Chhatrapati Shivaji Maharaj International Airport)'
 
 const SERVICE_MAP: Record<string, { serviceType: string; label: string; fixedFrom: string | null; fixedTo: string | null }> = {
-  'hotel-to-airport':      { serviceType: 'doorstep-to-airport',  label: 'ICONIQA Hotel → Airport',      fixedFrom: ICONIQA_HOTEL_ADDRESS,   fixedTo: ICONIQA_AIRPORT_ADDRESS },
-  'airport-to-hotel':      { serviceType: 'airport-to-doorstep',  label: 'Airport → ICONIQA Hotel',      fixedFrom: ICONIQA_AIRPORT_ADDRESS, fixedTo: ICONIQA_HOTEL_ADDRESS },
+  'hotel-to-airport':      { serviceType: 'doorstep-to-airport',  label: 'ICONIQA Hotel → Airport',      fixedFrom: ICONIQA_HOTEL_ADDRESS,   fixedTo: null },
+  'airport-to-hotel':      { serviceType: 'airport-to-doorstep',  label: 'Airport → ICONIQA Hotel',      fixedFrom: null,                    fixedTo: ICONIQA_HOTEL_ADDRESS },
   'hotel-to-destination':  { serviceType: 'doorstep-to-doorstep', label: 'ICONIQA Hotel → Destination',  fixedFrom: ICONIQA_HOTEL_ADDRESS,   fixedTo: null },
-  'airport-to-destination':{ serviceType: 'airport-to-doorstep',  label: 'Airport → Destination',        fixedFrom: ICONIQA_AIRPORT_ADDRESS, fixedTo: null },
+  'airport-to-destination':{ serviceType: 'airport-to-doorstep',  label: 'Airport → Destination',        fixedFrom: null,                    fixedTo: null },
 }
+
+const VALID_LOCATION_VALUES = new Set(ICONIQA_AIRPORT_LOCATIONS.map(l => l.label))
 
 // Pickup/delivery time validation (Founder request, 2026-10-03) — was a
 // coarse 3-slot picker; now validates against the same precise 30-minute
@@ -67,6 +76,7 @@ export async function POST(req: NextRequest) {
       bags,
       pickupDate, pickupTime,
       deliveryDate, deliveryTime,
+      pickupLocation,
       deliveryLocation, deliveryAddress,
       pickupAddress,
       flightNumber, airline, pnr, roomNumber,
@@ -111,11 +121,28 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Please provide pickup details (room number / contact point).' }, { status: 400 })
     }
 
-    // Delivery location: fixed for hotel-to-airport / airport-to-hotel
-    // (svc.fixedTo set), guest-entered for the two "→ Destination" services.
+    // Pickup location: fixed (ICONIQA Hotel) for the two "Hotel → ..."
+    // services; guest-selected from ICONIQA_AIRPORT_LOCATIONS otherwise
+    // (2026-10-03 — was hardcoded to a single Mumbai airport string).
+    const resolvedPickupLocation = svc.fixedFrom ?? pickupLocation?.trim()
+    if (!resolvedPickupLocation || resolvedPickupLocation.length > ADDRESS_MAX_LEN) {
+      return NextResponse.json({ error: 'Please select a pickup airport.' }, { status: 400 })
+    }
+    if (!svc.fixedFrom && !VALID_LOCATION_VALUES.has(resolvedPickupLocation)) {
+      return NextResponse.json({ error: 'Please select a valid pickup airport from the list.' }, { status: 400 })
+    }
+
+    // Delivery location: fixed (ICONIQA Hotel) for airport-to-hotel only;
+    // guest-selected from ICONIQA_AIRPORT_LOCATIONS for every other
+    // service (2026-10-03 — was hardcoded to a single Mumbai airport
+    // string for hotel-to-airport, and free-text for the two "→
+    // Destination" services).
     const resolvedDeliveryLocation = svc.fixedTo ?? deliveryLocation?.trim()
     if (!resolvedDeliveryLocation || resolvedDeliveryLocation.length > ADDRESS_MAX_LEN) {
-      return NextResponse.json({ error: 'Please provide a delivery location.' }, { status: 400 })
+      return NextResponse.json({ error: 'Please select a delivery location.' }, { status: 400 })
+    }
+    if (!svc.fixedTo && !VALID_LOCATION_VALUES.has(resolvedDeliveryLocation)) {
+      return NextResponse.json({ error: 'Please select a valid delivery location from the list.' }, { status: 400 })
     }
     if (!svc.fixedTo && (!deliveryAddress?.trim() || deliveryAddress.trim().length > ADDRESS_MAX_LEN)) {
       return NextResponse.json({ error: 'Please provide the delivery address.' }, { status: 400 })
@@ -126,7 +153,6 @@ export async function POST(req: NextRequest) {
     }
 
     const trackingId = isTestMode ? generateTestTrackingId() : await nextTrackingId()
-    const resolvedPickupLocation = svc.fixedFrom as string // always fixed — both pickup legs originate hotel or airport
 
     // ── Save to database — status 'inquiry', never auto-confirmed ──
     let savedBookingId: string | null = null

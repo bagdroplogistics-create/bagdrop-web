@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 import { TIME_OPTIONS } from '@/lib/time-options'
+import { ICONIQA_AIRPORT_LOCATIONS } from '@/lib/iconiqa-locations'
 
 // ─────────────────────────────────────────────────────────────
 // ICONIQA Hotel, Mumbai International Airport × Bagdrop
@@ -65,7 +66,11 @@ const IMG_AIRPORT_VIEW = '/images/mumbai-airport-view-from-hotel.jpg'
 const IMG_AIRPORT_NIGHT = '/images/mumbai-airport-night-tarmac.jpg'
 
 const ICONIQA_HOTEL_ADDRESS = 'ICONIQA Hotel, Mumbai International Airport'
-const ICONIQA_AIRPORT_ADDRESS = 'Mumbai International Airport'
+// ICONIQA_AIRPORT_ADDRESS (a single hardcoded "Mumbai International
+// Airport" constant) removed 2026-10-03 — the airport leg of every
+// service is now a selectable dropdown (ICONIQA_AIRPORT_LOCATIONS,
+// lib/iconiqa-locations.ts), not a fixed value. See SERVICES'
+// pickupFixed/deliveryFixed below.
 
 // ── Design tokens — premium hotel/airport palette, deliberately distinct
 // from the Y2K wedding page's warm gold/dark-green mix. Navy-forward
@@ -91,30 +96,39 @@ const FONT_DISPLAY = "'Playfair Display', var(--font-playfair), serif"
 const FONT_BODY    = "'Inter', var(--font-inter-iconiqa), sans-serif"
 
 // ── Service options — keys match SERVICE_MAP in app/api/iconiqa/inquiry/route.ts ──
+//
+// pickupFixed / deliveryFixed: true = that leg is the ICONIQA Hotel
+// address (fixed, not selectable); false = that leg needs an airport
+// selected from ICONIQA_AIRPORT_LOCATIONS (lib/iconiqa-locations.ts).
+// Founder request (2026-10-03): the airport leg of EVERY service below —
+// pickup or delivery, whichever one isn't the hotel — now offers all 7
+// locations (Mumbai T2, NMIA, Delhi T1/T2/T3, Bangalore, Hyderabad)
+// instead of being hardcoded to "Mumbai International Airport" or (for
+// the two "→ Destination" services) a free-text box.
 const SERVICES = [
   {
     key: 'hotel-to-airport',
     title: 'Hotel → Airport',
-    desc: 'Deliver your luggage from ICONIQA Hotel to Mumbai International Airport.',
-    touchesHotel: true, touchesAirport: true, deliveryFixed: true,
+    desc: 'Deliver your luggage from ICONIQA Hotel to your departure airport.',
+    touchesHotel: true, touchesAirport: true, pickupFixed: true, deliveryFixed: false,
   },
   {
     key: 'airport-to-hotel',
     title: 'Airport → Hotel',
-    desc: 'Have your luggage delivered from Mumbai International Airport to ICONIQA Hotel.',
-    touchesHotel: true, touchesAirport: true, deliveryFixed: true,
+    desc: 'Have your luggage delivered from your arrival airport to ICONIQA Hotel.',
+    touchesHotel: true, touchesAirport: true, pickupFixed: false, deliveryFixed: true,
   },
   {
     key: 'hotel-to-destination',
     title: 'Hotel → Destination',
     desc: 'Send your luggage from ICONIQA Hotel to your next destination.',
-    touchesHotel: true, touchesAirport: false, deliveryFixed: false,
+    touchesHotel: true, touchesAirport: false, pickupFixed: true, deliveryFixed: false,
   },
   {
     key: 'airport-to-destination',
     title: 'Airport → Destination',
-    desc: 'Move your luggage from Mumbai International Airport directly to your destination.',
-    touchesHotel: false, touchesAirport: true, deliveryFixed: false,
+    desc: 'Move your luggage from your arrival airport directly to your destination.',
+    touchesHotel: false, touchesAirport: true, pickupFixed: false, deliveryFixed: false,
   },
 ] as const
 type ServiceKey = typeof SERVICES[number]['key']
@@ -266,6 +280,7 @@ function BookingForm() {
     pickupDate: '', pickupTime: '',
     deliveryDate: '', deliveryTime: '',
     pickupAddress: '', roomNumber: '',
+    pickupLocation: '',
     deliveryLocation: '', deliveryAddress: '',
     flightNumber: '', airline: '', pnr: '',
     notes: '',
@@ -312,8 +327,9 @@ function BookingForm() {
     else if (f.pickupDate < todayStr) er.pickupDate = 'Pickup date cannot be in the past.'
     if (!f.pickupTime) er.pickupTime = 'Select a pickup time.'
     if (!f.pickupAddress.trim()) er.pickupAddress = svc?.touchesHotel ? 'Enter your room number / contact details.' : 'Enter pickup / flight details.'
+    if (svc && !svc.pickupFixed && !f.pickupLocation) er.pickupLocation = 'Select a pickup airport.'
     if (svc && !svc.deliveryFixed) {
-      if (!f.deliveryLocation.trim()) er.deliveryLocation = 'Enter the delivery location.'
+      if (!f.deliveryLocation) er.deliveryLocation = 'Select a delivery location.'
       if (!f.deliveryAddress.trim()) er.deliveryAddress = 'Enter the delivery address.'
     }
     if (Object.keys(er).length) { setErrors(er); return }
@@ -331,6 +347,7 @@ function BookingForm() {
           deliveryDate: f.deliveryDate || undefined, deliveryTime: f.deliveryTime || undefined,
           pickupAddress: f.pickupAddress,
           roomNumber: f.roomNumber,
+          pickupLocation: f.pickupLocation,
           deliveryLocation: f.deliveryLocation, deliveryAddress: f.deliveryAddress,
           flightNumber: f.flightNumber, airline: f.airline, pnr: f.pnr,
           notes: f.notes,
@@ -356,7 +373,7 @@ function BookingForm() {
       name: '', phone: '', whatsapp: '', sameAsPhone: true, email: '',
       serviceType: '', bags: 1,
       pickupDate: '', pickupTime: '', deliveryDate: '', deliveryTime: '',
-      pickupAddress: '', roomNumber: '', deliveryLocation: '', deliveryAddress: '',
+      pickupAddress: '', roomNumber: '', pickupLocation: '', deliveryLocation: '', deliveryAddress: '',
       flightNumber: '', airline: '', pnr: '', notes: '',
     })
   }
@@ -470,14 +487,31 @@ function BookingForm() {
                 <div className="icq-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 18 }}>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <label style={label}>Pickup Location</label>
-                    <input disabled value={svc.touchesHotel && svc.key === 'hotel-to-airport' ? ICONIQA_HOTEL_ADDRESS : svc.key === 'hotel-to-destination' ? ICONIQA_HOTEL_ADDRESS : ICONIQA_AIRPORT_ADDRESS} style={{ ...fi, color: C.steel, cursor: 'not-allowed', opacity: 0.85 }} />
+                    {svc.pickupFixed ? (
+                      <input disabled value={ICONIQA_HOTEL_ADDRESS} style={{ ...fi, color: C.steel, cursor: 'not-allowed', opacity: 0.85 }} />
+                    ) : (
+                      <div style={{ position: 'relative' }}>
+                        <select value={form.pickupLocation} onChange={e => field('pickupLocation')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding: '0 40px 0 16px' }}>
+                          <option value="" disabled>Select an airport</option>
+                          {ICONIQA_AIRPORT_LOCATIONS.map(l => <option key={l.value} value={l.label}>{l.label}</option>)}
+                        </select>
+                        <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.brass, fontSize: 11 }}>▾</span>
+                      </div>
+                    )}
+                    {errors.pickupLocation && <span style={fieldErr}>{errors.pickupLocation}</span>}
                   </div>
                   <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                     <label style={label}>Delivery Location</label>
                     {svc.deliveryFixed ? (
-                      <input disabled value={svc.key === 'hotel-to-airport' ? ICONIQA_AIRPORT_ADDRESS : ICONIQA_HOTEL_ADDRESS} style={{ ...fi, color: C.steel, cursor: 'not-allowed', opacity: 0.85 }} />
+                      <input disabled value={ICONIQA_HOTEL_ADDRESS} style={{ ...fi, color: C.steel, cursor: 'not-allowed', opacity: 0.85 }} />
                     ) : (
-                      <input value={form.deliveryLocation} onChange={e => field('deliveryLocation')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="City / area of your next destination" style={fi} />
+                      <div style={{ position: 'relative' }}>
+                        <select value={form.deliveryLocation} onChange={e => field('deliveryLocation')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding: '0 40px 0 16px' }}>
+                          <option value="" disabled>Select an airport</option>
+                          {ICONIQA_AIRPORT_LOCATIONS.map(l => <option key={l.value} value={l.label}>{l.label}</option>)}
+                        </select>
+                        <span style={{ position: 'absolute', right: 16, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none', color: C.brass, fontSize: 11 }}>▾</span>
+                      </div>
                     )}
                     {errors.deliveryLocation && <span style={fieldErr}>{errors.deliveryLocation}</span>}
                   </div>
