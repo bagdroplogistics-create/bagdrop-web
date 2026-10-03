@@ -65,7 +65,9 @@ export interface LeadRowForPdf {
   return_to_city?: string | null
   return_bags_count?: number | null
   return_pickup_date?: string | null
+  return_pickup_time?: string | null
   return_delivery_date?: string | null
+  return_delivery_time?: string | null
   return_pickup_address?: string | null
   return_drop_address?: string | null
   return_quote_line_items?: { name: string; description: string; quantity: number; rate: number; tax_pct: number; amount: number }[] | null
@@ -138,7 +140,7 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf, leg: QuotePdfLeg 
     toCity:        isReturn ? (lead.return_to_city    ?? null) : lead.to_city,
     bagsCount:     isReturn ? (lead.return_bags_count ?? null) : lead.bags_count,
     pickupDate:    isReturn ? (lead.return_pickup_date ?? null) : lead.pickup_date,
-    pickupTime:    isReturn ? null : lead.pickup_time,
+    pickupTime:    isReturn ? (lead.return_pickup_time ?? null) : lead.pickup_time,
     deliveryDate:  isReturn ? (lead.return_delivery_date ?? null) : lead.delivery_date,
     flightNumber:  isReturn ? null : lead.flight_number,
     pnr:           isReturn ? null : lead.pnr,
