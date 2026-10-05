@@ -37,7 +37,7 @@
 import { supabaseAdmin } from './supabase'
 import { sendEmail } from './email'
 import { parseWhatsAppRecipients, sendToAllRecipients } from './internal-whatsapp-recipients'
-import { sendWhatsAppTemplateMeta } from './notifications'
+import { sendWhatsAppTemplate } from './notifications'
 
 // NOTE: "24" here is a fixed internal tier KEY (matches the
 // quote_pending_24h/response_24h reminder_type values already locked into
@@ -412,7 +412,7 @@ async function sendDuePending(): Promise<{ processed: number }> {
           // numeric id) — see lib/notifications.ts's sendWhatsAppTemplate
           // module comment.
           const variables = [lead.name || 'Customer', lead.quote_number || lead.lead_number]
-          const result = await sendWhatsAppTemplateMeta(lead.phone, 'quote_follow_up_2_hours', variables)
+          const result = await sendWhatsAppTemplate(lead.phone, 'quote_follow_up_2_hours', variables)
           await supabaseAdmin.from('lead_followups').update({
             status: result.success ? 'sent' : 'failed',
             delivery_status: result.success ? (result.requestId ?? 'sent') : (result.error ?? 'Unknown error'),

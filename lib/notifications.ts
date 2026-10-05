@@ -674,14 +674,64 @@ export async function sendWhatsAppTemplateMeta(
 // left defined (harmless, dead code) rather than deleted, in case Fast2SMS
 // is ever reconnected and worth reusing for its lower per-message cost —
 // nothing currently calls either.
+//
+// 2026-10-05 — Founder request: "re-add fast2sms sending messages code for
+// all the booking workflow". Fast2SMS is PRIMARY again (the Founder
+// re-connected the WhatsApp Business number via Meta Business Suite and it
+// shows Connected), with the direct Meta Cloud API kept as an AUTOMATIC
+// FALLBACK — so if Fast2SMS's partner-app link to the WABA breaks again
+// (it did on 22 Sept: "Deleted User" event, "This number can't be shared
+// with this app"), sends keep flowing through Meta instead of silently
+// dying. Provider order is controlled by the WHATSAPP_PROVIDER env var:
+//   'fast2sms' (default when FAST2SMS_API_KEY + FAST2SMS_WHATSAPP_PHONE_
+//               NUMBER_ID are set) — Fast2SMS first, Meta on failure
+//   'meta'     — Meta first, Fast2SMS on failure
+// Flip it in Vercel and redeploy; no code change needed.
+//
+// Fallback is deliberately skipped on a TIMEOUT: the first provider may
+// still have accepted and delivered the message, and a second send would
+// reach the customer twice. Every explicit failure (HTTP error, provider
+// error object, missing config) does fall through to the other provider.
+// Both providers address the template by its Meta-approved NAME and talk
+// the same Meta-format payload (incl. CTA URL buttons), so no per-provider
+// template ids/env vars are needed.
+type WhatsAppSendResult = { success: boolean; error?: string; requestId?: string }
+
 export async function sendWhatsAppTemplate(
   phone: string,
   templateName: string,
   variables: string[],
-  header?: { type: 'image' | 'document'; url: string; filename?: string }
-): Promise<{ success: boolean; error?: string; requestId?: string; provider?: 'fast2sms' | 'meta' }> {
-  const result = await sendWhatsAppTemplateMeta(phone, templateName, variables, header)
-  return { ...result, provider: 'meta' }
+  header?: { type: 'image' | 'document'; url: string; filename?: string },
+  buttons?: WhatsAppCtaButton[]
+): Promise<WhatsAppSendResult & { provider?: 'fast2sms' | 'meta'; fallbackFrom?: 'fast2sms' | 'meta'; primaryError?: string }> {
+  const fast2smsConfigured = !!(process.env.FAST2SMS_API_KEY && process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID)
+  const preferred: 'fast2sms' | 'meta' =
+    process.env.WHATSAPP_PROVIDER === 'meta' ? 'meta'
+    : process.env.WHATSAPP_PROVIDER === 'fast2sms' ? 'fast2sms'
+    : (fast2smsConfigured ? 'fast2sms' : 'meta')
+  const secondary: 'fast2sms' | 'meta' = preferred === 'fast2sms' ? 'meta' : 'fast2sms'
+
+  const run = (p: 'fast2sms' | 'meta'): Promise<WhatsAppSendResult> =>
+    p === 'fast2sms'
+      ? sendWhatsAppTemplateFast2SMSv2(phone, templateName, variables, header, buttons)
+      : sendWhatsAppTemplateMeta(phone, templateName, variables, header, buttons)
+
+  const first = await run(preferred)
+  if (first.success) return { ...first, provider: preferred }
+
+  // Unknown outcome — don't risk a duplicate customer message.
+  if (first.error?.startsWith('Timed out')) return { ...first, provider: preferred }
+
+  console.warn(`[WhatsApp] ${preferred} failed (${first.error}) — falling back to ${secondary} | template: ${templateName}`)
+  const second = await run(secondary)
+  if (second.success) {
+    return { ...second, provider: secondary, fallbackFrom: preferred, primaryError: first.error }
+  }
+  return {
+    success: false,
+    error: `${preferred}: ${first.error ?? 'failed'} | ${secondary}: ${second.error ?? 'failed'}`,
+    provider: secondary,
+  }
 }
 
 export async function notifyBookingStatus(

@@ -18,7 +18,7 @@
 // list, e.g. "+916357335733,+919130063884,+919998665328" — falls back to
 // DEFAULT_INTERNAL_WHATSAPP_NUMBERS when the setting is unset/empty.
 
-import { sendWhatsAppTemplateMeta } from './notifications'
+import { sendWhatsAppTemplate } from './notifications'
 
 export const DEFAULT_INTERNAL_WHATSAPP_NUMBERS = ['+916357335733', '+919130063884', '+919998665328']
 
@@ -79,7 +79,9 @@ export async function sendToAllRecipients(
   const perRecipient: RecipientSendResult[] = []
   const header = mediaUrl ? { type: 'image' as const, url: mediaUrl } : undefined
   for (const phone of recipients) {
-    const result = await sendWhatsAppTemplateMeta(phone, templateId, variables, header)
+    // 2026-10-05: shared dispatcher (Fast2SMS primary, Meta fallback) — see
+    // sendWhatsAppTemplate() in lib/notifications.ts.
+    const result = await sendWhatsAppTemplate(phone, templateId, variables, header)
     perRecipient.push({ phone, success: result.success, error: result.error, requestId: result.requestId })
   }
   const successCount = perRecipient.filter(r => r.success).length
