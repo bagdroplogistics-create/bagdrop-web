@@ -4,7 +4,7 @@ import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
 import { sendDriverDetails } from '@/lib/driver-details'
 import { shouldShowDriverDetailsStep } from '@/lib/service-type'
-import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER, type LifecycleSendResult } from '@/lib/lifecycle-notifications'
 import { upsertBookingCalendarEvent, deleteBookingCalendarEvent } from '@/lib/google-calendar'
 import { syncBookingReminders } from '@/lib/ops-reminders'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
@@ -421,9 +421,13 @@ export async function PATCH(
       // admin_approve forces this to false regardless of forward-move/
       // already-notified — an explicit "workflow update only, don't
       // contact the customer" request from the admin for this one change.
+      // 2026-10-05: also allow a same-status re-send for 'quote_sent' when it
+      // was never successfully notified (a failed WhatsApp un-marks it below),
+      // so the admin can simply click "Send Quote" again to retry.
+      const isQuoteSentRetry = status === 'quote_sent' && existing?.status === 'quote_sent' && !alreadyNotified
       const shouldNotifyCustomer = admin_approve === true
         ? false
-        : isForwardMove(existing?.status, status) && !alreadyNotified
+        : (isForwardMove(existing?.status, status) || isQuoteSentRetry) && !alreadyNotified
       shouldSendLifecycleWhatsApp = shouldNotifyCustomer
 
       // Admin Approve also marks the status as "already notified" even
@@ -572,8 +576,25 @@ export async function PATCH(
       .maybeSingle()
     skipRedundantPaymentReceivedWhatsApp = !!existingReceipt
   }
+  let whatsappResult: LifecycleSendResult | undefined
   if (shouldSendLifecycleWhatsApp && status && data && !skipRedundantPaymentReceivedWhatsApp) {
-    await sendLifecycleWhatsApp(status, data)
+    whatsappResult = await sendLifecycleWhatsApp(status, data)
+    // A failed customer WhatsApp must not stay recorded as "already notified"
+    // — otherwise the status can never be re-sent (see notified_statuses
+    // note above) while the UI keeps saying "Quote Sent". Un-mark it so the
+    // admin can retry, and report the failure back in the response.
+    if (whatsappResult.attempted && !whatsappResult.success && notifiedStatusesSupported) {
+      const marked = Array.isArray((data as { notified_statuses?: unknown }).notified_statuses)
+        ? (data as { notified_statuses?: string[] }).notified_statuses as string[]
+        : []
+      if (marked.includes(status)) {
+        const remaining = marked.filter(s => s !== status)
+        const { error: unmarkErr } = await supabaseAdmin
+          .from('bookings').update({ notified_statuses: remaining }).eq('id', id)
+        if (unmarkErr) console.error('[booking patch] un-mark notified_statuses failed:', unmarkErr.message)
+        else (data as { notified_statuses?: string[] }).notified_statuses = remaining
+      }
+    }
   }
 
   // ── Auto-advance to Confirmed — Admin Approve (VIP/Credit) only ──
@@ -693,7 +714,7 @@ export async function PATCH(
     })
   }
 
-  return NextResponse.json({ booking: data })
+  return NextResponse.json({ booking: data, ...(whatsappResult?.attempted ? { whatsapp: whatsappResult } : {}) })
 }
 
 // autoCreateInvoice() removed — see the two removal notes above. Invoice

@@ -1320,6 +1320,10 @@ function LeadsPageInner() {
         alert('Could not send quote email: ' + (err.error ?? 'Unknown error'))
         return
       }
+      const dEmail = await res.json().catch(() => ({}))
+      if (dEmail.whatsapp && dEmail.whatsapp.attempted && !dEmail.whatsapp.success) {
+        alert('Quote email sent, but the WhatsApp message FAILED:\n\n' + (dEmail.whatsapp.error ?? 'Unknown error') + '\n\nClick Send again to retry.')
+      }
       flashSent(l.id, 'email')
       fetchLeads()
     } catch (e) {
@@ -1385,6 +1389,11 @@ function LeadsPageInner() {
       if (!res.ok) {
         const err = await res.json().catch(() => ({}))
         alert('Quote PDF was generated, but the status update failed: ' + (err.error ?? 'Unknown error'))
+      } else {
+        const dWa = await res.json().catch(() => ({}))
+        if (dWa.whatsapp && dWa.whatsapp.attempted && !dWa.whatsapp.success) {
+          alert('The automatic WhatsApp quote message FAILED:\n\n' + (dWa.whatsapp.error ?? 'Unknown error') + '\n\nThe WhatsApp Web window will still open so you can send it manually.')
+        }
       }
       window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
       flashSent(l.id, 'whatsapp')

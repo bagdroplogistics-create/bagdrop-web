@@ -723,6 +723,12 @@ export default function QuoteViewPage() {
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? payload) } : prev)
         setActionSuccess(actionKey)
         setTimeout(() => setActionSuccess(null), 4000)
+        // The status moved, but the customer WhatsApp did NOT go out —
+        // say so instead of leaving a silent "Quote Sent". Clicking the
+        // same step again retries the send.
+        if (d.whatsapp && d.whatsapp.attempted && !d.whatsapp.success) {
+          alert('Status updated, but the WhatsApp message to the customer FAILED:\n\n' + (d.whatsapp.error ?? 'Unknown error') + '\n\nClick the same step again to retry.')
+        }
 
         // Keep the linked return-leg booking's status/payment fields in
         // sync. Without this, that booking sits frozen at whatever status

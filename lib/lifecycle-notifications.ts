@@ -110,10 +110,25 @@ const PAYMENT_QR_MEDIA_URL = 'https://www.bagdrop.co/bagdrop_upi_qr.png'
  * throws, so it can never turn a successful status update into a failed
  * request even if Fast2SMS is unreachable or the template isn't configured.
  */
-export async function sendLifecycleWhatsApp(status: string, booking: BookingLike): Promise<void> {
+// 2026-10-05 — now RETURNS the outcome (was void), so the booking PATCH route
+// can (a) tell the admin when the customer WhatsApp did not actually go out
+// and (b) un-mark the status as "already notified" so it can be retried.
+// Founder report (BDL-2026-0247): Leads showed "Quote Sent" but the customer
+// never received the WhatsApp quote — the failure (e.g. Meta #133010) was only
+// written to status_history, while the UI/notified_statuses treated the
+// status as successfully notified. attempted=false means nothing was due
+// (no template for this status, Test Mode, or no phone) — not a failure.
+export interface LifecycleSendResult {
+  attempted: boolean
+  success: boolean
+  error?: string
+  provider?: string
+}
+
+export async function sendLifecycleWhatsApp(status: string, booking: BookingLike): Promise<LifecycleSendResult> {
   try {
     const templateName = TEMPLATE_BY_STATUS[status]
-    if (!templateName) return // no template mapped for this status — nothing to do
+    if (!templateName) return { attempted: false, success: true } // no template mapped for this status — nothing to do
 
     // Test Mode bookings (Group Booking "Test Mode" checkbox — see
     // supabase/migrations/20260904_group_bookings.sql's is_test columns)
@@ -130,12 +145,12 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       })
       await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
       console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — skipped (${status}): Test Mode`)
-      return
+      return { attempted: false, success: true }
     }
 
     if (!booking.customer_phone) {
       console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — skipped (${status}): no phone on file`)
-      return
+      return { attempted: false, success: true }
     }
 
     const name        = (formatCustomerName(booking.title, booking.customer_name) || booking.customer_name?.trim()) || 'Customer'
@@ -248,7 +263,9 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
 
     console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — ${note}`)
+    return { attempted: true, success: result.success, error: result.error, provider: result.provider }
   } catch (err) {
     console.error('[LifecycleWhatsApp] Unexpected error (non-fatal):', err)
+    return { attempted: true, success: false, error: err instanceof Error ? err.message : String(err) }
   }
 }
