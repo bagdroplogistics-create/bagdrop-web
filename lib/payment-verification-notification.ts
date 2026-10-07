@@ -147,9 +147,9 @@ export async function sendPaymentVerificationRequest(data: PaymentVerificationRe
     (emailResult.success ? `sent to ${ACCOUNTS_EMAIL}` : `failed — ${emailResult.error}`))
 
   try {
-    const templateName = process.env.WHATSAPP_PAYMENT_VERIFICATION_TEMPLATE_NAME ?? process.env.FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME
+    const templateName = process.env.FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME
     if (!templateName) {
-      console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp skipped: template not configured (WHATSAPP_PAYMENT_VERIFICATION_TEMPLATE_NAME)`)
+      console.log(`[PaymentVerification] ${data.trackingId} — WhatsApp skipped: template not configured (FAST2SMS_PAYMENT_VERIFICATION_TEMPLATE_NAME)`)
       return
     }
     const accountsNumber = await getAccountsWhatsAppNumber()

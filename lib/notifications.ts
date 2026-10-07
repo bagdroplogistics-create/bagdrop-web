@@ -232,37 +232,329 @@ async function sendWhatsApp(
   await sendWhatsAppText(data.customerPhone, interpolate(msg.whatsapp, data))
 }
 
-// Optional CTA (Call-To-Action) URL button component for WhatsApp templates
-// (e.g. lib/payment-verification-notification.ts's "Approve from WhatsApp"
-// button). WhatsApp URL buttons are approved with a STATIC base URL plus one
-// dynamic trailing segment — `payload` is just that dynamic segment (e.g. the
-// bare token), never the full URL. Meta's API takes it as
-// `{ type: 'payload', payload: '...' }`, NOT `{ type: 'text' }` like body params.
+// ── Fast2SMS WhatsApp Template Sender ───────────────────────────────
+// Fast2SMS is a Meta-approved WhatsApp Business Solution Provider — used
+// instead of calling Meta's Graph API directly. Sends via a pre-approved
+// message template, which WhatsApp requires for any business-initiated
+// first message (a customer who hasn't messaged you first can't receive
+// free-form text — only an approved template).
+// Docs: https://docs.fast2sms.com
+export async function sendWhatsAppTemplateFast2SMS(
+  phone: string,
+  messageId: string,
+  variables: string[],
+  mediaUrl?: string
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const apiKey        = process.env.FAST2SMS_API_KEY
+  const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
+
+  if (!apiKey || !phoneNumberId) {
+    return { success: false, error: 'Fast2SMS not configured (FAST2SMS_API_KEY / FAST2SMS_WHATSAPP_PHONE_NUMBER_ID missing)' }
+  }
+  if (!phone) {
+    return { success: false, error: 'No phone number provided' }
+  }
+  if (!messageId) {
+    return { success: false, error: 'No Fast2SMS template message_id provided' }
+  }
+
+  // See buildInternationalRecipient()'s module comment above for the full
+  // 2026-08-31 root-cause writeup — this used to blindly take the last 10
+  // digits (silently discarding the country code entirely), which is what
+  // sent a US customer's +1 number to +91 instead. Now sends the full
+  // international number (country code + national number, no "+"),
+  // matching the format Fast2SMS's own docs show for its WhatsApp APIs.
+  const recipient = buildInternationalRecipient(phone)
+
+  // Templates with an Image/PDF header (e.g. payment_request's QR code) do
+  // NOT bake the approved-template sample image into every send — Fast2SMS
+  // requires the header media to be supplied per-request via `media_url`,
+  // or the header renders empty ("No Preview Available") on WhatsApp even
+  // though the rest of the template body sends fine. Only added when the
+  // caller passes one; harmless (and omitted) for plain text-header templates.
+  // Fast2SMS's variables_values format is pipe-delimited ("val1|val2|...")
+  // — it splits on "|" server-side to know how many {{}} slots were
+  // supplied. Found via a real bug: the Confirmed & Ongoing Inquiry Summary
+  // report's single {{1}} variable renders "Date: 20 Aug 2026 | Report:
+  // 9:00 AM\n\nSUMMARY\n..." — the literal " | " inside that ONE variable's
+  // own text was silently splitting it into two values for a template that
+  // only declares one placeholder, so Fast2SMS kept just the first segment
+  // ("Date: 20 Aug 2026") and dropped everything after it, including the
+  // entire summary + booking list. Stripping "|" out of every variable's
+  // text here (not just that one caller) protects every current and future
+  // template from the same silent-truncation failure mode.
+  //
+  // Second real bug (2026-08-21), same Confirmed & Ongoing report: WhatsApp
+  // rejects the whole send with error (#132018) "There's an issue with the
+  // parameters in your template" whenever a template parameter's VALUE
+  // contains a literal newline, carriage return, or tab character — this is
+  // a hard Meta/WhatsApp Business API restriction on parameter text, not
+  // something Fast2SMS can relax. It's unrelated to (and stricter than) the
+  // per-character formatting allowed in the template body itself. This
+  // report's {{1}} variable is a multi-line rendered block (one booking per
+  // several \n-joined lines), so every send was failing outright — the
+  // Fast2SMS dashboard's own delivery-details preview still renders the
+  // literal text fine, which made this look like a delivery problem rather
+  // than a rejected-at-submission one.
+  // There is no way to send a real line break inside a single WhatsApp
+  // template parameter — this is a documented platform limitation, not
+  // something a character substitution can trick around. Fix: replace
+  // \r\n/\n/\r with " • " (a plain separator, not a line break) so the
+  // report still reads as distinct fields/entries rather than becoming one
+  // unbroken run of words, and tabs / runs of 5+ spaces (also disallowed)
+  // collapse to a single space / 4 spaces. Applied to every variable/every
+  // caller, not just this one report, for the same "protect every current
+  // and future template" reason as the pipe fix above. Net effect: the
+  // Confirmed & Ongoing report now sends as one continuous line per message
+  // instead of the intended multi-line layout — a real, visible trade-off,
+  // not a full fix; flagged in case the founder would rather restructure
+  // that report (e.g. one WhatsApp message per booking) to get real line
+  // breaks back.
+  const sanitizedVariables = variables.map(v =>
+    v.replace(/\|/g, '·')
+     .replace(/\r\n|\r|\n/g, ' • ')
+     .replace(/\t/g, ' ')
+     .replace(/ {5,}/g, '    ')
+  )
+
+  const params = new URLSearchParams({
+    message_id:       messageId,
+    phone_number_id:  phoneNumberId,
+    numbers:          recipient,
+    variables_values: sanitizedVariables.join('|'),
+    ...(mediaUrl ? { media_url: mediaUrl } : {}),
+  })
+
+  // Cron-triggered sends (quote-pending, sales-followup, ops-pickup
+  // reminders) call this in a sequential loop over potentially many due
+  // rows in one request. Fast2SMS's endpoint has no documented SLA, and a
+  // plain fetch() has no timeout of its own — a single slow/hanging
+  // response would previously stall the entire cron run until the
+  // platform's own function timeout killed it, which surfaced as
+  // cron-job.org reporting "Failed (timeout)" with no useful error detail.
+  // Capping each individual send at 10s means one bad Fast2SMS response
+  // costs at most 10s, not the whole batch.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const res = await fetch(`https://www.fast2sms.com/dev/whatsapp?${params.toString()}`, {
+      headers: { Authorization: apiKey },
+      signal: controller.signal,
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+
+    if (!res.ok || data.status === false) {
+      console.error('[Fast2SMS WhatsApp] FAILED', '| status:', res.status, '| error:', JSON.stringify(data))
+      return { success: false, error: JSON.stringify(data) }
+    }
+
+    const requestId = data.request_id as string | undefined
+    console.log('[Fast2SMS WhatsApp] SENT', '| to:', recipient, '| request_id:', requestId)
+    return { success: true, requestId }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    const msg = isAbort ? 'Timed out waiting for Fast2SMS (10s)' : (err instanceof Error ? err.message : String(err))
+    console.error('[Fast2SMS WhatsApp] EXCEPTION', msg)
+    return { success: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ── Fast2SMS WhatsApp Template Sender v2 — Meta-format endpoint (2026-09-01) ──
+// Migrated OFF the "Simple" GET /dev/whatsapp API above (that one is kept,
+// unchanged, for internal/staff-only templates — see each caller) because
+// that endpoint has no real international support: a bare 10-digit
+// `numbers` value gets silently assumed Indian, and a properly
+// country-coded non-Indian number is rejected outright — confirmed via a
+// real send to a US customer (+15622091589) returning
+// `{"errors":{"numbers":["Mobile Number format is invalid: 15622091589"]}}`.
+// This function instead calls Fast2SMS's Meta Cloud API-compatible proxy
+// (same URL/JSON shape as Meta's own Graph API), which Fast2SMS's own docs
+// show accepting a full "Recipient Phone Number... with country code":
+// https://docs.fast2sms.com/reference/sendtemplatewithvariable
+//
+// Used ONLY for customer-facing sends: lib/lead-acknowledgment.ts,
+// lib/lifecycle-notifications.ts, lib/driver-details.ts,
+// lib/indemnity-notifications.ts. Every internal/staff-facing template
+// (new inquiry alert, sales follow-up / pickup / quote-pending reminders,
+// payment verification, confirmed & ongoing summary) stays on the GET
+// function above unchanged — those only ever reach Bagdrop's own Indian
+// numbers, so there's nothing to fix there and no reason to touch them.
+//
+// Templates are addressed by NAME + language code here (Meta's real
+// identifier), not Fast2SMS's numeric Message ID — that ID is a
+// convenience Fast2SMS's own "Simple" wrapper invented and this endpoint
+// has no concept of. Every name below was confirmed directly against the
+// account's live approved templates via
+// `GET /dev/dlt_manager/whatsapp?type=template` on 2026-09-01 — see each
+// caller's own TEMPLATE_BY_* map for the exact status/event → name
+// mapping, and confirm there against the same dump before changing one.
+// Optional CTA (Call-To-Action) URL button component — added 2026-09-10 for
+// lib/payment-verification-notification.ts's "Approve from WhatsApp" button,
+// but usable by any future caller on this endpoint. WhatsApp URL buttons are
+// approved with a STATIC base URL plus one dynamic trailing segment (e.g.
+// the approved template's button is configured as
+// "https://www.bagdrop.co/payment-verification/{{1}}") — `payload` here is
+// just that dynamic segment (e.g. the bare token), never the full URL.
+// Confirmed against Fast2SMS's own docs (Send Template (CTA button),
+// https://docs.fast2sms.com/reference/sendtemplatectabutton), which show
+// the button parameter as `{ type: 'payload', payload: '...' }` — NOT
+// `{ type: 'text', text: '...' }` like the body parameters use, despite
+// both hitting this exact same /messages endpoint.
 export interface WhatsAppCtaButton {
   index:   number
   payload: string
 }
 
-// ── WhatsApp Template Sender — direct Meta Cloud API ─────────────────────────
-// The ONLY WhatsApp sender in Bagdrop (Founder decision 2026-10-06: Meta
-// only — no Fast2SMS/BSP for WhatsApp). Sends from Bagdrop's own WhatsApp
-// Business number straight through Meta's Graph API using a System User
-// access token (WHATSAPP_ACCESS_TOKEN, permissions whatsapp_business_
-// messaging + whatsapp_business_management) against the phone-number id
-// WHATSAPP_PHONE_NUMBER_ID (default 995935626929789 — the id shown in Meta
-// Business Manager → WhatsApp accounts → Phone numbers → +91 63571 15711;
-// not a secret). Templates are addressed by their Meta-approved NAME.
-// Works for Indian and international numbers alike.
+export async function sendWhatsAppTemplateFast2SMSv2(
+  phone: string,
+  templateName: string,
+  variables: string[],
+  header?: { type: 'image' | 'document'; url: string; filename?: string },
+  buttons?: WhatsAppCtaButton[]
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const apiKey        = process.env.FAST2SMS_API_KEY
+  const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
+
+  if (!apiKey || !phoneNumberId) {
+    return { success: false, error: 'Fast2SMS not configured (FAST2SMS_API_KEY / FAST2SMS_WHATSAPP_PHONE_NUMBER_ID missing)' }
+  }
+  if (!phone) {
+    return { success: false, error: 'No phone number provided' }
+  }
+  if (!templateName) {
+    return { success: false, error: 'No Fast2SMS template name provided' }
+  }
+
+  const recipient = buildInternationalRecipient(phone)
+
+  // Same real Meta/WhatsApp platform restriction documented on the GET
+  // sender above (error #132018) — a template parameter's VALUE can't
+  // contain a literal newline/carriage-return/tab, regardless of which
+  // endpoint carries it. The pipe-delimiter workaround is dropped here
+  // (it was only needed because the GET endpoint packed every variable
+  // into one "val1|val2|..." query string) — each variable is its own
+  // separate JSON object below, so a literal "|" inside one variable's
+  // text can never be misread as a value separator.
+  const sanitizedVariables = variables.map(v =>
+    v.replace(/\r\n|\r|\n/g, ' • ')
+     .replace(/\t/g, ' ')
+     .replace(/ {5,}/g, '    ')
+  )
+
+  const components: Array<Record<string, unknown>> = []
+  if (header) {
+    components.push({
+      type: 'header',
+      parameters: [{
+        type: header.type,
+        [header.type]: header.type === 'document'
+          ? { link: header.url, ...(header.filename ? { filename: header.filename } : {}) }
+          : { link: header.url },
+      }],
+    })
+  }
+  components.push({
+    type: 'body',
+    parameters: sanitizedVariables.map(text => ({ type: 'text', text })),
+  })
+  if (buttons) {
+    for (const b of buttons) {
+      components.push({
+        type:       'button',
+        sub_type:   'url',
+        index:      String(b.index),
+        parameters: [{ type: 'payload', payload: b.payload }],
+      })
+    }
+  }
+
+  // Same per-send timeout rationale as the GET sender above.
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+
+  try {
+    const res = await fetch(`https://www.fast2sms.com/dev/whatsapp/v26.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: {
+        Authorization: apiKey,
+        'Content-Type': 'application/json',
+      },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: 'en' },
+          components,
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+
+    const errObj = data.error as { message?: string } | undefined
+    if (!res.ok || errObj) {
+      console.error('[Fast2SMS WhatsApp v2] FAILED', '| status:', res.status, '| error:', JSON.stringify(data))
+      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+    }
+
+    const messages = data.messages as Array<{ id?: string }> | undefined
+    const requestId = messages?.[0]?.id
+    console.log('[Fast2SMS WhatsApp v2] SENT', '| to:', recipient, '| template:', templateName, '| id:', requestId)
+    return { success: true, requestId }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    const msg = isAbort ? 'Timed out waiting for Fast2SMS (10s)' : (err instanceof Error ? err.message : String(err))
+    console.error('[Fast2SMS WhatsApp v2] EXCEPTION', msg)
+    return { success: false, error: msg }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+// ── WhatsApp Template Sender — direct Meta Cloud API (2026-09-01) ──────────
+// Root cause discovered while migrating off Fast2SMS: Fast2SMS's own support
+// confirmed "we provide service in India only" — international WhatsApp
+// sending is a hard restriction on THEIR product tier, not a limitation of
+// Bagdrop's actual WhatsApp Business number. Confirmed directly: the phone
+// profile ID shown in Bagdrop's own Meta Business Manager
+// (business.facebook.com → WhatsApp accounts → Phone numbers →
+// +91 63571 15711) is 995935626929789 — the EXACT SAME id as
+// FAST2SMS_WHATSAPP_PHONE_NUMBER_ID. Fast2SMS has been a thin wrapper in
+// front of this same WABA the whole time, not a separate number. So this
+// function sends from that identical number, straight to Meta's own Graph
+// API, bypassing Fast2SMS (and its India-only restriction) entirely.
 //
-// Call sendWhatsAppTemplate() below (the shared dispatcher) rather than this
-// directly, so every send goes through one choke point.
+// Requires a System User access token generated in Meta Business Manager
+// (Business Settings → Users → System users) with whatsapp_business_
+// messaging + whatsapp_business_management permissions, assigned to the
+// Bagdrop Logistics Solutions Pvt Ltd WhatsApp account — set as
+// WHATSAPP_ACCESS_TOKEN in Vercel. WHATSAPP_PHONE_NUMBER_ID is the id
+// above (995935626929789) — same value already used for Fast2SMS, not a
+// secret (visible in the Meta Business Manager UI), safe to hardcode as
+// the default if the env var isn't set.
+//
+// Used only for INTERNATIONAL customer-facing sends — see
+// sendWhatsAppTemplate() below, the shared dispatcher every caller should
+// actually use. Indian numbers keep going through Fast2SMS (cheaper,
+// already working) via sendWhatsAppTemplateFast2SMSv2 above.
 export async function sendWhatsAppTemplateMeta(
   phone: string,
   templateName: string,
   variables: string[],
   header?: { type: 'image' | 'document'; url: string; filename?: string },
-  // CTA URL button support (payment-verification-notification.ts's
-  // "Approve Payment" button).
+  // CTA URL button support (2026-09-25) — added while migrating every
+  // WhatsApp send off Fast2SMS onto this direct Meta path (Founder
+  // decision, after the Fast2SMS/Meta partner-sharing connection could not
+  // be restored — see the Sep 22-25 WhatsApp outage investigation).
+  // Mirrors sendWhatsAppTemplateFast2SMSv2's identical `buttons` param —
+  // that function was the only caller needing it (payment-verification-
+  // notification.ts's "Approve Payment" CTA), now migrated here too.
   buttons?: WhatsAppCtaButton[]
 ): Promise<{ success: boolean; error?: string; requestId?: string }> {
   const token   = process.env.WHATSAPP_ACCESS_TOKEN
@@ -361,22 +653,85 @@ export async function sendWhatsAppTemplateMeta(
   }
 }
 
-// ── Shared dispatcher — every WhatsApp template send goes through THIS ──────
-// Meta Cloud API only (Founder decision 2026-10-06). Fast2SMS is no longer
-// used for WhatsApp anywhere — it remains only for plain-SMS OTP
-// (app/api/auth/send-otp, lib/indemnity-otp.ts). Callers: lead-acknowledgment,
-// lifecycle-notifications (every booking-workflow step), driver-details,
-// indemnity-notifications, vendor-notifications, internal-whatsapp-recipients
-// (ops/sales/summary fan-outs) and payment-verification-notification.
+// ── Shared dispatcher — every customer-facing WhatsApp template send should
+// call THIS, not either sender directly ─────────────────────────────────
+// 2026-09-25 — Founder decision to drop Fast2SMS entirely for WhatsApp
+// after their partner-app connection to our WABA broke (uninstalled
+// 22 Sept, could not be re-shared — "Unable to assign assets" / "This
+// number can't be shared with this app", unresolved after a full Meta
+// Business Manager investigation: number Connected, business Verified,
+// yet Fast2SMS's own app still blocked). Rather than depend on Fast2SMS
+// support to fix their side, every send now goes straight to Meta's own
+// Cloud API (sendWhatsAppTemplateMeta) using Bagdrop's OWN app/System User
+// token (WHATSAPP_ACCESS_TOKEN) against the SAME WABA/phone number
+// (995935626929789) — no more India/international branching, since the
+// direct Meta path has always worked for both (it's what every
+// international customer send already used). This single choke point
+// means every caller (lead-acknowledgment.ts, lifecycle-notifications.ts,
+// driver-details.ts, indemnity-notifications.ts, the manual Resend
+// Acknowledgment route, vendor-notifications.ts) gets this for free.
+// sendWhatsAppTemplateFast2SMS/sendWhatsAppTemplateFast2SMSv2 above are
+// left defined (harmless, dead code) rather than deleted, in case Fast2SMS
+// is ever reconnected and worth reusing for its lower per-message cost —
+// nothing currently calls either.
+//
+// 2026-10-05 — Founder request: "re-add fast2sms sending messages code for
+// all the booking workflow". Fast2SMS is PRIMARY again (the Founder
+// re-connected the WhatsApp Business number via Meta Business Suite and it
+// shows Connected), with the direct Meta Cloud API kept as an AUTOMATIC
+// FALLBACK — so if Fast2SMS's partner-app link to the WABA breaks again
+// (it did on 22 Sept: "Deleted User" event, "This number can't be shared
+// with this app"), sends keep flowing through Meta instead of silently
+// dying. Provider order is controlled by the WHATSAPP_PROVIDER env var:
+//   'fast2sms' (default when FAST2SMS_API_KEY + FAST2SMS_WHATSAPP_PHONE_
+//               NUMBER_ID are set) — Fast2SMS first, Meta on failure
+//   'meta'     — Meta first, Fast2SMS on failure
+// Flip it in Vercel and redeploy; no code change needed.
+//
+// Fallback is deliberately skipped on a TIMEOUT: the first provider may
+// still have accepted and delivered the message, and a second send would
+// reach the customer twice. Every explicit failure (HTTP error, provider
+// error object, missing config) does fall through to the other provider.
+// Both providers address the template by its Meta-approved NAME and talk
+// the same Meta-format payload (incl. CTA URL buttons), so no per-provider
+// template ids/env vars are needed.
+type WhatsAppSendResult = { success: boolean; error?: string; requestId?: string }
+
 export async function sendWhatsAppTemplate(
   phone: string,
   templateName: string,
   variables: string[],
   header?: { type: 'image' | 'document'; url: string; filename?: string },
   buttons?: WhatsAppCtaButton[]
-): Promise<{ success: boolean; error?: string; requestId?: string; provider: 'meta' }> {
-  const result = await sendWhatsAppTemplateMeta(phone, templateName, variables, header, buttons)
-  return { ...result, provider: 'meta' }
+): Promise<WhatsAppSendResult & { provider?: 'fast2sms' | 'meta'; fallbackFrom?: 'fast2sms' | 'meta'; primaryError?: string }> {
+  const fast2smsConfigured = !!(process.env.FAST2SMS_API_KEY && process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID)
+  const preferred: 'fast2sms' | 'meta' =
+    process.env.WHATSAPP_PROVIDER === 'meta' ? 'meta'
+    : process.env.WHATSAPP_PROVIDER === 'fast2sms' ? 'fast2sms'
+    : (fast2smsConfigured ? 'fast2sms' : 'meta')
+  const secondary: 'fast2sms' | 'meta' = preferred === 'fast2sms' ? 'meta' : 'fast2sms'
+
+  const run = (p: 'fast2sms' | 'meta'): Promise<WhatsAppSendResult> =>
+    p === 'fast2sms'
+      ? sendWhatsAppTemplateFast2SMSv2(phone, templateName, variables, header, buttons)
+      : sendWhatsAppTemplateMeta(phone, templateName, variables, header, buttons)
+
+  const first = await run(preferred)
+  if (first.success) return { ...first, provider: preferred }
+
+  // Unknown outcome — don't risk a duplicate customer message.
+  if (first.error?.startsWith('Timed out')) return { ...first, provider: preferred }
+
+  console.warn(`[WhatsApp] ${preferred} failed (${first.error}) — falling back to ${secondary} | template: ${templateName}`)
+  const second = await run(secondary)
+  if (second.success) {
+    return { ...second, provider: secondary, fallbackFrom: preferred, primaryError: first.error }
+  }
+  return {
+    success: false,
+    error: `${preferred}: ${first.error ?? 'failed'} | ${secondary}: ${second.error ?? 'failed'}`,
+    provider: secondary,
+  }
 }
 
 export async function notifyBookingStatus(
