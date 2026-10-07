@@ -558,6 +558,14 @@ function QuotePageInner() {
   // Return Journey Items was empty — reuse the same lead and skip
   // re-creating the onward quote, instead of duplicating it.
   const [createdLeadId, setCreatedLeadId]   = useState<string | null>(null)
+  // Ref twin of createdLeadId, read by fetchLead below. When this page itself
+  // creates the lead mid-Generate, the URL gains ?lead_id=… (so a refresh is
+  // safe) — but that must NOT trigger a re-fetch of the lead: by the time it
+  // returned, the quote had already been generated server-side, so the page
+  // loaded the lead WITH a quote_number, showed "Quote QT-… already exists" and
+  // the success screen never appeared (founder-reported 2026-10-07, manual
+  // WhatsApp inquiry QT-2026-0256).
+  const createdLeadIdRef = useRef<string | null>(null)
   const [onwardQuote,   setOnwardQuote]     = useState<{ estimate_number: string; estimate_id: string | null; total: number; zoho_url: string; sent_to_customer: boolean } | null>(null)
   const [result, setResult] = useState<{
     estimate_number: string; estimate_id: string | null; total: number
@@ -577,6 +585,9 @@ function QuotePageInner() {
   // ── Fetch lead ───────────────────────────────────────────────────────
   const fetchLead = useCallback(async () => {
     if (!adminKey || !leadId) { setLoading(false); return }
+    // Lead created by this very page during Generate — form state is already
+    // authoritative; don't overwrite it or load a half-updated lead.
+    if (leadId === createdLeadIdRef.current) { setLoading(false); return }
     const res = await fetch(`/api/admin/leads/${leadId}?key=${adminKey}`)
     if (res.ok) {
       const d: Lead = (await res.json()).lead
@@ -1207,6 +1218,7 @@ function QuotePageInner() {
         resolvedLeadId = cj.lead?.id ?? null
       }
       if (!resolvedLeadId) { setErr('Failed to get lead ID after creation'); setGenerating(false); return }
+      createdLeadIdRef.current = resolvedLeadId
       setCreatedLeadId(resolvedLeadId)
       // 2026-08-25 fix — sync the URL with the just-created lead immediately,
       // not only after the quote itself finishes generating below. Without
