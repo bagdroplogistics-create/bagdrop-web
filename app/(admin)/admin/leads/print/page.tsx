@@ -34,6 +34,10 @@ interface PrintLead {
   bags_count: number
   status: string
   effective_status?: string
+  // true only from Payment Received/Approved onward — same flag the Leads
+  // table's orange "Confirmed" tag reads (GET /api/admin/leads). Already
+  // present on every row handed over via sessionStorage.
+  is_confirmed?: boolean
   booking_id: string | null
   lead_number: string | null
   zoho_estimate_number: string | null
@@ -191,6 +195,11 @@ export default function LeadsPrintPage() {
         .muted { color: #6b7280; }
         .name-cell { font-weight: 700; }
         .status-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+        .confirmed-badge {
+          display: inline-block; background: #ff6300; color: #fff; font-size: 8px; font-weight: 800;
+          letter-spacing: 0.4px; text-transform: uppercase; padding: 2px 7px; border-radius: 999px;
+          -webkit-print-color-adjust: exact; print-color-adjust: exact;
+        }
         .doc-footer { padding: 10px 24px 18px; font-size: 9px; color: #9ca3af; border-top: 1px solid #f3f4f6; margin-top: 8px; }
 
         @media print {
@@ -272,6 +281,11 @@ export default function LeadsPrintPage() {
                     <td>
                       <span className="status-dot" style={{ background: sm.color }} />
                       <span style={{ color: sm.color, fontWeight: 700 }}>{sm.label}</span>
+                      {l.is_confirmed && (
+                        <div style={{ marginTop: '3px' }}>
+                          <span className="confirmed-badge">Confirmed</span>
+                        </div>
+                      )}
                     </td>
                     <td>
                       {l.zoho_estimate_number ?? (l.booking_id ? 'Booking linked' : '—')}
