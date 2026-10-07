@@ -281,7 +281,7 @@ export default function LeadsPrintPage() {
                     <td>
                       <span className="status-dot" style={{ background: sm.color }} />
                       <span style={{ color: sm.color, fontWeight: 700 }}>{sm.label}</span>
-                      {l.is_confirmed && (
+                      {l.is_confirmed && (l.effective_status ?? l.status) !== 'completed' && (
                         <div style={{ marginTop: '3px' }}>
                           <span className="confirmed-badge">Confirmed</span>
                         </div>
