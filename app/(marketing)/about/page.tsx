@@ -3,6 +3,7 @@ import Image from 'next/image'
 import { Plane, Shield, Zap, Heart } from 'lucide-react'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.bagdrop.co/about' },
   title: 'About Bagdrop — India\'s Premium Baggage Infrastructure',
   description: 'We\'re building India\'s digital baggage infrastructure layer — so travelers can move freely without carrying their bags.',
 }

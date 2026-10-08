@@ -10,6 +10,9 @@ export default function sitemap(): MetadataRoute.Sitemap {
     { url: `${base}/excess-baggage`,            lastModified: now, changeFrequency: 'monthly', priority: 0.95 },
     { url: `${base}/airport-delivery`,          lastModified: now, changeFrequency: 'monthly', priority: 0.95 },
     { url: `${base}/door-to-door`,              lastModified: now, changeFrequency: 'monthly', priority: 0.90 },
+    { url: `${base}/home-baggage-drop`,         lastModified: now, changeFrequency: 'monthly', priority: 0.90 },
+    { url: `${base}/baggage-pickup-service`,    lastModified: now, changeFrequency: 'monthly', priority: 0.90 },
+    { url: `${base}/airport-baggage-services`,  lastModified: now, changeFrequency: 'monthly', priority: 0.90 },
 
     // Service pages
     { url: `${base}/destination-weddings`,      lastModified: now, changeFrequency: 'monthly', priority: 0.85 },

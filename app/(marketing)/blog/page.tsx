@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { ArrowRight, Clock, Tag } from 'lucide-react'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.bagdrop.co/blog' },
   title: 'Blog — Bagdrop | Aviation Infrastructure & Baggage Technology',
   description: 'Insights on aviation infrastructure, digital baggage technology, and the future of travel logistics in India.',
 }

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.bagdrop.co/refund-policy' },
   title: 'Refund Policy',
   description: 'Understand how Bagdrop handles cancellations and refunds through our credit voucher system.',
 }

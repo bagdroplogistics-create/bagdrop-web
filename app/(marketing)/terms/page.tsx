@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 
 export const metadata: Metadata = {
+  alternates: { canonical: 'https://www.bagdrop.co/terms' },
   title: 'Terms & Conditions',
   description: 'Terms and conditions governing your use of Bagdrop services.',
 }
