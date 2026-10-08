@@ -43,6 +43,13 @@ const nextConfig: NextConfig = {
 
   async redirects() {
     return [
+      // Search Console "Not found (404)" report, 2026-10-07 — old static-site URLs
+      // that Google still has. Placed before the host redirect so bagdrop.co
+      // variants reach the final page in one hop.
+      { source: '/index.html',            destination: 'https://www.bagdrop.co/',                 permanent: true },
+      { source: '/baggage-delivery.html', destination: 'https://www.bagdrop.co/excess-baggage',   permanent: true },
+      { source: '/about.html',            destination: 'https://www.bagdrop.co/about',            permanent: true },
+      { source: '/refund',                destination: 'https://www.bagdrop.co/refund-policy',    permanent: true },
       // SEO (Search Console review 2026-10-07): Google was indexing bagdrop.co and
       // www.bagdrop.co as two sites, splitting ranking strength. 308-redirect the
       // bare domain to www for PUBLIC marketing pages only. Admin, API, payment,

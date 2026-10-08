@@ -172,7 +172,7 @@ export default function RootLayout({
                 ],
                 'sameAs': [
                   'https://www.instagram.com/bagdropofficial',
-                  'https://www.linkedin.com/company/bagdrop',
+                  'https://www.linkedin.com/company/109452242',
                   'https://www.facebook.com/profile.php?id=61579334791456',
                 ],
               },
