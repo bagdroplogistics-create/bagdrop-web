@@ -130,7 +130,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string }
   new:       { label: 'New',       color: '#2563eb', bg: '#dbeafe' },
   contacted: { label: 'Contacted', color: '#d97706', bg: '#fef3c7' },
   qualified: { label: 'Qualified', color: '#7c3aed', bg: '#ede9fe' },
-  converted: { label: 'Converted', color: '#16a34a', bg: '#dcfce7' },
+  converted: { label: 'Completed', color: '#16a34a', bg: '#dcfce7' },
   lost:      { label: 'Lost',      color: '#dc2626', bg: '#fee2e2' },
   // Not a real leads.status value — it's the linked booking's real status
   // (bookings.status = 'confirmed'), surfaced here as a read-only display
@@ -1691,7 +1691,7 @@ function LeadsPageInner() {
                             Bookings" definition, never for quote_created/
                             quote_sent/accepted/payment_pending/partially
                             paid. */}
-                        {l.is_confirmed ? (
+                        {l.is_confirmed && (l.effective_status ?? l.status) !== 'completed' && l.status !== 'converted' ? (
                           <p className="mt-0.5 text-[11px] font-semibold" style={{ color: '#ff6300' }}>Confirmed</p>
                         ) : null}
                         {l.is_test ? (
