@@ -64,10 +64,10 @@ const METRICS = [
     decimals: 0,
   },
   {
-    label:    'On-Time Rate',
-    to:       98.7,
-    suffix:   '%',
-    decimals: 1,
+    label:    'Hours Advance Booking',
+    to:       24,
+    suffix:   '',
+    decimals: 0,
   },
   {
     label:    'Customer Rating',

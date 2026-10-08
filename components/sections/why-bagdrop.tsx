@@ -27,9 +27,9 @@ const REASONS = [
   },
   {
     Icon:        Clock,
-    stat:        '98.7%',
-    statLabel:   'on-time delivery rate',
-    title:       'On-time, every time',
+    stat:        '2–3 days',
+    statLabel:   'typical delivery time',
+    title:       'Planned around your flight',
     description: 'We schedule around your flight. Your bags are there before your taxi arrives — not the next morning.',
   },
 ] as const
