@@ -74,7 +74,7 @@ export default function AboutPage() {
               {[
                 { label: 'Bags Delivered', value: '12,000+' },
                 { label: 'Cities Covered', value: '50+' },
-                { label: 'On-Time Rate',   value: '98.7%' },
+                { label: 'Pickup Notice',   value: '24 hrs' },
                 { label: 'Customer Rating', value: '4.9 / 5' },
               ].map(m => (
                 <div key={m.label} className="rounded-2xl border border-stone-200 bg-stone-50 p-6">

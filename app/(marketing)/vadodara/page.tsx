@@ -155,7 +155,7 @@ export default function VadodaraPage() {
               { stat: '₹50,000', label: 'Insurance cover per bag' },
               { stat: '40–60%', label: 'Savings vs airline fees' },
               { stat: '24 hrs', label: 'Advance booking required' },
-              { stat: '98.7%', label: 'On-time delivery rate' },
+              { stat: '2–3 days', label: 'Typical delivery time' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-2xl font-bold text-orange-500 md:text-3xl">{stat}</div>

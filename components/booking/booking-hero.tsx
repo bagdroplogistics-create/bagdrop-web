@@ -6,7 +6,7 @@ import { ShieldCheck, Clock, Luggage } from 'lucide-react'
 
 const TRUST_PILLS = [
   { icon: ShieldCheck, label: 'Fully Insured',        color: 'text-green-400',  bg: 'bg-green-900/40' },
-  { icon: Clock,       label: '98.7% On-Time',        color: 'text-orange-400', bg: 'bg-orange-900/40' },
+  { icon: Clock,       label: '2–3 Day Delivery',        color: 'text-orange-400', bg: 'bg-orange-900/40' },
   { icon: Luggage,     label: '12,000+ Bags Delivered',color: 'text-sky-400',   bg: 'bg-sky-900/40' },
 ]
 
