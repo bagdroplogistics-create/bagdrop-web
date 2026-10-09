@@ -28,6 +28,8 @@ export interface WorkflowBookingLike {
   total_bags?:     number | null
   total_amount?:   number | null
   pickup_date?:    string | null
+  pickup_address?: string | null
+  pickup_time?:    string | null
   delivery_date?:  string | null
   service_label?:  string | null
   service_type?:   string | null
@@ -81,9 +83,12 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
         "We'll update you again once your shipment is in transit.", '', 'Thank you for trusting Bagdrop.'].join('\n')
     case 'pickup_scheduled':
       return [`Dear ${name},`, '', 'Your bag pickup has been scheduled.', '',
-        `Booking ID: ${id}`, `Pickup Date: ${b.pickup_date ? fmtDate(b.pickup_date) : 'To be confirmed'}`,
-        ...(route ? [`Route: ${route}`] : []), '',
-        'Our executive will contact you before arriving. Please keep your bags ready.', '', 'Thank you for choosing Bagdrop.'].join('\n')
+        `Booking ID: ${id}`,
+        `Pickup: ${b.pickup_date ? fmtDate(b.pickup_date) + (b.pickup_time ? ` at ${String(b.pickup_time).slice(0, 5)}` : '') : 'To be confirmed'}`,
+        `Pickup Address: ${(b.pickup_address || '').trim() || 'As shared with us'}`,
+        `Route: ${route || 'As per your booking'}`, '',
+        'Our executive will call you before arriving. Please keep your bags ready and your phone reachable.', '',
+        'Thank you for choosing Bagdrop.'].join('\n')
     case 'indemnity_bond_signed':
       // Exactly the approved documents_approved template.
       return [`Hi ${name},`, '', 'Great news!', '',

@@ -3036,7 +3036,7 @@ export default function QuoteViewPage() {
                           tracking_id: booking.tracking_id, title: lead.title, customer_name: lead.name,
                           customer_phone: booking.customer_phone, from_city: lead.from_city, to_city: lead.to_city,
                           total_bags: lead.bags_count, total_amount: booking.total_amount,
-                          pickup_date: lead.pickup_date, delivery_date: lead.delivery_date, service_type: booking.service_type,
+                          pickup_date: lead.pickup_date, pickup_time: lead.pickup_time, pickup_address: lead.pickup_address, delivery_date: lead.delivery_date, service_type: booking.service_type,
                         }))
                         if (ok) setWaOpenedFor(booking.status)
                         else setActionError('No valid WhatsApp number on this booking.')

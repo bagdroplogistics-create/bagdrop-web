@@ -38,6 +38,8 @@ interface BookingLike {
   pickup_date:        string | null
   delivery_date:      string | null
   drop_address:       string | null
+  pickup_address?:    string | null
+  time_slot?:         string | null
   service_label:      string | null
   service_type:       string | null
   status_history:     Array<Record<string, unknown>> | null
@@ -253,7 +255,12 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       // but the value itself is now date-only.
       variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), String(booking.total_bags ?? 1)]
     } else if (status === 'pickup_scheduled') {
-      variables = [name, booking.tracking_id, booking.pickup_date ? fmtDate(booking.pickup_date) : 'To be confirmed']
+      // pickup_scheduled template (FAST2SMS_TEMPLATES.md §12):
+      // {{1}} name · {{2}} booking ID · {{3}} pickup date & time · {{4}} pickup address · {{5}} route
+      const when = booking.pickup_date
+        ? fmtDate(booking.pickup_date) + (booking.time_slot ? ` at ${String(booking.time_slot).slice(0, 5)}` : '')
+        : 'To be confirmed'
+      variables = [name, booking.tracking_id, when, (booking.pickup_address || '').trim() || 'As shared with us', route || 'As per your booking']
     } else if (status === 'indemnity_bond_signed') {
       variables = [name, booking.tracking_id]
     } else if (status === 'in_transit' || status === 'out_for_delivery') {

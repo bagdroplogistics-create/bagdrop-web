@@ -516,11 +516,11 @@ there.
 
 ## 12. Pickup Scheduled — `pickup_scheduled` (TO CREATE & GET APPROVED)
 
-Needed so the Booking Workflow's "Mark Pickup Scheduled" can message the customer
-automatically. Category: Utility. After approval set the Vercel env var
-`WHATSAPP_TEMPLATE_PICKUP_SCHEDULED` to the exact template name.
+Sent when the Booking Workflow's "Mark Pickup Scheduled" is clicked. Category: Utility,
+Language: English. After approval set the Vercel env var
+`WHATSAPP_TEMPLATE_PICKUP_SCHEDULED` to the exact template name and redeploy.
 
-**Variables:** {{1}} customer name · {{2}} booking ID · {{3}} pickup date
+**Variables (in this exact order):** {{1}} customer name · {{2}} booking ID · {{3}} pickup date & time · {{4}} pickup address · {{5}} route
 
 ```
 Dear {{1}},
@@ -528,12 +528,16 @@ Dear {{1}},
 Your bag pickup has been scheduled.
 
 Booking ID: {{2}}
-Pickup Date: {{3}}
+Pickup: {{3}}
+Pickup Address: {{4}}
+Route: {{5}}
 
-Our executive will contact you before arriving. Please keep your bags ready.
+Our executive will call you before arriving. Please keep your bags ready and your phone reachable.
 
 Thank you for choosing Bagdrop.
 ```
+
+**Sample values for Meta's form:** {{1}} Mr. Sunny Patel · {{2}} BDA-2026-0264 · {{3}} 10 November 2026 at 10:00 · {{4}} 12 Palm Residency, Andheri East, Mumbai · {{5}} Mumbai → Ahmedabad
 
 ---
 
