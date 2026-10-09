@@ -95,13 +95,17 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
       return [`Dear ${name},`, '', 'Good news! Your baggage is out for delivery and will reach you shortly.', '',
         `Booking ID: ${id}`, '', 'Please keep your phone reachable.', '', 'Thank you.'].join('\n')
     case 'delivered':
+      // Exactly the approved bags_delivered_review template.
       return [`Dear ${name},`, '', 'Your baggage has been delivered successfully.', '',
-        `Booking ID: ${id}`, ...(route ? [`Route: ${route}`] : []), `Delivered On: ${fmtDate(b.delivery_date)}`, '',
+        `Booking ID: ${id}`, `Route: ${route || '—'}`, `Delivered On: ${fmtDate(b.delivery_date)}`, '',
         'Thank you for choosing BagDrop.', '',
-        "⭐ We'd love to hear about your experience. Please leave us a Google review:",
+        'We hope you enjoyed our Excess baggage delivery service.', '',
+        "⭐ We'd love to hear about your experience.", '',
+        'Please leave us a Google review:', '',
         'https://g.page/r/CbN8qgu-fMB-EBM/review', '',
         'Your feedback helps us improve and assists other travellers in choosing BagDrop.', '',
-        '- Team BagDrop'].join('\n')
+        'Thank you and we look forward to serving you again.', '',
+        '– Team BagDrop'].join('\n')
   }
 }
 
