@@ -173,10 +173,22 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       const quoteNumber = lead?.quote_number ?? booking.tracking_id
 
       if (status === 'quote_sent') {
+        // 2026-10-09 — Route in the customer message came out as
+        // "BDA-2026-0264 →" (founder screenshot, QT-2026-0264): the booking
+        // row's city fields were not a clean "from → to" pair. The quote's own
+        // lead row is the source of the quoted route, so prefer its cities and
+        // never send a half-empty route; fall back to the booking, then to a
+        // neutral phrase instead of a dangling arrow.
+        const leadRoute = [lead?.from_city, lead?.to_city]
+          .map((c: unknown) => (typeof c === 'string' ? c.trim() : ''))
+          .filter(Boolean)
+        const quoteRoute = leadRoute.length === 2 ? leadRoute.join(' → ')
+          : route.includes(' → ') ? route
+          : 'As per your quote'
         variables = [
           name,
           quoteNumber,
-          route,
+          quoteRoute,
           String(lead?.bags_count ?? booking.total_bags ?? 1),
           fmtRs(lead?.quote_total ?? booking.total_amount),
         ]
@@ -255,8 +267,15 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     // 2026-09-01 root cause).
     const result = await sendWhatsAppTemplate(booking.customer_phone, templateName, variables, header)
 
+    // Fast2SMS-accepted = delivered through the approved Haptik sender. A Meta
+    // fallback is accepted by Meta but, until the WhatsApp account has a valid
+    // payment method (error 131042), may never reach the customer — say so in
+    // the timeline instead of just "sent".
+    const via = result.provider === 'meta'
+      ? ' via Meta (delivery NOT confirmed — check whatsapp_delivery_events)'
+      : result.provider ? ` via ${result.provider}` : ''
     const note = `WhatsApp (${status}) ` +
-      (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)
+      (result.success ? `accepted${via} — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)
 
     const history = Array.isArray(booking.status_history) ? booking.status_history : []
     history.push({ from: status, to: status, timestamp: new Date().toISOString(), changed_by: 'system', note })
