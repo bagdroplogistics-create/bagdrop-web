@@ -81,6 +81,9 @@ export async function PATCH(
     // not just a jump-to-terminal-status data-migration case. See the
     // shouldNotifyCustomer computation below.
     admin_approve,
+    // Admin sends the customer WhatsApp manually via WhatsApp Web — skip the
+    // automatic API WhatsApp for this change (email etc. unaffected).
+    manual_whatsapp,
     // Manual correction for which calendar month a completed booking
     // reports under in Dashboard Analytics — see
     // COMPLETED_MONTH_OVERRIDE_MIGRATION.sql and
@@ -428,7 +431,7 @@ export async function PATCH(
       const shouldNotifyCustomer = admin_approve === true
         ? false
         : (isForwardMove(existing?.status, status) || isQuoteSentRetry) && !alreadyNotified
-      shouldSendLifecycleWhatsApp = shouldNotifyCustomer
+      shouldSendLifecycleWhatsApp = shouldNotifyCustomer && manual_whatsapp !== true
 
       // Admin Approve also marks the status as "already notified" even
       // though nothing was sent — same as if it had gone out normally —
