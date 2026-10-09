@@ -731,6 +731,12 @@ export default function QuoteViewPage() {
         // same step again retries the send.
         if (d.whatsapp && d.whatsapp.attempted && !d.whatsapp.success) {
           alert('Status updated, but the WhatsApp message to the customer FAILED:\n\n' + (d.whatsapp.error ?? 'Unknown error') + '\n\nClick the same step again to retry.')
+        } else if (d.whatsapp && d.whatsapp.attempted && d.whatsapp.provider === 'meta') {
+          // Accepted by Meta only — without a valid Meta payment method Meta
+          // accepts but never delivers (error 131042). Say so plainly.
+          alert('WhatsApp was handed to Meta, but delivery to the customer is NOT guaranteed.' +
+            (d.whatsapp.primaryError ? '\n\nFast2SMS (primary sender) failed first:\n' + d.whatsapp.primaryError : '') +
+            '\n\nUse the green "Send on WhatsApp" button on this step if the customer must get it now.')
         }
 
         // Keep the linked return-leg booking's status/payment fields in

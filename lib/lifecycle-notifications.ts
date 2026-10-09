@@ -123,6 +123,9 @@ export interface LifecycleSendResult {
   success: boolean
   error?: string
   provider?: string
+  // Set when the preferred provider failed and the other one was used.
+  fallbackFrom?: string
+  primaryError?: string
 }
 
 export async function sendLifecycleWhatsApp(status: string, booking: BookingLike): Promise<LifecycleSendResult> {
@@ -272,7 +275,7 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     // payment method (error 131042), may never reach the customer — say so in
     // the timeline instead of just "sent".
     const via = result.provider === 'meta'
-      ? ' via Meta (delivery NOT confirmed — check whatsapp_delivery_events)'
+      ? ` via Meta (delivery NOT confirmed — check whatsapp_delivery_events)${result.primaryError ? `; Fast2SMS failed first: ${result.primaryError}` : ''}`
       : result.provider ? ` via ${result.provider}` : ''
     const note = `WhatsApp (${status}) ` +
       (result.success ? `accepted${via} — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`)
@@ -282,7 +285,7 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     await supabaseAdmin.from('bookings').update({ status_history: history }).eq('id', booking.id)
 
     console.log(`[LifecycleWhatsApp] Booking ${booking.tracking_id} — ${note}`)
-    return { attempted: true, success: result.success, error: result.error, provider: result.provider }
+    return { attempted: true, success: result.success, error: result.error, provider: result.provider, fallbackFrom: result.fallbackFrom, primaryError: result.primaryError }
   } catch (err) {
     console.error('[LifecycleWhatsApp] Unexpected error (non-fatal):', err)
     return { attempted: true, success: false, error: err instanceof Error ? err.message : String(err) }
