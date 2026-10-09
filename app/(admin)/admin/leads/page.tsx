@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, Suspense, Fragment } from 'react'
-import { waDigits } from '@/lib/workflow-whatsapp'
+import { waDigits, buildQuoteSentText } from '@/lib/workflow-whatsapp'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
@@ -1363,22 +1363,8 @@ function LeadsPageInner() {
       const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
       const phoneDigits = (l.phone ?? '').replace(/\D/g, '')
       const e164  = waDigits(l.phone) || phoneDigits
-      const msg = [
-        `Hi ${name}! 👋`,
-        '',
-        `Your Bagdrop quote is ready. Here's the summary:`,
-        '',
-        `👤 Customer Name: ${name}`,
-        `📋 Quote No: ${qnum}`,
-        `🗺️ Route: ${from} → ${to}`,
-        `🧳 No. of Bags: ${bags}`,
-        `💰 Total Amount: ${fmt(Number(total))}`,
-        '',
-        `📄 Download your quote PDF:`, pdfUrl, '',
-        'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
-        '',
-        '— Team Bagdrop',
-      ].join('\n')
+      // Wording = the approved quote_sent_v2 template (+ PDF link line).
+      const msg = buildQuoteSentText({ name, quoteNo: qnum, from, to, bags, total: Number(total), pdfUrl })
 
       // Mark as sent (same status bump doSendQuoteWhatsApp performs), then
       // open WhatsApp Web with the message pre-filled.

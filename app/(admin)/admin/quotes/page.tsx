@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { waDigits } from '@/lib/workflow-whatsapp'
+import { waDigits, buildQuoteSentText } from '@/lib/workflow-whatsapp'
 import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
@@ -299,16 +299,11 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
       const digits = quote.customer_phone.replace(/\D/g, '')
       const e164   = waDigits(quote.customer_phone) || digits
       const total  = Number(quote.total_amount)
-      const msg =
-        `Hi ${formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}! 🧳\n\n` +
-        `Your Bagdrop service quote is ready.\n\n` +
-        `📋 Quote: *${quote.quote_number}*\n` +
-        `🗺️ Route: ${quote.from_city} → ${quote.to_city}\n` +
-        `💼 Bags: ${quote.total_bags}\n` +
-        `💰 Total: *₹${total.toLocaleString('en-IN')}*\n\n` +
-        `📄 *Download your quote PDF:*\n${pdfUrl}\n\n` +
-        `To confirm your booking, reply here or call +91 63571 15711.\n\n` +
-        `_Bagdrop — Baggage Delivered. Journey Simplified._`
+      const msg = buildQuoteSentText({
+        name: formatCustomerName(quote.title, quote.customer_name) || quote.customer_name,
+        quoteNo: quote.quote_number, from: quote.from_city, to: quote.to_city,
+        bags: quote.total_bags, total, pdfUrl,
+      })
       // web.whatsapp.com/send goes straight to the WhatsApp Web chat with
       // the message drafted — wa.me bounces through an api.whatsapp.com
       // landing page on desktop browsers first.

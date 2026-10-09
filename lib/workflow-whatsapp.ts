@@ -77,7 +77,7 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
         'Our team will contact you before pickup.', '', 'Thank you for choosing Bagdrop.'].join('\n')
     case 'picked_up':
       return [`Dear ${name},`, '', 'Your bags have been collected successfully.', '',
-        `Booking ID: ${id}`, `Collection Date: ${fmtDate()}`, `Number of Bags: ${b.total_bags ?? 1}`, '',
+        `Booking ID: ${id}`, `Collection Time: ${fmtDate()}`, `Number of Bags: ${b.total_bags ?? 1}`, '',
         "We'll update you again once your shipment is in transit.", '', 'Thank you for trusting Bagdrop.'].join('\n')
     case 'pickup_scheduled':
       return [`Dear ${name},`, '', 'Your bag pickup has been scheduled.', '',
@@ -103,6 +103,22 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
         'Your feedback helps us improve and assists other travellers in choosing BagDrop.', '',
         '- Team BagDrop'].join('\n')
   }
+}
+
+/** Quote Sent message — wording of the approved `quote_sent_v2` template
+ *  (WhatsApp Manager). The template carries the PDF as a document header; a
+ *  manual WhatsApp Web message can't, so the PDF link is added as a last line. */
+export function buildQuoteSentText(q: {
+  name: string; quoteNo: string; from?: string | null; to?: string | null
+  bags: number | string; total: number | string; pdfUrl?: string | null
+}): string {
+  const route = q.from && q.to ? `${q.from} → ${q.to}` : 'As per your quote'
+  return [`Dear ${q.name},`, '', 'Your Bagdrop quote is ready.', '',
+    `Customer Name: ${q.name}`, `Quote No: ${q.quoteNo}`, `Route: ${route}`, `Bags: ${q.bags}`,
+    `Total Amount: ${fmtRs(Number(q.total))}`, '',
+    'Please review and confirm. For any questions, call us at +91 63571 15711 or +91 63573 35733.',
+    ...(q.pdfUrl ? ['', `Quote PDF: ${q.pdfUrl}`] : []), '',
+    'Thank you for choosing Bagdrop.'].join('\n')
 }
 
 /** Opens WhatsApp Web with the message pre-filled. Returns false if no usable number. */

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
+import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Printer, Download,
@@ -991,22 +991,8 @@ export default function QuoteViewPage() {
       const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
       const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
       const e164  = waDigits(booking.customer_phone) || phone
-      const msg = [
-        `Hi ${name}! 👋`,
-        '',
-        `Your Bagdrop quote is ready. Here's the summary:`,
-        '',
-        `👤 Customer Name: ${name}`,
-        `📋 Quote No: ${qnum}`,
-        `🗺️ Route: ${from && to ? `${from} → ${to}` : 'As per your quote'}`,
-        `🧳 No. of Bags: ${bags}`,
-        `💰 Total Amount: ${fmt(Number(total))}`,
-        '',
-        `📄 Download your quote PDF:`, pdfUrl, '',
-        'To confirm your booking, simply reply to this message or call/WhatsApp us anytime.',
-        '',
-        '— Team Bagdrop',
-      ].join('\n')
+      // Wording = the approved quote_sent_v2 template (+ PDF link line).
+      const msg = buildQuoteSentText({ name, quoteNo: qnum, from, to, bags, total: Number(total), pdfUrl })
       // Mark as sent, then open WhatsApp Web directly (web.whatsapp.com/send
       // skips the api.whatsapp.com landing page that wa.me shows on desktop
       // browsers).

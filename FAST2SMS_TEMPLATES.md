@@ -27,12 +27,13 @@ Dear {{1}},
 
 Your Bagdrop quote is ready.
 
+Customer Name: {{1}}
 Quote No: {{2}}
 Route: {{3}}
 Bags: {{4}}
 Total Amount: {{5}}
 
-Please review and confirm. For any questions, call us at +91 63571 15711.
+Please review and confirm. For any questions, call us at +91 63571 15711 or +91 63573 35733.
 
 Thank you for choosing Bagdrop.
 ```
