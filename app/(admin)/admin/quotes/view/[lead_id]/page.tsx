@@ -703,6 +703,15 @@ export default function QuoteViewPage() {
     'rejection_reason', 'rejection_comment', 'approved_without_payment',
   ] as const
 
+  // Points the pre-opened tab at the pre-filled WhatsApp Web chat and ALSO
+  // copies the message to the clipboard, so if WhatsApp Web ever opens the
+  // chat with an empty box the admin can simply press Ctrl+V.
+  function goWhatsAppWeb(tab: Window, digits: string, text: string) {
+    try { void navigator.clipboard?.writeText(text).catch(() => {}) } catch { /* ignore */ }
+    tab.location.href = `https://web.whatsapp.com/send/?phone=${digits}&text=${encodeURIComponent(text)}&type=phone_number&app_absent=0`
+    setActionError('WhatsApp Web opened. Message is also copied — if the message box is empty, click it and press Ctrl+V, then Send.')
+  }
+
   async function patchBooking(actionKey: string, payload: Record<string, unknown>, waMessage?: string): Promise<boolean> {
     if (!booking || !key) return false
     setActing(actionKey)
@@ -745,7 +754,7 @@ export default function QuoteViewPage() {
                 delivery_date: lead?.delivery_date, service_type: merged.service_type,
               })
             : '')
-          waTab.location.href = `https://web.whatsapp.com/send?phone=${waDigits(merged.customer_phone)}&text=${encodeURIComponent(text)}`
+          goWhatsAppWeb(waTab, waDigits(merged.customer_phone), text)
         }
 
         // Keep the linked return-leg booking's status/payment fields in
@@ -978,7 +987,6 @@ export default function QuoteViewPage() {
       const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
       const total = lead.quote_total ?? booking.total_amount ?? 0
       const msg = buildQuoteSentText({ name, quoteNo: qnum, from: (lead.from_city || '').trim(), to: (lead.to_city || '').trim(), bags: lead.bags_count ?? 1, total: Number(total), pdfUrl })
-      const waUrl = `https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`
       if (!skipStatusChange) {
         // status change sends no API WhatsApp (manual_whatsapp) — the tab is ours
         const r = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
@@ -990,7 +998,7 @@ export default function QuoteViewPage() {
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? {}) } : prev)
         setActionSuccess('send_quote'); setTimeout(() => setActionSuccess(null), 4000)
       }
-      waTab.location.href = waUrl
+      goWhatsAppWeb(waTab, e164, msg)
     } finally {
       setSendingQuoteWhatsApp(false)
     }
