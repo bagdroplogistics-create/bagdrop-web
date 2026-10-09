@@ -741,6 +741,7 @@ export default function QuoteViewPage() {
             message: 'WhatsApp accepted by ' + (d.whatsapp.provider === 'meta' ? 'Meta' : 'Fast2SMS') +
               ' (delivery to the customer is confirmed separately).' +
               (d.whatsapp.fallbackFrom ? ' Fast2SMS failed first: ' + (d.whatsapp.primaryError ?? '') : '') })
+          if (d.whatsapp.provider === 'meta') void watchDelivery(booking.id, String(payload.status ?? ''))
         }
 
         // Keep the linked return-leg booking's status/payment fields in
@@ -942,6 +943,31 @@ export default function QuoteViewPage() {
     await patchBooking('send_quote', { status: 'quote_sent', send_quote_email: true })
   }
 
+  // After the provider accepts, poll Meta's delivery callbacks so the banner
+  // shows the REAL outcome (delivered / failed + reason) instead of a bare "sent".
+  async function watchDelivery(bookingId: string, step: string) {
+    for (let i = 0; i < 8; i++) {
+      await new Promise(res => setTimeout(res, 4000))
+      try {
+        const r = await fetch(`/api/admin/bookings/${bookingId}/send-whatsapp?key=${encodeURIComponent(key ?? '')}`, { headers: { 'x-admin-key': key ?? '' } })
+        const { event } = await r.json()
+        if (!event) continue
+        if (event.status === 'failed') {
+          setWaStatus({ state: 'failed', step, retryable: false,
+            message: `Meta accepted it but could NOT deliver (error ${event.error_code ?? '?'}: ${event.error_title ?? event.error_detail ?? 'unknown'}). The customer did not receive it.` })
+          return
+        }
+        if (event.status === 'delivered' || event.status === 'read') {
+          setWaStatus({ state: 'sent', step, message: 'Delivered to the customer’s WhatsApp.' })
+          return
+        }
+      } catch { /* keep polling */ }
+    }
+    setWaStatus(prev => prev && prev.state === 'sent' && prev.step === step
+      ? { ...prev, message: prev.message + ' No delivery confirmation received yet — if the customer has not got it, check Meta billing (error 131042).' }
+      : prev)
+  }
+
   // Server-side WhatsApp send for the CURRENT step (template + PDF where the
   // template has one). Never opens WhatsApp Web, never changes status.
   async function resendStepWhatsApp() {
@@ -965,6 +991,7 @@ export default function QuoteViewPage() {
           message: 'WhatsApp accepted by ' + (w.provider === 'meta' ? 'Meta' : 'Fast2SMS') +
             ' (delivery to the customer is confirmed separately).' +
             (w.fallbackFrom ? ' Fast2SMS failed first: ' + (w.primaryError ?? '') : '') })
+        if (w.provider === 'meta') void watchDelivery(booking.id, step)
       } else if (w?.attempted) {
         setWaStatus({ state: 'failed', step, retryable: true, message: w.error ?? 'Provider rejected the message' })
       } else {
@@ -2426,7 +2453,7 @@ export default function QuoteViewPage() {
                     {waStatus && waStatus.step === 'quote_sent' && (
                   <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
                     {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    <span>{waStatus.state === 'sent' ? '✅ ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
                     {waStatus.state === 'failed' && waStatus.retryable && (
                       <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
                     )}
@@ -2450,7 +2477,7 @@ export default function QuoteViewPage() {
                     {waStatus && waStatus.step === 'quote_sent' && (
                   <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
                     {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    <span>{waStatus.state === 'sent' ? '✅ ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
                     {waStatus.state === 'failed' && waStatus.retryable && (
                       <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
                     )}
@@ -3058,7 +3085,7 @@ export default function QuoteViewPage() {
                     {waStatus && waStatus.step === booking.status && (
                   <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
                     {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
-                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    <span>{waStatus.state === 'sent' ? '✅ ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
                     {waStatus.state === 'failed' && waStatus.retryable && (
                       <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
                     )}

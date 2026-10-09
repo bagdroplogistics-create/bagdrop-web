@@ -71,3 +71,27 @@ export async function POST(
     inFlight.delete(lockKey)
   }
 }
+
+// Latest Meta delivery callback for this booking's customer (last 15 min).
+// Lets the UI replace "accepted by provider" with the real outcome.
+export async function GET(
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> }
+) {
+  if (!requireAdminAuth(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+  const { id } = await context.params
+  const { data: b } = await supabaseAdmin.from('bookings').select('customer_phone').eq('id', id).single()
+  const digits = (b?.customer_phone ?? '').replace(/\D/g, '')
+  if (digits.length < 8) return NextResponse.json({ event: null })
+  const since = new Date(Date.now() - 15 * 60_000).toISOString()
+  const { data } = await supabaseAdmin
+    .from('whatsapp_delivery_events')
+    .select('status, error_code, error_title, error_detail, created_at')
+    .like('recipient', `%${digits.slice(-10)}`)
+    .gte('created_at', since)
+    .order('created_at', { ascending: false })
+    .limit(1)
+  return NextResponse.json({ event: data?.[0] ?? null })
+}
