@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef, Suspense, Fragment } from 'react'
+import { waDigits } from '@/lib/workflow-whatsapp'
 import { useRouter, useSearchParams } from 'next/navigation'
 import {
   Users, Plus, Search, RefreshCw, ChevronDown,
@@ -1361,7 +1362,7 @@ function LeadsPageInner() {
       const total = l.quote_total ?? 0
       const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
       const phoneDigits = (l.phone ?? '').replace(/\D/g, '')
-      const e164  = phoneDigits.startsWith('91') ? phoneDigits : '91' + phoneDigits
+      const e164  = waDigits(l.phone) || phoneDigits
       const msg = [
         `Hi ${name}! 👋`,
         '',

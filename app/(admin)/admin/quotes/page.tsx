@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import { waDigits } from '@/lib/workflow-whatsapp'
 import { useRouter } from 'next/navigation'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
@@ -296,7 +297,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
 
       // Step 3: Open WhatsApp with PDF download link in message
       const digits = quote.customer_phone.replace(/\D/g, '')
-      const e164   = digits.startsWith('91') ? digits : '91' + digits
+      const e164   = waDigits(quote.customer_phone) || digits
       const total  = Number(quote.total_amount)
       const msg =
         `Hi ${formatCustomerName(quote.title, quote.customer_name) || quote.customer_name}! 🧳\n\n` +
@@ -352,7 +353,7 @@ function QuotePreviewModal({ quote, adminKey, onClose, onEdit, onUpdated }: {
     setSending('payment')
     setActionMsg('')
     const digits    = quote.customer_phone.replace(/\D/g, '')
-    const e164      = digits.startsWith('91') ? digits : '91' + digits
+    const e164      = waDigits(quote.customer_phone) || digits
     const upi       = upiId || 'BAGDROP1717@IOB'
     const qrData    = upiLink ?? `upi://pay?pa=${upi}&pn=Bagdrop&am=${amount}&cu=INR&tn=${quote.quote_number}`
     const qrImgUrl  = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(qrData)}`

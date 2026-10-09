@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Printer, Download,
@@ -417,6 +418,8 @@ export default function QuoteViewPage() {
   const [acting, setActing]                     = useState<string | null>(null)
   const [actionSuccess, setActionSuccess]       = useState<string | null>(null)
   const [actionError, setActionError]           = useState<string | null>(null)
+  // Which workflow step's manual WhatsApp message was last opened (UI hint only).
+  const [waOpenedFor, setWaOpenedFor]            = useState<string | null>(null)
 
   // Test Mode toggle (Founder spec 2026-09-22) — see doToggleTestMode below.
   const [togglingTestMode, setTogglingTestMode] = useState(false)
@@ -971,13 +974,15 @@ export default function QuoteViewPage() {
 
       const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
       const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
-      const from  = lead.from_city ?? booking?.tracking_id ?? ''
-      const to    = lead.to_city   ?? ''
+      // Route: the lead's cities. Never fall back to the
+      // booking ID (a customer once received "Route: BDA-2026-0264 →").
+      const from  = (lead.from_city || '').trim()
+      const to    = (lead.to_city   || '').trim()
       const bags  = lead.bags_count ?? 1
       const total = lead.quote_total ?? booking.total_amount ?? 0
       const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
       const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
-      const e164  = phone.startsWith('91') ? phone : '91' + phone
+      const e164  = waDigits(booking.customer_phone) || phone
       const msg = [
         `Hi ${name}! 👋`,
         '',
@@ -985,7 +990,7 @@ export default function QuoteViewPage() {
         '',
         `👤 Customer Name: ${name}`,
         `📋 Quote No: ${qnum}`,
-        `🗺️ Route: ${from} → ${to}`,
+        `🗺️ Route: ${from && to ? `${from} → ${to}` : 'As per your quote'}`,
         `🧳 No. of Bags: ${bags}`,
         `💰 Total Amount: ${fmt(Number(total))}`,
         '',
@@ -1170,7 +1175,7 @@ export default function QuoteViewPage() {
       const total = lead.return_quote_total ?? 0
       const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
       const phone = (lead.phone ?? '').replace(/\D/g, '')
-      const e164  = phone.startsWith('91') ? phone : '91' + phone
+      const e164  = waDigits(lead.phone) || phone
       const msg = [
         `Hi ${name}! 👋`,
         '',
@@ -1223,7 +1228,7 @@ export default function QuoteViewPage() {
       const amt = Number(booking.total_amount ?? 0)
       const upi = upiId || 'BAGDROP1717@IOB'
       const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
-      const e164 = phone.startsWith('91') ? phone : '91' + phone
+      const e164 = waDigits(booking.customer_phone) || phone
       const upiLink = `upi://pay?pa=${upi}&pn=Bagdrop&am=${amt}&cu=INR&tn=${booking.tracking_id}`
       const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiLink)}`
       const msg = [
@@ -3021,6 +3026,36 @@ export default function QuoteViewPage() {
                       {acting === 'mark_completed' ? 'Closing...' : 'Mark Completed ✓'}
                     </button>
                     {actionSuccess === 'mark_completed' && <p className="text-xs text-green-600 font-semibold">✅ Booking completed and closed.</p>}
+                  </div>
+                )}
+
+                {/* ── Customer WhatsApp update for the CURRENT step ──
+                     Same mechanism as the Quote Sent action (the one that
+                     reaches customers): opens WhatsApp Web with the step's
+                     message pre-filled; the admin presses Send there. Never
+                     changes booking status — that stays a separate button. */}
+                {isWorkflowWhatsAppStep(booking.status) && booking.customer_phone && (
+                  <div className="flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
+                    <button type="button"
+                      onClick={() => {
+                        const ok = openWorkflowWhatsApp(booking.customer_phone, buildWorkflowWhatsAppText(booking.status as Parameters<typeof buildWorkflowWhatsAppText>[0], {
+                          tracking_id: booking.tracking_id, title: lead.title, customer_name: lead.name,
+                          customer_phone: booking.customer_phone, from_city: lead.from_city, to_city: lead.to_city,
+                          total_bags: lead.bags_count, total_amount: booking.total_amount,
+                          pickup_date: lead.pickup_date, delivery_date: lead.delivery_date, service_type: booking.service_type,
+                        }))
+                        if (ok) setWaOpenedFor(booking.status)
+                        else setActionError('No valid WhatsApp number on this booking.')
+                      }}
+                      className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 transition-colors">
+                      <MessageCircle className="h-4 w-4" />
+                      {waOpenedFor === booking.status ? 'Resend' : 'Send'} “{WORKFLOW_WHATSAPP_LABEL[booking.status as keyof typeof WORKFLOW_WHATSAPP_LABEL]}” on WhatsApp
+                    </button>
+                    <p className="text-[11px] text-green-700">
+                      {waOpenedFor === booking.status
+                        ? 'WhatsApp Web opened — confirm the message was sent from there.'
+                        : 'Opens WhatsApp Web with the message ready. Press Send there. Status is not changed.'}
+                    </p>
                   </div>
                 )}
 
