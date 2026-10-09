@@ -51,7 +51,7 @@ export const WORKFLOW_WHATSAPP_LABEL: Record<WorkflowWhatsAppStep, string> = {
   out_for_delivery: 'Out for delivery',
   delivered:        'Bags delivered',
   pickup_scheduled: 'Pickup scheduled',
-  indemnity_bond_signed: 'Indemnity bond received',
+  indemnity_bond_signed: 'Documents approved',
 }
 
 export function isWorkflowWhatsAppStep(s: string): s is WorkflowWhatsAppStep {
@@ -85,9 +85,12 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
         ...(route ? [`Route: ${route}`] : []), '',
         'Our executive will contact you before arriving. Please keep your bags ready.', '', 'Thank you for choosing Bagdrop.'].join('\n')
     case 'indemnity_bond_signed':
-      return [`Dear ${name},`, '', 'We have received your signed indemnity bond. Thank you.', '',
-        `Booking ID: ${id}`, '', 'Our team will now schedule your bag pickup and confirm the timing with you.', '',
-        'Thank you for choosing Bagdrop.'].join('\n')
+      // Exactly the approved documents_approved template.
+      return [`Hi ${name},`, '', 'Great news!', '',
+        `Your submitted documents for Booking ID: ${id} have been verified and approved.`, '',
+        'Your booking is now ready for the next stage of processing.', '',
+        "We'll keep you updated throughout your shipment.", '',
+        'Thank you for choosing BagDrop.', '', '– Team BagDrop'].join('\n')
     case 'in_transit':
       return [`Dear ${name},`, '', 'Your baggage is now in transit to its destination.', '',
         `Booking ID: ${id}`, '', "We'll notify you again once your bags are out for delivery.", '', 'Thank you.'].join('\n')

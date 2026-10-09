@@ -85,6 +85,10 @@ const TEMPLATE_BY_STATUS: Record<string, string> = {
   in_transit:       'bags_in_transit',
   out_for_delivery: 'out_for_delivery',
   delivered:        'bags_delivered_review',
+  // 'Mark Signed (Offline / Paper Bond)' — admin has the signed bond in hand, so the
+  // already-approved documents_approved template (same one the document-review
+  // Approve action sends) is the right customer message. Variables: name, booking ID.
+  indemnity_bond_signed: 'documents_approved',
 }
 
 function fmtRs(n: number | null | undefined): string {
@@ -135,16 +139,15 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
   try {
     // Customer-facing steps whose Meta/Fast2SMS template has to be created and
     // approved first. Wired by env var so no code change is needed once approved:
-    //   WHATSAPP_TEMPLATE_PICKUP_SCHEDULED, WHATSAPP_TEMPLATE_INDEMNITY_SIGNED
-    // (drafts in FAST2SMS_TEMPLATES.md, sections 12–13).
+    //   WHATSAPP_TEMPLATE_PICKUP_SCHEDULED
+    // (draft in FAST2SMS_TEMPLATES.md, section 12).
     const ENV_TEMPLATE_BY_STATUS: Record<string, string | undefined> = {
       pickup_scheduled:      process.env.WHATSAPP_TEMPLATE_PICKUP_SCHEDULED,
-      indemnity_bond_signed: process.env.WHATSAPP_TEMPLATE_INDEMNITY_SIGNED,
     }
     const templateName = TEMPLATE_BY_STATUS[status] ?? ENV_TEMPLATE_BY_STATUS[status]
     if (!templateName) {
       if (status in ENV_TEMPLATE_BY_STATUS && booking.customer_phone && !booking.is_test) {
-        const label = status === 'pickup_scheduled' ? 'Pickup Scheduled' : 'Indemnity Bond Signed'
+        const label = 'Pickup Scheduled'
         return { attempted: false, success: true,
           notice: `No customer WhatsApp was sent for "${label}": no approved WhatsApp template is configured for this step yet. Use the green "Send on WhatsApp" button on this step to message the customer.` }
       }

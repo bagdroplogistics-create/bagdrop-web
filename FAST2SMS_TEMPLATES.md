@@ -537,21 +537,7 @@ Thank you for choosing Bagdrop.
 
 ---
 
-## 13. Indemnity Bond Received — `indemnity_bond_signed` (TO CREATE & GET APPROVED)
+## 13. Indemnity Bond Signed — no new template needed
 
-Sent when the signed indemnity bond is recorded. Category: Utility. After approval
-set `WHATSAPP_TEMPLATE_INDEMNITY_SIGNED` to the exact template name.
-
-**Variables:** {{1}} customer name · {{2}} booking ID
-
-```
-Dear {{1}},
-
-We have received your signed indemnity bond. Thank you.
-
-Booking ID: {{2}}
-
-Our team will now schedule your bag pickup and confirm the timing with you.
-
-Thank you for choosing Bagdrop.
-```
+The workflow step "Indemnity Bond Signed" now uses the already-approved `documents_approved`
+template (variables: {{1}} name, {{2}} booking ID). Nothing to create.
