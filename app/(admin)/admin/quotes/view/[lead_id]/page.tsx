@@ -729,7 +729,9 @@ export default function QuoteViewPage() {
         // The status moved, but the customer WhatsApp did NOT go out —
         // say so instead of leaving a silent "Quote Sent". Clicking the
         // same step again retries the send.
-        if (d.whatsapp && d.whatsapp.attempted && !d.whatsapp.success) {
+        if (d.whatsapp && d.whatsapp.notice) {
+          alert(d.whatsapp.notice)
+        } else if (d.whatsapp && d.whatsapp.attempted && !d.whatsapp.success) {
           alert('Status updated, but the WhatsApp message to the customer FAILED:\n\n' + (d.whatsapp.error ?? 'Unknown error') + '\n\nClick the same step again to retry.')
         } else if (d.whatsapp && d.whatsapp.attempted && d.whatsapp.provider === 'meta') {
           // Accepted by Meta only — without a valid Meta payment method Meta

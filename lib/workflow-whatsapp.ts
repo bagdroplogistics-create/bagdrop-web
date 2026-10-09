@@ -16,6 +16,7 @@ import { formatCustomerName } from './constants'
 export type WorkflowWhatsAppStep =
   | 'payment_received' | 'confirmed' | 'picked_up'
   | 'in_transit' | 'out_for_delivery' | 'delivered'
+  | 'pickup_scheduled' | 'indemnity_bond_signed'
 
 export interface WorkflowBookingLike {
   tracking_id:     string
@@ -49,6 +50,8 @@ export const WORKFLOW_WHATSAPP_LABEL: Record<WorkflowWhatsAppStep, string> = {
   in_transit:       'Bags in transit',
   out_for_delivery: 'Out for delivery',
   delivered:        'Bags delivered',
+  pickup_scheduled: 'Pickup scheduled',
+  indemnity_bond_signed: 'Indemnity bond received',
 }
 
 export function isWorkflowWhatsAppStep(s: string): s is WorkflowWhatsAppStep {
@@ -76,6 +79,15 @@ export function buildWorkflowWhatsAppText(step: WorkflowWhatsAppStep, b: Workflo
       return [`Dear ${name},`, '', 'Your bags have been collected successfully.', '',
         `Booking ID: ${id}`, `Collection Date: ${fmtDate()}`, `Number of Bags: ${b.total_bags ?? 1}`, '',
         "We'll update you again once your shipment is in transit.", '', 'Thank you for trusting Bagdrop.'].join('\n')
+    case 'pickup_scheduled':
+      return [`Dear ${name},`, '', 'Your bag pickup has been scheduled.', '',
+        `Booking ID: ${id}`, `Pickup Date: ${b.pickup_date ? fmtDate(b.pickup_date) : 'To be confirmed'}`,
+        ...(route ? [`Route: ${route}`] : []), '',
+        'Our executive will contact you before arriving. Please keep your bags ready.', '', 'Thank you for choosing Bagdrop.'].join('\n')
+    case 'indemnity_bond_signed':
+      return [`Dear ${name},`, '', 'We have received your signed indemnity bond. Thank you.', '',
+        `Booking ID: ${id}`, '', 'Our team will now schedule your bag pickup and confirm the timing with you.', '',
+        'Thank you for choosing Bagdrop.'].join('\n')
     case 'in_transit':
       return [`Dear ${name},`, '', 'Your baggage is now in transit to its destination.', '',
         `Booking ID: ${id}`, '', "We'll notify you again once your bags are out for delivery.", '', 'Thank you.'].join('\n')

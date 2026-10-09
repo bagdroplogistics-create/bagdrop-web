@@ -126,12 +126,30 @@ export interface LifecycleSendResult {
   // Set when the preferred provider failed and the other one was used.
   fallbackFrom?: string
   primaryError?: string
+  // Customer-facing step with no approved WhatsApp template configured yet —
+  // nothing was sent; the admin is told instead of being left guessing.
+  notice?: string
 }
 
 export async function sendLifecycleWhatsApp(status: string, booking: BookingLike): Promise<LifecycleSendResult> {
   try {
-    const templateName = TEMPLATE_BY_STATUS[status]
-    if (!templateName) return { attempted: false, success: true } // no template mapped for this status — nothing to do
+    // Customer-facing steps whose Meta/Fast2SMS template has to be created and
+    // approved first. Wired by env var so no code change is needed once approved:
+    //   WHATSAPP_TEMPLATE_PICKUP_SCHEDULED, WHATSAPP_TEMPLATE_INDEMNITY_SIGNED
+    // (drafts in FAST2SMS_TEMPLATES.md, sections 12–13).
+    const ENV_TEMPLATE_BY_STATUS: Record<string, string | undefined> = {
+      pickup_scheduled:      process.env.WHATSAPP_TEMPLATE_PICKUP_SCHEDULED,
+      indemnity_bond_signed: process.env.WHATSAPP_TEMPLATE_INDEMNITY_SIGNED,
+    }
+    const templateName = TEMPLATE_BY_STATUS[status] ?? ENV_TEMPLATE_BY_STATUS[status]
+    if (!templateName) {
+      if (status in ENV_TEMPLATE_BY_STATUS && booking.customer_phone && !booking.is_test) {
+        const label = status === 'pickup_scheduled' ? 'Pickup Scheduled' : 'Indemnity Bond Signed'
+        return { attempted: false, success: true,
+          notice: `No customer WhatsApp was sent for "${label}": no approved WhatsApp template is configured for this step yet. Use the green "Send on WhatsApp" button on this step to message the customer.` }
+      }
+      return { attempted: false, success: true } // no template mapped for this status — nothing to do
+    }
 
     // Test Mode bookings (Group Booking "Test Mode" checkbox — see
     // supabase/migrations/20260904_group_bookings.sql's is_test columns)
@@ -231,6 +249,10 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       // (changing that label would need a new Meta-approved template),
       // but the value itself is now date-only.
       variables = [name, booking.tracking_id, fmtDate(new Date().toISOString()), String(booking.total_bags ?? 1)]
+    } else if (status === 'pickup_scheduled') {
+      variables = [name, booking.tracking_id, booking.pickup_date ? fmtDate(booking.pickup_date) : 'To be confirmed']
+    } else if (status === 'indemnity_bond_signed') {
+      variables = [name, booking.tracking_id]
     } else if (status === 'in_transit' || status === 'out_for_delivery') {
       variables = [name, booking.tracking_id]
     } else if (status === 'delivered') {

@@ -509,3 +509,48 @@ small addition when I wire triggers in: **Collection Time** (bags picked up)
 and exact **payment date** timestamp — both derivable from existing
 `status_history` timestamps, just needs a couple lines of code once we get
 there.
+
+
+---
+
+## 12. Pickup Scheduled — `pickup_scheduled` (TO CREATE & GET APPROVED)
+
+Needed so the Booking Workflow's "Mark Pickup Scheduled" can message the customer
+automatically. Category: Utility. After approval set the Vercel env var
+`WHATSAPP_TEMPLATE_PICKUP_SCHEDULED` to the exact template name.
+
+**Variables:** {{1}} customer name · {{2}} booking ID · {{3}} pickup date
+
+```
+Dear {{1}},
+
+Your bag pickup has been scheduled.
+
+Booking ID: {{2}}
+Pickup Date: {{3}}
+
+Our executive will contact you before arriving. Please keep your bags ready.
+
+Thank you for choosing Bagdrop.
+```
+
+---
+
+## 13. Indemnity Bond Received — `indemnity_bond_signed` (TO CREATE & GET APPROVED)
+
+Sent when the signed indemnity bond is recorded. Category: Utility. After approval
+set `WHATSAPP_TEMPLATE_INDEMNITY_SIGNED` to the exact template name.
+
+**Variables:** {{1}} customer name · {{2}} booking ID
+
+```
+Dear {{1}},
+
+We have received your signed indemnity bond. Thank you.
+
+Booking ID: {{2}}
+
+Our team will now schedule your bag pickup and confirm the timing with you.
+
+Thank you for choosing Bagdrop.
+```

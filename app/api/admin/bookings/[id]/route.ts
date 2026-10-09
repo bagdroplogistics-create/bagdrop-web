@@ -714,7 +714,7 @@ export async function PATCH(
     })
   }
 
-  return NextResponse.json({ booking: data, ...(whatsappResult?.attempted ? { whatsapp: whatsappResult } : {}) })
+  return NextResponse.json({ booking: data, ...((whatsappResult?.attempted || whatsappResult?.notice) ? { whatsapp: whatsappResult } : {}) })
 }
 
 // autoCreateInvoice() removed — see the two removal notes above. Invoice
