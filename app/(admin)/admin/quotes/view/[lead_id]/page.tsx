@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
+import { waDigits, isWorkflowWhatsAppStep, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, Printer, Download,
@@ -419,7 +419,6 @@ export default function QuoteViewPage() {
   const [actionSuccess, setActionSuccess]       = useState<string | null>(null)
   const [actionError, setActionError]           = useState<string | null>(null)
   // Which workflow step's manual WhatsApp message was last opened (UI hint only).
-  const [waOpenedFor, setWaOpenedFor]            = useState<string | null>(null)
 
   // Test Mode toggle (Founder spec 2026-09-22) — see doToggleTestMode below.
   const [togglingTestMode, setTogglingTestMode] = useState(false)
@@ -501,6 +500,9 @@ export default function QuoteViewPage() {
   // doSendQuoteWhatsApp below) takes a moment, so this drives the button's
   // "Generating PDF…" state.
   const [sendingQuoteWhatsApp, setSendingQuoteWhatsApp] = useState(false)
+  // Inline status of the last server-side WhatsApp send (no WhatsApp Web).
+  // 'sent' = accepted by the provider, NOT confirmed delivered.
+  const [waStatus, setWaStatus] = useState<{ state: 'sending' | 'sent' | 'failed'; step: string; message: string; retryable?: boolean } | null>(null)
 
   // Independent Return Quote send/accept/reject state (Founder spec
   // 2026-09-22, "Separate Onward and Return Quotations") — deliberately
@@ -730,15 +732,15 @@ export default function QuoteViewPage() {
         // say so instead of leaving a silent "Quote Sent". Clicking the
         // same step again retries the send.
         if (d.whatsapp && d.whatsapp.notice) {
-          alert(d.whatsapp.notice)
+          setWaStatus({ state: 'failed', step: String(payload.status ?? ''), message: d.whatsapp.notice, retryable: false })
         } else if (d.whatsapp && d.whatsapp.attempted && !d.whatsapp.success) {
-          alert('Status updated, but the WhatsApp message to the customer FAILED:\n\n' + (d.whatsapp.error ?? 'Unknown error') + '\n\nClick the same step again to retry.')
-        } else if (d.whatsapp && d.whatsapp.attempted && d.whatsapp.provider === 'meta') {
-          // Accepted by Meta only — without a valid Meta payment method Meta
-          // accepts but never delivers (error 131042). Say so plainly.
-          alert('WhatsApp was handed to Meta, but delivery to the customer is NOT guaranteed.' +
-            (d.whatsapp.primaryError ? '\n\nFast2SMS (primary sender) failed first:\n' + d.whatsapp.primaryError : '') +
-            '\n\nUse the green "Send on WhatsApp" button on this step if the customer must get it now.')
+          setWaStatus({ state: 'failed', step: String(payload.status ?? ''), retryable: true,
+            message: 'Status updated, but the WhatsApp message FAILED: ' + (d.whatsapp.error ?? 'Unknown error') })
+        } else if (d.whatsapp && d.whatsapp.attempted) {
+          setWaStatus({ state: 'sent', step: String(payload.status ?? ''),
+            message: 'WhatsApp accepted by ' + (d.whatsapp.provider === 'meta' ? 'Meta' : 'Fast2SMS') +
+              ' (delivery to the customer is confirmed separately).' +
+              (d.whatsapp.fallbackFrom ? ' Fast2SMS failed first: ' + (d.whatsapp.primaryError ?? '') : '') })
         }
 
         // Keep the linked return-leg booking's status/payment fields in
@@ -940,74 +942,53 @@ export default function QuoteViewPage() {
     await patchBooking('send_quote', { status: 'quote_sent', send_quote_email: true })
   }
 
-  // Send Quote via WhatsApp — 2026-08-24: "quote pdf will also send with
-  // message template on whatsapp". WhatsApp Web's compose link
-  // (web.whatsapp.com/send?text=...) can only pre-fill TEXT — there is no
-  // way to attach a real file through it, so the only way to get the PDF
-  // into the chat is a downloadable link inside the message (same approach
-  // already used by the older quotes-table flow, app/(admin)/admin/quotes/
-  // page.tsx's sendToCustomer('whatsapp')). Generates + uploads the PDF via
-  // the new /api/admin/leads/[id]/quote-pdf route first, then opens
-  // WhatsApp with the link included. If PDF generation fails, still sends
-  // the text-only message rather than blocking the whole action — better
-  // to reach the customer late/without a link than not at all.
+  // Server-side WhatsApp send for the CURRENT step (template + PDF where the
+  // template has one). Never opens WhatsApp Web, never changes status.
+  async function resendStepWhatsApp() {
+    if (!booking || !key || waStatus?.state === 'sending') return
+    const step = booking.status
+    setWaStatus({ state: 'sending', step, message: 'Sending…' })
+    try {
+      const r = await fetch(`/api/admin/bookings/${booking.id}/send-whatsapp?key=${encodeURIComponent(key)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+        body: JSON.stringify({ status: step }),
+      })
+      const d = await r.json().catch(() => ({}))
+      const w = d.whatsapp
+      if (!r.ok) {
+        setWaStatus({ state: 'failed', step, retryable: true, message: d.error ?? `Request failed (${r.status})` })
+      } else if (w?.notice) {
+        setWaStatus({ state: 'failed', step, retryable: false, message: w.notice })
+      } else if (w?.attempted && w.success) {
+        setWaStatus({ state: 'sent', step,
+          message: 'WhatsApp accepted by ' + (w.provider === 'meta' ? 'Meta' : 'Fast2SMS') +
+            ' (delivery to the customer is confirmed separately).' +
+            (w.fallbackFrom ? ' Fast2SMS failed first: ' + (w.primaryError ?? '') : '') })
+      } else if (w?.attempted) {
+        setWaStatus({ state: 'failed', step, retryable: true, message: w.error ?? 'Provider rejected the message' })
+      } else {
+        setWaStatus({ state: 'failed', step, retryable: false, message: 'No WhatsApp is configured/due for this step (or this is a Test Mode booking).' })
+      }
+    } catch (e) {
+      setWaStatus({ state: 'failed', step, retryable: true, message: e instanceof Error ? e.message : 'Network error' })
+    }
+  }
+
+  // Send Quote via WhatsApp — now API-only. First send moves the booking to
+  // Quote Sent and the server sends the approved template with the freshly
+  // generated quote PDF attached. Re-sends from Quote Sent do not touch status.
   async function doSendQuoteWhatsApp(skipStatusChange = false) {
-    if (!lead || !booking || !key) return
+    if (!lead || !booking || !key || sendingQuoteWhatsApp) return
     setSendingQuoteWhatsApp(true)
     setActionError(null)
-    // Open the WhatsApp tab IMMEDIATELY, inside the click. Browsers block a
-    // window.open() fired after a slow await (PDF generation) as a pop-up —
-    // that is why the tab sometimes never appeared. The tab is pointed at the
-    // real WhatsApp URL below once the message is ready.
-    const waTab = window.open('', '_blank')
     try {
-      // 2026-08-25 fix — the PDF used to be best-effort here: if generation/
-      // upload failed, the send just quietly continued without the link,
-      // and the customer received a message that looked complete but
-      // wasn't. Founder spec: never send an incomplete message — if the PDF
-      // can't be attached, stop and show a clear error instead, so the
-      // admin knows to retry rather than believing the customer got the
-      // quote document when they didn't. getQuotePdfUrl (called via this
-      // route) always regenerates fresh off the lead's CURRENT saved quote,
-      // so this can never attach an old/previous version.
-      let pdfUrl: string
-      try {
-        const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}`, {
-          method: 'POST',
-          headers: { 'x-admin-key': key },
-        })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
-        pdfUrl = d.url
-      } catch (err) {
-        console.error('[doSendQuoteWhatsApp] PDF generation/upload failed:', err)
-        waTab?.close()
-        setActionError('Unable to attach Quote PDF. Please try again.')
-        return
-      }
-
-      const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
-      const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
-      // Route: the lead's cities. Never fall back to the
-      // booking ID (a customer once received "Route: BDA-2026-0264 →").
-      const from  = (lead.from_city || '').trim()
-      const to    = (lead.to_city   || '').trim()
-      const bags  = lead.bags_count ?? 1
-      const total = lead.quote_total ?? booking.total_amount ?? 0
-      const fmt   = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
-      const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
-      const e164  = waDigits(booking.customer_phone) || phone
-      // Wording = the approved quote_sent_v2 template (+ PDF link line).
-      const msg = buildQuoteSentText({ name, quoteNo: qnum, from, to, bags, total: Number(total), pdfUrl })
-      // Mark as sent, then open WhatsApp Web directly (web.whatsapp.com/send
-      // skips the api.whatsapp.com landing page that wa.me shows on desktop
-      // browsers).
-      // Re-sending from the 'Quote Sent' step must NOT touch the status again.
-      if (!skipStatusChange) await patchBooking('send_quote', { status: 'quote_sent' })
-      const waUrl = `https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`
-      if (waTab) waTab.location.href = waUrl
-      else if (!window.open(waUrl, '_blank')) {
-        setActionError('Your browser blocked the WhatsApp tab. Allow pop-ups for bagdrop.co (icon at the right of the address bar) and click again.')
+      if (skipStatusChange) {
+        await resendStepWhatsApp()
+      } else {
+        setWaStatus({ state: 'sending', step: 'quote_sent', message: 'Sending…' })
+        const ok = await patchBooking('send_quote', { status: 'quote_sent' })
+        if (!ok) setWaStatus({ state: 'failed', step: 'quote_sent', retryable: true, message: 'Could not send the quote. See the error above.' })
       }
     } finally {
       setSendingQuoteWhatsApp(false)
@@ -2423,7 +2404,7 @@ export default function QuoteViewPage() {
                         {sendingQuoteWhatsApp
                           ? <Loader2 className="h-4 w-4 animate-spin" />
                           : <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>}
-                        {sendingQuoteWhatsApp ? 'Generating PDF…' : 'Send Quote via WhatsApp'}
+                        {sendingQuoteWhatsApp ? 'Sending…' : 'Send Quote via WhatsApp'}
                       </button>
 
                       {/* Email Quote */}
@@ -2441,7 +2422,17 @@ export default function QuoteViewPage() {
                         ✓ Already Sent — Mark as Sent
                       </button>
                     </div>
-                    {actionSuccess === 'send_quote' && <p className="text-xs text-green-600 font-semibold">✅ Quote sent! Status updated to Quote Sent.</p>}
+                    {actionSuccess === 'send_quote' && <p className="text-xs text-green-600 font-semibold">✅ Status updated to Quote Sent.</p>}
+                    {waStatus && waStatus.step === 'quote_sent' && (
+                  <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    {waStatus.state === 'failed' && waStatus.retryable && (
+                      <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
+                    )}
+                  </div>
+                )}
+
                   </div>
                 )}
 
@@ -2450,13 +2441,21 @@ export default function QuoteViewPage() {
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-blue-600">📬 Step 4 — Record Customer Response</p>
                     <p className="text-sm text-blue-700">Quote has been sent. Record whether the customer accepted or rejected it.</p>
-                    {/* Manual WhatsApp Web send of the quote (message + PDF link) — works
-                        even when automatic sending can't deliver. Status is NOT changed. */}
+                    {/* API re-send of the quote template + PDF. Status is NOT changed. */}
                     <button type="button" onClick={() => doSendQuoteWhatsApp(true)} disabled={!!acting || sendingQuoteWhatsApp}
                       className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
                       {sendingQuoteWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
-                      {sendingQuoteWhatsApp ? 'Generating PDF…' : 'Send / Resend Quote on WhatsApp'}
+                      {sendingQuoteWhatsApp ? 'Sending…' : 'Re-send Quote on WhatsApp'}
                     </button>
+                    {waStatus && waStatus.step === 'quote_sent' && (
+                  <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    {waStatus.state === 'failed' && waStatus.retryable && (
+                      <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
+                    )}
+                  </div>
+                )}
                     {!showRejectForm ? (
                       <div className="flex flex-wrap gap-2">
                         <button onClick={doMarkQuoteAccepted} disabled={!!acting}
@@ -3049,25 +3048,22 @@ export default function QuoteViewPage() {
                 {isWorkflowWhatsAppStep(booking.status) && booking.customer_phone && (
                   <div className="flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
                     <button type="button"
-                      onClick={() => {
-                        const ok = openWorkflowWhatsApp(booking.customer_phone, buildWorkflowWhatsAppText(booking.status as Parameters<typeof buildWorkflowWhatsAppText>[0], {
-                          tracking_id: booking.tracking_id, title: lead.title, customer_name: lead.name,
-                          customer_phone: booking.customer_phone, from_city: lead.from_city, to_city: lead.to_city,
-                          total_bags: lead.bags_count, total_amount: booking.total_amount,
-                          pickup_date: lead.pickup_date, pickup_time: lead.pickup_time, pickup_address: lead.pickup_address, delivery_date: lead.delivery_date, service_type: booking.service_type,
-                        }))
-                        if (ok) setWaOpenedFor(booking.status)
-                        else setActionError('No valid WhatsApp number on this booking.')
-                      }}
-                      className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 transition-colors">
-                      <MessageCircle className="h-4 w-4" />
-                      {waOpenedFor === booking.status ? 'Resend' : 'Send'} “{WORKFLOW_WHATSAPP_LABEL[booking.status as keyof typeof WORKFLOW_WHATSAPP_LABEL]}” on WhatsApp
+                      onClick={() => resendStepWhatsApp()}
+                      disabled={waStatus?.state === 'sending'}
+                      className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                      {waStatus?.state === 'sending' ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                      {waStatus?.state === 'sending' ? 'Sending…' : <>Re-send “{WORKFLOW_WHATSAPP_LABEL[booking.status as keyof typeof WORKFLOW_WHATSAPP_LABEL]}” message</>}
                     </button>
-                    <p className="text-[11px] text-green-700">
-                      {waOpenedFor === booking.status
-                        ? 'WhatsApp Web opened — confirm the message was sent from there.'
-                        : 'Opens WhatsApp Web with the message ready. Press Send there. Status is not changed.'}
-                    </p>
+                    <p className="text-[11px] text-green-700">Sent automatically through the WhatsApp API. Status is not changed.</p>
+                    {waStatus && waStatus.step === booking.status && (
+                  <div className={`flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold ${waStatus.state === 'sent' ? 'border-green-200 bg-green-50 text-green-700' : waStatus.state === 'sending' ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-red-200 bg-red-50 text-red-700'}`}>
+                    {waStatus.state === 'sending' && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                    <span>{waStatus.state === 'sent' ? '✅ Sent successfully — ' : waStatus.state === 'failed' ? '❌ Failed to send — ' : ''}{waStatus.message}</span>
+                    {waStatus.state === 'failed' && waStatus.retryable && (
+                      <button type="button" onClick={() => resendStepWhatsApp()} className="rounded bg-red-600 px-2 py-1 text-white hover:bg-red-700">Retry</button>
+                    )}
+                  </div>
+                )}
                   </div>
                 )}
 
