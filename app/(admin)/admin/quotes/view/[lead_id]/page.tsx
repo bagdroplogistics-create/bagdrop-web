@@ -951,7 +951,7 @@ export default function QuoteViewPage() {
   // WhatsApp with the link included. If PDF generation fails, still sends
   // the text-only message rather than blocking the whole action — better
   // to reach the customer late/without a link than not at all.
-  async function doSendQuoteWhatsApp() {
+  async function doSendQuoteWhatsApp(skipStatusChange = false) {
     if (!lead || !booking || !key) return
     setSendingQuoteWhatsApp(true)
     setActionError(null)
@@ -996,7 +996,8 @@ export default function QuoteViewPage() {
       // Mark as sent, then open WhatsApp Web directly (web.whatsapp.com/send
       // skips the api.whatsapp.com landing page that wa.me shows on desktop
       // browsers).
-      await patchBooking('send_quote', { status: 'quote_sent' })
+      // Re-sending from the 'Quote Sent' step must NOT touch the status again.
+      if (!skipStatusChange) await patchBooking('send_quote', { status: 'quote_sent' })
       window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
     } finally {
       setSendingQuoteWhatsApp(false)
@@ -2406,7 +2407,7 @@ export default function QuoteViewPage() {
                           doSendQuoteWhatsApp — WhatsApp Web's compose link
                           can't attach a real file, only text). */}
                       <button
-                        onClick={doSendQuoteWhatsApp}
+                        onClick={() => doSendQuoteWhatsApp()}
                         disabled={!!acting || sendingQuoteWhatsApp}
                         className="flex items-center gap-2 rounded-lg bg-green-600 px-5 py-2.5 text-sm font-semibold text-white hover:bg-green-700 disabled:opacity-40 transition-colors">
                         {sendingQuoteWhatsApp
@@ -2439,6 +2440,13 @@ export default function QuoteViewPage() {
                   <div className="rounded-xl border border-blue-100 bg-blue-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-blue-600">📬 Step 4 — Record Customer Response</p>
                     <p className="text-sm text-blue-700">Quote has been sent. Record whether the customer accepted or rejected it.</p>
+                    {/* Manual WhatsApp Web send of the quote (message + PDF link) — works
+                        even when automatic sending can't deliver. Status is NOT changed. */}
+                    <button type="button" onClick={() => doSendQuoteWhatsApp(true)} disabled={!!acting || sendingQuoteWhatsApp}
+                      className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-green-700 disabled:opacity-40 transition-colors">
+                      {sendingQuoteWhatsApp ? <Loader2 className="h-4 w-4 animate-spin" /> : <MessageCircle className="h-4 w-4" />}
+                      {sendingQuoteWhatsApp ? 'Generating PDF…' : 'Send / Resend Quote on WhatsApp'}
+                    </button>
                     {!showRejectForm ? (
                       <div className="flex flex-wrap gap-2">
                         <button onClick={doMarkQuoteAccepted} disabled={!!acting}
