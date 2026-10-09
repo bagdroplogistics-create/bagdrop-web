@@ -703,13 +703,13 @@ export default function QuoteViewPage() {
     'rejection_reason', 'rejection_comment', 'approved_without_payment',
   ] as const
 
-  // Points the pre-opened tab at the pre-filled WhatsApp Web chat and ALSO
-  // copies the message to the clipboard, so if WhatsApp Web ever opens the
-  // chat with an empty box the admin can simply press Ctrl+V.
-  function goWhatsAppWeb(tab: Window, digits: string, text: string) {
+  // Opens the pre-filled WhatsApp Web chat exactly like the original (working)
+  // flow: window.open('https://web.whatsapp.com/send?phone=…&text=…').
+  // The message is also copied as a safety net.
+  function goWhatsAppWeb(_tab: Window | null, digits: string, text: string) {
     try { void navigator.clipboard?.writeText(text).catch(() => {}) } catch { /* ignore */ }
-    tab.location.href = `https://web.whatsapp.com/send/?phone=${digits}&text=${encodeURIComponent(text)}&type=phone_number&app_absent=0`
-    setActionError('WhatsApp Web opened. Message is also copied — if the message box is empty, click it and press Ctrl+V, then Send.')
+    const w = window.open(`https://web.whatsapp.com/send?phone=${digits}&text=${encodeURIComponent(text)}`, '_blank')
+    if (!w) setActionError('Browser blocked the WhatsApp Web tab — allow pop-ups for bagdrop.co (icon at right of address bar) and click again. The message is copied to your clipboard.')
   }
 
   async function patchBooking(actionKey: string, payload: Record<string, unknown>, waMessage?: string): Promise<boolean> {
@@ -722,8 +722,7 @@ export default function QuoteViewPage() {
     const newStatus = typeof payload.status === 'string' ? payload.status : ''
     const wantsWaTab = !adminApproveMode && !!waDigits(booking.customer_phone) &&
       (isWorkflowWhatsAppStep(newStatus) || (newStatus === 'quote_sent' && !!waMessage))
-    const waTab = wantsWaTab ? window.open('', '_blank') : null
-    if (wantsWaTab && !waTab) setActionError('Browser blocked the WhatsApp Web tab — allow pop-ups for bagdrop.co (icon at right of address bar) and click again.')
+    const waTab: Window | null = null
     // Customer WhatsApp is sent by the admin via WhatsApp Web — skip the API send.
     if (wantsWaTab) payload = { ...payload, manual_whatsapp: true }
     // Admin Approve toggle — only meaningful for calls that actually change
@@ -743,7 +742,7 @@ export default function QuoteViewPage() {
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? payload) } : prev)
         setActionSuccess(actionKey)
         setTimeout(() => setActionSuccess(null), 4000)
-        if (waTab) {
+        if (wantsWaTab) {
           const merged = { ...booking, ...(d.booking ?? {}) }
           const text = waMessage ?? (isWorkflowWhatsAppStep(newStatus)
             ? buildWorkflowWhatsAppText(newStatus, {
@@ -800,11 +799,10 @@ export default function QuoteViewPage() {
 
         return true
       } else {
-        waTab?.close()
         setActionError(d.error ?? 'Action failed')
         return false
       }
-    } catch { waTab?.close(); setActionError('Network error'); return false }
+    } catch { setActionError('Network error'); return false }
     finally { setActing(null) }
   }
 
@@ -966,8 +964,7 @@ export default function QuoteViewPage() {
     setActionError(null)
     const e164 = waDigits(booking.customer_phone)
     if (!e164) { setActionError('No valid WhatsApp number on this booking.'); setSendingQuoteWhatsApp(false); return }
-    const waTab = window.open('', '_blank')
-    if (!waTab) { setActionError('Browser blocked the WhatsApp Web tab — allow pop-ups for bagdrop.co and click again.'); setSendingQuoteWhatsApp(false); return }
+    const waTab: Window | null = null
     try {
       let pdfUrl: string
       try {
@@ -979,7 +976,6 @@ export default function QuoteViewPage() {
         pdfUrl = d.url
       } catch (err) {
         console.error('[doSendQuoteWhatsApp] PDF generation/upload failed:', err)
-        waTab.close()
         setActionError('Unable to attach Quote PDF. Please try again.')
         return
       }
@@ -994,7 +990,7 @@ export default function QuoteViewPage() {
           body: JSON.stringify({ status: 'quote_sent', manual_whatsapp: true }),
         })
         const d = await r.json().catch(() => ({}))
-        if (!r.ok) { waTab.close(); setActionError(d.error ?? 'Action failed'); return }
+        if (!r.ok) { setActionError(d.error ?? 'Action failed'); return }
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? {}) } : prev)
         setActionSuccess('send_quote'); setTimeout(() => setActionSuccess(null), 4000)
       }
