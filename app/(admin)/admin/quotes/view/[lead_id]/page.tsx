@@ -955,6 +955,11 @@ export default function QuoteViewPage() {
     if (!lead || !booking || !key) return
     setSendingQuoteWhatsApp(true)
     setActionError(null)
+    // Open the WhatsApp tab IMMEDIATELY, inside the click. Browsers block a
+    // window.open() fired after a slow await (PDF generation) as a pop-up —
+    // that is why the tab sometimes never appeared. The tab is pointed at the
+    // real WhatsApp URL below once the message is ready.
+    const waTab = window.open('', '_blank')
     try {
       // 2026-08-25 fix — the PDF used to be best-effort here: if generation/
       // upload failed, the send just quietly continued without the link,
@@ -976,6 +981,7 @@ export default function QuoteViewPage() {
         pdfUrl = d.url
       } catch (err) {
         console.error('[doSendQuoteWhatsApp] PDF generation/upload failed:', err)
+        waTab?.close()
         setActionError('Unable to attach Quote PDF. Please try again.')
         return
       }
@@ -998,7 +1004,11 @@ export default function QuoteViewPage() {
       // browsers).
       // Re-sending from the 'Quote Sent' step must NOT touch the status again.
       if (!skipStatusChange) await patchBooking('send_quote', { status: 'quote_sent' })
-      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
+      const waUrl = `https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`
+      if (waTab) waTab.location.href = waUrl
+      else if (!window.open(waUrl, '_blank')) {
+        setActionError('Your browser blocked the WhatsApp tab. Allow pop-ups for bagdrop.co (icon at the right of the address bar) and click again.')
+      }
     } finally {
       setSendingQuoteWhatsApp(false)
     }
