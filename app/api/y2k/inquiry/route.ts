@@ -1,3 +1,4 @@
+import { PROHIBITED_ITEMS_VERSION, PROHIBITED_ACK_TEXT } from '@/lib/prohibited-items'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
@@ -18,12 +19,12 @@ const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
 // day after the wedding ends. Fixed, single date — mirrors
 // Y2K_RETURN_PICKUP_DATE in app/y2k/page.tsx.
 const Y2K_RETURN_PICKUP_DATE = '2026-12-19'
-// Preset dropdown options on the frontend. 'Other' isn't a real location —
-// picking it reveals a free-text field, and *that* text is what's actually
-// sent as pickupCity, so this route never sees the literal word "Other".
-// Any non-empty pickupCity is accepted below (capped at a sane length) so
-// guests outside Mumbai/Mumbai Airport can still submit a pickup.
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport', 'Other']
+// Onward pickups for the Y2K wedding service are accepted from Mumbai ONLY
+// (the frontend dropdown offers just Mumbai; this re-checks server-side so a
+// hand-crafted request can't submit another location). The Return Pickup leg
+// is the reverse trip and legitimately starts at the venue (Udaipur), so it is
+// exempt from this check.
+const Y2K_PICKUP_LOCATIONS = ['mumbai']
 const Y2K_PICKUP_CITY_MAX_LEN = 200
 // Slot ids shared by Preferred Pickup Time and Preferred Delivery Time,
 // must match app/y2k/page.tsx's TIME_SLOTS. 'night' was removed entirely
@@ -49,7 +50,7 @@ function generateTestTrackingId(): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode } = body
+    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode, prohibitedAck } = body
     // returnPickup / originalTrackingId: set only by the second call
     // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
     // pickup". Used below purely to make this leg visibly distinct in the
@@ -70,6 +71,17 @@ export async function POST(req: NextRequest) {
     if (!name?.trim() || !/^[6-9]\d{9}$/.test(digits)) {
       return NextResponse.json({ error: 'Name and a valid 10-digit Indian mobile number are required.' }, { status: 400 })
     }
+
+    // ── Prohibited-items acknowledgement (required) ─────────────────────
+    // The customer must have actively ticked the checkbox on the form. The
+    // acceptance (policy version, exact wording, server timestamp) is stored
+    // with the inquiry below. This is still just an inquiry — accepting the
+    // policy never confirms a booking.
+    if (!prohibitedAck || prohibitedAck.accepted !== true || prohibitedAck.version !== PROHIBITED_ITEMS_VERSION) {
+      return NextResponse.json({ error: 'Please confirm that you have read the prohibited-items list before submitting.' }, { status: 400 })
+    }
+    const ackAt = new Date().toISOString()
+    const ackNote = `Prohibited-items policy acknowledged [${PROHIBITED_ITEMS_VERSION}] at ${ackAt}: "${PROHIBITED_ACK_TEXT}"`
 
     // ── Y2K pickup restrictions ─────────────────────────────────
     // arrivalDate (the pickup date) previously wasn't read here at all —
@@ -96,6 +108,9 @@ export async function POST(req: NextRequest) {
     // be a non-empty, reasonably-sized string here.
     if (!pickupCity?.trim() || pickupCity.trim().length > Y2K_PICKUP_CITY_MAX_LEN) {
       return NextResponse.json({ error: 'Please provide a valid pickup location.' }, { status: 400 })
+    }
+    if (!isReturnPickup && !Y2K_PICKUP_LOCATIONS.includes(pickupCity.trim().toLowerCase())) {
+      return NextResponse.json({ error: 'Pickups for this service are available from Mumbai only.' }, { status: 400 })
     }
 
     // Atomic, race-safe BDA-YYYY-NNNN tracking ID — was a random 'Y2K-'
@@ -152,8 +167,12 @@ export async function POST(req: NextRequest) {
           deliveryAddress ? `Delivery: ${deliveryAddress}` : '',
           pickupTime   ? `Preferred time: ${pickupTime}` : '',
           requests     ? `Special requests: ${requests}` : '',
+          `Prohibited-items policy acknowledged (${PROHIBITED_ITEMS_VERSION}) at ${ackAt}`,
         ].filter(Boolean).join(' | '),
-        status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: '#Y2K wedding inquiry received' }],
+        status_history: [
+          { status: 'inquiry', timestamp: new Date().toISOString(), note: '#Y2K wedding inquiry received' },
+          { status: 'inquiry', timestamp: ackAt, note: ackNote, policy_version: PROHIBITED_ITEMS_VERSION, acknowledged_at: ackAt },
+        ],
       }).select('id').single()
 
       if (dbError) {
@@ -240,9 +259,10 @@ export async function POST(req: NextRequest) {
             pickup_address:   pickupAddress || null,
             drop_address:     deliveryAddress || null,
             bags_count:       parseInt(bags) || 1,
-            notes:            isReturnPickup
+            notes:            (isReturnPickup
               ? `Return Pickup — linked to onward booking ${originalTrackingId || 'unknown'} — Auto-created from #Y2K wedding page inquiry ${trackingId}`
-              : `Auto-created from #Y2K wedding page inquiry ${trackingId}`,
+              : `Auto-created from #Y2K wedding page inquiry ${trackingId}`)
+              + ` | Prohibited-items policy acknowledged (${PROHIBITED_ITEMS_VERSION}) at ${ackAt}`,
             booking_id:       savedBookingId,
           }).select('id').single()
 

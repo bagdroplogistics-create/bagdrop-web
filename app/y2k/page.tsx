@@ -1,6 +1,10 @@
 'use client'
 
 import { useState, useEffect, useCallback, useRef } from 'react'
+import {
+  PROHIBITED_ITEMS_VERSION, PROHIBITED_ITEMS_HEADING, PROHIBITED_ITEMS,
+  PROHIBITED_DISCLAIMER_TITLE, PROHIBITED_DISCLAIMER_TEXT, PROHIBITED_ACK_TEXT,
+} from '@/lib/prohibited-items'
 
 // ─────────────────────────────────────────────────────────────
 // This page is a 1:1 rebuild of the approved Y2K design reference
@@ -32,7 +36,8 @@ const WEDDING_DATE = new Date('2026-12-17T00:00:00+05:30')
 const Y2K_PICKUP_DATE_MIN = '2026-12-10'
 const Y2K_PICKUP_DATE_MAX = '2026-12-12'
 const Y2K_PICKUP_DATES = ['2026-12-10', '2026-12-11', '2026-12-12']
-const Y2K_PICKUP_LOCATIONS = ['Mumbai', 'Mumbai Airport', 'Other']
+// Y2K pickups are accepted from Mumbai only (mirrored in route.ts).
+const Y2K_PICKUP_LOCATIONS = ['Mumbai']
 const Y2K_TIME_SLOTS = ['morning', 'afternoon', 'evening']
 const WEDDING_VENUE = 'Taj Aravali, Udaipur'
 // Return Pickup is a reversed leg, not a copy of the onward one: bags are
@@ -173,7 +178,7 @@ function BookingForm() {
   const [form, setForm] = useState({
     name: '', phone: '', email: '',
     bags: 2,
-    pickupCity: '', pickupCityOther: '', pickupAddress: '',
+    pickupCity: 'Mumbai', pickupCityOther: '', pickupAddress: '',
     pickupDate: '', pickupTime: '',
     notes: '',
     // Return Pickup — optional second leg, reusing every other detail
@@ -184,6 +189,8 @@ function BookingForm() {
     // when returnPickup is checked.
     returnPickup: false,
     returnBags: 2,
+    // Prohibited-items acknowledgement — unchecked by default, required.
+    ackProhibited: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [busy, setBusy]     = useState(false)
@@ -230,16 +237,16 @@ function BookingForm() {
     if (!/^[6-9]\d{9}$/.test(digits)) er.phone = 'Enter a valid 10-digit Indian mobile number.'
     if (!f.pickupDate) er.pickupDate = 'Select a pickup date.'
     else if (!Y2K_PICKUP_DATES.includes(f.pickupDate)) er.pickupDate = 'Pickup is only available on 10, 11 or 12 December 2026.'
-    if (!f.pickupCity) er.pickupCity = 'Select a pickup location.'
-    if (f.pickupCity === 'Other' && !f.pickupCityOther.trim()) er.pickupCityOther = 'Enter the pickup address.'
+    if (!Y2K_PICKUP_LOCATIONS.includes(f.pickupCity)) er.pickupCity = 'Pickup is available from Mumbai only.'
     if (!f.pickupAddress.trim()) er.pickupAddress = 'Enter the pickup address.'
     if (!f.pickupTime) er.pickupTime = 'Select a pickup time.'
+    if (!f.ackProhibited) er.ackProhibited = 'Please confirm you have read the prohibited-items list before submitting.'
     if (Object.keys(er).length) { setErrors(er); return }
 
     setBusy(true)
     setReturnCode(''); setReturnFailed(false)
     try {
-      const resolvedPickupCity = f.pickupCity === 'Other' ? f.pickupCityOther.trim() : f.pickupCity
+      const resolvedPickupCity = f.pickupCity
       const resolvedPickupAddress = `${f.pickupAddress}, ${resolvedPickupCity}`
 
       const res = await fetch('/api/y2k/inquiry', {
@@ -255,6 +262,7 @@ function BookingForm() {
           arrivalDate: f.pickupDate,
           requests: f.notes,
           testMode: isTestMode,
+          prohibitedAck: { accepted: true, version: PROHIBITED_ITEMS_VERSION },
         }),
       })
       const d = await res.json()
@@ -289,6 +297,7 @@ function BookingForm() {
               returnPickup: true,
               originalTrackingId: d.trackingId ?? '',
               testMode: isTestMode,
+              prohibitedAck: { accepted: true, version: PROHIBITED_ITEMS_VERSION },
             }),
           })
           const rd = await returnRes.json()
@@ -312,7 +321,7 @@ function BookingForm() {
   function resetForm() {
     setSubmitted(false); setCode(''); setConfirmName(''); setErrors({})
     setReturnCode(''); setReturnFailed(false)
-    setForm({ name:'', phone:'', email:'', bags:2, pickupCity:'', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', notes:'', returnPickup:false, returnBags:2 })
+    setForm({ name:'', phone:'', email:'', bags:2, pickupCity:'Mumbai', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', notes:'', returnPickup:false, returnBags:2, ackProhibited:false })
   }
 
   const fi: React.CSSProperties = { height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 16px', fontSize:15, color:Y.textDark, outline:'none', width:'100%', fontFamily:FONT_BODY, transition:'border-color 0.2s, box-shadow 0.2s, background 0.2s' }
@@ -406,20 +415,11 @@ function BookingForm() {
                 <label style={label}>Pickup location</label>
                 <div style={{ position:'relative' }}>
                   <select value={form.pickupCity} onChange={e=>field('pickupCity')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} style={{ ...fi, padding:'0 40px 0 16px' }}>
-                    <option value="" disabled>Where do we collect?</option>
                     <option value="Mumbai">Mumbai</option>
-                    <option value="Mumbai Airport">Mumbai Airport</option>
-                    <option value="Other">Other</option>
                   </select>
                   <span style={{ position:'absolute', right:16, top:'50%', transform:'translateY(-50%)', pointerEvents:'none', color:Y.eyebrow, fontSize:11 }}>▾</span>
                 </div>
                 {errors.pickupCity && <span style={fieldErr}>{errors.pickupCity}</span>}
-                {form.pickupCity === 'Other' && (
-                  <>
-                    <input value={form.pickupCityOther} onChange={e=>field('pickupCityOther')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Enter pickup city" style={{ ...fi, marginTop:8 }}/>
-                    {errors.pickupCityOther && <span style={fieldErr}>{errors.pickupCityOther}</span>}
-                  </>
-                )}
               </div>
 
               <div style={{ display:'flex', flexDirection:'column', gap:8, gridColumn:'1 / -1' }}>
@@ -505,6 +505,30 @@ function BookingForm() {
               <p style={{ fontFamily:FONT_BODY, fontSize:13, lineHeight:1.65, color:Y.textBody, margin:0 }}>
                 <strong style={{ color:Y.goldMuted }}>Important:</strong> We provide delivery services only for Bridal &amp; Groom Outfits, Wedding Gifts &amp; Hampers, Décor Materials, Return Gift Boxes, and Family Luggage. We do not accept jewellery or other valuable items for delivery.
               </p>
+            </div>
+
+            {/* ── Prohibited items — shown before submission ── */}
+            <div style={{ marginTop:22, border:'1px solid rgba(176,58,46,0.35)', borderRadius:16, background:'#FFFBF9', padding:'clamp(14px,3vw,20px)' }}>
+              <p style={{ fontFamily:FONT_BODY, fontSize:12.5, fontWeight:700, letterSpacing:'0.08em', color:'#B03A2E', margin:'0 0 12px', lineHeight:1.4 }}>{PROHIBITED_ITEMS_HEADING}</p>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(128px, 1fr))', gap:8 }}>
+                {PROHIBITED_ITEMS.map(it => (
+                  <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'#fff', border:'1px solid #F0D9D5', borderRadius:10, minWidth:0 }}>
+                    <span aria-hidden="true" style={{ fontSize:18, lineHeight:1, flexShrink:0 }}>{it.icon}</span>
+                    <span style={{ fontFamily:FONT_BODY, fontSize:12, lineHeight:1.3, color:Y.textDark, overflowWrap:'anywhere' }}>{it.label}</span>
+                  </div>
+                ))}
+              </div>
+              <div role="note" style={{ marginTop:14, padding:'12px 14px', background:'#FDF1EF', borderLeft:'4px solid #B03A2E', borderRadius:8 }}>
+                <p style={{ fontFamily:FONT_BODY, fontSize:13, fontWeight:700, color:'#7A241B', margin:'0 0 6px' }}>{PROHIBITED_DISCLAIMER_TITLE}</p>
+                <p style={{ fontFamily:FONT_BODY, fontSize:12.5, lineHeight:1.65, color:Y.textBody, margin:0 }}>{PROHIBITED_DISCLAIMER_TEXT}</p>
+              </div>
+              <label style={{ display:'flex', gap:10, alignItems:'flex-start', marginTop:14, cursor:'pointer' }}>
+                <input type="checkbox" checked={form.ackProhibited} onChange={e=>setForm(s=>({ ...s, ackProhibited: e.target.checked }))}
+                  aria-required="true" aria-invalid={!!errors.ackProhibited}
+                  style={{ width:20, height:20, marginTop:2, flexShrink:0, accentColor:Y.darkGreen, cursor:'pointer' }}/>
+                <span style={{ fontFamily:FONT_BODY, fontSize:13, lineHeight:1.6, color:Y.textDark }}>{PROHIBITED_ACK_TEXT}</span>
+              </label>
+              {errors.ackProhibited && <span style={{ ...fieldErr, display:'block', marginTop:8 }}>{errors.ackProhibited}</span>}
             </div>
 
             <button type="submit" disabled={busy} style={{ marginTop:24, width:'100%', height:58, border:'none', borderRadius:14, background: busy ? '#7C8A79' : Y.darkGreen, color:Y.cream, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', cursor: busy ? 'not-allowed' : 'pointer', transition:'transform 0.25s ease, box-shadow 0.25s ease, background 0.25s ease' }}
@@ -667,11 +691,11 @@ export default function Y2KPage() {
             </svg>
             <div style={{ flex:'1 1 340px', minWidth:'min(260px,100%)' }}>
               <Eyebrow color={Y.goldLight}>Travel light to the mountains</Eyebrow>
-              <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(24px,3.4vw,36px)', lineHeight:1.24, margin:'16px 0 0', fontWeight:400 }}>Arrive with only your best self. We&apos;ll carry your bags door-to-destination — Mumbai to Udaipur, timed to your flight.</p>
+              <p style={{ fontFamily:FONT_DISPLAY, fontSize:'clamp(24px,3.4vw,36px)', lineHeight:1.24, margin:'16px 0 0', fontWeight:400 }}>Arrive with only your best self. We&apos;ll carry your bags door-to-destination. Your bags reach before you do!</p>
             </div>
             <div style={{ flex:'0 0 auto', display:'flex', flexDirection:'column', gap:14, minWidth:'min(220px,100%)' }}>
               <div style={{ display:'flex', gap:22, fontFamily:FONT_BODY }}>
-                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>Flight</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Synced</div></div>
+                <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>Wedding</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Synced</div></div>
                 <div><div style={{ fontFamily:FONT_DISPLAY, fontSize:30, color:Y.goldLight }}>100%</div><div style={{ fontSize:11, letterSpacing:'0.12em', textTransform:'uppercase', opacity:0.7 }}>Fully wrapped</div></div>
               </div>
               <a href="#book" style={{ textAlign:'center', background:Y.goldLight, color:Y.textOnGold, fontFamily:FONT_BODY, fontSize:12.5, fontWeight:600, letterSpacing:'0.16em', textTransform:'uppercase', padding:'16px 28px', borderRadius:999, transition:'transform 0.25s ease, box-shadow 0.25s ease' }}
