@@ -74,7 +74,8 @@ function errsFor(S: WState, step: number): Errs {
   if (step === 2) S.pickups.forEach((p, i) => {
     if (p.address.trim().length < 8) e[`pickups.${i}.address`] = 'Add the full address.'
     if (!isMumbaiPincode(p.pincode)) e[`pickups.${i}.pincode`] = 'Enter a Mumbai pincode (400001–400104).'
-    if (!p.date) e[`pickups.${i}.date`] = 'Choose a date.'
+    if (!p.date) e[`pickups.${i}.date`] = 'Select a pickup date.'
+    else if (!Y2K_PICKUP_DATES_LIST.some(d => d.id === p.date)) e[`pickups.${i}.date`] = 'Pickup is only available on 10, 11 or 12 December 2026.'
     if (!p.slot) e[`pickups.${i}.slot`] = 'Choose a time slot.'
     if (!p.memberRefs.length) e[`pickups.${i}.members`] = 'Tick whose bags are collected here.'
     if (p.contactPhone && !phoneOk(p.contactPhone)) e[`pickups.${i}.contactPhone`] = '10-digit mobile.'
@@ -172,11 +173,11 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
   }
 
   // ── field builders ──────────────────────────────────────────────
-  type InpOpts = { type?: string; opt?: boolean; ph?: string; im?: 'numeric' | 'tel' | 'text'; max?: number; full?: boolean; ro?: boolean; hint?: string; ac?: string; tel?: boolean }
+  type InpOpts = { type?: string; opt?: boolean; ph?: string; im?: 'numeric' | 'tel' | 'text'; max?: number; full?: boolean; ro?: boolean; hint?: string; ac?: string; tel?: boolean; min?: string; max2?: string }
   const inp = (k: string, label: string, o: InpOpts = {}) => (
     <label className={`f${bad(k)}${o.full ? ' full' : ''}`} key={k}>
       <span>{label}{o.opt ? <> <em>(optional)</em></> : null}</span>
-      <input type={o.type ?? 'text'} value={getPath(S, k)} placeholder={o.ph ?? ''} readOnly={o.ro} inputMode={o.im} maxLength={o.max} autoComplete={o.ac ?? 'off'}
+      <input type={o.type ?? 'text'} value={getPath(S, k)} placeholder={o.ph ?? ''} readOnly={o.ro} inputMode={o.im} maxLength={o.max} min={o.min} {...(o.max2 ? { max: o.max2 } : {})} autoComplete={o.ac ?? 'off'}
         onChange={e => onFieldChange(k, o.tel ? e.target.value.replace(/\D/g, '').slice(0, 10) : e.target.value)} />
       {o.hint ? <span className="hint">{o.hint}</span> : null}{err(k)}
     </label>
@@ -278,7 +279,7 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
             {sel(`pickups.${i}.access`, 'Access', Y2K_ACCESS)}
             {inp(`pickups.${i}.contact`, 'Person handing over', { opt: true, ph: 'Defaults to you' })}
             {inp(`pickups.${i}.contactPhone`, 'Their mobile', { type: 'tel', im: 'numeric', max: 10, opt: true, tel: true })}
-            {sel(`pickups.${i}.date`, 'Pickup date', Y2K_PICKUP_DATES_LIST.map(d => [d.id, d.label] as [string, string]), { ph: 'Choose date', hint: 'Pickups run 10–12 December 2026.' })}
+            {inp(`pickups.${i}.date`, 'Pickup date', { type: 'date', min: '2026-12-10', max2: '2026-12-12', hint: 'Pickups run 10–12 December 2026 only.' })}
             {sel(`pickups.${i}.slot`, 'Time slot', Y2K_SLOT_LIST.map(s => [s.id, s.label] as [string, string]), { ph: 'Select a slot' })}
             <div className={`full${bad(`pickups.${i}.members`)}`}>
               <span className="lab">Whose bags are collected here</span>

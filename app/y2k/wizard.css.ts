@@ -26,7 +26,7 @@ export const WIZARD_CSS = `
 .ywz label.f{display:grid;gap:7px;align-content:start}
 .ywz label.f>span,.ywz .lab{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--label)}
 .ywz label.f>span em,.ywz .lab em{font-style:normal;text-transform:none;letter-spacing:0;font-weight:400;color:var(--stone)}
-.ywz input[type=text],.ywz input[type=tel],.ywz input[type=email],.ywz input[type=time],.ywz select,.ywz textarea{width:100%;font:400 16px/1.3 var(--sans);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:48px}
+.ywz input[type=date],.ywz input[type=text],.ywz input[type=tel],.ywz input[type=email],.ywz input[type=time],.ywz select,.ywz textarea{width:100%;font:400 16px/1.3 var(--sans);color:var(--ink);background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 14px;min-height:48px}
 .ywz select{appearance:none;-webkit-appearance:none;background-image:linear-gradient(45deg,transparent 50%,var(--label) 50%),linear-gradient(135deg,var(--label) 50%,transparent 50%);background-position:calc(100% - 18px) 50%,calc(100% - 13px) 50%;background-size:5px 5px;background-repeat:no-repeat;padding-right:36px}
 .ywz textarea{min-height:80px;resize:vertical}
 .ywz input:focus,.ywz select:focus,.ywz textarea:focus{outline:none;border-color:var(--gold-2);box-shadow:0 0 0 3px rgba(200,169,110,.2);background:#fff}
@@ -80,7 +80,7 @@ export const WIZARD_CSS = `
 @media (max-width:720px){.ywz .retrow{grid-template-columns:1fr 1fr}.ywz .retrow>div:first-child{grid-column:1/-1}}
 .ywz .sum{position:sticky;top:88px;background:var(--forest);color:var(--on-dark);border-radius:24px;padding:24px;display:grid;gap:16px}
 @media (max-width:980px){.ywz .sum{position:static;order:-1}.ywz .sum .more{display:none}}
-.ywz .sum h4{margin:0;font-family:var(--display);font-weight:400;font-size:26px}
+.ywz .sum h4{margin:0;color:var(--on-dark);font-family:var(--display);font-weight:400;font-size:26px}
 .ywz .sum .eyebrow{font-size:12px;letter-spacing:.28em;text-transform:uppercase;color:var(--gold)}
 .ywz .sum dl{margin:0;display:grid;grid-template-columns:1fr auto;gap:8px 12px;font-size:14px}
 .ywz .sum dt{color:rgba(244,238,228,.7)}
