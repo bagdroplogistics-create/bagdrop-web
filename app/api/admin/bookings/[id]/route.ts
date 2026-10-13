@@ -487,6 +487,21 @@ export async function PATCH(
         }).catch(err => console.error('[booking patch] auto-create LR error:', err))
       }
 
+      // Completed → make sure the booking has its LR/GC. Normally one already
+      // exists from the Payment Received trigger above, in which case this is a
+      // harmless no-op (idempotent: DB-level unique booking_id + existing-LR
+      // check). For a booking that skipped that trigger it creates the GC with
+      // the pickup branch's number. requireBranch: a pickup city with no
+      // branch mapping is flagged in the LR/GC tab's "Needs review" backfill
+      // instead of being given a wrongly-prefixed number. Never touches the
+      // booking's status or payment fields; failures are logged only.
+      if (status === 'completed' && existing) {
+        createOrGetLrForBooking(id, {}, { requireBranch: true }).then(result => {
+          if (result.error) console.warn('[booking patch] LR/GC on completion not created:', result.error)
+          else if (result.created) console.log(`[booking patch] auto-created LR/GC on completion for booking ${id}`)
+        }).catch(err => console.error('[booking patch] LR/GC on completion error:', err))
+      }
+
       if (existing && shouldNotifyCustomer) {
         notifyBookingStatus({
           customerTitle: existing.title,

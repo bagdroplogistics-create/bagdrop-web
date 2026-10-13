@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
-  Eye, Download, Loader2, Trash2, Truck, IndianRupee, Package,
-  User, MapPin, CheckCircle2, Pencil, Building2,
+  Eye, Download, Loader2, Trash2, IndianRupee, Package,
+  User, MapPin, CheckCircle2, Pencil, Building2, Printer, AlertTriangle,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
@@ -29,6 +29,15 @@ interface LR {
   branch_code:     string | null
   branch_name:     string | null
   financial_year:  string | null
+  // Joined from the linked booking / inquiry by GET /api/admin/lrs
+  tracking_id?:    string | null
+  inquiry_id?:     string | null
+  lead_id?:        string | null
+  customer_name?:  string | null
+  customer_phone?: string | null
+  service_type?:   string | null
+  pickup_date?:    string | null
+  delivery_date?:  string | null
 }
 
 interface BranchOption {
@@ -85,6 +94,18 @@ export default function LRsPage() {
   // both build. Separate loading flag from `downloading` so the two
   // buttons' spinners never get confused about which row is busy.
   const [viewingLr, setViewingLr] = useState<string | null>(null)
+  const [printingLr, setPrintingLr] = useState<string | null>(null)
+
+  // Completed inquiries → GC backfill (dry-run first, then confirm)
+  interface BackfillFlag { booking_id: string; tracking_id: string | null; customer_name: string | null; from_city: string | null; reasons: string[] }
+  interface BackfillPlan {
+    completed_total: number; already_have_lr: number; missing_lr: number; ready_count: number; flagged_count: number
+    flagged: BackfillFlag[]
+    ready?: { booking_id: string; tracking_id: string | null; customer_name: string | null; from_city: string | null; pickup_date: string | null; branch_code: string }[]
+  }
+  const [backfillPlan, setBackfillPlan] = useState<BackfillPlan | null>(null)
+  const [backfillBusy, setBackfillBusy] = useState(false)
+  const [backfillMsg, setBackfillMsg] = useState<string | null>(null)
 
   // Branch-Wise LR filters — spec section 10. "All Branches" (branchFilter
   // === 'all') deliberately omits branch_id from the query entirely rather
@@ -113,7 +134,7 @@ export default function LRsPage() {
   const fetchLrs = useCallback(async () => {
     if (!adminKey) return
     setLoading(true)
-    let qs = '?key=' + adminKey
+    let qs = '?key=' + adminKey + '&limit=5000'   // server default is 50 — would hide older GCs
     if (filter !== 'all') qs += '&status=' + filter
     if (search) qs += '&search=' + encodeURIComponent(search)
     if (branchFilter !== 'all') qs += '&branch_id=' + branchFilter
@@ -139,7 +160,7 @@ export default function LRsPage() {
     try {
       const [bookingsRes, allLrsRes] = await Promise.all([
         fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200`),
-        fetch(`/api/admin/lrs?key=${adminKey}&limit=1000`),
+        fetch(`/api/admin/lrs?key=${adminKey}&limit=5000&slim=1`),
       ])
       const bookingsData = bookingsRes.ok ? await bookingsRes.json() : { bookings: [] }
       const lrsData      = allLrsRes.ok  ? await allLrsRes.json()  : { lrs: [] }
@@ -298,6 +319,65 @@ export default function LRsPage() {
     }
   }
 
+  // Print: same PDF as View/Download, loaded into a hidden iframe and sent to
+  // the browser's print dialog.
+  async function printLr(id: string) {
+    setPrintingLr(id)
+    try {
+      const { blob } = await buildLrPdfBlob(id)
+      const url = URL.createObjectURL(blob)
+      const iframe = document.createElement('iframe')
+      iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
+      iframe.src = url
+      iframe.onload = () => {
+        try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { window.open(url, '_blank') }
+        setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 60_000)
+      }
+      document.body.appendChild(iframe)
+    } catch (e) {
+      console.error('LR print failed:', e)
+      alert('Could not prepare the LR for printing. Please try again.')
+    } finally {
+      setPrintingLr(null)
+    }
+  }
+
+  async function runBackfill(dryRun: boolean) {
+    setBackfillBusy(true); setBackfillMsg(null)
+    try {
+      if (dryRun) {
+        const res = await fetch('/api/admin/lrs/backfill-completed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ dry_run: true }),
+        })
+        const d = await res.json()
+        if (!res.ok) { setBackfillMsg(d.error ?? 'Could not check completed inquiries'); return }
+        setBackfillPlan(d)
+        return
+      }
+      let createdTotal = 0
+      const failures: string[] = []
+      for (let i = 0; i < 40; i++) {     // up to 40 batches of 25 per click
+        const res = await fetch('/api/admin/lrs/backfill-completed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ dry_run: false, batch_size: 25 }),
+        })
+        const d = await res.json()
+        if (!res.ok) { failures.push(d.error ?? 'Request failed'); break }
+        createdTotal += d.created?.length ?? 0
+        for (const f of d.failed ?? []) failures.push(`${f.tracking_id ?? f.booking_id}: ${f.error}`)
+        if (!d.remaining || (d.created?.length ?? 0) === 0) break
+      }
+      setBackfillMsg(`Generated ${createdTotal} GC${createdTotal === 1 ? '' : 's'}.` + (failures.length ? ` ${failures.length} failed: ${failures.slice(0, 3).join(' | ')}` : ''))
+      setBackfillPlan(null)
+      fetchLrs(); fetchQueue()
+    } catch {
+      setBackfillMsg('Network error — please try again.')
+    } finally {
+      setBackfillBusy(false)
+    }
+  }
+
   if (!authed) return null
 
   return (
@@ -396,10 +476,50 @@ export default function LRsPage() {
           )}
         </div>
 
+        {/* ── Completed inquiries without a GC ── */}
+        <div className="mb-6 rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-sm font-bold text-gray-800">Completed Inquiries — GC Backfill</h2>
+              <p className="text-xs text-gray-500">Finds Completed bookings that have no LR/GC and generates one using the pickup branch&apos;s numbering. Incomplete records are flagged, not generated.</p>
+            </div>
+            <button onClick={() => runBackfill(true)} disabled={backfillBusy}
+              className="flex items-center gap-1.5 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:opacity-50">
+              {backfillBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />} Check Completed Inquiries
+            </button>
+          </div>
+          {backfillMsg && <p className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-semibold text-emerald-700">{backfillMsg}</p>}
+          {backfillPlan && (
+            <div className="mt-3 space-y-3 text-xs text-gray-700">
+              <p>
+                {backfillPlan.completed_total} completed · {backfillPlan.already_have_lr} already have a GC ·{' '}
+                <b>{backfillPlan.ready_count} ready to generate</b> · <b className="text-amber-600">{backfillPlan.flagged_count} need review</b>
+              </p>
+              {backfillPlan.ready_count > 0 && (
+                <button onClick={() => { if (confirm(`Generate ${backfillPlan.ready_count} GC document(s)? Numbers are issued per pickup branch and cannot be reused.`)) runBackfill(false) }}
+                  disabled={backfillBusy}
+                  className="rounded-lg bg-orange-500 px-3 py-2 text-xs font-semibold text-white hover:bg-orange-600 disabled:opacity-50">
+                  Generate {backfillPlan.ready_count} GC{backfillPlan.ready_count === 1 ? '' : 's'} now
+                </button>
+              )}
+              {backfillPlan.flagged.length > 0 && (
+                <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+                  <p className="mb-1 flex items-center gap-1.5 font-semibold text-amber-700"><AlertTriangle className="h-3.5 w-3.5" /> Needs review (no GC created)</p>
+                  <ul className="max-h-48 space-y-1 overflow-y-auto">
+                    {backfillPlan.flagged.map(f => (
+                      <li key={f.booking_id}><span className="font-mono font-bold">{f.tracking_id ?? f.booking_id}</span> {f.customer_name ? `— ${f.customer_name}` : ''}: {f.reasons.join('; ')}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search by GC no., consignor, consignee, vehicle…"
+            <input type="text" placeholder="Search GC no., inquiry / tracking ID, customer, phone, route, vehicle…"
               value={search} onChange={e => setSearch(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm shadow-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
@@ -453,7 +573,7 @@ export default function LRsPage() {
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['GC No.', 'Branch', 'Date', 'Consignor', 'Consignee', 'Route', 'Vehicle', 'Bags', 'Amount', 'Status', 'Actions'].map(h => (
+                    {['GC No.', 'Branch', 'Inquiry ID', 'Booking / Tracking ID', 'Customer', 'Phone', 'From / Pickup', 'To / Delivery', 'Service', 'Bags', 'Pickup Date', 'Delivery Date', 'GC Generated', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -473,17 +593,23 @@ export default function LRsPage() {
                             ? <div className="flex items-center gap-1"><Building2 className="h-3 w-3 text-gray-400" /> {l.branch_code}</div>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.lr_date)}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{l.consignor_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-900">{l.consignee_name ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">
-                          {l.from_city && l.to_city ? `${l.from_city} → ${l.to_city}` : '—'}
+                        <td className="px-4 py-3 text-xs whitespace-nowrap">
+                          {l.inquiry_id
+                            ? (l.lead_id
+                                ? <Link href={`/admin/quotes/view/${l.lead_id}`} className="font-mono font-semibold text-blue-600 hover:underline">{l.inquiry_id}</Link>
+                                : <span className="font-mono">{l.inquiry_id}</span>)
+                            : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">
-                          <div className="flex items-center gap-1"><Truck className="h-3 w-3" /> {l.vehicle_number ?? '—'}</div>
-                        </td>
+                        <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">{l.tracking_id ?? <span className="text-gray-300">—</span>}</td>
+                        <td className="px-4 py-3 text-sm text-gray-900">{l.customer_name ?? l.consignor_name ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{l.customer_phone ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{l.from_city ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{l.to_city ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{l.service_type ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{l.total_bags ?? '—'}</td>
-                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">{fmt(l.total_amount)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.pickup_date ?? l.lr_date ?? null)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.delivery_date ?? null)}</td>
+                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.created_at)}</td>
                         <td className="px-4 py-3">
                           <span style={{ color: st.color, background: st.bg }}
                             className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap">
@@ -506,6 +632,11 @@ export default function LRsPage() {
                               title="Download LR PDF"
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-green-50 hover:text-green-600 hover:border-green-200 transition-colors disabled:opacity-40">
                               {downloading === l.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => printLr(l.id)} disabled={printingLr === l.id}
+                              title="Print LR/GC"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors disabled:opacity-40">
+                              {printingLr === l.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
                             </button>
                             <button onClick={() => deleteLr(l.id)} disabled={deleting === l.id}
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">

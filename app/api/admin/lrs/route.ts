@@ -5,6 +5,7 @@ import { computeLrCharges, isValidTiTag } from '@/lib/lr-constants'
 import { nextLrNumber, createOrGetLrForBooking, resolveBranchForLr, nextBranchLrNumber, branchSnapshotFields } from '@/lib/lr-auto-create'
 import { indianFinancialYear } from '@/lib/financial-year'
 import { getBranchAccess } from '@/lib/branch-auth'
+import { ilikeValue, normalizeSearch } from '@/lib/lead-search'
 
 export const runtime = 'nodejs'
 
@@ -48,16 +49,76 @@ export async function GET(req: NextRequest) {
   if (bookingId) query = query.eq('booking_id', bookingId)
 
   if (status && status !== 'all') query = query.eq('status', status)
-  if (search) {
-    query = query.or(
-      `lr_number.ilike.%${search}%,consignor_name.ilike.%${search}%,consignee_name.ilike.%${search}%,vehicle_number.ilike.%${search}%,eway_bill_number.ilike.%${search}%,consignor_mobile.ilike.%${search}%,branch_code.ilike.%${search}%`
-    )
+  const q = normalizeSearch(search)
+  if (q) {
+    // Besides the LR's own columns, match the linked booking's Tracking ID
+    // and the linked inquiry's Inquiry ID / customer phone, so the table can
+    // be searched by any of the identifiers it displays.
+    const [bk, ld] = await Promise.all([
+      supabaseAdmin.from('bookings').select('id').or(`tracking_id.ilike.${ilikeValue(q)},customer_phone.ilike.${ilikeValue(q)}`).limit(200),
+      supabaseAdmin.from('leads').select('booking_id').not('booking_id', 'is', null)
+        .or(`lead_number.ilike.${ilikeValue(q)},quote_number.ilike.${ilikeValue(q)}`).limit(200),
+    ])
+    const linkedBookingIds = Array.from(new Set([
+      ...((bk.data ?? []).map(b => b.id as string)),
+      ...((ld.data ?? []).map(l => l.booking_id as string)),
+    ]))
+    const v = ilikeValue(q)
+    const clauses = [
+      `lr_number.ilike.${v}`, `consignor_name.ilike.${v}`, `consignee_name.ilike.${v}`,
+      `vehicle_number.ilike.${v}`, `eway_bill_number.ilike.${v}`, `consignor_mobile.ilike.${v}`,
+      `branch_code.ilike.${v}`, `from_city.ilike.${v}`, `to_city.ilike.${v}`,
+    ]
+    if (linkedBookingIds.length > 0) clauses.push(`booking_id.in.(${linkedBookingIds.join(',')})`)
+    query = query.or(clauses.join(','))
   }
 
   const { data, error, count } = await query
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  return NextResponse.json({ lrs: data ?? [], total: count, page, limit })
+  // `slim=1` skips enrichment (used by callers that only need booking_id /
+  // lr_number, e.g. the "awaiting LR" queue).
+  if (searchParams.get('slim') === '1') {
+    return NextResponse.json({ lrs: data ?? [], total: count, page, limit })
+  }
+
+  // ── Enrich with the linked booking + inquiry ────────────────────────
+  // So the LR/GC table can show Inquiry ID, Tracking ID, customer phone,
+  // service type, pickup/delivery dates. Ids are fetched in chunks of 100 to
+  // keep request URLs short.
+  const bookingIds = Array.from(new Set((data ?? []).map(l => l.booking_id as string | null).filter((x): x is string => !!x)))
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const bookingMap = new Map<string, any>()
+  const leadMap = new Map<string, { id: string; lead_number: string | null; delivery_date: string | null }>()
+  for (let i = 0; i < bookingIds.length; i += 100) {
+    const chunk = bookingIds.slice(i, i + 100)
+    const [bk, ld] = await Promise.all([
+      supabaseAdmin.from('bookings')
+        .select('id, tracking_id, customer_name, customer_phone, service_type, pickup_date, delivery_date, status, total_bags')
+        .in('id', chunk),
+      supabaseAdmin.from('leads').select('id, booking_id, lead_number, delivery_date').in('booking_id', chunk),
+    ])
+    for (const b of bk.data ?? []) bookingMap.set(b.id, b)
+    for (const l of ld.data ?? []) if (l.booking_id && !leadMap.has(l.booking_id)) leadMap.set(l.booking_id, l)
+  }
+  const lrs = (data ?? []).map(l => {
+    const b = l.booking_id ? bookingMap.get(l.booking_id) : null
+    const ld = l.booking_id ? leadMap.get(l.booking_id) : null
+    return {
+      ...l,
+      tracking_id:     b?.tracking_id ?? null,
+      inquiry_id:      ld?.lead_number ?? null,
+      lead_id:         ld?.id ?? null,
+      customer_name:   b?.customer_name ?? null,
+      customer_phone:  b?.customer_phone ?? l.consignor_mobile ?? null,
+      service_type:    b?.service_type ?? null,
+      pickup_date:     b?.pickup_date ?? l.lr_date ?? null,
+      delivery_date:   b?.delivery_date ?? ld?.delivery_date ?? null,
+      booking_status:  b?.status ?? null,
+    }
+  })
+
+  return NextResponse.json({ lrs, total: count, page, limit })
 }
 
 // ── POST /api/admin/lrs ───────────────────────────────────────

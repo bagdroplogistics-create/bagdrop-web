@@ -74,9 +74,13 @@ export interface ResolvedBranch {
   lr_series_prefix:  string
   lr_include_fy:     boolean
   lr_padding:        number
+  /** 'legacy' (MUM/2026-27/LR/000001) or 'cm' (MUM26CM046) — see 20261013_gc_number_style.sql */
+  gc_number_style?:  string | null
 }
 
-const BRANCH_COLUMNS = 'id, branch_code, branch_name, city, address, gst_number, contact_number, email, lr_series_prefix, lr_include_fy, lr_padding'
+// '*' (not an explicit list) so a database that hasn't run the gc_number_style
+// migration yet still resolves branches instead of silently returning null.
+const BRANCH_COLUMNS = '*'
 
 /**
  * Resolves the LR Issuing Branch per spec section 3 ("Automatic Branch
@@ -134,18 +138,40 @@ export interface BranchLrNumberResult {
  */
 export async function nextBranchLrNumber(branch: ResolvedBranch): Promise<BranchLrNumberResult> {
   const fy = indianFinancialYear()
-  const { data: seq, error } = await supabaseAdmin.rpc('next_branch_lr_seq', {
-    p_branch_code: branch.lr_series_prefix,
-    p_year:        fy.startYear,
-    p_width:       branch.lr_padding,
-  })
-  if (error || !seq) {
-    throw new Error(`Could not generate LR number for branch ${branch.branch_code}: ${error?.message ?? 'no value returned'}`)
+  // Retry loop: a minted number must never collide with an existing lr_number
+  // (e.g. an LR typed in manually, or numbers issued before this branch's
+  // counter was configured). The counter only ever moves forward, so a
+  // retry simply takes the next number.
+  for (let attempt = 0; attempt < 25; attempt++) {
+    const { data: seq, error } = await supabaseAdmin.rpc('next_branch_lr_seq', {
+      p_branch_code: branch.lr_series_prefix,
+      p_year:        fy.startYear,
+      p_width:       branch.lr_padding,
+    })
+    if (error || !seq) {
+      throw new Error(`Could not generate LR number for branch ${branch.branch_code}: ${error?.message ?? 'no value returned'}`)
+    }
+    const lrNumber = formatLrNumber(branch, fy.startYear, fy.label, String(seq))
+    const { data: clash } = await supabaseAdmin.from('lrs').select('id').eq('lr_number', lrNumber).maybeSingle()
+    if (!clash) return { lrNumber, financialYear: fy.label }
   }
-  const lrNumber = branch.lr_include_fy
-    ? `${branch.lr_series_prefix}/${fy.label}/LR/${seq}`
+  throw new Error(`Could not find a free LR number for branch ${branch.branch_code} after 25 attempts.`)
+}
+
+/** Pure formatter — exported for tests. */
+export function formatLrNumber(
+  branch: Pick<ResolvedBranch, 'lr_series_prefix' | 'lr_include_fy' | 'gc_number_style'>,
+  fyStartYear: number,
+  fyLabel: string,
+  seq: string,
+): string {
+  if (branch.gc_number_style === 'cm') {
+    // e.g. MUM26CM046 / AHMD25CM0027
+    return `${branch.lr_series_prefix}${String(fyStartYear).slice(-2)}CM${seq}`
+  }
+  return branch.lr_include_fy
+    ? `${branch.lr_series_prefix}/${fyLabel}/LR/${seq}`
     : `${branch.lr_series_prefix}-LR-${seq}`
-  return { lrNumber, financialYear: fy.label }
 }
 
 /** The 7 lrs columns snapshotting the issuing branch — null-filled when no branch resolved (legacy fallback). */
@@ -177,7 +203,8 @@ export interface CreateLrForBookingResult {
  */
 export async function createOrGetLrForBooking(
   bookingId: string,
-  overrides: Record<string, unknown> = {}
+  overrides: Record<string, unknown> = {},
+  opts: { requireBranch?: boolean } = {},
 ): Promise<CreateLrForBookingResult> {
   // ── Idempotency guard ──────────────────────────────────────────────
   const { data: existingLr } = await supabaseAdmin
@@ -241,6 +268,15 @@ export async function createOrGetLrForBooking(
   // and why (never blocks automatic LR creation on Payment Received).
   const ovBranchId = (overrides as Record<string, unknown>).branch_id as string | undefined
   const resolvedBranch = await resolveBranchForLr(fromCity, ovBranchId ?? null)
+  // Completed-inquiry GC generation must never fall back to the legacy global
+  // series: a pickup city with no (or an ambiguous) branch mapping is flagged
+  // for configuration instead of getting a wrongly-prefixed GC number.
+  if (opts.requireBranch && !resolvedBranch) {
+    return {
+      lr: null, created: false,
+      error: `NO_BRANCH: pickup location "${fromCity ?? '(blank)'}" has no single active branch configured — add/fix the branch in Branches, then retry.`,
+    }
+  }
   const lrNumber = resolvedBranch
     ? (await nextBranchLrNumber(resolvedBranch)).lrNumber
     : await nextLrNumber()

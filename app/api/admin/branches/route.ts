@@ -22,21 +22,28 @@ export async function GET(req: NextRequest) {
   const access = await getBranchAccess(req)
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  let query = supabaseAdmin.from('branches').select(`${PUBLIC_COLUMNS}, access_key`).order('branch_name')
+  const buildQuery = (cols: string) => {
+    let q = supabaseAdmin.from('branches').select(`${cols}, access_key`).order('branch_name')
+    if (access.role === 'branch') q = q.eq('id', access.branchId)
+    return q
+  }
 
   // Branch-scoped callers only ever see their own branch — "Branch Admin/
   // Manager... cannot access another branch's records unless specifically
   // permitted" (spec section 11), enforced here at the query level, not
   // just by hiding rows in the UI.
-  if (access.role === 'branch') query = query.eq('id', access.branchId)
-
-  const { data, error } = await query
+  // gc_number_style needs 20261013_gc_number_style.sql — fall back gracefully
+  // if it hasn't been run yet.
+  let { data, error } = await buildQuery(`${PUBLIC_COLUMNS}, gc_number_style`)
+  if (error && error.message?.includes('gc_number_style')) {
+    ;({ data, error } = await buildQuery(PUBLIC_COLUMNS))
+  }
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
   // Strip the raw key back out of the response, replacing it with a
   // boolean — a GET (even for your own branch) should never re-expose the
   // secret; only the create/rotate responses do that, once.
-  const branches = (data ?? []).map(({ access_key, ...rest }) => ({
+  const branches = ((data ?? []) as unknown as Array<Record<string, unknown> & { access_key?: string | null }>).map(({ access_key, ...rest }) => ({
     ...rest,
     has_access_key: !!access_key,
   }))
@@ -89,7 +96,7 @@ export async function POST(req: NextRequest) {
   const lrIncludeFy    = body.lr_include_fy !== false // default true
   const lrStartNumber  = Number.isFinite(Number(body.lr_start_number)) && Number(body.lr_start_number) > 0
     ? Math.floor(Number(body.lr_start_number)) : 1
-  const lrPadding      = Number.isFinite(Number(body.lr_padding)) && Number(body.lr_padding) >= 4 && Number(body.lr_padding) <= 10
+  const lrPadding      = Number.isFinite(Number(body.lr_padding)) && Number(body.lr_padding) >= 3 && Number(body.lr_padding) <= 10
     ? Math.floor(Number(body.lr_padding)) : 6
 
   const accessKey = crypto.randomBytes(24).toString('base64url')
@@ -113,6 +120,7 @@ export async function POST(req: NextRequest) {
       lr_include_fy:     lrIncludeFy,
       lr_start_number:   lrStartNumber,
       lr_padding:        lrPadding,
+      ...(body.gc_number_style === 'cm' ? { gc_number_style: 'cm' } : {}),
     })
     .select(PUBLIC_COLUMNS)
     .single()

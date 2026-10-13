@@ -46,6 +46,7 @@ interface Branch {
   lr_include_fy:     boolean
   lr_start_number:   number
   lr_padding:        number
+  gc_number_style?:  string | null
   has_access_key:    boolean
 }
 
@@ -55,6 +56,8 @@ interface BranchForm {
   contact_number: string; email: string; branch_manager: string
   lr_series_prefix: string; lr_include_fy: boolean
   lr_start_number: string; lr_padding: string
+  gc_number_style: 'legacy' | 'cm'
+  next_sequence: string
 }
 
 const EMPTY_FORM: BranchForm = {
@@ -63,18 +66,20 @@ const EMPTY_FORM: BranchForm = {
   contact_number: '', email: '', branch_manager: '',
   lr_series_prefix: '', lr_include_fy: true,
   lr_start_number: '1', lr_padding: '6',
+  gc_number_style: 'legacy', next_sequence: '',
 }
 
 // Live example of the LR number format this config produces — helps the
 // founder see exactly what MUM/2026-27/LR/000001 vs MUM-LR-000001 means
 // before saving, rather than guessing from the raw field names.
-function formatExample(prefix: string, includeFy: boolean, padding: string, startNumber: string) {
+function formatExample(prefix: string, includeFy: boolean, padding: string, startNumber: string, style: string = 'legacy') {
   const p = (prefix || 'XXX').toUpperCase()
-  const pad = Math.max(4, Math.min(10, parseInt(padding, 10) || 6))
+  const pad = Math.max(3, Math.min(10, parseInt(padding, 10) || 6))
   const seq = String(parseInt(startNumber, 10) || 1).padStart(pad, '0')
   const now = new Date()
   const fyStart = now.getMonth() >= 3 ? now.getFullYear() : now.getFullYear() - 1
   const fyLabel = `${fyStart}-${String((fyStart + 1) % 100).padStart(2, '0')}`
+  if (style === 'cm') return `${p}${String(fyStart).slice(-2)}CM${seq}`
   return includeFy ? `${p}/${fyLabel}/LR/${seq}` : `${p}-LR-${seq}`
 }
 
@@ -93,6 +98,7 @@ function BranchModal({
     branch_manager: branch.branch_manager ?? '',
     lr_series_prefix: branch.lr_series_prefix, lr_include_fy: branch.lr_include_fy,
     lr_start_number: String(branch.lr_start_number), lr_padding: String(branch.lr_padding),
+    gc_number_style: branch.gc_number_style === 'cm' ? 'cm' : 'legacy', next_sequence: '',
   } : { ...EMPTY_FORM })
   const [saving, setSaving] = useState(false)
   const [err, setErr] = useState('')
@@ -114,6 +120,8 @@ function BranchModal({
       lr_include_fy: form.lr_include_fy,
       lr_start_number: Number(form.lr_start_number) || 1,
       lr_padding: Number(form.lr_padding) || 6,
+      gc_number_style: form.gc_number_style,
+      ...(isEdit && form.next_sequence.trim() ? { set_next_sequence: Number(form.next_sequence) } : {}),
     }
 
     const res = await fetch(isEdit ? `/api/admin/branches/${branch!.id}` : '/api/admin/branches', {
@@ -195,7 +203,7 @@ function BranchModal({
             </div>
             <div>
               <label className={lbl}>Padding (digits)</label>
-              <input className={inp} type="number" min={4} max={10} value={form.lr_padding} onChange={e => set('lr_padding', e.target.value)} />
+              <input className={inp} type="number" min={3} max={10} value={form.lr_padding} onChange={e => set('lr_padding', e.target.value)} />
             </div>
             <div className="flex items-center gap-2 pt-5">
               <button type="button" onClick={() => set('lr_include_fy', !form.lr_include_fy)}
@@ -204,6 +212,19 @@ function BranchModal({
                 Include Financial Year
               </button>
             </div>
+            <div>
+              <label className={lbl}>GC Number Format</label>
+              <select className={inp} value={form.gc_number_style} onChange={e => set('gc_number_style', e.target.value as 'legacy' | 'cm')}>
+                <option value="legacy">Standard — MUM/2026-27/LR/000001</option>
+                <option value="cm">Branch GC — MUM26CM046</option>
+              </select>
+            </div>
+            {isEdit && (
+              <div>
+                <label className={lbl}>Next GC Number (optional)</label>
+                <input className={inp} type="number" min={1} value={form.next_sequence} onChange={e => set('next_sequence', e.target.value)} placeholder="e.g. 47 — continues your register" />
+              </div>
+            )}
             {!isEdit && (
               <div>
                 <label className={lbl}>Starting Number</label>
@@ -212,7 +233,7 @@ function BranchModal({
             )}
           </div>
           <p className="mt-3 text-xs text-gray-500">
-            First LR will look like: <span className="font-mono font-semibold text-gray-800">{formatExample(form.lr_series_prefix || form.branch_code, form.lr_include_fy, form.lr_padding, form.lr_start_number)}</span>
+            First LR will look like: <span className="font-mono font-semibold text-gray-800">{formatExample(form.lr_series_prefix || form.branch_code, form.lr_include_fy, form.lr_padding, form.next_sequence || form.lr_start_number, form.gc_number_style)}</span>
           </p>
           {isEdit && <p className="mt-1 text-[11px] text-gray-400">Starting Number only applies when a branch is first created — the running sequence carries over automatically if you rename the prefix later.</p>}
         </div>
