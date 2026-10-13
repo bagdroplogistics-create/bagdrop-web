@@ -537,7 +537,7 @@ function BookingForm() {
               onMouseLeave={e=>{ if(!busy){ e.currentTarget.style.background=Y.darkGreen; e.currentTarget.style.transform='none'; e.currentTarget.style.boxShadow='none' } }}>
               {busy ? 'Submitting…' : 'Confirm pickup'}
             </button>
-            <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Flight-synced &amp; Fully Wrapped — powered by Bagdrop</p>
+            <p style={{ fontFamily:FONT_BODY, fontSize:12.5, color:Y.muted, textAlign:'center', margin:'16px 0 0' }}>Wedding-synced &amp; Fully Wrapped — powered by Bagdrop</p>
           </form>
         </Reveal>
       )}
@@ -770,7 +770,7 @@ export default function Y2KPage() {
               <div>
                 <Eyebrow color={Y.goldLight}>03 — Travel Light</Eyebrow>
                 <h2 style={{ fontFamily:FONT_DISPLAY, fontWeight:400, color:Y.cream, fontSize:'clamp(36px,6vw,64px)', lineHeight:1.06, margin:'20px 0 0' }}>Your bags, handled.<br/>So the mountains are all you carry.</h2>
-                <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.8, color:'rgba(244,238,228,0.78)', margin:'22px 0 0', maxWidth:'48ch' }}>Powered by Bagdrop. We collect your luggage in Mumbai and deliver it straight to your room at Taj Aravali — flight-synced &amp; fully wrapped.</p>
+                <p style={{ fontFamily:FONT_BODY, fontSize:'clamp(15px,1.7vw,17px)', lineHeight:1.8, color:'rgba(244,238,228,0.78)', margin:'22px 0 0', maxWidth:'48ch' }}>Powered by Bagdrop. We collect your luggage in Mumbai and deliver it straight to your room at Taj Aravali — wedding-synced &amp; fully wrapped.</p>
               </div>
             </Reveal>
             <Reveal>
@@ -786,7 +786,7 @@ export default function Y2KPage() {
           <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(220px,1fr))', gap:18, marginTop:52 }}>
             {[
               { n:'01', title:'Door pickup, Mumbai',     desc:'From home or the airport — one tap and we\'re there.' },
-              { n:'02', title:'Flight-synced transit',   desc:'Tracked end-to-end, timed to land when you do.' },
+              { n:'02', title:'Wedding-synced transit',   desc:'Tracked end-to-end, timed to land when you do.' },
               { n:'03', title:'Delivered to your room',  desc:'Waiting at Taj Aravali before you check in.' },
             ].map(s=>(
               <Reveal key={s.n}>
