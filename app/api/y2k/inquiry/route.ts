@@ -1,3 +1,4 @@
+import { sanitizeFamily, bagTypeLabel, Y2K_SLOT_LIST, type FamilyPayload } from '@/lib/y2k-family'
 import { PROHIBITED_ITEMS_VERSION, PROHIBITED_ACK_TEXT } from '@/lib/prohibited-items'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
@@ -50,7 +51,7 @@ function generateTestTrackingId(): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests: _rawGuests, bags: rawBags, addOnGuests: rawAddOns, hotelRoomNumber: rawRoom, submissionId: rawSubmissionId, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode, prohibitedAck } = body
+    const { name, phone, email, guests: _rawGuests, bags: rawBags, addOnGuests: rawAddOns, hotelRoomNumber: rawRoom, submissionId: rawSubmissionId, family: rawFamily, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode, prohibitedAck } = body
     // returnPickup / originalTrackingId: set only by the second call
     // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
     // pickup". Used below purely to make this leg visibly distinct in the
@@ -70,14 +71,31 @@ export async function POST(req: NextRequest) {
     // Total bags is ALWAYS computed here (lead bags + add-on bags); any
     // client-supplied total is ignored. Return-pickup legs never carry
     // add-ons (they only send their own bag count).
-    type AddOn = { name: string; phone: string | null; email: string | null; bags: number }
+    type AddOn = { name: string; phone: string | null; email: string | null; bags: number; ref?: string; travel?: Record<string, string> }
+    // Multi-step wizard payload (onward bookings only): validated + normalised
+    // server-side; per-guest bag counts are derived from the bag list itself.
+    let fam: FamilyPayload | null = null
+    if (rawFamily !== undefined && rawFamily !== null && returnPickup !== true) {
+      const sr = sanitizeFamily(rawFamily)
+      if (!sr.ok) return NextResponse.json({ error: sr.error }, { status: 400 })
+      fam = sr.family
+      const p1 = fam.pickups[0]
+      if (arrivalDate !== p1.date || pickupTime !== p1.slot) {
+        return NextResponse.json({ error: 'Pickup details do not match. Please review and try again.' }, { status: 400 })
+      }
+    }
+    const bagsOwnedBy = (ref: string) => fam ? fam.bags.filter(b => b.owner === ref).length : 0
     const isIntStr = (v: unknown) => typeof v === 'number' ? Number.isInteger(v) : typeof v === 'string' && /^\d+$/.test(v.trim())
-    const leadBagsRaw = isIntStr(rawBags) ? Number(rawBags) : NaN
+    const leadBagsRaw = fam ? bagsOwnedBy(fam.members[0].ref) : (isIntStr(rawBags) ? Number(rawBags) : NaN)
     if (!Number.isFinite(leadBagsRaw) || leadBagsRaw < 0 || leadBagsRaw > 50) {
       return NextResponse.json({ error: 'Lead guest bags must be a whole number (0 or more).' }, { status: 400 })
     }
     const addOns: AddOn[] = []
-    if (rawAddOns !== undefined && rawAddOns !== null) {
+    if (fam) {
+      for (const m of fam.members.slice(1)) {
+        addOns.push({ name: m.name, phone: m.phone ? '+91' + m.phone : null, email: null, bags: bagsOwnedBy(m.ref), ref: m.ref, travel: { mode: m.mode, arrDate: m.arrDate, arrTime: m.arrTime, travelNo: m.travelNo, depDate: m.depDate } })
+      }
+    } else if (rawAddOns !== undefined && rawAddOns !== null) {
       if (!Array.isArray(rawAddOns) || rawAddOns.length > 20 || (returnPickup === true && rawAddOns.length > 0)) {
         return NextResponse.json({ error: 'Invalid add-on guest list.' }, { status: 400 })
       }
@@ -107,10 +125,24 @@ export async function POST(req: NextRequest) {
     const guests = String(1 + addOns.length)
     const hotelRoomNumber = typeof rawRoom === 'string' && rawRoom.trim() ? rawRoom.trim().slice(0, 40) : null
     const submissionId = typeof rawSubmissionId === 'string' && /^[A-Za-z0-9_:-]{8,80}$/.test(rawSubmissionId) ? rawSubmissionId : null
+    const bagSummary = fam
+      ? ['large', 'medium', 'small'].map(t => { const n = fam!.bags.filter(b => b.type === t).length; return n ? `${n} ${bagTypeLabel(t)}` : '' }).filter(Boolean).join(', ')
+      : ''
+    const slotLabel = (id: string) => Y2K_SLOT_LIST.find(x => x.id === id)?.label ?? id
+    const famNote = fam
+      ? [
+          `Side: ${fam.side === 'groom' ? "Groom's (Yash)" : "Bride's (Yashna)"}`,
+          `Bag types: ${bagSummary}`,
+          fam.pickups.length > 1 ? 'Pickups: ' + fam.pickups.map(p => `${p.label || p.ref} — ${p.address}, Mumbai ${p.pincode} (${p.date}, ${slotLabel(p.slot)})`).join(' ; ') : '',
+          fam.bags.some(b => b.ret) ? `Return planned for ${fam.bags.filter(b => b.ret).length} bag(s)` + (fam.extraReturn ? ` (+${fam.extraReturn} extra expected)` : '') : '',
+          fam.notes ? `Family notes: ${fam.notes}` : '',
+        ].filter(Boolean).join(' | ')
+      : ''
     const familyNote = addOns.length
       ? `Family booking — Lead: ${name?.trim()} (${leadBagsRaw} bag${leadBagsRaw === 1 ? '' : 's'}); Add-ons: ` +
         addOns.map(g => `${g.name} (${g.bags})`).join(', ') + `; Total bags: ${totalBagsCount}`
       : ''
+    const familyNoteAll = [familyNote, famNote].filter(Boolean).join(' | ')
 
     // Idempotency: a retry of the same submission returns the original
     // booking instead of creating a duplicate.
@@ -209,6 +241,7 @@ export async function POST(req: NextRequest) {
         time_slot:      pickupTime || null,
         total_bags:     totalBagsCount,
         ...(hotelRoomNumber ? { hotel_room_number: hotelRoomNumber } : {}),
+        ...(fam ? { family_details: { ...fam, submitted_at: new Date().toISOString(), version: 'y2k-wizard-v1' } } : {}),
         ...(submissionId ? { client_submission_id: submissionId } : {}),
         total_amount:   0,
         currency:       'INR',
@@ -216,7 +249,7 @@ export async function POST(req: NextRequest) {
           isTestMode ? '[TEST SUBMISSION — safe to delete, does not affect real tracking numbers]' : '',
           '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17th–18th Dec 2026]',
           isReturnPickup ? `[RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'}]` : '',
-          familyNote,
+          familyNoteAll,
           guests       ? `Group size: ${guests} guests` : '',
           bags         ? `Luggage pieces: ${bags}` : '',
           pickupAddress   ? `Pickup: ${pickupAddress}` : '',
@@ -258,8 +291,10 @@ export async function POST(req: NextRequest) {
         // Non-fatal: the same info is also in the booking notes above.
         if (savedBookingId && !isReturnPickup) {
           const guestRows = [
-            { booking_id: savedBookingId, guest_name: name.trim(), mobile_number: '+91' + digits, email: email?.trim().toLowerCase() || null, room_number: hotelRoomNumber, is_lead: true, bags_count: leadBagsRaw, sort_order: 0 },
-            ...addOns.map((g, i) => ({ booking_id: savedBookingId!, guest_name: g.name, mobile_number: g.phone, email: g.email, room_number: hotelRoomNumber, is_lead: false, bags_count: g.bags, sort_order: i + 1 })),
+            { booking_id: savedBookingId, guest_name: name.trim(), mobile_number: '+91' + digits, email: email?.trim().toLowerCase() || null, room_number: hotelRoomNumber, is_lead: true, bags_count: leadBagsRaw, sort_order: 0,
+              ...(fam ? { member_ref: fam.members[0].ref, travel: { mode: fam.members[0].mode, arrDate: fam.members[0].arrDate, arrTime: fam.members[0].arrTime, travelNo: fam.members[0].travelNo, depDate: fam.members[0].depDate } } : {}) },
+            ...addOns.map((g, i) => ({ booking_id: savedBookingId!, guest_name: g.name, mobile_number: g.phone, email: g.email, room_number: hotelRoomNumber, is_lead: false, bags_count: g.bags, sort_order: i + 1,
+              ...(fam ? { member_ref: g.ref, travel: g.travel } : {}) })),
           ]
           const { error: gErr } = await supabaseAdmin.from('group_guests').insert(guestRows)
           if (gErr) console.error('[y2k/inquiry] guest rows insert failed (non-fatal):', gErr.message)

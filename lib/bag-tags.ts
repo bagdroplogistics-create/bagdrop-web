@@ -97,26 +97,51 @@ export async function ensureBagsForBooking(bookingId: string): Promise<{ created
     // key; bag_label (below) is the real tag/QR-facing id.
     const bagNumbers = await mintBagIds(totalBags)
 
-    // Family bookings (Y2K): per-guest bag counts live in group_guests.
-    // Assign guest_id to bags in guest order when the counts add up to
-    // total_bags; otherwise leave guest_id null (previous behaviour).
+    // Family bookings (Y2K wizard): when the booking carries a per-bag
+    // snapshot (bookings.family_details) whose count matches total_bags, each
+    // bag row gets its own type/colour/owner/etc. and is linked to its guest.
+    // Otherwise fall back to guest_id by per-guest counts, then to unlinked.
+    type FD = { bags?: Array<Record<string, unknown>>; pickups?: Array<Record<string, unknown>> }
+    // Separate best-effort read: keeps this function working for every
+    // booking even before the family_details migration has been applied.
+    let fd: FD | null = null
+    try {
+      const { data: fdRow, error: fdErr } = await supabaseAdmin.from('bookings').select('family_details').eq('id', bookingId).maybeSingle()
+      if (!fdErr) fd = (fdRow as { family_details?: FD | null } | null)?.family_details ?? null
+    } catch { /* ignore */ }
+    const guestByRef: Record<string, string> = {}
     const guestSlots: (string | null)[] = []
     try {
       const { data: gs } = await supabaseAdmin
-        .from('group_guests').select('id, bags_count, sort_order')
+        .from('group_guests').select('id, bags_count, sort_order, member_ref')
         .eq('booking_id', bookingId).is('deleted_at', null).order('sort_order')
-      for (const g of gs ?? []) for (let k = 0; k < (Number(g.bags_count) || 0); k++) guestSlots.push(g.id)
+      for (const g of gs ?? []) {
+        if (g.member_ref) guestByRef[g.member_ref as string] = g.id
+        for (let k = 0; k < (Number(g.bags_count) || 0); k++) guestSlots.push(g.id)
+      }
     } catch { /* columns/table missing => no guest linkage */ }
-    const linkGuests = guestSlots.length === totalBags
+    const detailBags = fd?.bags && fd.bags.length === totalBags ? fd.bags : null
+    const linkGuests = !detailBags && guestSlots.length === totalBags
 
-    const rows = bagNumbers.map((bag_number, i) => ({
-      booking_id:        bookingId,
-      guest_id:          linkGuests ? guestSlots[i] : null,
-      bag_number,
-      bag_label:         generateBagLabel(booking.tracking_id, i + 1, false),
-      status:            'tag_generated',
-      tag_generated_at:  now,
-    }))
+    const rows = bagNumbers.map((bag_number, i) => {
+      const d = detailBags?.[i] as Record<string, unknown> | undefined
+      const pk = d ? (fd?.pickups ?? []).find(p => p.ref === d.pickup) as Record<string, unknown> | undefined : undefined
+      return {
+        booking_id:        bookingId,
+        guest_id:          d ? (guestByRef[String(d.owner)] ?? null) : (linkGuests ? guestSlots[i] : null),
+        bag_number,
+        bag_label:         generateBagLabel(booking.tracking_id, i + 1, false),
+        status:            'tag_generated',
+        tag_generated_at:  now,
+        ...(d ? {
+          bag_type: d.type, colour: d.colour, identifying_mark: d.mark || null, weight_band: d.weight,
+          contents: d.contents, deliver_to: d.deliverTo, handling: { hang: !!d.hang, fragile: !!d.fragile },
+          pickup_ref: d.pickup,
+          pickup_location: pk ? `${pk.address}, Mumbai ${pk.pincode}` : null,
+          return_plan: { ret: !!d.ret, slot: d.retSlot, dest: d.retDest, address: d.retAddress },
+        } : {}),
+      }
+    })
 
     const { error: insertErr } = await supabaseAdmin.from('group_bags').insert(rows)
     if (insertErr) return { created: 0, error: insertErr.message }

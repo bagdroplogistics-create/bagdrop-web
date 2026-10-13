@@ -388,7 +388,7 @@ const PAYMENT_STATUS_LABELS: Record<string, { label: string; color: string }> = 
 
 // Expandable family guest list (lead + add-on guests) — renders nothing for
 // bookings that have no guest rows (all older / single-guest bookings).
-type FamilyGuest = { id: string; guest_name: string; mobile_number: string | null; email: string | null; room_number: string | null; is_lead: boolean; bags_count: number; bag_labels: string[] }
+type FamilyGuest = { id: string; guest_name: string; mobile_number: string | null; email: string | null; room_number: string | null; is_lead: boolean; bags_count: number; bag_labels: string[]; bag_details?: string[] }
 function FamilyGuestsCard({ bookingId }: { bookingId: string }) {
   const [data, setData] = useState<{ guests: FamilyGuest[]; hotel_room_number: string | null; total_bags: number | null } | null>(null)
   const [open, setOpen] = useState(false)
@@ -410,14 +410,17 @@ function FamilyGuestsCard({ bookingId }: { bookingId: string }) {
         <div className="border-t border-gray-100 px-6 py-4 text-sm">
           {data.hotel_room_number && <p className="mb-3 text-xs text-gray-600">Room number: <b>{data.hotel_room_number}</b></p>}
           <table className="w-full text-left text-xs">
-            <thead><tr className="text-gray-500"><th className="py-1 pr-2">Guest</th><th className="pr-2">Contact</th><th className="pr-2">Bags</th><th>Bag IDs</th></tr></thead>
+            <thead><tr className="text-gray-500"><th className="py-1 pr-2">Guest</th><th className="pr-2">Contact</th><th className="pr-2">Bags</th><th>Bag IDs / details</th></tr></thead>
             <tbody>
               {data.guests.map(g => (
                 <tr key={g.id} className="border-t border-gray-100 align-top">
                   <td className="py-1.5 pr-2 font-medium text-gray-800">{g.guest_name}{g.is_lead ? ' (Lead)' : ''}</td>
                   <td className="pr-2 text-gray-600">{[g.mobile_number, g.email].filter(Boolean).join(' · ') || '—'}</td>
                   <td className="pr-2">{g.bags_count}</td>
-                  <td className="text-gray-500">{g.bag_labels.join(', ') || 'Generated on confirmation'}</td>
+                  <td className="text-gray-500">
+                    {g.bag_labels.join(', ') || 'Generated on confirmation'}
+                    {(g.bag_details ?? []).map((d, k) => <div key={k} className="text-[11px] text-gray-400">{d}</div>)}
+                  </td>
                 </tr>
               ))}
             </tbody>
