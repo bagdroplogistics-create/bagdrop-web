@@ -9,19 +9,19 @@ export const PROHIBITED_ITEMS_VERSION = 'prohibited-items-v1-2026-10'
 
 export const PROHIBITED_ITEMS_HEADING = 'IMPORTANT: ITEMS STRICTLY PROHIBITED WITH BAGDROP'
 
-export const PROHIBITED_ITEMS: ReadonlyArray<{ id: string; label: string; icon: string }> = [
-  { id: 'lighters',     label: 'Lighters and matchsticks',  icon: '🔥' },
-  { id: 'flam-liquid',  label: 'Flammable liquids',         icon: '🛢️' },
-  { id: 'toxic',        label: 'Toxic substances',          icon: '☠️' },
-  { id: 'corrosive',    label: 'Corrosive substances',      icon: '🧪' },
-  { id: 'alcohol',      label: 'Alcohol',                   icon: '🍾' },
-  { id: 'lithium',      label: 'Lithium batteries',         icon: '🔋' },
-  { id: 'flam-gas',     label: 'Flammable gas',             icon: '💨' },
-  { id: 'e-cigarettes', label: 'E-cigarettes',              icon: '🚬' },
-  { id: 'infectious',   label: 'Infectious substances',     icon: '🦠' },
-  { id: 'radioactive',  label: 'Radioactive materials',     icon: '☢️' },
-  { id: 'explosives',   label: 'Explosives and ammunition', icon: '💣' },
-  { id: 'power-banks',  label: 'Power banks',               icon: '🔌' },
+export const PROHIBITED_ITEMS: ReadonlyArray<{ id: string; label: string }> = [
+  { id: 'lighters',     label: 'Lighters and matchsticks' },
+  { id: 'flam-liquid',  label: 'Flammable liquids'  },
+  { id: 'toxic',        label: 'Toxic substances'  },
+  { id: 'corrosive',    label: 'Corrosive substances'  },
+  { id: 'alcohol',      label: 'Alcohol'  },
+  { id: 'lithium',      label: 'Lithium batteries'  },
+  { id: 'flam-gas',     label: 'Flammable gas'  },
+  { id: 'e-cigarettes', label: 'E-cigarettes'  },
+  { id: 'infectious',   label: 'Infectious substances'  },
+  { id: 'radioactive',  label: 'Radioactive materials'  },
+  { id: 'explosives',   label: 'Explosives and ammunition' },
+  { id: 'power-banks',  label: 'Power banks'  },
 ]
 
 export const PROHIBITED_DISCLAIMER_TITLE = 'Prohibited Items & Customer Responsibility'

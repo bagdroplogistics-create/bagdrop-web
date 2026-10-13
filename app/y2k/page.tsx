@@ -5,6 +5,7 @@ import {
   PROHIBITED_ITEMS_VERSION, PROHIBITED_ITEMS_HEADING, PROHIBITED_ITEMS,
   PROHIBITED_DISCLAIMER_TITLE, PROHIBITED_DISCLAIMER_TEXT, PROHIBITED_ACK_TEXT,
 } from '@/lib/prohibited-items'
+import ProhibitedIcon from './ProhibitedIcons'
 
 // ─────────────────────────────────────────────────────────────
 // This page is a 1:1 rebuild of the approved Y2K design reference
@@ -510,11 +511,11 @@ function BookingForm() {
             {/* ── Prohibited items — shown before submission ── */}
             <div style={{ marginTop:22, border:'1px solid rgba(176,58,46,0.35)', borderRadius:16, background:'#FFFBF9', padding:'clamp(14px,3vw,20px)' }}>
               <p style={{ fontFamily:FONT_BODY, fontSize:12.5, fontWeight:700, letterSpacing:'0.08em', color:'#B03A2E', margin:'0 0 12px', lineHeight:1.4 }}>{PROHIBITED_ITEMS_HEADING}</p>
-              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(128px, 1fr))', gap:8 }}>
+              <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit, minmax(92px, 1fr))', gap:'14px 8px' }}>
                 {PROHIBITED_ITEMS.map(it => (
-                  <div key={it.id} style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 10px', background:'#fff', border:'1px solid #F0D9D5', borderRadius:10, minWidth:0 }}>
-                    <span aria-hidden="true" style={{ fontSize:18, lineHeight:1, flexShrink:0 }}>{it.icon}</span>
-                    <span style={{ fontFamily:FONT_BODY, fontSize:12, lineHeight:1.3, color:Y.textDark, overflowWrap:'anywhere' }}>{it.label}</span>
+                  <div key={it.id} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:6, minWidth:0, textAlign:'center' }}>
+                    <ProhibitedIcon id={it.id} size={52} />
+                    <span style={{ fontFamily:FONT_BODY, fontSize:12, fontWeight:600, lineHeight:1.3, color:'#4B5563', overflowWrap:'anywhere' }}>{it.label}</span>
                   </div>
                 ))}
               </div>
