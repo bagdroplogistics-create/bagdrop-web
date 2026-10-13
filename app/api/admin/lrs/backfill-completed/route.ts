@@ -10,7 +10,7 @@ export const maxDuration = 60
 // BAGDROP — LR/GC backfill for Completed bookings.
 //
 // POST /api/admin/lrs/backfill-completed
-//   { dry_run?: boolean (default TRUE), batch_size?: number (default 25, max 50) }
+//   { dry_run?: boolean (default TRUE), batch_size?: number (default 5, max 50) }
 //
 // • Finds every Completed booking (Test Mode excluded) that has no LR/GC yet.
 // • Each is checked for the data an LR needs. Anything missing, or whose pickup
@@ -50,7 +50,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({})) as { dry_run?: boolean; batch_size?: number }
   const dryRun = body.dry_run !== false
-  const batchSize = Math.min(Math.max(Math.floor(Number(body.batch_size) || 25), 1), 50)
+  const batchSize = Math.min(Math.max(Math.floor(Number(body.batch_size) || 5), 1), 50)
 
   // Completed bookings (paged), then every booking_id that already has an LR.
   const completed: Row[] = []

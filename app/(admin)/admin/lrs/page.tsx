@@ -357,22 +357,29 @@ export default function LRsPage() {
       }
       let createdTotal = 0
       const failures: string[] = []
-      for (let i = 0; i < 40; i++) {     // up to 40 batches of 25 per click
+      // Small batches: each GC takes several database round-trips, and a big
+      // batch can exceed the server's time limit (that showed up as a bare
+      // "Network error"). Already-created GCs are never repeated, so if a
+      // request does fail you can simply click Check → Generate again.
+      for (let i = 0; i < 120; i++) {
+        setBackfillMsg(`Generating… ${createdTotal} done`)
         const res = await fetch('/api/admin/lrs/backfill-completed', {
           method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
-          body: JSON.stringify({ dry_run: false, batch_size: 25 }),
+          body: JSON.stringify({ dry_run: false, batch_size: 5 }),
         })
-        const d = await res.json()
-        if (!res.ok) { failures.push(d.error ?? 'Request failed'); break }
+        let d: { error?: string; created?: unknown[]; failed?: { tracking_id: string | null; booking_id: string; error: string }[]; remaining?: number } = {}
+        try { d = await res.json() } catch { failures.push(`Server returned HTTP ${res.status} (timeout?) — click Check again to continue`); break }
+        if (!res.ok) { failures.push(d.error ?? `HTTP ${res.status}`); break }
         createdTotal += d.created?.length ?? 0
         for (const f of d.failed ?? []) failures.push(`${f.tracking_id ?? f.booking_id}: ${f.error}`)
         if (!d.remaining || (d.created?.length ?? 0) === 0) break
       }
-      setBackfillMsg(`Generated ${createdTotal} GC${createdTotal === 1 ? '' : 's'}.` + (failures.length ? ` ${failures.length} failed: ${failures.slice(0, 3).join(' | ')}` : ''))
+      setBackfillMsg(`Generated ${createdTotal} GC${createdTotal === 1 ? '' : 's'}.` + (failures.length ? ` ${failures.length} problem(s): ${failures.slice(0, 3).join(' | ')}` : ''))
       setBackfillPlan(null)
       fetchLrs(); fetchQueue()
     } catch {
-      setBackfillMsg('Network error — please try again.')
+      setBackfillMsg('Network error — some GCs may already have been created. Refresh, then click Check Completed Inquiries to continue.')
+      fetchLrs()
     } finally {
       setBackfillBusy(false)
     }
