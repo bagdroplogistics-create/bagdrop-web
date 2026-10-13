@@ -9,7 +9,7 @@
 // Deliberately NOT in this form: pickup window, declared value, extra bag
 // types, any city other than Mumbai, and the (hidden) hotel room number.
 
-import { useEffect, useRef, useState } from 'react'
+import { memo, useEffect, useRef, useState } from 'react'
 import {
   PROHIBITED_ITEMS_VERSION, PROHIBITED_ITEMS_HEADING, PROHIBITED_ITEMS,
   PROHIBITED_DISCLAIMER_TITLE, PROHIBITED_DISCLAIMER_TEXT, PROHIBITED_ACK_TEXT,
@@ -112,6 +112,27 @@ function setPath(o: unknown, p: string, v: unknown) {
   a[ks[ks.length - 1]] = v
 }
 
+// Static (never changes) — memoised so toggling a checkbox doesn't re-render 12 SVG icons.
+const ProhibitedBlock = memo(function ProhibitedBlock() {
+  return (
+    <>
+        <p style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.08em', color: '#B03A2E', margin: '0 0 12px', lineHeight: 1.4 }}>{PROHIBITED_ITEMS_HEADING}</p>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: '14px 8px' }}>
+        {PROHIBITED_ITEMS.map(it => (
+          <div key={it.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 0, textAlign: 'center' }}>
+            <ProhibitedIcon id={it.id} size={52} />
+            <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3, color: '#4B5563', overflowWrap: 'anywhere' }}>{it.label}</span>
+          </div>
+        ))}
+      </div>
+      <div role="note" style={{ marginTop: 14, padding: '12px 14px', background: '#FDF1EF', borderLeft: '4px solid #B03A2E', borderRadius: 8 }}>
+        <p style={{ fontSize: 13, fontWeight: 700, color: '#7A241B', margin: '0 0 6px' }}>{PROHIBITED_DISCLAIMER_TITLE}</p>
+        <p style={{ fontSize: 12.5, lineHeight: 1.65, color: '#5A5145', margin: 0 }}>{PROHIBITED_DISCLAIMER_TEXT}</p>
+      </div>
+    </>
+  )
+})
+
 export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
   const [S, setS] = useState<WState>(fresh)
   const [step, setStep] = useState(0)
@@ -144,7 +165,10 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
   }, [])
   useEffect(() => {
     if (done) return
-    try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ S: { ...S, ackProhibited: false, terms: false, consent: false }, step, maxStep })) } catch { /* ignore */ }
+    const t = setTimeout(() => {
+      try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ S: { ...S, ackProhibited: false, terms: false, consent: false }, step, maxStep })) } catch { /* ignore */ }
+    }, 500)
+    return () => clearTimeout(t)
   }, [S, step, maxStep, done])
 
   const mut = (fn: (n: WState) => void) => setS(prev => { const n = clone(prev); fn(n); return n })
@@ -153,7 +177,15 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
   const bad = (k: string) => (E[k] ? ' bad' : '')
   const scrollTop = () => rootRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
 
+  // Flat top-level fields (checkboxes, notes, selects): cheap shallow update, no deep clone.
+  const setFlat = (k: 'ackProhibited' | 'terms' | 'consent' | 'notes' | 'extraReturn' | 'retFrom', v: boolean | string) =>
+    setS(prev => ({ ...prev, [k]: v }))
+
   function onFieldChange(path: string, v: unknown) {
+    if (path === 'ackProhibited' || path === 'terms' || path === 'consent' || path === 'notes' || path === 'extraReturn' || path === 'retFrom') {
+      setFlat(path, v as boolean | string)
+      return
+    }
     mut(n => {
       setPath(n, path, v)
       let m = path.match(/^bags\.(\d+)\.contents$/)
@@ -446,19 +478,7 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
         <b>Important:</b> We provide delivery services only for Bridal &amp; Groom Outfits, Wedding Gifts &amp; Hampers, Décor Materials, Return Gift Boxes, and Family Luggage. We do not accept jewellery or other valuable items for delivery.
       </div>
       <div style={{ marginTop: 20, border: '1px solid rgba(176,58,46,0.35)', borderRadius: 16, background: '#FFFBF9', padding: 'clamp(14px,3vw,20px)' }}>
-        <p style={{ fontSize: 12.5, fontWeight: 700, letterSpacing: '0.08em', color: '#B03A2E', margin: '0 0 12px', lineHeight: 1.4 }}>{PROHIBITED_ITEMS_HEADING}</p>
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(92px, 1fr))', gap: '14px 8px' }}>
-          {PROHIBITED_ITEMS.map(it => (
-            <div key={it.id} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 0, textAlign: 'center' }}>
-              <ProhibitedIcon id={it.id} size={52} />
-              <span style={{ fontSize: 12, fontWeight: 600, lineHeight: 1.3, color: '#4B5563', overflowWrap: 'anywhere' }}>{it.label}</span>
-            </div>
-          ))}
-        </div>
-        <div role="note" style={{ marginTop: 14, padding: '12px 14px', background: '#FDF1EF', borderLeft: '4px solid #B03A2E', borderRadius: 8 }}>
-          <p style={{ fontSize: 13, fontWeight: 700, color: '#7A241B', margin: '0 0 6px' }}>{PROHIBITED_DISCLAIMER_TITLE}</p>
-          <p style={{ fontSize: 12.5, lineHeight: 1.65, color: '#5A5145', margin: 0 }}>{PROHIBITED_DISCLAIMER_TEXT}</p>
-        </div>
+        <ProhibitedBlock />
         <label className="tick" style={{ marginTop: 14 }}>
           <input type="checkbox" checked={S.ackProhibited} aria-required="true" onChange={e => onFieldChange('ackProhibited', e.target.checked)} />
           <span style={{ fontSize: 13, lineHeight: 1.6 }}>{PROHIBITED_ACK_TEXT}</span>

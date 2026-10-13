@@ -4,7 +4,7 @@
 export const WIZARD_CSS = `
 .ywz{--cream:#F4EEE4;--paper:#FBF8F2;--card:#fff;--ink:#2B2620;--body:#5A5145;--label:#6B5A3E;--stone:#8A8172;--line:#E0D5C2;--line-2:#EDE5D6;--forest:#2A3329;--forest-2:#24291F;--on-dark:#F4EEE4;--gold:#C8A96E;--gold-2:#B08D57;--sand:#E8CE9A;--sand-2:#F1DFB6;--bride:#B08D57;--groom:#7A3B2E;--err:#C0392B;
   --display:'Cormorant Garamond',var(--font-cormorant),Georgia,serif;--sans:'Inter',system-ui,sans-serif;--mono:ui-monospace,Menlo,Consolas,monospace;--r:14px;
-  font-family:var(--sans);color:var(--ink);font-size:16px;line-height:1.6;max-width:1180px;margin:44px auto 0}
+  font-family:var(--sans);color:var(--ink);font-size:16px;line-height:1.6;max-width:1180px;margin:44px auto 0;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .ywz *{box-sizing:border-box}
 .ywz [hidden]{display:none!important}
 .ywz .desk{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:24px;align-items:start}
@@ -39,8 +39,8 @@ export const WIZARD_CSS = `
 .ywz .seg span{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:10px;padding:10px 14px;font-size:14px;background:var(--paper)}
 .ywz .seg input:checked+span{border-color:var(--ink);background:var(--ink);color:var(--cream)}
 .ywz .seg input:focus-visible+span{outline:2px solid var(--gold-2);outline-offset:2px}
-.ywz .tick{display:flex;gap:10px;align-items:flex-start;font-size:14px;cursor:pointer}
-.ywz .tick input{width:18px;height:18px;margin:2px 0 0;accent-color:var(--forest);flex:none}
+.ywz .tick{display:flex;gap:12px;align-items:flex-start;font-size:14px;cursor:pointer;padding:6px 0;user-select:none;-webkit-user-select:none}
+.ywz .tick input{width:22px;height:22px;margin:0;accent-color:var(--forest);flex:none;cursor:pointer}
 .ywz .item{border:1px solid var(--line);border-radius:18px;padding:18px;background:var(--paper);display:grid;gap:14px;min-width:0}
 .ywz .item+.item{margin-top:14px}
 .ywz .item .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
