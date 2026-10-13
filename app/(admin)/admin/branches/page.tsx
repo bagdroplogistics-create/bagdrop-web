@@ -547,6 +547,23 @@ export default function BranchesPage() {
     fetchBranches()
   }
 
+  // Switch every active branch to the Branch GC format (e.g. MUM26CM046) at once.
+  async function setAllBranchGcFormat() {
+    const padIn = window.prompt('Set ALL active branches to the Branch GC format (e.g. MUM26CM046).\n\nSequence digits (3-10). 4 gives MUM26CM0046. You can change an individual branch afterwards (e.g. Mumbai to 3).', '4')
+    if (padIn === null) return
+    const padding = Number(padIn)
+    if (!Number.isFinite(padding) || padding < 3 || padding > 10) { setErr('Enter a number of digits between 3 and 10.'); return }
+    const res = await fetch('/api/admin/branches/bulk-gc-style', {
+      method: 'POST', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+      body: JSON.stringify({ style: 'cm', padding }),
+    })
+    const d = await res.json()
+    if (!res.ok) { setErr(d.error ?? 'Could not update branches'); return }
+    setErr('')
+    alert(`Updated ${d.updated} active branches to the Branch GC format. Already-issued numbers are unchanged.`)
+    fetchBranches()
+  }
+
   if (!authed) return null
 
   return (
@@ -585,6 +602,11 @@ export default function BranchesPage() {
                 </button>
               </>
             )}
+            <button onClick={setAllBranchGcFormat}
+              title="Sets every active branch to the Branch GC number format (e.g. MUM26CM046)"
+              className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors">
+              Set All to Branch GC Format
+            </button>
             <button onClick={seedFromInquiries} disabled={seeding}
               title="Scans every inquiry's pickup city and adds a branch for any city that doesn't have one yet"
               className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2 text-sm font-semibold text-gray-600 shadow-sm hover:bg-gray-50 transition-colors disabled:opacity-60">
@@ -643,7 +665,7 @@ export default function BranchesPage() {
                       <td className="px-4 py-3.5 font-semibold text-gray-900">{b.branch_name}</td>
                       <td className="px-4 py-3.5 text-gray-600">{b.city}</td>
                       <td className="px-4 py-3.5 text-gray-600">{b.branch_manager || '—'}</td>
-                      <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{formatExample(b.lr_series_prefix, b.lr_include_fy, String(b.lr_padding), String(b.lr_start_number))}</td>
+                      <td className="px-4 py-3.5 font-mono text-xs text-gray-500">{formatExample(b.lr_series_prefix, b.lr_include_fy, String(b.lr_padding), String(b.lr_start_number), b.gc_number_style ?? 'legacy')}</td>
                       <td className="px-4 py-3.5">
                         {lrSummary[b.id] ? (
                           <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-gray-600">
