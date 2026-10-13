@@ -88,6 +88,8 @@ interface ExplicitItem {
   quantity:     number
   rate:         number
   tax_id?:      string
+  // Insurance / pass-through rows: no GST applied, added to the total after tax.
+  no_gst?:      boolean
   hsn_or_sac?:  string
   // Optional flat-amount override, sent only for the auto-populated "Upto
   // 2 Bags" route-pricing row — the founder wants Qty to show the real bag
@@ -153,7 +155,7 @@ function fromExplicit(items: ExplicitItem[]): LineItem[] {
     description: i.description ?? '',
     quantity:    i.quantity,
     rate:        i.rate,
-    tax_pct:     GST_PCT,
+    tax_pct:     i.no_gst ? 0 : GST_PCT,
     hsn_or_sac:  i.hsn_or_sac ?? SAC_TRANSPORT,
     // Respect an explicit flat-amount override when the frontend sends one
     // (the "Upto 2 Bags" route-pricing row) — otherwise price exactly as
@@ -386,7 +388,9 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Calculate totals ──────────────────────────────────────────────
-  const subtotal = lineItems.reduce((s, i) => s + i.amount, 0)
+  // Taxable subtotal excludes no-GST (insurance) rows; those are added to the total below.
+  const subtotal = lineItems.filter(i => i.tax_pct !== 0).reduce((s, i) => s + i.amount, 0)
+  const insuranceAmt = lineItems.filter(i => i.tax_pct === 0).reduce((s, i) => s + i.amount, 0)
 
   let discountRate: number
   let discountAmt: number
@@ -407,7 +411,7 @@ export async function POST(req: NextRequest) {
   // normally have cost, but tax and the final payable total are always
   // forced to zero for an FOC quote regardless of what was sent.
   const rawTaxAmt  = Math.round(taxableAmt * GST_PCT) / 100
-  const rawTotal   = Math.round((taxableAmt + rawTaxAmt) * 100) / 100
+  const rawTotal   = Math.round((taxableAmt + rawTaxAmt + insuranceAmt) * 100) / 100
   const taxAmt     = isFOC ? 0 : rawTaxAmt
   const total      = isFOC ? 0 : rawTotal
 

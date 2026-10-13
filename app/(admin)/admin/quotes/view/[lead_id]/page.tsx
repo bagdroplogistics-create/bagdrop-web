@@ -2225,6 +2225,11 @@ export default function QuoteViewPage() {
                 <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#4b5563', marginBottom: '8px' }}>
                   <span>SGST @ 2.5%</span><span>{fmtRs(taxTotal / 2)}</span>
                 </div>
+                {lineItems.some(i => i.tax_pct === 0) && (
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12.5px', color: '#4b5563', marginBottom: '8px' }}>
+                    <span>Insurance (no GST)</span><span>{fmtRs(lineItems.filter(i => i.tax_pct === 0).reduce((n, i) => n + i.amount, 0))}</span>
+                  </div>
+                )}
                 <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '2px solid #111', paddingTop: '10px' }}>
                   <span style={{ fontSize: '14px', fontWeight: 800, color: '#111' }}>Total Amount</span>
                   <span style={{ fontSize: '18px', fontWeight: 900, color: '#f97316' }}>{fmtRs(grandTotal)}</span>

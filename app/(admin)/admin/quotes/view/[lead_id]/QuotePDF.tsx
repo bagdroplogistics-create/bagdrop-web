@@ -345,6 +345,8 @@ export default function QuotePDF(p: QuotePDFProps) {
   // FOC defensive override — see isFOC doc comment on QuotePDFProps above.
   const isFOC       = p.isFOC === true
   const displayTax   = isFOC ? 0 : p.tax
+  // No-GST rows (e.g. insurance) — shown as their own line before the total.
+  const insuranceAmt = isFOC ? 0 : p.lineItems.filter(li => li.tax_pct === 0).reduce((n, li) => n + li.amount, 0)
   const displayTotal = isFOC ? 0 : p.total
 
   const meta = [
@@ -585,6 +587,9 @@ export default function QuotePDF(p: QuotePDFProps) {
             )}
             <View style={s.totRow}><Text style={s.totKey}>CGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(displayTax / 2)}</Text></View>
             <View style={s.totRow}><Text style={s.totKey}>SGST @ 2.5%</Text><Text style={s.totVal}>{fmtRs(displayTax / 2)}</Text></View>
+            {insuranceAmt > 0 && (
+              <View style={s.totRow}><Text style={s.totKey}>Insurance (no GST)</Text><Text style={s.totVal}>{fmtRs(insuranceAmt)}</Text></View>
+            )}
             <View style={[s.totRow, s.totDivider]}>
               <Text style={s.grandKey}>Total Amount</Text>
               {/* fmtRs() below renders "Rs." not the ₹ glyph — this PDF's

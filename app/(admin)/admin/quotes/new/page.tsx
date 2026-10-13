@@ -159,6 +159,8 @@ const CATALOG_DESC_BY_NAME = new Map(BAGDROP_ITEMS.map(i => [i.name, i.descripti
 // ── Constants ──────────────────────────────────────────────────────────
 const ZOHO_ORG_ID  = '60041657788'
 const TAX_GST5     = '2568730000000033236'
+// Insurance / pass-through rows: no GST. Sent to the server as no_gst:true.
+const TAX_NONE     = 'NO_GST'
 const SAC_CODE     = '996511'
 const SALESPERSONS = ['Vijay Thacker']
 
@@ -651,7 +653,7 @@ function QuotePageInner() {
             // flat 10,000. This mirrors the same amount-override fix
             // already applied to populateItemsFromRoute (create mode).
             amount:      li.amount ?? undefined,
-            taxId:       TAX_GST5,
+            taxId:       li.tax_pct === 0 ? TAX_NONE : TAX_GST5,
           })))
           // Mark items as already resolved so the route-pricing effect below
           // does not overwrite this saved data (found or not found in Route Map).
@@ -920,6 +922,11 @@ function QuotePageInner() {
   }, [tripType, returnFromCity, returnToCity, returnBagsCount, adminKey]) // eslint-disable-line
 
   // ── Line item helpers ────────────────────────────────────────────────
+  function addInsuranceRow() {
+    setLineItems(prev => prev.some(r => r.taxId === TAX_NONE)
+      ? prev
+      : [...prev, { id: uid(), name: 'Baggage Insurance', description: 'Optional baggage insurance cover', qty: 1, rate: 0, taxId: TAX_NONE }])
+  }
   function addRow() { setLineItems(prev => [...prev, { id: uid(), name: '', description: '', qty: 1, rate: 0, taxId: TAX_GST5 }]) }
   function removeRow(id: string) { setLineItems(prev => prev.filter(r => r.id !== id)) }
   function updateRow(id: string, field: keyof Omit<LineItemRow, 'id'>, value: string | number) {
@@ -990,13 +997,16 @@ function QuotePageInner() {
   const [billingType,    setBillingType]    = useState<'paid' | 'foc'>('paid')
   const isFOC = billingType === 'foc'
 
-  const subtotal      = lineItems.reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
+  // Insurance rows (taxId NO_GST) sit outside the 5% GST and outside the
+  // discount base; they are simply added to the final total.
+  const subtotal      = lineItems.filter(r => r.taxId !== TAX_NONE).reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
+  const insuranceAmt  = lineItems.filter(r => r.taxId === TAX_NONE).reduce((s, r) => s + (r.amount ?? r.qty * r.rate), 0)
   const discountAmt   = discountType === 'fixed'
     ? Math.min(Math.max(0, discountFixed), subtotal)
     : parseFloat((subtotal * discountPct / 100).toFixed(2))
   const taxableAmt    = subtotal - discountAmt
   const rawTaxAmt      = taxableAmt * 0.05
-  const rawTotal       = taxableAmt + rawTaxAmt
+  const rawTotal       = taxableAmt + rawTaxAmt + insuranceAmt
   // FOC override: Total payable must always be ₹0, per spec — regardless of
   // line items or discount entered above (those stay visible/editable so
   // the admin can still record what the service would normally have cost).
@@ -1031,7 +1041,7 @@ function QuotePageInner() {
     const quotePayload = hasQuote ? {
       quote_line_items: validItems.map(r => ({
         name: r.name, description: r.description, quantity: r.qty, rate: r.rate,
-        tax_pct: 5, hsn_or_sac: SAC_CODE, amount: r.amount ?? r.qty * r.rate,
+        tax_pct: r.taxId === TAX_NONE ? 0 : 5, hsn_or_sac: SAC_CODE, amount: r.amount ?? r.qty * r.rate,
       })),
       quote_subtotal:     subtotal,
       quote_discount_pct: (discountType === 'pct'   && discountPct   > 0) ? discountPct   : null,
@@ -1119,7 +1129,7 @@ function QuotePageInner() {
         bags_count:          Number(returnBagsCount) || undefined,
         pickup_address:      returnPickupAddr.trim() || undefined,
         drop_address:        returnDropAddr.trim()   || undefined,
-        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
+        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, no_gst: r.taxId === TAX_NONE, hsn_or_sac: SAC_CODE, amount: r.amount })),
         // The primary quote's own email already went out separately — this
         // is an internal pricing addition, not a fresh customer-facing send.
         send_email: false,
@@ -1249,7 +1259,7 @@ function QuotePageInner() {
       // (the "Upto 2 Bags" route-pricing row) — the server respects it
       // instead of recomputing quantity × rate. Every other row omits it
       // and prices exactly as before.
-      explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
+      explicit_line_items: validItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, no_gst: r.taxId === TAX_NONE, hsn_or_sac: SAC_CODE, amount: r.amount })),
       send_email: sendEmail,
       // Never true here — is_return_quote: true is only ever sent from the
       // dedicated returnPayload block below, for the return leg itself.
@@ -1328,7 +1338,7 @@ function QuotePageInner() {
         pickup_address:      returnPickupAddr.trim() || undefined,
         drop_address:        returnDropAddr.trim()   || undefined,
         // See onward explicit_line_items above for why `amount` is included.
-        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, hsn_or_sac: SAC_CODE, amount: r.amount })),
+        explicit_line_items: returnValidItems.map(r => ({ name: r.name, description: r.description, quantity: r.qty, rate: r.rate, tax_id: r.taxId, no_gst: r.taxId === TAX_NONE, hsn_or_sac: SAC_CODE, amount: r.amount })),
         // Don't re-send the quote email for the return leg — if sendEmail
         // was on, the customer already got the onward quote email above.
         send_email: false,
@@ -2062,6 +2072,7 @@ function QuotePageInner() {
                         <select value={row.taxId} onChange={e => updateRow(row.id, 'taxId', e.target.value)}
                           className="w-full rounded border border-transparent bg-transparent px-1 py-1 text-xs focus:border-orange-300 focus:bg-white focus:outline-none">
                           <option value={TAX_GST5}>GST 5%</option>
+                          <option value={TAX_NONE}>No GST</option>
                         </select>
                       </td>
                       <td className="py-1.5 px-2 text-right text-sm font-medium text-gray-800">{(row.amount ?? row.qty * row.rate).toLocaleString('en-IN')}</td>
@@ -2079,6 +2090,9 @@ function QuotePageInner() {
                   <tr><td colSpan={6} className="pt-2 pb-1">
                     <button onClick={addRow} className="flex items-center gap-1.5 text-xs font-semibold text-orange-500 hover:text-orange-700">
                       <Plus className="h-3.5 w-3.5" /> Add New Row
+                    </button>
+                    <button onClick={addInsuranceRow} className="ml-4 inline-flex items-center gap-1.5 text-xs font-semibold text-blue-600 hover:text-blue-800">
+                      <Plus className="h-3.5 w-3.5" /> Add Insurance (no GST)
                     </button>
                   </td></tr>
                   <tr className="border-t border-gray-200 text-xs text-gray-500">
@@ -2131,6 +2145,13 @@ function QuotePageInner() {
                     <td className="px-2 text-right">{Math.round(taxAmt).toLocaleString('en-IN')}</td>
                     <td></td>
                   </tr>
+                  {insuranceAmt > 0 && (
+                    <tr className="text-xs text-gray-500">
+                      <td colSpan={4} className="pr-2 text-right">Insurance (no GST)</td>
+                      <td className="px-2 text-right">{insuranceAmt.toLocaleString('en-IN')}</td>
+                      <td></td>
+                    </tr>
+                  )}
                   <tr className="text-sm font-bold text-gray-900">
                     <td colSpan={4} className="pt-1 pr-2 text-right">Total (₹)</td>
                     <td className="pt-1 px-2 text-right text-orange-600">{rupees(total)}</td>

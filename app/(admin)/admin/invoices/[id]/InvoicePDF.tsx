@@ -234,6 +234,7 @@ export interface InvoicePDFLineItem {
   cgstPct?: number; cgstAmt?: number
   sgstPct?: number; sgstAmt?: number
   igstPct?: number; igstAmt?: number
+  noGst?: boolean   // insurance row — outside GST
 }
 
 export interface InvoicePDFProps {
@@ -452,6 +453,9 @@ export default function InvoicePDF(p: InvoicePDFProps) {
                   <View style={s.totRow}><Text style={s.totKey}>CGST</Text><Text style={s.totVal}>{fmtRs(p.cgst)}</Text></View>
                   <View style={s.totRow}><Text style={s.totKey}>SGST</Text><Text style={s.totVal}>{fmtRs(p.sgst)}</Text></View>
                 </>
+              )}
+              {p.lineItems.some(li => li.noGst) && (
+                <View style={s.totRow}><Text style={s.totKey}>Insurance (no GST)</Text><Text style={s.totVal}>{fmtRs(p.lineItems.filter(li => li.noGst).reduce((n, li) => n + li.amount, 0))}</Text></View>
               )}
               <View style={s.grandRow}><Text style={s.grandKey}>Total</Text><Text style={s.grandVal}>{fmtRs(p.total)}</Text></View>
               {p.paymentMade > 0 && (

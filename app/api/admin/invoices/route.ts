@@ -153,6 +153,7 @@ export const runtime = 'nodejs'
 interface InvoiceLineItemRow {
   name: string; description: string; hsn: string
   quantity: number; rate: number; amount: number
+  noGst?: boolean   // insurance / pass-through row: outside GST, added to the total
 }
 
 // Thin wrapper around lib/invoice-pdf.ts's shared generateInvoicePdfBuffer()
@@ -435,7 +436,7 @@ export async function POST(req: NextRequest) {
   const { placeOfSupply, isInterstate } = resolveGstTreatment(gstin)
 
   const leadItems = (lead?.quote_line_items ?? []) as Array<{
-    name?: string; description?: string; quantity?: number; rate?: number; amount?: number; hsn_or_sac?: string
+    name?: string; description?: string; quantity?: number; rate?: number; amount?: number; hsn_or_sac?: string; tax_pct?: number
   }>
   const items: InvoiceLineItemRow[] = leadItems.length > 0
     ? leadItems.map(li => ({
@@ -455,6 +456,7 @@ export async function POST(req: NextRequest) {
         quantity:    Number(li.quantity ?? 1),
         rate:        Number(li.rate ?? 0),
         amount:      Number(li.amount ?? (Number(li.quantity ?? 1) * Number(li.rate ?? 0))),
+        noGst:       li.tax_pct === 0,
       }))
     : [{
         name: `Transportation of Goods (Upto ${Number(booking.total_bags ?? 1)} Bag${Number(booking.total_bags ?? 1) !== 1 ? 's' : ''}) — ${booking.from_city ?? ''} to ${booking.to_city ?? ''}`,
@@ -470,11 +472,13 @@ export async function POST(req: NextRequest) {
         amount:   parseFloat((total / 1.05).toFixed(2)),
       }]
 
-  const subtotal = parseFloat(items.reduce((sum, i) => sum + i.amount, 0).toFixed(2))
+  // Taxable subtotal excludes no-GST (insurance) rows; they're added to the grand total after tax.
+  const subtotal = parseFloat(items.filter(i => !i.noGst).reduce((sum, i) => sum + i.amount, 0).toFixed(2))
+  const insuranceTotal = parseFloat(items.filter(i => i.noGst).reduce((sum, i) => sum + i.amount, 0).toFixed(2))
   const cgst = isInterstate ? 0 : parseFloat((subtotal * 0.025).toFixed(2))
   const sgst = isInterstate ? 0 : parseFloat((subtotal * 0.025).toFixed(2))
   const igst = isInterstate ? parseFloat((subtotal * 0.05).toFixed(2)) : 0
-  const grandTotal = parseFloat((subtotal + cgst + sgst + igst).toFixed(2))
+  const grandTotal = parseFloat((subtotal + cgst + sgst + igst + insuranceTotal).toFixed(2))
 
   // Per-item tax breakdown, snapshotted onto the invoice row (line_items
   // jsonb) so the PDF never has to re-derive it later — see the migration
@@ -484,7 +488,7 @@ export async function POST(req: NextRequest) {
   const lineItemsSnapshot: InvoicePDFLineItem[] = items.map(i => ({
     name: i.name, description: i.description || null, hsn: i.hsn,
     quantity: i.quantity, rate: i.rate, amount: i.amount,
-    ...(isInterstate
+    ...(i.noGst ? { noGst: true, cgstPct: 0, cgstAmt: 0, sgstPct: 0, sgstAmt: 0, igstPct: 0, igstAmt: 0 } : isInterstate
       ? { igstPct: 5,   igstAmt: parseFloat((i.amount * 0.05).toFixed(2)) }
       : { cgstPct: 2.5, cgstAmt: parseFloat((i.amount * 0.025).toFixed(2)),
           sgstPct: 2.5, sgstAmt: parseFloat((i.amount * 0.025).toFixed(2)) }),
