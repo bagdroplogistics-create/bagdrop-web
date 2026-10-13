@@ -112,6 +112,18 @@ function setPath(o: unknown, p: string, v: unknown) {
   a[ks[ks.length - 1]] = v
 }
 
+// Simple, deterministic checkbox: one button, one click handler, state lives in the parent.
+function Check({ checked, onChange, children, style }: { checked: boolean; onChange: (v: boolean) => void; children: React.ReactNode; style?: React.CSSProperties }) {
+  return (
+    <button type="button" role="checkbox" aria-checked={checked} className={`chk${checked ? ' on' : ''}`} style={style} onClick={() => onChange(!checked)}>
+      <span className="chk-box" aria-hidden="true">
+        {checked ? <svg viewBox="0 0 16 16" width="16" height="16"><path d="M3 8.5l3.2 3.2L13 4.8" fill="none" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round" /></svg> : null}
+      </span>
+      <span className="chk-txt">{children}</span>
+    </button>
+  )
+}
+
 // Static (never changes) — memoised so toggling a checkbox doesn't re-render 12 SVG icons.
 const ProhibitedBlock = memo(function ProhibitedBlock() {
   return (
@@ -394,8 +406,8 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
             {sel(`bags.${i}.deliverTo`, 'Deliver to', Y2K_DELIVER)}
             <div>
               <span className="lab">Handling</span>
-              <label className="tick" style={{ marginTop: 8 }}><input type="checkbox" checked={b.hang} onChange={e => onFieldChange(`bags.${i}.hang`, e.target.checked)} /> Keep hanging (no folding)</label>
-              <label className="tick" style={{ marginTop: 6 }}><input type="checkbox" checked={b.fragile} onChange={e => onFieldChange(`bags.${i}.fragile`, e.target.checked)} /> Fragile</label>
+              <Check style={{ marginTop: 8 }} checked={b.hang} onChange={v => onFieldChange(`bags.${i}.hang`, v)}>Keep hanging (no folding)</Check>
+              <Check style={{ marginTop: 6 }} checked={b.fragile} onChange={v => onFieldChange(`bags.${i}.fragile`, v)}>Fragile</Check>
             </div>
           </div>
         </div>
@@ -417,10 +429,9 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
         {S.bags.map((b, i) => (
           <div className="retrow" key={b.ref}>
             <div>
-              <label className="tick">
-                <input type="checkbox" checked={b.ret} onChange={e => onFieldChange(`bags.${i}.ret`, e.target.checked)} />
-                <span><b>{ownerName(S, b.owner)}</b> · {bagTypeLabel(b.type)}<br /><span className="hint">{b.colour} · {b.ref}</span></span>
-              </label>
+              <Check checked={b.ret} onChange={v => onFieldChange(`bags.${i}.ret`, v)}>
+                <b>{ownerName(S, b.owner)}</b> · {bagTypeLabel(b.type)}<br /><span className="hint">{b.colour} · {b.ref}</span>
+              </Check>
             </div>
             {b.ret ? (
               <>
@@ -479,15 +490,14 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
       </div>
       <div style={{ marginTop: 20, border: '1px solid rgba(176,58,46,0.35)', borderRadius: 16, background: '#FFFBF9', padding: 'clamp(14px,3vw,20px)' }}>
         <ProhibitedBlock />
-        <label className="tick" style={{ marginTop: 14 }}>
-          <input type="checkbox" checked={S.ackProhibited} aria-required="true" onChange={e => onFieldChange('ackProhibited', e.target.checked)} />
+        <Check style={{ marginTop: 14 }} checked={S.ackProhibited} onChange={v => onFieldChange('ackProhibited', v)}>
           <span style={{ fontSize: 13, lineHeight: 1.6 }}>{PROHIBITED_ACK_TEXT}</span>
-        </label>
+        </Check>
         {E.ackProhibited ? <span className="msg" style={{ display: 'block', marginTop: 8 }}>{E.ackProhibited}</span> : null}
       </div>
       <div style={{ display: 'grid', gap: 10, marginTop: 16 }}>
-        <label className="tick"><input type="checkbox" checked={S.terms} onChange={e => onFieldChange('terms', e.target.checked)} /> I agree to Bagdrop&apos;s terms of carriage.</label>
-        <label className="tick"><input type="checkbox" checked={S.consent} onChange={e => onFieldChange('consent', e.target.checked)} /> Bagdrop may use these addresses and travel details only to handle these bags.</label>
+        <Check checked={S.terms} onChange={v => onFieldChange('terms', v)}>I agree to Bagdrop&apos;s terms of carriage.</Check>
+        <Check checked={S.consent} onChange={v => onFieldChange('consent', v)}>Bagdrop may use these addresses and travel details only to handle these bags.</Check>
         {(E.terms || E.consent) ? <span className="msg">Tick both to send your request.</span> : null}
       </div>
       {formErr ? <div className="callout err" style={{ marginTop: 16 }}>{formErr}</div> : null}

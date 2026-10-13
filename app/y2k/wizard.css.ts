@@ -57,6 +57,11 @@ export const WIZARD_CSS = `
 .ywz .swatches i{display:block;width:30px;height:30px;border-radius:50%;border:2px solid var(--card);box-shadow:0 0 0 1px var(--line)}
 .ywz .swatches input:checked+i{box-shadow:0 0 0 2px var(--ink)}
 .ywz .swatches input:focus-visible+i{outline:2px solid var(--gold-2);outline-offset:2px}
+.ywz .chk{display:flex;gap:12px;align-items:flex-start;width:100%;text-align:left;background:none;border:0;padding:8px 0;margin:0;font:400 14px/1.5 var(--sans);color:var(--ink);cursor:pointer;-webkit-appearance:none;appearance:none}
+.ywz .chk-box{flex:none;width:24px;height:24px;border:2px solid var(--ink);border-radius:6px;background:#fff;display:flex;align-items:center;justify-content:center;margin-top:0}
+.ywz .chk.on .chk-box{background:var(--forest);border-color:var(--forest)}
+.ywz .chk:focus-visible .chk-box{outline:2px solid var(--gold-2);outline-offset:2px}
+.ywz .chk-txt{flex:1;min-width:0}
 .ywz .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 .ywz .callout{border-radius:14px;padding:14px 16px;font-size:14px;background:#F8F1E4;border:1px solid #EADBC0;color:#5B4A2E}
 .ywz .callout.ok{background:#EEF2E8;border-color:#D4DEC8;color:#3C5230}
