@@ -42,6 +42,15 @@ interface Row {
 }
 
 export async function POST(req: NextRequest) {
+  try {
+    return await handle(req)
+  } catch (e) {
+    console.error('[lr backfill] unhandled error', e)
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Unexpected server error' }, { status: 500 })
+  }
+}
+
+async function handle(req: NextRequest): Promise<NextResponse> {
   const access = await getBranchAccess(req)
   if (!access) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   if (access.role !== 'super_admin') {
@@ -125,11 +134,19 @@ export async function POST(req: NextRequest) {
     const created: Array<{ booking_id: string; tracking_id: string | null; lr_number: string }> = []
     const failed: Array<{ booking_id: string; tracking_id: string | null; error: string }> = []
     for (const b of ready.slice(0, batchSize)) {
-      const r = await createOrGetLrForBooking(
-        b.id,
-        { created_by: 'system-backfill', status_note: `LR/GC generated for Completed booking ${b.tracking_id ?? b.id} (bulk backfill)` },
-        { requireBranch: true },
-      )
+      let r: Awaited<ReturnType<typeof createOrGetLrForBooking>>
+      try {
+        r = await createOrGetLrForBooking(
+          b.id,
+          { created_by: 'system-backfill', status_note: `LR/GC generated for Completed booking ${b.tracking_id ?? b.id} (bulk backfill)` },
+          { requireBranch: true },
+        )
+      } catch (e) {
+        // A thrown error (e.g. the number-sequence function failing) used to
+        // crash the whole request with an empty HTTP 500. Report it per booking.
+        console.error('[lr backfill] failed for booking', b.id, e)
+        r = { lr: null, created: false, error: e instanceof Error ? e.message : String(e) }
+      }
       if (r.error) failed.push({ booking_id: b.id, tracking_id: b.tracking_id, error: r.error })
       else if (r.created) created.push({ booking_id: b.id, tracking_id: b.tracking_id, lr_number: String((r.lr as { lr_number?: string })?.lr_number) })
     }
