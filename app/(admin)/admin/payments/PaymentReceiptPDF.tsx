@@ -2,6 +2,7 @@ import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/render
 import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
 import { LOGO_ICON_DATA_URI } from '@/lib/invoice-logo'
 import { amountInWords } from '@/lib/number-to-words'
+import { SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 
 // BAGDROP — Payment Receipt PDF (customer-facing)
 //
@@ -81,6 +82,14 @@ const s = StyleSheet.create({
   notesBox:    { backgroundColor: '#fff7ed', borderRadius: 6, padding: 10, marginBottom: 16 },
   notesLabel:  { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.6, marginBottom: 3 },
   notesText:   { fontSize: 8.5, color: '#78350f' },
+
+  // Authorized Signatory block — same stamp image + wording as the Quote PDF.
+  sigWrap:     { alignItems: 'flex-end', marginTop: 14 },
+  sigBox:      { alignItems: 'center', width: 170 },
+  sigImage:    { width: 46, height: 46, marginBottom: 2 },
+  sigLine:     { borderTopWidth: 1, borderTopColor: '#d1d5db', paddingTop: 4, width: 150, textAlign: 'center' },
+  sigText:     { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  sigSub:      { color: GREY, fontSize: 7, marginTop: 1 },
 
   footer:      { position: 'absolute', left: 36, right: 36, bottom: 28, borderTopWidth: 1, borderTopColor: '#f3f4f6', paddingTop: 10 },
   footerLine:  { fontSize: 7.5, color: '#9ca3af', lineHeight: 1.5 },
@@ -317,6 +326,17 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
           </View>
         ) : null}
 
+        {/* Authorized Signatory — same as Quote PDF */}
+        <View style={s.sigWrap} wrap={false}>
+          <View style={s.sigBox}>
+            <Image style={s.sigImage} src={SIGNATURE_STAMP_DATA_URI} />
+            <View style={s.sigLine}>
+              <Text style={s.sigText}>Authorized Signatory</Text>
+              <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>
+            </View>
+          </View>
+        </View>
+
         {/* Footer */}
         <View style={s.footer} fixed>
           <Text style={s.footerBold}>{INVOICE_COMPANY.name}</Text>
@@ -324,7 +344,7 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
           <Text style={s.footerLine}>GSTIN: {INVOICE_COMPANY.gstin} · CIN: {INVOICE_COMPANY.cin}</Text>
           <Text style={s.footerLine}>{INVOICE_COMPANY.phone} · {INVOICE_COMPANY.email} · {INVOICE_COMPANY.web}</Text>
           <Text style={{ ...s.footerLine, marginTop: 4, color: '#c1c5cc' }}>
-            This is a system-generated receipt and does not require a physical signature.
+            This is a system-generated receipt.
           </Text>
         </View>
       </Page>
