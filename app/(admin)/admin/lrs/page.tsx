@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -95,6 +95,9 @@ export default function LRsPage() {
   // buttons' spinners never get confused about which row is busy.
   const [viewingLr, setViewingLr] = useState<string | null>(null)
   const [printingLr, setPrintingLr] = useState<string | null>(null)
+  // Pagination — same pattern as the Leads / Dashboard tables
+  const [page, setPage]         = useState(1)
+  const [pageSize, setPageSize] = useState(20)
 
   // Completed inquiries → GC backfill (dry-run first, then confirm)
   interface BackfillFlag { booking_id: string; tracking_id: string | null; customer_name: string | null; from_city: string | null; reasons: string[] }
@@ -121,6 +124,11 @@ export default function LRsPage() {
   const [confirmedBookings, setConfirmedBookings] = useState<ConfirmedBooking[]>([])
   const [loadingQueue, setLoadingQueue] = useState(true)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
+
+  const totalPages  = Math.max(1, Math.ceil(lrs.length / pageSize))
+  const pagedLrs    = lrs.slice((page - 1) * pageSize, page * pageSize)
+  const showingFrom  = lrs.length === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo    = Math.min(page * pageSize, lrs.length)
 
   const totalAmount = lrs.reduce((s, l) => s + (l.total_amount || 0), 0)
   const totalBags   = lrs.reduce((s, l) => s + (l.total_bags || 0), 0)
@@ -183,6 +191,8 @@ export default function LRsPage() {
   }, [adminKey])
 
   useEffect(() => { if (authed) { fetchLrs(); fetchQueue(); fetchBranches() } }, [authed, fetchLrs, fetchQueue, fetchBranches])
+  // Back to page 1 whenever the filters / search / page size change
+  useEffect(() => { setPage(1) }, [filter, search, branchFilter, fyFilter, pageSize])
 
   async function generateLr(bookingId: string) {
     setGeneratingId(bookingId)
@@ -576,17 +586,18 @@ export default function LRsPage() {
               </Link>
             </div>
           ) : (
+          <>
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    {['GC No.', 'Branch', 'Inquiry ID', 'Booking / Tracking ID', 'Customer', 'Phone', 'From / Pickup', 'To / Delivery', 'Service', 'Bags', 'Pickup Date', 'Delivery Date', 'GC Generated', 'Status', 'Actions'].map(h => (
+                    {['GC No.', 'Branch', 'Booking / Tracking ID', 'Customer', 'Phone', 'From / Pickup', 'To / Delivery', 'Bags', 'Pickup Date', 'Delivery Date', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold uppercase tracking-wide text-gray-500 whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {lrs.map(l => {
+                  {pagedLrs.map(l => {
                     const st = LR_STATUS_LABELS[l.status] ?? { label: l.status, color: '#6b7280', bg: '#f3f4f6' }
                     return (
                       <tr key={l.id} className="hover:bg-gray-50 transition-colors">
@@ -600,23 +611,14 @@ export default function LRsPage() {
                             ? <div className="flex items-center gap-1"><Building2 className="h-3 w-3 text-gray-400" /> {l.branch_code}</div>
                             : <span className="text-gray-300">—</span>}
                         </td>
-                        <td className="px-4 py-3 text-xs whitespace-nowrap">
-                          {l.inquiry_id
-                            ? (l.lead_id
-                                ? <Link href={`/admin/quotes/view/${l.lead_id}`} className="font-mono font-semibold text-blue-600 hover:underline">{l.inquiry_id}</Link>
-                                : <span className="font-mono">{l.inquiry_id}</span>)
-                            : <span className="text-gray-300">—</span>}
-                        </td>
                         <td className="px-4 py-3 font-mono text-xs text-gray-700 whitespace-nowrap">{l.tracking_id ?? <span className="text-gray-300">—</span>}</td>
                         <td className="px-4 py-3 text-sm text-gray-900">{l.customer_name ?? l.consignor_name ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{l.customer_phone ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{l.from_city ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-600 whitespace-nowrap">{l.to_city ?? '—'}</td>
-                        <td className="px-4 py-3 text-xs text-gray-600 whitespace-nowrap">{l.service_type ?? '—'}</td>
                         <td className="px-4 py-3 text-sm text-gray-700">{l.total_bags ?? '—'}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.pickup_date ?? l.lr_date ?? null)}</td>
                         <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.delivery_date ?? null)}</td>
-                        <td className="px-4 py-3 text-xs text-gray-500 whitespace-nowrap">{fmtDate(l.created_at)}</td>
                         <td className="px-4 py-3">
                           <span style={{ color: st.color, background: st.bg }}
                             className="inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-xs font-semibold whitespace-nowrap">
@@ -657,6 +659,50 @@ export default function LRsPage() {
                 </tbody>
               </table>
             </div>
+
+            <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
+              <div className="flex items-center gap-3 text-sm text-gray-500">
+                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{lrs.length}</strong> GCs</span>
+                <div className="relative">
+                  <select
+                    value={pageSize}
+                    onChange={e => { setPageSize(Number(e.target.value)); setPage(1) }}
+                    className="appearance-none rounded-lg border border-gray-200 bg-white py-1.5 pl-3 pr-7 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  >
+                    <option value={20}>20 / page</option>
+                    <option value={50}>50 / page</option>
+                    <option value={100}>100 / page</option>
+                  </select>
+                  <ChevronDown className="pointer-events-none absolute right-1.5 top-1/2 h-3 w-3 -translate-y-1/2 text-gray-400" />
+                </div>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    ← Prev
+                  </button>
+                  {Array.from({ length: totalPages }, (_, i) => i + 1)
+                    .filter(n => n === 1 || n === totalPages || (n >= page - 2 && n <= page + 2))
+                    .map((n, idx, arr) => (
+                      <Fragment key={n}>
+                        {idx > 0 && arr[idx - 1] !== n - 1 && <span className="px-1 text-xs text-gray-400">…</span>}
+                        <button onClick={() => setPage(n)}
+                          className={`min-w-[32px] rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                            page === n ? 'border-orange-400 bg-orange-500 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
+                          }`}>
+                          {n}
+                        </button>
+                      </Fragment>
+                    ))}
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed transition-colors">
+                    Next →
+                  </button>
+                </div>
+              )}
+            </div>
+          </>
           )}
         </div>
       </main>
