@@ -11,6 +11,9 @@ import { autoMarkLostInquiries } from '@/lib/auto-lost-inquiries'
 import { ACTIVE_BOOKING_STATUSES } from '@/lib/lifecycle-notifications'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { findOpenWebsiteInquiry } from '@/lib/duplicate-inquiry-check'
+import { tokenizeSearch, looksLikePhone, digitsOnly, phoneMatches, buildTokenOr } from '@/lib/lead-search'
+
+let lastAutoLostRun = 0
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -22,10 +25,16 @@ export async function GET(req: NextRequest) {
   // this works immediately even before the external cron
   // (app/api/cron/mark-lost-inquiries) is registered. Best-effort; a
   // failure here must never break the Leads tab itself.
-  try {
-    await autoMarkLostInquiries()
-  } catch (e) {
-    console.warn('[leads GET] autoMarkLostInquiries failed:', e)
+  // Throttled to once a minute per server instance: it used to run (several
+  // queries) on EVERY list load, i.e. on every search keystroke, which was a
+  // large part of the slowness.
+  if (Date.now() - lastAutoLostRun > 60_000) {
+    lastAutoLostRun = Date.now()
+    try {
+      await autoMarkLostInquiries()
+    } catch (e) {
+      console.warn('[leads GET] autoMarkLostInquiries failed:', e)
+    }
   }
 
   const { searchParams } = req.nextUrl
@@ -64,263 +73,165 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ lead: data ?? null, leads: data ? [data] : [], total: data ? 1 : 0 })
   }
 
-  // ── Build excluded booking IDs for status filter ─────────────────────────
-  let excludedBookingIds: string[] = []
-  if (!deleted && excludeStatus) {
-    const { data: cancelledBookings } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('status', excludeStatus)
-    excludedBookingIds = (cancelledBookings ?? []).map(b => b.id)
+  // ── Helpers ──────────────────────────────────────────────────────────────
+  // PostgREST returns at most 1000 rows per request, and long `in.(…)` id
+  // lists in the URL can exceed the proxy's URL limit. The old code relied on
+  // both (id lists for the Confirmed/Cancelled filters and the prescans), so as
+  // the number of bookings grew, those requests could silently come back empty
+  // or fail — and the Leads page then kept showing the previous list. Page
+  // through results instead, and filter by id in memory.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  async function fetchAllRows<T = any>(
+    build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null; count?: number | null }>,
+    cap = 20000,
+  ): Promise<{ rows: T[]; error: { message: string } | null }> {
+    const PAGE = 1000
+    const rows: T[] = []
+    for (let from = 0; from < cap; from += PAGE) {
+      const { data: chunk, error: err } = await build(from, from + PAGE - 1)
+      if (err) return { rows, error: err }
+      rows.push(...(chunk ?? []))
+      if (!chunk || chunk.length < PAGE) break
+    }
+    return { rows, error: null }
   }
 
-  // ── "Confirmed" — matches the Dashboard's "Total Confirmed Bookings" ──
-  // leads.status is a separate CRM-funnel field (new/contacted/qualified/
-  // converted/lost — see STATUS_CONFIG in app/(admin)/admin/leads/page.tsx)
-  // that never itself contains 'confirmed'; a booking's real progress lives
-  // on bookings.status instead, and 'confirmed' there is only a brief,
-  // transient point a booking passes through on its way to
-  // invoice_generated/pickup_scheduled/etc. — almost nothing ever sits at
-  // literal status='confirmed'. What the Dashboard actually calls "Total
-  // Confirmed Bookings" is its 'active' bucket: bookings.status in
-  // ACTIVE_STATUSES below AND the lead has a real quote_number (the
-  // "hasQuote" guard — see the identical logic + comment in
-  // app/api/admin/dashboard-analytics/route.ts, which this must stay in
-  // sync with). Matching that exact definition here so the Leads tab's
-  // Confirmed count always agrees with the Dashboard's. `effective_status`
-  // is computed read-only below — leads.status is never written to, so
-  // this can't create a duplicate record or change the confirmation
-  // workflow itself.
-  // 2026-08-24 fix — was a locally hardcoded array missing
-  // 'indemnity_bond_signed'; now the single shared definition (see
-  // ACTIVE_BOOKING_STATUSES's doc comment in lib/lifecycle-notifications.ts).
+  // ── Prescans (run in parallel — they were sequential round-trips) ───────
   const ACTIVE_STATUSES = ACTIVE_BOOKING_STATUSES
   let confirmedLeadIds: string[] = []
-  // booking_id -> its real bookings.status (e.g. 'invoice_sent',
-  // 'payment_received', 'pickup_scheduled') — so a Confirmed lead's badge
-  // can show exactly where it actually is in the pipeline, the same way
-  // the Dashboard's bookings table does, instead of a single flat
-  // "Confirmed" label that would hide that detail.
+  // booking_id -> its real bookings.status (see the Confirmed notes in git
+  // history / dashboard-analytics: Confirmed = ACTIVE_STATUSES + has a quote_number).
   let bookingStatusMap: Record<string, string> = {}
-  // Leads whose linked booking has actually reached 'completed' — kept
-  // deliberately separate from confirmedLeadIds/ACTIVE_STATUSES (which
-  // intentionally excludes 'completed' — that set powers the Dashboard's
-  // "Total Confirmed Bookings" count via dashboard-analytics/route.ts, and
-  // changing its membership would change that metric too). Added
-  // 2026-08-22 after a lead (BDL-2026-0119) whose booking was force-
-  // completed via /api/admin/repair/force-complete-booking still showed
-  // "Lost" here — leads.status is a raw, separate CRM field that a booking
-  // reaching Completed never updates, and this table had no path to
-  // reflect that. Same read-only, computed-not-stored pattern as
-  // effective_status below.
   let completedLeadIds: string[] = []
-  // See the Cancel Booking block below (inside the same `if (!deleted)`) for
-  // how this is populated.
   let cancelledLeadIds: string[] = []
+  let excludedBookingIds = new Set<string>()
+
+  const prescanTasks: Promise<void>[] = []
   if (!deleted) {
-    const { data: activeBookings } = await supabaseAdmin
-      .from('bookings')
-      .select('id, status')
-      .in('status', ACTIVE_STATUSES)
-    bookingStatusMap = Object.fromEntries((activeBookings ?? []).map(b => [b.id, b.status]))
-    const activeBookingIds = Object.keys(bookingStatusMap)
-    if (activeBookingIds.length > 0) {
-      const { data: confirmedLeads } = await supabaseAdmin
-        .from('leads')
-        .select('id')
-        .in('booking_id', activeBookingIds)
-        .not('quote_number', 'is', null)
-      confirmedLeadIds = (confirmedLeads ?? []).map(l => l.id)
-    }
-
-    const { data: completedBookings } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('status', 'completed')
-    const completedBookingIds = (completedBookings ?? []).map(b => b.id)
-    if (completedBookingIds.length > 0) {
-      const { data: completedLeads } = await supabaseAdmin
-        .from('leads')
-        .select('id')
-        .in('booking_id', completedBookingIds)
-        .not('quote_number', 'is', null)
-      completedLeadIds = (completedLeads ?? []).map(l => l.id)
-    }
-
-    // Cancel Booking feature (2026-08-31) — mirrors confirmedLeadIds/
-    // completedLeadIds above, but deliberately WITHOUT the
-    // .not('quote_number', 'is', null) filter those two use: a booking can
-    // be cancelled before a quote was ever generated (the most common case
-    // — "we can't serve this route" on a brand-new website inquiry), so
-    // requiring a quote_number here would hide exactly the inquiries this
-    // feature exists to close out. Powers both the `status === 'cancelled'`
-    // filter branch below and effective_status further down, so a
-    // cancelled lead's badge and the "Status → Cancelled" filter agree.
-    const { data: cancelledBookings } = await supabaseAdmin
-      .from('bookings')
-      .select('id')
-      .eq('status', 'cancelled')
-    const cancelledBookingIds = (cancelledBookings ?? []).map(b => b.id)
-    if (cancelledBookingIds.length > 0) {
-      const { data: cancelledLeads } = await supabaseAdmin
-        .from('leads')
-        .select('id')
-        .in('booking_id', cancelledBookingIds)
-      cancelledLeadIds = (cancelledLeads ?? []).map(l => l.id)
-    }
-  }
-
-  let query = supabaseAdmin
-    .from('leads')
-    .select('*', { count: 'exact' })
-    // Test Mode leads (e.g. a dummy inquiry created only to test a feature)
-    // never appear in the live Leads tab by default — founder-reported
-    // 2026-09-05 — unless the caller explicitly opts in via include_test
-    // (see above).
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (!includeTest) query = query.eq('is_test', false)
-
-  if (deleted) {
-    // Show only soft-deleted leads (for the "Deleted Leads" view)
-    query = query.not('deleted_at', 'is', null)
-  } else {
-    // Default: exclude soft-deleted leads
-    query = query.is('deleted_at', null)
-  }
-
-  if (!deleted && status && status !== 'all') {
-    if (status === 'confirmed') {
-      // Every lead that qualifies as Confirmed by the Dashboard's
-      // definition — regardless of the lead's own raw funnel status — and
-      // none of the "no confirmed leads exist yet" case falling through to
-      // an unfiltered (i.e. wrong) list.
-      query = confirmedLeadIds.length > 0
-        ? query.in('id', confirmedLeadIds)
-        : query.eq('id', '00000000-0000-0000-0000-000000000000')
-    } else if (status === 'cancelled') {
-      // Same pattern as 'confirmed' above — 'cancelled' isn't a real
-      // leads.status value either, it's the linked booking's status, so
-      // this filters on cancelledLeadIds instead of a plain .eq('status', ...).
-      query = cancelledLeadIds.length > 0
-        ? query.in('id', cancelledLeadIds)
-        : query.eq('id', '00000000-0000-0000-0000-000000000000')
-    } else {
-      query = query.eq('status', status)
-      // A lead that now qualifies as Confirmed is shown under the
-      // Confirmed filter instead — never under both, so it's always
-      // counted exactly once.
-      if (confirmedLeadIds.length > 0) {
-        query = query.not('id', 'in', `(${confirmedLeadIds.join(',')})`)
+    prescanTasks.push((async () => {
+      const [bk, ld] = await Promise.all([
+        fetchAllRows<{ id: string; status: string }>((f, t) => supabaseAdmin
+          .from('bookings').select('id, status')
+          .in('status', [...ACTIVE_STATUSES, 'completed', 'cancelled'])
+          .order('id').range(f, t)),
+        fetchAllRows<{ id: string; booking_id: string; quote_number: string | null }>((f, t) => supabaseAdmin
+          .from('leads').select('id, booking_id, quote_number')
+          .not('booking_id', 'is', null)
+          .order('id').range(f, t)),
+      ])
+      const activeSet    = new Set<string>(ACTIVE_STATUSES as readonly string[])
+      const completedSet = new Set<string>()
+      const cancelledSet = new Set<string>()
+      for (const b of bk.rows) {
+        if (activeSet.has(b.status)) bookingStatusMap[b.id] = b.status
+        else if (b.status === 'completed') completedSet.add(b.id)
+        else if (b.status === 'cancelled') cancelledSet.add(b.id)
       }
-    }
-  } else if (!deleted && !search) {
-    // Default view (no explicit status filter, no search term) — founder
-    // decision (2026-08-19): Lost leads are hidden here by default, not
-    // deleted. Picking "Lost" from the status filter dropdown still shows
-    // them (goes through the branch above via query.eq('status', 'lost')).
-    // A search is left unfiltered on purpose — if staff search for a
-    // specific customer by name/phone/email, a Lost lead shouldn't be
-    // invisible just because it's excluded from the default browse view.
-    query = query.neq('status', 'lost')
+      for (const l of ld.rows) {
+        if (bookingStatusMap[l.booking_id] && l.quote_number) confirmedLeadIds.push(l.id)
+        if (completedSet.has(l.booking_id) && l.quote_number) completedLeadIds.push(l.id)
+        // Cancel Booking: deliberately no quote_number requirement (a booking
+        // can be cancelled before any quote exists).
+        if (cancelledSet.has(l.booking_id)) cancelledLeadIds.push(l.id)
+      }
+    })())
+  }
+  if (!deleted && excludeStatus) {
+    prescanTasks.push((async () => {
+      const { rows } = await fetchAllRows<{ id: string }>((f, t) => supabaseAdmin
+        .from('bookings').select('id').eq('status', excludeStatus).order('id').range(f, t))
+      excludedBookingIds = new Set(rows.map(b => b.id))
+    })())
   }
 
-  if (source && source !== 'all') {
-    query = query.eq('source', source)
+  // ── Search resolution ───────────────────────────────────────────────────
+  // Every token (AND-ed) is matched against name, phone, email, inquiry no.,
+  // quote numbers, route cities and addresses (see lib/lead-search.ts), plus:
+  //  • tracking_id (BDA-…) — lives on `bookings`, resolved to booking ids;
+  //  • phone numbers compared digit-for-digit in JS so formatting / country
+  //    code differences don't matter;
+  //  • exact lead / booking UUIDs.
+  const searchTokens = deleted && !search ? [] : tokenizeSearch(search)
+  const hasSearch = searchTokens.length > 0
+  const tokenOrs: string[] = []
+  if (hasSearch) {
+    const likeEscape = (s: string) => s.replace(/[\\%_]/g, m => '\\' + m)
+    const resolved = await Promise.all(searchTokens.map(async token => {
+      const [bk, ph] = await Promise.all([
+        token.length >= 3
+          ? supabaseAdmin.from('bookings').select('id').ilike('tracking_id', `%${likeEscape(token)}%`).limit(300)
+          : Promise.resolve({ data: [] as { id: string }[] }),
+        looksLikePhone(token)
+          ? fetchAllRows<{ id: string; phone: string | null }>((f, t) => supabaseAdmin
+              .from('leads').select('id, phone').order('id').range(f, t))
+          : Promise.resolve({ rows: [] as { id: string; phone: string | null }[] }),
+      ])
+      const q = digitsOnly(token)
+      const phoneIds = 'rows' in ph
+        ? ph.rows.filter(r => phoneMatches(r.phone, q)).map(r => r.id).slice(0, 300)
+        : []
+      const bookingIds = ('data' in bk ? (bk.data ?? []) : []).map(b => b.id)
+      return buildTokenOr(token, phoneIds, bookingIds)
+    }))
+    tokenOrs.push(...resolved)
   }
+  await Promise.all(prescanTasks)
 
-  // FIX: PostgreSQL NULL trap — `NOT IN (...)` also excludes rows where booking_id IS NULL.
-  // Use `or(booking_id.is.null,booking_id.not.in.(...))` to keep null-booking-id leads visible.
-  if (excludedBookingIds.length > 0) {
-    query = query.or(
-      `booking_id.is.null,booking_id.not.in.(${excludedBookingIds.join(',')})`
-    )
-  }
+  const statusFilterActive = !deleted && !!status && status !== 'all'
+  const jsMode = !deleted && (statusFilterActive || excludedBookingIds.size > 0)
+  const confirmedSet = new Set(confirmedLeadIds)
+  const cancelledSet = new Set(cancelledLeadIds)
 
-  if (search) {
-    // lead_number included so the Dashboard's "Manage in Leads" flow can
-    // force this exact inquiry to the top of the list by searching its
-    // unique Inquiry ID (see app/(admin)/admin/leads/page.tsx) — purely
-    // additive, existing name/phone/email search behavior is unchanged.
-    //
-    // tracking_id (the BDA- number shown everywhere in the admin UI —
-    // Dashboard, Booking Workflow, LR/Invoice) lives on `bookings`, not on
-    // `leads` itself, so a plain lead_number.ilike match can never find it.
-    // Staff naturally search by whichever number they're looking at (often
-    // the BDA one, since that's what's on the Dashboard), so this was a
-    // silent dead-end — searching a real, existing BDA- number returned
-    // "No quotes found" with zero indication that the search simply never
-    // checked that column (founder-reported 2026-08-22). Resolve it by
-    // first finding any bookings whose tracking_id matches, then OR-ing
-    // their booking_id into the same query.
-    const trimmedSearch = search.trim()
-    let matchingBookingIds: string[] = []
-    if (/^BDA-?/i.test(trimmedSearch) || /^\d{4}(-\d{4})?$/.test(trimmedSearch)) {
-      const { data: matchingBookings } = await supabaseAdmin
-        .from('bookings')
-        .select('id')
-        .ilike('tracking_id', `%${trimmedSearch}%`)
-      matchingBookingIds = (matchingBookings ?? []).map(b => b.id)
-    }
-
-    const orClauses = [
-      `name.ilike.%${search}%`,
-      `phone.ilike.%${search}%`,
-      `email.ilike.%${search}%`,
-      `lead_number.ilike.%${search}%`,
-    ]
-    if (matchingBookingIds.length > 0) {
-      orClauses.push(`booking_id.in.(${matchingBookingIds.join(',')})`)
-    }
-    query = query.or(orClauses.join(','))
-  }
-
-  let { data, error, count } = await query
-
-  // ── Defensive fallback: deleted_at column may not exist yet (migration not run) ──
-  // If the query fails because deleted_at doesn't exist, retry without that filter.
-  // This lets the leads page show data even before SOFT_DELETE_MIGRATION.sql is run.
-  if (error && error.message?.includes('deleted_at')) {
-    console.warn('[leads GET] deleted_at column missing — falling back to unfiltered query. Run SOFT_DELETE_MIGRATION.sql.')
-    let fallbackQuery = supabaseAdmin
+  const buildBase = (withDeletedAt: boolean) => {
+    let q = supabaseAdmin
       .from('leads')
       .select('*', { count: 'exact' })
+      // Test Mode leads never appear in the live Leads tab by default unless
+      // the caller opts in via include_test.
       .order('created_at', { ascending: false })
-      .range(offset, offset + limit - 1)
-    if (!includeTest) fallbackQuery = fallbackQuery.eq('is_test', false)
-    if (!deleted && status && status !== 'all') {
-      if (status === 'confirmed') {
-        fallbackQuery = confirmedLeadIds.length > 0
-          ? fallbackQuery.in('id', confirmedLeadIds)
-          : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
-      } else if (status === 'cancelled') {
-        fallbackQuery = cancelledLeadIds.length > 0
-          ? fallbackQuery.in('id', cancelledLeadIds)
-          : fallbackQuery.eq('id', '00000000-0000-0000-0000-000000000000')
-      } else {
-        fallbackQuery = fallbackQuery.eq('status', status)
-        if (confirmedLeadIds.length > 0) {
-          fallbackQuery = fallbackQuery.not('id', 'in', `(${confirmedLeadIds.join(',')})`)
-        }
-      }
+      // Stable tiebreaker so paging never skips/duplicates rows that share a
+      // created_at.
+      .order('id', { ascending: false })
+    if (!includeTest) q = q.eq('is_test', false)
+    if (withDeletedAt) {
+      q = deleted ? q.not('deleted_at', 'is', null) : q.is('deleted_at', null)
     }
-    if (source && source !== 'all') {
-      fallbackQuery = fallbackQuery.eq('source', source)
+    // Default view (no status filter, no search): Lost leads hidden, not
+    // deleted. A search is left unfiltered on purpose so a Lost lead is still
+    // findable by name/phone/ID.
+    if (!deleted && !statusFilterActive && !hasSearch) q = q.neq('status', 'lost')
+    if (source && source !== 'all') q = q.eq('source', source)
+    for (const or of tokenOrs) q = q.or(or)
+    return q
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  type LeadRow = Record<string, any>
+  async function runQuery(withDeletedAt: boolean): Promise<{ data: LeadRow[] | null; error: { message: string } | null; count: number | null }> {
+    if (!jsMode) {
+      const { data: d, error: e, count: c } = await buildBase(withDeletedAt).range(offset, offset + limit - 1)
+      return { data: d as LeadRow[] | null, error: e, count: c }
     }
-    if (excludedBookingIds.length > 0) {
-      fallbackQuery = fallbackQuery.or(
-        `booking_id.is.null,booking_id.not.in.(${excludedBookingIds.join(',')})`
-      )
-    }
-    if (search) {
-      fallbackQuery = fallbackQuery.or(
-        `name.ilike.%${search}%,phone.ilike.%${search}%,email.ilike.%${search}%`
-      )
-    }
-    const { data: fd, error: fe, count: fc } = await fallbackQuery
-    if (fe) return NextResponse.json({ error: fe.message }, { status: 500 })
-    data = fd; count = fc; error = null
+    // Status / exclusion filters depend on booking state, so apply them in
+    // memory over the full (search/source-filtered) set, then paginate.
+    const { rows, error: e } = await fetchAllRows<LeadRow>((f, t) => buildBase(withDeletedAt).range(f, t), 10000)
+    if (e) return { data: null, error: e, count: null }
+    const filtered = rows.filter(l => {
+      if (excludedBookingIds.size > 0 && l.booking_id && excludedBookingIds.has(l.booking_id)) return false
+      if (!statusFilterActive) return true
+      if (status === 'confirmed') return confirmedSet.has(l.id)
+      if (status === 'cancelled') return cancelledSet.has(l.id)
+      return l.status === status && !confirmedSet.has(l.id)
+    })
+    return { data: filtered.slice(offset, offset + limit), error: null, count: filtered.length }
+  }
+
+  let { data, error, count } = await runQuery(true)
+
+  // Defensive fallback: deleted_at column may not exist yet (migration not run).
+  if (error && error.message?.includes('deleted_at')) {
+    console.warn('[leads GET] deleted_at column missing — falling back to unfiltered query. Run SOFT_DELETE_MIGRATION.sql.')
+    ;({ data, error, count } = await runQuery(false))
   }
 
   if (error) {

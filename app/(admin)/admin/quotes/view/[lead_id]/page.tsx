@@ -563,43 +563,48 @@ export default function QuoteViewPage() {
   const loadAll = useCallback(async (adminKey: string) => {
     setLoading(true)
     setError('')
-
-    // 1. Fetch lead (contains all quote data)
-    const lr = await fetch(`/api/admin/leads/${lead_id}?key=${encodeURIComponent(adminKey)}`)
-    const ld = await lr.json().catch(() => ({}))
-    if (!lr.ok || !ld.lead) { setError('Lead not found'); setLoading(false); return }
-    const l: Lead = ld.lead
-    setLead(l)
-
-    // 2. Fetch linked booking + invoice
-    // Primary: use booking_id stored on lead
-    // Fallback: search bookings by lead_id (handles case where booking_id column is null
-    //           but booking exists with lead_id set, or booking was created after quote gen)
-    const bookingFetchUrl = l.booking_id
-      ? `/api/admin/bookings/${l.booking_id}?key=${encodeURIComponent(adminKey)}`
-      : `/api/admin/bookings?lead_id=${l.id}&key=${encodeURIComponent(adminKey)}`
-
-    const bd = await fetch(bookingFetchUrl).then(r => r.json()).catch(() => ({}))
-    const foundBooking: Booking | null = bd.booking ?? null
-
-    if (foundBooking) {
-      setBooking(foundBooking)
-      // Back-fill booking_id on lead in DB if it was missing (fire-and-forget)
-      if (!l.booking_id) {
-        fetch(`/api/admin/leads/${l.id}`, {
-          method:  'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body:    JSON.stringify({ booking_id: foundBooking.id, key: adminKey }),
-        }).catch(() => {})
+    try {
+      // 1. Lead + linked booking + invoice in ONE request (was three
+      //    sequential round-trips: lead → booking → invoice).
+      const lr = await fetch(`/api/admin/leads/${lead_id}?key=${encodeURIComponent(adminKey)}&include=booking,invoice`)
+      const ld = await lr.json().catch(() => ({}))
+      if (!lr.ok || !ld.lead) {
+        setError(lr.status === 404 ? 'Lead not found' : (ld.error ?? `Could not load quote (HTTP ${lr.status})`))
+        setLoading(false)
+        return
       }
-      // Fetch invoice for found booking
-      fetch(`/api/admin/invoices?booking_id=${foundBooking.id}&key=${encodeURIComponent(adminKey)}`)
-        .then(r => r.json())
-        .then(id => { if (id.invoices?.[0]) setInvoice(id.invoices[0] as Invoice) })
-        .catch(() => {})
-    }
+      const l: Lead = ld.lead
+      setLead(l)
 
-    setLoading(false)
+      let foundBooking: Booking | null = (ld.booking as Booking | null) ?? null
+      if (foundBooking) {
+        setBooking(foundBooking)
+        if (ld.invoices?.[0]) setInvoice(ld.invoices[0] as Invoice)
+      } else if (!l.booking_id) {
+        // Fallback: lead has no booking_id stored but a booking may still
+        // reference it (created after quote generation).
+        const bd = await fetch(`/api/admin/bookings?lead_id=${l.id}&key=${encodeURIComponent(adminKey)}`)
+          .then(r => r.json()).catch(() => ({}))
+        foundBooking = bd.booking ?? null
+        if (foundBooking) {
+          setBooking(foundBooking)
+          // Back-fill booking_id on lead in DB (fire-and-forget)
+          fetch(`/api/admin/leads/${l.id}`, {
+            method:  'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ booking_id: foundBooking.id, key: adminKey }),
+          }).catch(() => {})
+          fetch(`/api/admin/invoices?booking_id=${foundBooking.id}&key=${encodeURIComponent(adminKey)}`)
+            .then(r => r.json())
+            .then(id => { if (id.invoices?.[0]) setInvoice(id.invoices[0] as Invoice) })
+            .catch(() => {})
+        }
+      }
+      setLoading(false)
+    } catch {
+      setError('Network error while loading this quote. Please retry.')
+      setLoading(false)
+    }
   }, [lead_id])
 
   useEffect(() => {
@@ -1684,7 +1689,10 @@ export default function QuoteViewPage() {
     <div className="flex h-screen flex-col items-center justify-center gap-3">
       <AlertCircle className="h-8 w-8 text-red-400" />
       <p className="text-sm text-gray-600">{error || 'Lead not found'}</p>
-      <button onClick={() => router.push('/admin/leads')} className="text-sm text-orange-500 underline">← Back to Leads</button>
+      <div className="flex items-center gap-4">
+        <button onClick={() => loadAll(key || (sessionStorage.getItem('bagdrop_admin_key') ?? ''))} className="rounded-lg bg-orange-500 px-4 py-1.5 text-sm font-semibold text-white hover:bg-orange-600">Retry</button>
+        <button onClick={() => router.push('/admin/leads')} className="text-sm text-orange-500 underline">← Back to Leads</button>
+      </div>
     </div>
   )
 

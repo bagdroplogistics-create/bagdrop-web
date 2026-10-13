@@ -960,6 +960,15 @@ function LeadsPageInner() {
   const [leads, setLeads]       = useState<Lead[]>([])
   const [loading, setLoading]   = useState(true)
   const [search, setSearch]     = useState('')
+  // Debounced copy of `search` that actually drives the API call — one request
+  // per pause in typing instead of one per keystroke.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const [loadError, setLoadError] = useState<string | null>(null)
+  // Monotonic id of the latest request: a slow, older response must never
+  // overwrite the results of a newer search/filter (the "sometimes it shows,
+  // sometimes it doesn't" bug).
+  const leadsReqId = useRef(0)
+  const leadsAbort = useRef<AbortController | null>(null)
   const [filter, setFilter]     = useState('all')
   const [sourceFilter, setSourceFilter] = useState('all')
   const [sort, setSort]         = useState('newest')
@@ -1063,17 +1072,23 @@ function LeadsPageInner() {
     sessionStorage.setItem('bagdrop_leads_sort', val)
   }
 
+  useEffect(() => {
+    // Clearing the box applies instantly; typing waits 300ms.
+    if (search.trim() === '') { setDebouncedSearch(''); return }
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 300)
+    return () => clearTimeout(t)
+  }, [search])
+
   const fetchLeads = useCallback(async () => {
     if (!adminKey) return
+    const reqId = ++leadsReqId.current
+    leadsAbort.current?.abort()
+    const ctrl = new AbortController()
+    leadsAbort.current = ctrl
     setLoading(true)
-    // limit=5000 — GET /api/admin/leads defaults to page=1/limit=50 (server-
-    // side pagination it already supports, for other callers), which meant
-    // this page silently only ever showed the newest 50 matching leads with
-    // no way to see anything past that and no pagination UI to reveal the
-    // truncation. Client-side pagination (added below, matching the
-    // Dashboard table's own pattern) needs the full filtered set in memory
-    // to paginate over — same "admin-tool volumes only" ceiling already
-    // used elsewhere (e.g. app/api/admin/payments/route.ts).
+    setLoadError(null)
+    // limit=5000 — the server paginates (default 50); this page paginates
+    // client-side over the full filtered set.
     let qs = '?key=' + adminKey + '&limit=5000'
     if (showDeleted) {
       // Show only soft-deleted leads
@@ -1082,21 +1097,37 @@ function LeadsPageInner() {
       qs += '&status=' + filter
     }
     // Do NOT filter by exclude_status=cancelled — a lead is always visible
-    // regardless of its linked booking's status. The booking can be cancelled
-    // and re-activated when a new quote is generated.
-    if (search) qs += '&search=' + encodeURIComponent(search)
+    // regardless of its linked booking's status.
+    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
     if (sourceFilter !== 'all') qs += '&source=' + encodeURIComponent(sourceFilter)
-    const res = await fetch('/api/admin/leads' + qs)
-    if (res.ok) setLeads((await res.json()).leads ?? [])
-    setLoading(false)
-  }, [adminKey, filter, search, showDeleted, sourceFilter])
+    try {
+      const res = await fetch('/api/admin/leads' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (reqId !== leadsReqId.current) return            // superseded by a newer request
+      if (res.ok) {
+        const body = await res.json()
+        if (reqId !== leadsReqId.current) return
+        setLeads(body.leads ?? [])
+      } else {
+        const body = await res.json().catch(() => ({}))
+        if (reqId !== leadsReqId.current) return
+        // Previously a failed response silently left the OLD list on screen.
+        setLoadError(body?.error ?? `Could not load leads (HTTP ${res.status}).`)
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') return
+      if (reqId !== leadsReqId.current) return
+      setLoadError('Network error while loading leads.')
+    } finally {
+      if (reqId === leadsReqId.current) setLoading(false)
+    }
+  }, [adminKey, filter, debouncedSearch, showDeleted, sourceFilter])
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
   // Reset to page 1 whenever the visible row set could change shape —
   // otherwise changing a filter/search/sort while sitting on, say, page 4
   // could leave the table showing an out-of-range empty page.
-  useEffect(() => { setPage(1) }, [filter, sourceFilter, search, sort, pageSize, followupParam, showDeleted])
+  useEffect(() => { setPage(1) }, [filter, sourceFilter, debouncedSearch, sort, pageSize, followupParam, showDeleted])
 
   // ── Dashboard "Manage in Leads" direct-open ─────────────────────────
   // Fetches the exact target lead by booking_id/lead_id — a dedicated,
@@ -1546,11 +1577,17 @@ function LeadsPageInner() {
       </div>
 
       <main className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6">
+        {loadError && (
+          <div className="mb-3 flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+            <span>{loadError}</span>
+            <button onClick={() => fetchLeads()} className="rounded-md bg-red-600 px-3 py-1 text-xs font-semibold text-white hover:bg-red-700">Retry</button>
+          </div>
+        )}
         {/* Filters + sort */}
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <input type="text" placeholder="Search by name, phone, or email…"
+            <input type="text" placeholder="Search name, phone, email, inquiry / booking / quote ID, route…"
               value={search} onChange={e => setSearch(e.target.value)}
               className="w-full rounded-lg border border-gray-200 bg-white py-2 pl-9 pr-4 text-sm text-gray-700 shadow-sm placeholder:text-gray-400 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400" />
           </div>
@@ -1578,7 +1615,7 @@ function LeadsPageInner() {
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>
-          <button onClick={fetchLeads}
+          <button onClick={() => fetchLeads()}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className="h-3.5 w-3.5" /> Refresh
           </button>

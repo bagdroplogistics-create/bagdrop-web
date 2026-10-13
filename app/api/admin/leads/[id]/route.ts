@@ -28,6 +28,27 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
     .single()
 
   if (error) return NextResponse.json({ error: error.message }, { status: 404 })
+
+  // ?include=booking,invoice — lets the quote page get the lead, its linked
+  // booking and invoice in ONE round-trip instead of three sequential ones
+  // (lead → booking → invoice), which was the main cause of slow quote opens.
+  // Same shapes as GET /api/admin/bookings/[id] and
+  // GET /api/admin/invoices?booking_id=. Purely additive: without `include`
+  // the response is unchanged.
+  const include = (req.nextUrl.searchParams.get('include') ?? '').split(',').map(x => x.trim())
+  if (include.includes('booking') && data?.booking_id) {
+    const [bk, inv] = await Promise.all([
+      supabaseAdmin.from('bookings').select('*').eq('id', data.booking_id).single(),
+      include.includes('invoice')
+        ? supabaseAdmin.from('invoices').select('*').eq('booking_id', data.booking_id).order('created_at', { ascending: false })
+        : Promise.resolve({ data: null }),
+    ])
+    return NextResponse.json({
+      lead: data,
+      booking: bk.data ?? null,
+      ...(include.includes('invoice') ? { invoices: inv.data ?? [] } : {}),
+    })
+  }
   return NextResponse.json({ lead: data })
 }
 
