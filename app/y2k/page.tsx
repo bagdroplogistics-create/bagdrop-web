@@ -194,6 +194,25 @@ function BookingForm() {
     ackProhibited: false,
   })
   const [errors, setErrors] = useState<Record<string, string>>({})
+  // Add-on family guests (lead guest = the main form fields). Total bags is
+  // always derived: lead bags + sum of add-on bags — never typed by hand.
+  type AddOnGuest = { id: number; name: string; phone: string; email: string; bags: string }
+  const [addOns, setAddOns] = useState<AddOnGuest[]>([])
+  const addOnSeq = useRef(0)
+  const [addOnErrors, setAddOnErrors] = useState<Record<number, { name?: string; phone?: string; email?: string; bags?: string }>>({})
+  // Idempotency key: one per submission attempt. Reused on retry (so a
+  // double-click / network retry can't create a duplicate booking) and
+  // regenerated only after success or an explicit reset.
+  const submissionIdRef = useRef('')
+  if (!submissionIdRef.current) submissionIdRef.current = (typeof crypto !== 'undefined' && 'randomUUID' in crypto) ? crypto.randomUUID() : `y2k-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`
+  function addAddOn() { setAddOns(a => a.length >= 20 ? a : [...a, { id: ++addOnSeq.current, name: '', phone: '', email: '', bags: '0' }]) }
+  function removeAddOn(id: number) { setAddOns(a => a.filter(g => g.id !== id)); setAddOnErrors(e => { const n = { ...e }; delete n[id]; return n }) }
+  function updateAddOn(id: number, key: 'name' | 'phone' | 'email' | 'bags', v: string) {
+    setAddOns(a => a.map(g => g.id === id ? { ...g, [key]: v } : g))
+    setAddOnErrors(e => ({ ...e, [id]: { ...e[id], [key]: undefined } }))
+  }
+  const addOnBagsTotal = addOns.reduce((n, g) => n + (/^\d+$/.test(g.bags.trim()) ? Number(g.bags) : 0), 0)
+  const totalBagsAll = form.bags + addOnBagsTotal
   const [busy, setBusy]     = useState(false)
   const [submitted, setSubmitted] = useState(false)
   const [code, setCode]     = useState('')
@@ -224,7 +243,7 @@ function BookingForm() {
     }
   }
   function incBags() { setForm(s => ({ ...s, bags: Math.min(50, s.bags + 1) })) }
-  function decBags() { setForm(s => ({ ...s, bags: Math.max(1, s.bags - 1) })) }
+  function decBags() { setForm(s => ({ ...s, bags: Math.max(0, s.bags - 1) })) }
   function incReturnBags() { setForm(s => ({ ...s, returnBags: Math.min(50, s.returnBags + 1) })) }
   function decReturnBags() { setForm(s => ({ ...s, returnBags: Math.max(1, s.returnBags - 1) })) }
   function toggleReturnPickup() { setForm(s => ({ ...s, returnPickup: !s.returnPickup })) }
@@ -234,7 +253,7 @@ function BookingForm() {
     const f = form
     const er: Record<string, string> = {}
     const digits = f.phone.replace(/\D/g, '')
-    if (!f.name.trim()) er.name = 'Please enter the guest name.'
+    if (!f.name.trim()) er.name = 'Please enter the lead guest name.'
     if (!/^[6-9]\d{9}$/.test(digits)) er.phone = 'Enter a valid 10-digit Indian mobile number.'
     if (!f.pickupDate) er.pickupDate = 'Select a pickup date.'
     else if (!Y2K_PICKUP_DATES.includes(f.pickupDate)) er.pickupDate = 'Pickup is only available on 10, 11 or 12 December 2026.'
@@ -242,8 +261,21 @@ function BookingForm() {
     if (!f.pickupAddress.trim()) er.pickupAddress = 'Enter the pickup address.'
     if (!f.pickupTime) er.pickupTime = 'Select a pickup time.'
     if (!f.ackProhibited) er.ackProhibited = 'Please confirm you have read the prohibited-items list before submitting.'
-    if (Object.keys(er).length) { setErrors(er); return }
+    const aoErr: Record<number, { name?: string; phone?: string; email?: string; bags?: string }> = {}
+    for (const g of addOns) {
+      const ge: { name?: string; phone?: string; email?: string; bags?: string } = {}
+      if (!g.name.trim()) ge.name = 'Enter the guest name.'
+      if (!/^\d+$/.test(g.bags.trim()) || Number(g.bags) > 50) ge.bags = 'Enter a whole number (0 or more).'
+      const gd = g.phone.replace(/\D/g, '')
+      if (gd && !/^[6-9]\d{9}$/.test(gd)) ge.phone = 'Enter a valid 10-digit mobile number or leave blank.'
+      if (g.email.trim() && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(g.email.trim())) ge.email = 'Enter a valid email or leave blank.'
+      if (Object.keys(ge).length) aoErr[g.id] = ge
+    }
+    if (totalBagsAll < 1) er.bags = 'Total bags must be at least 1.'
+    if (Object.keys(er).length || Object.keys(aoErr).length) { setErrors(er); setAddOnErrors(aoErr); return }
+    setAddOnErrors({})
 
+    if (busy) return
     setBusy(true)
     setReturnCode(''); setReturnFailed(false)
     try {
@@ -254,8 +286,10 @@ function BookingForm() {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: f.name, phone: digits, email: f.email,
-          guests: '1',
+          guests: String(1 + addOns.length),
           bags: String(f.bags),
+          addOnGuests: addOns.map(g => ({ name: g.name.trim(), phone: g.phone.replace(/\D/g, ''), email: g.email.trim(), bags: Number(g.bags) })),
+          submissionId: submissionIdRef.current,
           pickupAddress: resolvedPickupAddress,
           pickupCity: resolvedPickupCity,
           pickupTime: f.pickupTime,
@@ -284,6 +318,7 @@ function BookingForm() {
               name: f.name, phone: digits, email: f.email,
               guests: '1',
               bags: String(f.returnBags),
+              submissionId: submissionIdRef.current + ':r',
               pickupAddress: WEDDING_VENUE,
               pickupCity: 'Udaipur',
               pickupTime: f.pickupTime,
@@ -322,6 +357,7 @@ function BookingForm() {
   function resetForm() {
     setSubmitted(false); setCode(''); setConfirmName(''); setErrors({})
     setReturnCode(''); setReturnFailed(false)
+    setAddOns([]); setAddOnErrors({}); submissionIdRef.current = ''
     setForm({ name:'', phone:'', email:'', bags:2, pickupCity:'Mumbai', pickupCityOther:'', pickupAddress:'', pickupDate:'', pickupTime:'', notes:'', returnPickup:false, returnBags:2, ackProhibited:false })
   }
 
@@ -381,7 +417,7 @@ function BookingForm() {
             <div className="wd-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
 
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <label style={label}>Guest name</label>
+                <label style={label}>Lead Guest Name</label>
                 <input value={form.name} onChange={e=>field('name')(e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Full name" style={fi}/>
                 {errors.name && <span style={fieldErr}>{errors.name}</span>}
               </div>
@@ -398,11 +434,55 @@ function BookingForm() {
               </div>
 
               <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-                <label style={label}>Number of bags</label>
+                <label style={label}>Lead guest bags</label>
                 <div style={{ display:'flex', alignItems:'center', height:52, borderRadius:13, border:`1px solid ${Y.border}`, background:Y.creamCard, padding:'0 8px', justifyContent:'space-between' }}>
                   <button type="button" onClick={decBags} aria-label="Fewer bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>−</button>
                   <span style={{ fontFamily:FONT_DISPLAY, fontSize:24, color:Y.textDark, minWidth:32, textAlign:'center' }}>{form.bags}</span>
                   <button type="button" onClick={incBags} aria-label="More bags" style={{ width:36, height:36, borderRadius:9, border:'none', background:'#EFE7D8', color:Y.goldMuted, fontSize:20, cursor:'pointer', lineHeight:1 }}>+</button>
+                </div>
+              </div>
+
+              {errors.bags && <div style={{ gridColumn:'1 / -1' }}><span style={fieldErr}>{errors.bags}</span></div>}
+
+              {/* Additional family members / add-on guests */}
+              <div style={{ gridColumn:'1 / -1', display:'flex', flexDirection:'column', gap:14 }}>
+                <label style={label}>Additional Family Members / Add-On Guests <span style={{ textTransform:'none', letterSpacing:0, color:Y.muted, fontWeight:400 }}>(optional)</span></label>
+                {addOns.map((g, idx) => {
+                  const ge = addOnErrors[g.id] ?? {}
+                  return (
+                    <div key={g.id} style={{ border:`1px solid ${Y.border}`, borderRadius:16, padding:16, background:Y.creamCard, display:'flex', flexDirection:'column', gap:12 }}>
+                      <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                        <span style={{ ...label, color:Y.textDark }}>Guest {idx + 1}</span>
+                        <button type="button" onClick={() => removeAddOn(g.id)} aria-label={`Remove guest ${idx + 1}`} style={{ border:'none', background:'transparent', color:Y.error, fontFamily:FONT_BODY, fontSize:13, cursor:'pointer' }}>Remove</button>
+                      </div>
+                      <div className="wd-form-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:12 }}>
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          <input value={g.name} onChange={e=>updateAddOn(g.id,'name',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Guest name *" style={fi}/>
+                          {ge.name && <span style={fieldErr}>{ge.name}</span>}
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          <input value={g.bags} onChange={e=>updateAddOn(g.id,'bags',e.target.value.replace(/\D/g,'').slice(0,2))} onFocus={fiFocus} onBlur={fiBlur} inputMode="numeric" placeholder="Number of bags *" style={fi}/>
+                          {ge.bags && <span style={fieldErr}>{ge.bags}</span>}
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          <input value={g.phone} onChange={e=>updateAddOn(g.id,'phone',e.target.value.replace(/\D/g,'').slice(0,10))} onFocus={fiFocus} onBlur={fiBlur} inputMode="tel" placeholder="Phone (optional)" style={fi}/>
+                          {ge.phone && <span style={fieldErr}>{ge.phone}</span>}
+                        </div>
+                        <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+                          <input type="email" value={g.email} onChange={e=>updateAddOn(g.id,'email',e.target.value)} onFocus={fiFocus} onBlur={fiBlur} placeholder="Email (optional)" style={fi}/>
+                          {ge.email && <span style={fieldErr}>{ge.email}</span>}
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+                <button type="button" onClick={addAddOn} style={{ alignSelf:'flex-start', height:44, padding:'0 18px', borderRadius:12, border:`1px dashed ${Y.gold}`, background:'transparent', color:Y.goldMuted, fontFamily:FONT_BODY, fontSize:14, fontWeight:600, cursor:'pointer' }}>+ Add Another Guest</button>
+
+                {/* Live bag summary — total is calculated, never typed */}
+                <div aria-live="polite" style={{ border:`1px solid ${Y.border}`, borderRadius:14, padding:'14px 16px', background:'#fff', fontFamily:FONT_BODY, fontSize:14, color:Y.textDark, display:'flex', flexDirection:'column', gap:4 }}>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}><span>Lead guest bags</span><span>{form.bags}</span></div>
+                  <div style={{ display:'flex', justifyContent:'space-between' }}><span>Add-on guest bags</span><span>{addOnBagsTotal}</span></div>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontWeight:700, borderTop:`1px solid ${Y.border}`, paddingTop:6, marginTop:4 }}><span>Total bags</span><span>{totalBagsAll}</span></div>
                 </div>
               </div>
 

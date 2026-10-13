@@ -97,9 +97,21 @@ export async function ensureBagsForBooking(bookingId: string): Promise<{ created
     // key; bag_label (below) is the real tag/QR-facing id.
     const bagNumbers = await mintBagIds(totalBags)
 
+    // Family bookings (Y2K): per-guest bag counts live in group_guests.
+    // Assign guest_id to bags in guest order when the counts add up to
+    // total_bags; otherwise leave guest_id null (previous behaviour).
+    const guestSlots: (string | null)[] = []
+    try {
+      const { data: gs } = await supabaseAdmin
+        .from('group_guests').select('id, bags_count, sort_order')
+        .eq('booking_id', bookingId).is('deleted_at', null).order('sort_order')
+      for (const g of gs ?? []) for (let k = 0; k < (Number(g.bags_count) || 0); k++) guestSlots.push(g.id)
+    } catch { /* columns/table missing => no guest linkage */ }
+    const linkGuests = guestSlots.length === totalBags
+
     const rows = bagNumbers.map((bag_number, i) => ({
       booking_id:        bookingId,
-      guest_id:          null, // Individual bookings have no guest/manifest concept
+      guest_id:          linkGuests ? guestSlots[i] : null,
       bag_number,
       bag_label:         generateBagLabel(booking.tracking_id, i + 1, false),
       status:            'tag_generated',

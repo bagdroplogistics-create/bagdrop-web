@@ -386,6 +386,49 @@ const PAYMENT_STATUS_LABELS: Record<string, { label: string; color: string }> = 
 
 // ── Main Component ────────────────────────────────────────────────────────────
 
+// Expandable family guest list (lead + add-on guests) — renders nothing for
+// bookings that have no guest rows (all older / single-guest bookings).
+type FamilyGuest = { id: string; guest_name: string; mobile_number: string | null; email: string | null; room_number: string | null; is_lead: boolean; bags_count: number; bag_labels: string[] }
+function FamilyGuestsCard({ bookingId }: { bookingId: string }) {
+  const [data, setData] = useState<{ guests: FamilyGuest[]; hotel_room_number: string | null; total_bags: number | null } | null>(null)
+  const [open, setOpen] = useState(false)
+  useEffect(() => {
+    let alive = true
+    const k = sessionStorage.getItem('bagdrop_admin_key') ?? ''
+    fetch(`/api/admin/bookings/${bookingId}/family-guests`, { headers: { 'x-admin-key': k }, cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null).then(d => { if (alive && d) setData(d) }).catch(() => {})
+    return () => { alive = false }
+  }, [bookingId])
+  if (!data || data.guests.length < 2) return null
+  return (
+    <div className="no-print mx-auto mt-6 max-w-3xl overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
+      <button type="button" onClick={() => setOpen(o => !o)} className="flex w-full items-center justify-between px-6 py-4 text-left">
+        <span className="text-sm font-bold text-gray-800">Family Booking — {data.guests.length} guests · {data.total_bags ?? data.guests.reduce((n, g) => n + g.bags_count, 0)} bags</span>
+        <span className="text-xs text-gray-500">{open ? 'Hide' : 'Show'}</span>
+      </button>
+      {open && (
+        <div className="border-t border-gray-100 px-6 py-4 text-sm">
+          {data.hotel_room_number && <p className="mb-3 text-xs text-gray-600">Room number: <b>{data.hotel_room_number}</b></p>}
+          <table className="w-full text-left text-xs">
+            <thead><tr className="text-gray-500"><th className="py-1 pr-2">Guest</th><th className="pr-2">Contact</th><th className="pr-2">Bags</th><th>Bag IDs</th></tr></thead>
+            <tbody>
+              {data.guests.map(g => (
+                <tr key={g.id} className="border-t border-gray-100 align-top">
+                  <td className="py-1.5 pr-2 font-medium text-gray-800">{g.guest_name}{g.is_lead ? ' (Lead)' : ''}</td>
+                  <td className="pr-2 text-gray-600">{[g.mobile_number, g.email].filter(Boolean).join(' · ') || '—'}</td>
+                  <td className="pr-2">{g.bags_count}</td>
+                  <td className="text-gray-500">{g.bag_labels.join(', ') || 'Generated on confirmation'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  )
+}
+
+
 export default function QuoteViewPage() {
   const { lead_id } = useParams<{ lead_id: string }>()
   const router = useRouter()
@@ -2287,6 +2330,7 @@ export default function QuoteViewPage() {
         {/* ═══════════════════════════════════════════════════════════
             WORKFLOW PANEL (no-print)
         ════════════════════════════════════════════════════════════ */}
+        {booking && <FamilyGuestsCard bookingId={booking.id} />}
         {booking && (
           <div className="no-print mx-auto mt-6 max-w-3xl">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">

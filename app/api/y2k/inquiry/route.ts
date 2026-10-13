@@ -50,7 +50,7 @@ function generateTestTrackingId(): string {
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { name, phone, email, guests, bags, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode, prohibitedAck } = body
+    const { name, phone, email, guests: _rawGuests, bags: rawBags, addOnGuests: rawAddOns, hotelRoomNumber: rawRoom, submissionId: rawSubmissionId, pickupAddress, pickupCity, deliveryAddress, deliveryCity, pickupTime, arrivalDate, requests, returnPickup, originalTrackingId, testMode, prohibitedAck } = body
     // returnPickup / originalTrackingId: set only by the second call
     // submit() in app/y2k/page.tsx fires when a guest checks "Add a return
     // pickup". Used below purely to make this leg visibly distinct in the
@@ -65,6 +65,59 @@ export async function POST(req: NextRequest) {
     // dashboard-visible booking/lead rows are created, so the Founder can
     // see the flow end-to-end without any real-world side effects.
     const isTestMode = testMode === true
+
+    // ── Family booking: lead guest + add-on guests ─────────────────────
+    // Total bags is ALWAYS computed here (lead bags + add-on bags); any
+    // client-supplied total is ignored. Return-pickup legs never carry
+    // add-ons (they only send their own bag count).
+    type AddOn = { name: string; phone: string | null; email: string | null; bags: number }
+    const isIntStr = (v: unknown) => typeof v === 'number' ? Number.isInteger(v) : typeof v === 'string' && /^\d+$/.test(v.trim())
+    const leadBagsRaw = isIntStr(rawBags) ? Number(rawBags) : NaN
+    if (!Number.isFinite(leadBagsRaw) || leadBagsRaw < 0 || leadBagsRaw > 50) {
+      return NextResponse.json({ error: 'Lead guest bags must be a whole number (0 or more).' }, { status: 400 })
+    }
+    const addOns: AddOn[] = []
+    if (rawAddOns !== undefined && rawAddOns !== null) {
+      if (!Array.isArray(rawAddOns) || rawAddOns.length > 20 || (returnPickup === true && rawAddOns.length > 0)) {
+        return NextResponse.json({ error: 'Invalid add-on guest list.' }, { status: 400 })
+      }
+      for (let i = 0; i < rawAddOns.length; i++) {
+        const g = rawAddOns[i] ?? {}
+        const gName = typeof g.name === 'string' ? g.name.trim() : ''
+        if (!gName || gName.length > 100) return NextResponse.json({ error: `Add-on guest ${i + 1}: please enter a name.` }, { status: 400 })
+        if (!isIntStr(g.bags) || Number(g.bags) < 0 || Number(g.bags) > 50) {
+          return NextResponse.json({ error: `Add-on guest ${i + 1}: bags must be a whole number (0 or more).` }, { status: 400 })
+        }
+        const gPhoneDigits = typeof g.phone === 'string' ? g.phone.replace(/\D/g, '') : ''
+        if (gPhoneDigits && !/^[6-9]\d{9}$/.test(gPhoneDigits)) {
+          return NextResponse.json({ error: `Add-on guest ${i + 1}: enter a valid 10-digit mobile number or leave it blank.` }, { status: 400 })
+        }
+        const gEmail = typeof g.email === 'string' ? g.email.trim().toLowerCase() : ''
+        if (gEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(gEmail)) {
+          return NextResponse.json({ error: `Add-on guest ${i + 1}: enter a valid email or leave it blank.` }, { status: 400 })
+        }
+        addOns.push({ name: gName, phone: gPhoneDigits ? '+91' + gPhoneDigits : null, email: gEmail || null, bags: Number(g.bags) })
+      }
+    }
+    const totalBagsCount = leadBagsRaw + addOns.reduce((n, g) => n + g.bags, 0)
+    if (totalBagsCount < 1) {
+      return NextResponse.json({ error: 'Total bags must be at least 1.' }, { status: 400 })
+    }
+    const bags = String(totalBagsCount)
+    const guests = String(1 + addOns.length)
+    const hotelRoomNumber = typeof rawRoom === 'string' && rawRoom.trim() ? rawRoom.trim().slice(0, 40) : null
+    const submissionId = typeof rawSubmissionId === 'string' && /^[A-Za-z0-9_:-]{8,80}$/.test(rawSubmissionId) ? rawSubmissionId : null
+    const familyNote = addOns.length
+      ? `Family booking — Lead: ${name?.trim()} (${leadBagsRaw} bag${leadBagsRaw === 1 ? '' : 's'}); Add-ons: ` +
+        addOns.map(g => `${g.name} (${g.bags})`).join(', ') + `; Total bags: ${totalBagsCount}`
+      : ''
+
+    // Idempotency: a retry of the same submission returns the original
+    // booking instead of creating a duplicate.
+    if (submissionId) {
+      const { data: dup } = await supabaseAdmin.from('bookings').select('tracking_id').eq('client_submission_id', submissionId).maybeSingle()
+      if (dup?.tracking_id) return NextResponse.json({ success: true, trackingId: dup.tracking_id, emailSent: false, testMode: isTestMode, duplicate: true })
+    }
 
     // Basic validation
     const digits = phone?.replace(/\D/g, '') ?? ''
@@ -154,13 +207,16 @@ export async function POST(req: NextRequest) {
         // below showed "Delivery Date: —".
         delivery_date:  arrivalDate,
         time_slot:      pickupTime || null,
-        total_bags:     parseInt(bags) || 1,
+        total_bags:     totalBagsCount,
+        ...(hotelRoomNumber ? { hotel_room_number: hotelRoomNumber } : {}),
+        ...(submissionId ? { client_submission_id: submissionId } : {}),
         total_amount:   0,
         currency:       'INR',
         notes: [
           isTestMode ? '[TEST SUBMISSION — safe to delete, does not affect real tracking numbers]' : '',
           '[#Y2K — Yashna ❤️ Yash @ Taj Aravali, Udaipur · 17th–18th Dec 2026]',
           isReturnPickup ? `[RETURN PICKUP — linked to onward booking ${originalTrackingId || 'unknown'}]` : '',
+          familyNote,
           guests       ? `Group size: ${guests} guests` : '',
           bags         ? `Luggage pieces: ${bags}` : '',
           pickupAddress   ? `Pickup: ${pickupAddress}` : '',
@@ -175,6 +231,11 @@ export async function POST(req: NextRequest) {
         ],
       }).select('id').single()
 
+      if (dbError && (dbError as { code?: string }).code === '23505' && submissionId) {
+        // Concurrent duplicate submit — return the row that won.
+        const { data: winner } = await supabaseAdmin.from('bookings').select('tracking_id').eq('client_submission_id', submissionId).maybeSingle()
+        if (winner?.tracking_id) return NextResponse.json({ success: true, trackingId: winner.tracking_id, emailSent: false, testMode: isTestMode, duplicate: true })
+      }
       if (dbError) {
         console.error('[y2k/inquiry] DB save error:', dbError)
         // Booking insert failed outright — no lead gets attempted below
@@ -193,6 +254,16 @@ export async function POST(req: NextRequest) {
         })
       } else {
         savedBookingId = savedBooking?.id ?? null
+        // Structured guest records (lead + add-ons) for onward bookings.
+        // Non-fatal: the same info is also in the booking notes above.
+        if (savedBookingId && !isReturnPickup) {
+          const guestRows = [
+            { booking_id: savedBookingId, guest_name: name.trim(), mobile_number: '+91' + digits, email: email?.trim().toLowerCase() || null, room_number: hotelRoomNumber, is_lead: true, bags_count: leadBagsRaw, sort_order: 0 },
+            ...addOns.map((g, i) => ({ booking_id: savedBookingId!, guest_name: g.name, mobile_number: g.phone, email: g.email, room_number: hotelRoomNumber, is_lead: false, bags_count: g.bags, sort_order: i + 1 })),
+          ]
+          const { error: gErr } = await supabaseAdmin.from('group_guests').insert(guestRows)
+          if (gErr) console.error('[y2k/inquiry] guest rows insert failed (non-fatal):', gErr.message)
+        }
       }
     } catch (dbErr) {
       console.error('[y2k/inquiry] DB save error:', dbErr)
@@ -258,7 +329,7 @@ export async function POST(req: NextRequest) {
             pickup_date:      arrivalDate,
             pickup_address:   pickupAddress || null,
             drop_address:     deliveryAddress || null,
-            bags_count:       parseInt(bags) || 1,
+            bags_count:       totalBagsCount,
             notes:            (isReturnPickup
               ? `Return Pickup — linked to onward booking ${originalTrackingId || 'unknown'} — Auto-created from #Y2K wedding page inquiry ${trackingId}`
               : `Auto-created from #Y2K wedding page inquiry ${trackingId}`)
