@@ -16,6 +16,7 @@ import { StepBags } from './step-bags'
 import { StepSchedule } from './step-schedule'
 import { BookingOtpModal } from './booking-otp-modal'
 import { StepIdentity, DRAFT_KEY, OK_KEY } from './step-identity'
+import { WeddingInquiry } from './wedding-inquiry'
 
 // New customer flow (Bagdrop Platform blueprint):
 //   1 What  →  2 Where  →  3 When  →  4 Bags  →  5 Who  →  6 Price (OTP unlocks)  →  7 Verify identity → request saved
@@ -34,6 +35,7 @@ interface Props { useCases: { id: string; label: string; tagline: string }[] }
 export function BookingFlow({ useCases }: Props) {
   const router = useRouter()
   const [step, setStep] = useState(1)
+  const [weddingForm, setWeddingForm] = useState(false)   // "Wedding or event" → inquiry form (as in the blueprint)
   // Like the HTML blueprint, "Home → Airport" is preselected.
   const [booking, setBooking] = useState<BookingState>({
     ...INITIAL_BOOKING_STATE, useCaseId: 'd2a', serviceId: 'airport-delivery',
@@ -112,6 +114,10 @@ export function BookingFlow({ useCases }: Props) {
 
   const city = (id: string | null) => COVERAGE_CITIES.find(c => c.id === id)?.label ?? id ?? '—'
 
+  if (weddingForm) {
+    return <div className="px-4 py-10 sm:px-6 lg:px-8"><WeddingInquiry onBack={() => setWeddingForm(false)} /></div>
+  }
+
   return (
     <>
       <AnimatePresence>
@@ -162,7 +168,7 @@ export function BookingFlow({ useCases }: Props) {
                     })}
                   </div>
                   <div className="flex justify-end">
-                    <Button variant="primary" size="lg" disabled={!booking.serviceId} onClick={() => go(2)}>Continue <ArrowRight className="h-4 w-4" /></Button>
+                    <Button variant="primary" size="lg" disabled={!booking.serviceId} onClick={() => (booking.useCaseId === 'wed' ? setWeddingForm(true) : go(2))}>Continue <ArrowRight className="h-4 w-4" /></Button>
                   </div>
                 </motion.div>
               )}
