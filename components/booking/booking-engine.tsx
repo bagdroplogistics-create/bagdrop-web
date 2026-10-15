@@ -1,208 +1,44 @@
 'use client'
 
-import { useReducer, useMemo, useState, useEffect } from 'react'
-import { AnimatePresence } from 'framer-motion'
-import { useRouter } from 'next/navigation'
-import { StepIndicator }    from './step-indicator'
-import { StepRoute }        from './step-route'
-import { StepBags }         from './step-bags'
-import { StepSchedule }     from './step-schedule'
-import { StepReview }       from './step-review'
-import { BookingOtpModal }  from './booking-otp-modal'
-import { StepIdentity, DRAFT_KEY, OK_KEY } from './step-identity'
-import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
-import { calculatePrice } from '@/lib/pricing'
-import type { BookingState } from '@/lib/booking-types' // still needed for reducer type
+import { useEffect, useState } from 'react'
+import { LegacyBookingEngine } from './booking-engine-legacy'
+import { BookingFlow } from './booking-flow'
 
-type Action =
-  | { type: 'PATCH';     payload: Partial<BookingState> }
-  | { type: 'NEXT_STEP' }
-  | { type: 'PREV_STEP' }
-  | { type: 'RESET' }
+// /book entry point. Chooses between:
+//   • BookingFlow          — the new use-case → where → when → bags → who → OTP/price → identity flow
+//                            (only when the identity gate is switched on)
+//   • LegacyBookingEngine  — the original 4-step form, byte-for-byte what was live before the upgrade
+// Anything wrong (network error, slow config, switch off) falls back to the legacy form.
 
-interface EngineState { step: number; booking: BookingState }
-const INITIAL: EngineState = { step: 1, booking: INITIAL_BOOKING_STATE }
-
-function reducer(state: EngineState, action: Action): EngineState {
-  switch (action.type) {
-    case 'PATCH':      return { ...state, booking: { ...state.booking, ...action.payload } }
-    case 'NEXT_STEP':  return { ...state, step: Math.min(state.step + 1, 4) }
-    case 'PREV_STEP':  return { ...state, step: Math.max(state.step - 1, 1) }
-    case 'RESET':      return INITIAL
-    default:           return state
-  }
-}
+type Mode = 'loading' | 'legacy' | 'flow'
 
 export function BookingEngine() {
-  const router = useRouter()
-  const [{ step, booking }, dispatch] = useReducer(reducer, INITIAL)
-  const [submitting,  setSubmitting]  = useState(false)
-  const [submitError, setSubmitError] = useState<string | null>(null)
-  const [showOtpModal, setShowOtpModal] = useState(false)
-
-  // ── Identity gate (OFF unless enabled in settings; failure to load = OFF) ──
-  const [identityGate, setIdentityGate] = useState(false)
-  const [identityStage, setIdentityStage] = useState(false)       // showing the identity step
-  const [accessToken, setAccessToken] = useState<string | null>(null)
-  const [verified, setVerified] = useState<{ maskedNumber: string | null; verifiedName: string | null; verificationId: string } | null>(null)
+  const [mode, setMode] = useState<Mode>('loading')
+  const [useCases, setUseCases] = useState<{ id: string; label: string; tagline: string }[]>([])
 
   useEffect(() => {
     let alive = true
+    // A returning DigiLocker visitor must land in the new flow without waiting.
+    const returning = typeof window !== 'undefined'
+      && new URLSearchParams(window.location.search).get('identity') === 'done'
+    const timer = setTimeout(() => { if (alive) setMode(m => (m === 'loading' ? (returning ? 'flow' : 'legacy') : m)) }, 2500)
     fetch('/api/booking-config', { cache: 'no-store' })
-      .then(r => r.ok ? r.json() : null)
-      .then(c => { if (alive && c?.identityGate === true) setIdentityGate(true) })
-      .catch(() => { /* stay OFF */ })
-    return () => { alive = false }
+      .then(r => (r.ok ? r.json() : null))
+      .then(c => {
+        if (!alive) return
+        if (c?.identityGate === true) { setUseCases(c.useCases ?? []); setMode('flow') }
+        else setMode('legacy')
+      })
+      .catch(() => { if (alive) setMode('legacy') })
+    return () => { alive = false; clearTimeout(timer) }
   }, [])
 
-  // Returning from DigiLocker (/book/identity-return → /book?identity=done): restore the draft.
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    if (new URLSearchParams(window.location.search).get('identity') !== 'done') return
-    try {
-      const draft = sessionStorage.getItem(DRAFT_KEY)
-      const ok = sessionStorage.getItem(OK_KEY)
-      if (!draft || !ok) return
-      const okObj = JSON.parse(ok)
-      dispatch({ type: 'PATCH', payload: JSON.parse(draft) })
-      setVerified(okObj)
-      setIdentityGate(true)
-      setIdentityStage(true)
-      import('@/lib/supabase-browser').then(async ({ supabaseBrowser }) => {
-        const { data } = await supabaseBrowser.auth.getSession()
-        setAccessToken(data.session?.access_token ?? null)
-      })
-      window.history.replaceState({}, '', '/book')
-    } catch { /* ignore a corrupt draft */ }
-  }, [])
-
-  const pricing = useMemo(() => calculatePrice(booking), [booking])
-
-  const patch = (payload: Partial<BookingState>) => dispatch({ type: 'PATCH', payload })
-  const next  = () => { dispatch({ type: 'NEXT_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-  const back  = () => { dispatch({ type: 'PREV_STEP' }); window.scrollTo({ top: 0, behavior: 'smooth' }) }
-
-  // Called when customer clicks "Confirm Booking" on the review page.
-  // Shows the OTP modal instead of submitting immediately.
-  function handleBookingSubmit() {
-    setSubmitError(null)
-    setShowOtpModal(true)
-  }
-
-  // Called after email OTP is verified successfully.
-  // Email is already in booking state — submit immediately.
-  async function handleOtpVerified(token?: string) {
-    setShowOtpModal(false)
-    // Identity gate on: don't submit yet — verify the traveller first.
-    if (identityGate && token) {
-      setAccessToken(token)
-      setIdentityStage(true)
-      window.scrollTo({ top: 0, behavior: 'smooth' })
-      return
-    }
-    await submitBooking()
-  }
-
-  async function submitBooking(authToken?: string, identityVerificationId?: string) {
-    setSubmitting(true)
-
-    try {
-      const res = await fetch('/api/bookings', {
-        method:  'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
-        },
-        body:    JSON.stringify({ booking, pricing, ...(identityVerificationId ? { identityVerificationId } : {}) }),
-      })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data.error ?? 'Booking failed')
-
-      if (typeof window !== 'undefined') {
-        sessionStorage.removeItem(DRAFT_KEY)
-        sessionStorage.removeItem(OK_KEY)
-        sessionStorage.setItem(
-          'bagdrop_booking',
-          JSON.stringify({ booking, trackingId: data.trackingId })
-        )
-      }
-
-      router.push('/book/confirmation?id=' + data.trackingId)
-    } catch (err) {
-      setSubmitError(err instanceof Error ? err.message : 'Booking failed. Please try again.')
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <>
-      {/* OTP Modal — rendered as a portal-style overlay */}
-      <AnimatePresence>
-        {showOtpModal && (
-          <BookingOtpModal
-            phone={booking.phone}
-            countryIso2={booking.countryIso2}
-            onVerified={handleOtpVerified}
-            establishSession={identityGate}
-            onClose={() => setShowOtpModal(false)}
-          />
-        )}
-      </AnimatePresence>
-
-      <div className="mx-auto max-w-3xl px-4 py-10 sm:px-6 lg:px-8">
-        <div className="mb-10">
-          <StepIndicator current={step} />
-        </div>
-
-        {(submitError || submitting) && (
-          <div className="mb-6">
-            {submitting && (
-              <div className="flex items-center gap-3 rounded-xl bg-brand-light border border-brand/20 p-4 text-sm text-brand">
-                <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent shrink-0" />
-                Submitting your booking…
-              </div>
-            )}
-            {submitError && (
-              <div className="rounded-xl bg-red-50 border border-red-200 p-4 text-sm text-red-600">
-                {submitError}
-              </div>
-            )}
-          </div>
-        )}
-
-        {identityStage && (
-          <StepIdentity
-            booking={booking}
-            accessToken={accessToken}
-            verified={verified}
-            submitting={submitting}
-            onBack={() => { setIdentityStage(false); setVerified(null) }}
-            onConfirm={() => submitBooking(accessToken ?? undefined, verified?.verificationId)}
-          />
-        )}
-
-        <AnimatePresence mode="wait">
-          {!identityStage && step === 1 && (
-            <StepRoute key="step-route" state={booking} onChange={patch} onNext={next} />
-          )}
-          {!identityStage && step === 2 && (
-            <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
-          )}
-          {!identityStage && step === 3 && (
-            <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
-          )}
-          {!identityStage && step === 4 && (
-            <StepReview
-              key="step-review"
-              state={booking}
-              onChange={patch}
-              onBack={back}
-              onBook={handleBookingSubmit}
-            />
-          )}
-        </AnimatePresence>
+  if (mode === 'loading') {
+    return (
+      <div className="flex min-h-[40vh] items-center justify-center">
+        <span className="h-8 w-8 animate-spin rounded-full border-[3px] border-brand border-t-transparent" />
       </div>
-    </>
-  )
+    )
+  }
+  return mode === 'flow' ? <BookingFlow useCases={useCases} /> : <LegacyBookingEngine />
 }
