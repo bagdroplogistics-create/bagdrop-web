@@ -199,7 +199,11 @@ export async function GET(req: NextRequest) {
     // Default view (no status filter, no search): Lost leads hidden, not
     // deleted. A search is left unfiltered on purpose so a Lost lead is still
     // findable by name/phone/ID.
-    if (!deleted && !statusFilterActive && !hasSearch) q = q.neq('status', 'lost')
+    // 2026-10-15 — Lost leads are NO LONGER hidden from the default view.
+    // Rule: every inquiry that appears on the Dashboard must appear here.
+    // Auto-Lost (pickup date passed) was silently removing next-day inquiries
+    // such as BDL-2026-0275 (Imran Dal) from this list while the Dashboard
+    // still showed them. They now stay listed with a "Lost" badge.
     if (source && source !== 'all') q = q.eq('source', source)
     for (const or of tokenOrs) q = q.or(or)
     return q

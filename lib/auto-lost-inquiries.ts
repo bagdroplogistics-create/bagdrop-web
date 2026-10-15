@@ -49,7 +49,9 @@ export interface AutoLostResult {
 
 export async function autoMarkLostInquiries(): Promise<AutoLostResult> {
   // Plain `date` column (YYYY-MM-DD) — string comparison is safe here.
-  const today = new Date().toISOString().slice(0, 10)
+  // 2026-10-15 — 3-day grace: a pickup date that was only yesterday must not
+  // flip an inquiry to Lost (customers often confirm or reschedule late).
+  const today = new Date(Date.now() - 3 * 86400000).toISOString().slice(0, 10)
 
   let candidates: { id: string; booking_id: string | null; pickup_date: string | null }[] | null = null
   let candErr: { message: string } | null = null
