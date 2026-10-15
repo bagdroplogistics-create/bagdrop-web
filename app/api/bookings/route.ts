@@ -159,7 +159,10 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: elig.message, reason: elig.reason }, { status: 403 })
       }
       // The name that was verified must be the name being booked (no swap after verification).
-      if (normalizeName(ver!.booking_name ?? '') !== normalizeName(customerName)) {
+      // Accept the name that was verified against (typed) OR the provider-verified name itself
+      // (the form sends the Aadhaar name after verification). Anything else = swapped after verification.
+      const sent = normalizeName(customerName)
+      if (sent !== normalizeName(ver!.booking_name ?? '') && sent !== normalizeName(ver!.verified_name ?? '')) {
         return NextResponse.json({ error: 'The booking name changed after verification. Please verify again.', reason: 'name_changed' }, { status: 409 })
       }
       gateSessionId = sess?.id ?? null
