@@ -161,7 +161,7 @@ export function BookingFlow({ useCases }: Props) {
         )}
       </AnimatePresence>
 
-      <div className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-8">
+      <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8">
           <div className="flex gap-1.5">
             {LABELS.map((l, i) => <div key={l} className={cn('h-1.5 flex-1 rounded-full', i + 1 <= step ? 'bg-brand' : 'bg-border')} />)}
@@ -171,7 +171,7 @@ export function BookingFlow({ useCases }: Props) {
 
         {error && <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-600">{error}</div>}
 
-        <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
+        <div className="grid gap-6 lg:grid-cols-[1fr_340px]">
           <div className="min-w-0">
             <AnimatePresence mode="wait">
               {step === 1 && (
@@ -180,14 +180,14 @@ export function BookingFlow({ useCases }: Props) {
                     <h2 className="font-display text-xl font-semibold text-text-primary">What are we carrying for you?</h2>
                     <p className="mt-1 text-sm text-text-muted">Pick one. Everything else adapts to it.</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                     {cases.map(u => {
                       const sel = booking.useCaseId === u.id
                       return (
                         <button key={u.id} type="button" onClick={() => pickUseCase(u.id)} aria-pressed={sel}
                           className={cn('rounded-2xl border-2 p-4 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand',
                             sel ? 'border-brand bg-brand-light' : 'border-border bg-white hover:border-brand/40')}>
-                          <p className={cn('text-base font-semibold', sel ? 'text-brand' : 'text-text-primary')}>{u.label}</p>
+                          <p className={cn('whitespace-nowrap text-[15px] font-semibold', sel ? 'text-brand' : 'text-text-primary')}>{u.label}</p>
                           <p className="mt-0.5 text-sm text-text-muted">{u.tagline}</p>
                         </button>
                       )
