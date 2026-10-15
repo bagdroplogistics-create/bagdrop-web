@@ -1,19 +1,17 @@
 // BAGDROP — identity name matching.
 //
-// Method: the rule from the Bagdrop OS Blueprint (Identity gate → "Name match
-// rule"), implemented as documented there:
-//   1. normalise: lower-case, strip honorifics, drop everything except letters
-//      and spaces, split into tokens and sort them (token ORDER differences
-//      such as "Amin Mihir" vs "Mihir Amin" do not matter);
-//   2. identical token sets → score 1
-//   3. otherwise score = shared tokens / max(tokens in either name).
-// Thresholds (blueprint, configurable): >= 0.85 pass, 0.70–0.85 customer
-// confirms the spelling once, < 0.70 blocked and sent to manual review.
-//
-// This is a deterministic, auditable string-comparison score computed by
-// Bagdrop — it is NOT a score returned by Setu (DigiLocker returns the name
-// only). No transliteration or phonetic matching is attempted; such cases fall
-// into the confirm / manual-review bands by design.
+// Method (documented, deterministic, computed by Bagdrop — NOT a score from Setu):
+//   1. normalise: lower-case, strip honorifics (mr, mrs, dr, shri…), drop everything except
+//      letters and spaces, split into name words;
+//   2. two words MATCH when any of these is true (common Indian naming differences):
+//        a. identical                                   "patel"   = "patel"
+//        b. one is an INITIAL of the other              "k"       ~ "keyur"
+//        c. same word apart from a respectful ending     "monali"  ~ "monaliben"
+//           (ben, bhai, bai, devi — only if >= 3 letters remain)
+//        d. known abbreviation / spelling group          "md" = "mohd" = "mohammed" = "muhammad"
+//   3. score = matched words / the larger number of words in either name (order does not matter;
+//      each word can be matched once). Identical normalised names score 1.
+// Thresholds (configurable): >= 0.85 pass · 0.70–0.85 customer confirms once · < 0.70 manual review.
 //
 // No imports: runs in tests, server and browser.
 
@@ -21,27 +19,51 @@ export const NAME_MATCH_PASS = 0.85
 export const NAME_MATCH_CONFIRM = 0.7
 
 const HONORIFICS = /\b(mr|mrs|ms|miss|mx|dr|shri|smt|sri|kumari|prof)\b\.?/g
+const RESPECT_SUFFIXES = ['ben', 'bhai', 'bai', 'devi']
+const ALIASES: string[][] = [['md', 'mohd', 'mohammed', 'mohammad', 'muhammad', 'mohamed', 'mohamad']]
 
+/** Lower-case, strip honorifics/punctuation, sort words. Used for exact-equality checks. */
 export function normalizeName(s: string): string {
+  return nameWords(s).sort().join(' ')
+}
+
+function nameWords(s: string): string[] {
   return (s || '')
     .toLowerCase()
     .replace(HONORIFICS, ' ')
     .replace(/[^a-z\s]/g, ' ')
     .split(/\s+/)
     .filter(Boolean)
-    .sort()
-    .join(' ')
+}
+
+function stem(w: string): string {
+  for (const suf of RESPECT_SUFFIXES) {
+    if (w.length - suf.length >= 3 && w.endsWith(suf)) return w.slice(0, -suf.length)
+  }
+  return w
+}
+
+export function wordsMatch(a: string, b: string): boolean {
+  if (a === b) return true
+  if (a.length === 1 || b.length === 1) {               // initial
+    const [i, f] = a.length === 1 ? [a, b] : [b, a]
+    return f.startsWith(i)
+  }
+  if (stem(a) === stem(b)) return true                   // Monali ~ Monaliben
+  return ALIASES.some(g => g.includes(a) && g.includes(b))
 }
 
 export function nameMatchScore(a: string, b: string): number {
-  const na = normalizeName(a)
-  const nb = normalizeName(b)
-  if (!na || !nb) return 0
-  if (na === nb) return 1
-  const ta = na.split(' ')
-  const tb = nb.split(' ')
+  const ta = nameWords(a)
+  const tb = nameWords(b)
+  if (!ta.length || !tb.length) return 0
+  if (normalizeName(a) === normalizeName(b)) return 1
+  const used = new Set<number>()
   let hit = 0
-  for (const t of ta) if (tb.includes(t)) hit++
+  for (const w of ta) {
+    const j = tb.findIndex((x, k) => !used.has(k) && wordsMatch(w, x))
+    if (j >= 0) { used.add(j); hit++ }
+  }
   return hit / Math.max(ta.length, tb.length)
 }
 

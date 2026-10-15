@@ -24,8 +24,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Already answered.' }, { status: 409 })   // one chance only
   }
 
+  // Confirming means: "yes, the name on my ID is mine — use it for this booking".
+  // The booking name becomes the provider-verified name, so the record carries the legal name.
   const patch = body.confirm
-    ? { spelling_confirmed_at: new Date().toISOString() }
+    ? { spelling_confirmed_at: new Date().toISOString(), booking_name: row.verified_name ?? row.booking_name }
     : { review_status: 'pending' }
   const { error } = await supabaseAdmin.from('identity_verifications').update(patch).eq('id', id)
   if (error) return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 })

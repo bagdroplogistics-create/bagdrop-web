@@ -82,8 +82,11 @@ export function BookingFlow({ useCases }: Props) {
       const draft = sessionStorage.getItem(DRAFT_KEY)
       const ok = sessionStorage.getItem(OK_KEY)
       if (!draft || !ok) return
-      setBooking(JSON.parse(draft))
-      setVerified(JSON.parse(ok))
+      const okObj = JSON.parse(ok)
+      const draftObj = JSON.parse(draft)
+      // If the customer accepted the name on their ID, the booking continues under that name.
+      setBooking(okObj.adoptName && okObj.verifiedName ? { ...draftObj, name: okObj.verifiedName } : draftObj)
+      setVerified(okObj)
       setUnlocked(true)
       setStep(7)
       import('@/lib/supabase-browser').then(async ({ supabaseBrowser }) => {
@@ -227,6 +230,7 @@ export function BookingFlow({ useCases }: Props) {
                       <div className="space-y-1.5">
                         <label htmlFor="f-name" className="block text-sm font-medium text-text-primary">Traveller&apos;s full name <span className="text-brand">*</span></label>
                         <input id="f-name" className="input-base" placeholder="As on Aadhaar or passport" autoComplete="name" value={booking.name} onChange={e => patch({ name: e.target.value })} />
+                        <p className="text-[11px] text-text-muted">Enter your full name as on your ID, for example “Monaliben Keyur Patel”. You verify your Aadhaar in step 7.</p>
                       </div>
                     </div>
                     <div className="grid gap-4 sm:grid-cols-2">

@@ -24,6 +24,25 @@ t('thresholds', () => {
   assert.equal(classifyMatch(0.6999), 'blocked')
 })
 t('empty name → 0', () => assert.equal(nameMatchScore('', 'A B'), 0))
+t('real case: "Monali K Patel" vs Aadhaar "Monaliben Keyur Patel" passes', () => {
+  const s = nameMatchScore('Monali K Patel', 'Monaliben Keyur Patel')
+  assert.equal(s, 1); assert.equal(classifyMatch(s), 'pass')
+})
+t('initials, -ben/-bhai endings and Mohammed aliases', () => {
+  assert.equal(nameMatchScore('Rajesh K Shah', 'Rajeshbhai Kumar Shah'), 1)
+  assert.equal(nameMatchScore('Md Faisal Khan', 'Mohammed Faisal Khan'), 1)
+  assert.equal(nameMatchScore('Priya Mehta', 'Priya Mehta Shah') >= 0.66, true)
+})
+t('different people still blocked', () => {
+  assert.equal(classifyMatch(nameMatchScore('Rahul Shah', 'Priya Mehta')), 'blocked')
+  assert.equal(classifyMatch(nameMatchScore('Rahul Patel', 'Ramesh Patel')), 'blocked')   // 1 of 2 words
+  assert.equal(classifyMatch(nameMatchScore('Amit Shah', 'Sumit Shah')), 'blocked')
+})
+t('initial must really be the first letter', () => assert.equal(nameMatchScore('B Patel', 'Keyur Patel'), 0.5))
+t('word order does not matter and words match only once', () => {
+  assert.equal(nameMatchScore('Patel Keyur', 'Keyur Patel'), 1)
+  assert.equal(nameMatchScore('Patel Patel', 'Keyur Patel') <= 0.5, true)
+})
 
 const base = {
   gateRequired: true, otpVerified: true, quoteExpiresAt: null, quoteHashMatches: true,

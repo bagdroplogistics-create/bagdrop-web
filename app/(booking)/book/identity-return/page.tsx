@@ -26,9 +26,10 @@ function Inner() {
   const [msg, setMsg] = useState('')
   const [token, setToken] = useState('')
 
-  function finish(r: Result) {
+  function finish(r: Result, adoptName = false) {
     sessionStorage.setItem(OK_KEY, JSON.stringify({
       verificationId: r.verificationId, maskedNumber: r.maskedNumber, verifiedName: r.verifiedName,
+      adoptName,   // true → the booking continues under the name on the ID
     }))
     setPhase('done')
     window.location.replace('/book?identity=done')
@@ -71,7 +72,7 @@ function Inner() {
     })
     const j = await r.json()
     if (!r.ok) { setMsg(j.error ?? 'Could not save.'); setPhase('failed'); return }
-    if (confirm) finish({ ...res, spellingConfirmed: true })
+    if (confirm) finish({ ...res, spellingConfirmed: true }, true)
     else setPhase('review')
   }
 
@@ -81,11 +82,11 @@ function Inner() {
       {phase === 'done' && <p className="text-text-muted">Verified. Returning to your booking…</p>}
       {phase === 'confirm' && res && (
         <div className="rounded-3xl border border-border bg-white p-6 shadow-sm">
-          <h1 className="font-display text-xl font-bold">Please confirm the spelling</h1>
-          <p className="mt-3 text-sm text-text-secondary">Your ID shows <b>{res.verifiedName}</b>. Is this you, and is this how you want the name on this booking?</p>
+          <h1 className="font-display text-xl font-bold">Use the name on your ID?</h1>
+          <p className="mt-3 text-sm text-text-secondary">Your ID shows <b>{res.verifiedName}</b>. Is this you? We will use this name for the booking, and the bags are released to it.</p>
           <div className="mt-5 flex gap-3">
-            <button onClick={() => answer(false)} className="h-12 flex-1 rounded-xl border border-border text-sm font-semibold">No, check it</button>
-            <button onClick={() => answer(true)} className="h-12 flex-1 rounded-xl bg-brand text-sm font-semibold text-white">Yes, that is me</button>
+            <button onClick={() => answer(false)} className="h-12 flex-1 rounded-xl border border-border text-sm font-semibold">No, this is not me</button>
+            <button onClick={() => answer(true)} className="h-12 flex-1 rounded-xl bg-brand text-sm font-semibold text-white">Yes, use this name</button>
           </div>
         </div>
       )}
