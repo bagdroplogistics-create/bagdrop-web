@@ -1715,7 +1715,11 @@ function LeadsPageInner() {
                             Bookings" definition, never for quote_created/
                             quote_sent/accepted/payment_pending/partially
                             paid. */}
-                        {l.is_confirmed && (l.effective_status ?? l.status) !== 'completed' && l.status !== 'converted' ? (
+                        {/* 2026-10-15 — dropped the `l.status !== 'converted'` test: a lead whose
+                            own status is 'converted' but whose booking is paid/confirmed
+                            (e.g. Indemnity Bond Sent, BDL-2026-0267) lost its Confirmed tag.
+                            Only a truly completed booking hides it. */}
+                        {l.is_confirmed && (l.effective_status ?? l.status) !== 'completed' ? (
                           <p className="mt-0.5 text-[11px] font-semibold" style={{ color: '#ff6300' }}>Confirmed</p>
                         ) : null}
                         {l.is_test ? (
