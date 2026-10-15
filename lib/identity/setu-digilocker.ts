@@ -13,9 +13,9 @@
 //   * only minimal attributes are returned: name and masked last-4. Raw Aadhaar
 //     number, DOB, address and photo are discarded and never leave this module.
 //
-// IMPORTANT: endpoint paths/field names follow Setu's public documentation as
-// understood at build time. Verify against your Setu dashboard/sandbox before
-// go-live; they are isolated in this one file so a change is a one-file fix.
+// Endpoint paths/fields checked against https://docs.setu.co/data/digilocker/quickstart
+// on 2026-10-15. Sandbox base URL: https://dg-sandbox.setu.co ; production: https://dg.setu.co.
+// Still to be verified with a real sandbox run (not yet done).
 // `fetch` is injectable so the adapter is testable without network access.
 
 export type SetuConfig = {
@@ -69,7 +69,9 @@ export function normalizeStatus(raw: unknown): ProviderStatus {
   const s = String(raw || '').toLowerCase()
   if (s === 'authenticated' || s === 'success' || s === 'completed') return 'authenticated'
   if (s === 'expired') return 'expired'
-  if (s === 'failed' || s === 'revoked' || s === 'unauthenticated' || s === 'denied') return 'failed'
+  // Setu docs: status ∈ unauthenticated | authenticated | revoked.
+  // 'unauthenticated' = user has not completed consent yet → still pending.
+  if (s === 'failed' || s === 'revoked' || s === 'denied') return 'failed'
   return 'pending'
 }
 
@@ -104,6 +106,9 @@ export async function fetchVerifiedIdentity(
   const a = aj?.aadhaar ?? {}
   const name = String(a.name ?? '').trim()
   if (!name) return { status: 'failed', identity: null }
+  // Close the user's DigiLocker access now that we have what we need
+  // (Setu: GET /api/digilocker/:id/revoke). Best-effort; never blocks the result.
+  try { await fetchImpl(`${cfg.baseUrl}/api/digilocker/${id}/revoke`, { headers: headers(cfg) }) } catch { /* ignore */ }
   // Only name + masked last-4 are kept; everything else in `a` is dropped here.
   return { status: 'authenticated', identity: { name, maskedNumber: maskNumber(a.maskedNumber ?? a.uid ?? a.number) } }
 }

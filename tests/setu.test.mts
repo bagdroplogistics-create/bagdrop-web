@@ -23,6 +23,7 @@ await t('normalizeStatus', () => {
   assert.equal(normalizeStatus('AUTHENTICATED'), 'authenticated')
   assert.equal(normalizeStatus('expired'), 'expired')
   assert.equal(normalizeStatus('revoked'), 'failed')
+  assert.equal(normalizeStatus('unauthenticated'), 'pending')
   assert.equal(normalizeStatus('created'), 'pending')
 })
 await t('create request sends auth headers + redirect', async () => {
