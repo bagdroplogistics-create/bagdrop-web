@@ -76,7 +76,14 @@ export async function POST(req: Request) {
     if (error) throw new Error(error.message)
     return NextResponse.json(view(upd ?? row))
   } catch (e) {
-    console.error('[identity/complete]', (e as Error).message)
+    const m = (e as Error).message
+    console.error('[identity/complete]', m)
+    // Most common cause: the customer pressed "Allow" without ticking "Aadhaar Card" on DigiLocker's consent screen.
+    if (m.startsWith('setu_aadhaar_failed')) {
+      return NextResponse.json({
+        error: 'We could not read your Aadhaar from DigiLocker. On the DigiLocker consent screen, tick "Aadhaar Card" before clicking Allow, then try again.',
+      }, { status: 400 })
+    }
     return NextResponse.json({ error: 'Could not confirm verification. Please try again.' }, { status: 502 })
   }
 }
