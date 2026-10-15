@@ -113,8 +113,13 @@ export function BookingFlow({ useCases }: Props) {
       booking.travelReference?.trim() ? `${MODE_COPY[mode].refLabel || 'Reference'}: ${booking.travelReference.trim()}` : '',
       intl ? '[Identity] International traveller: passport verification by our team required before pickup' : '',
     ]
+    // After Aadhaar verification the booking carries the name on the Aadhaar (the server does the same).
+    const idName = !intl && verified?.verifiedName ? verified.verifiedName.trim() : ''
+    const shownName = idName && idName === idName.toUpperCase()
+      ? idName.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : idName
     const toSend: BookingState = {
       ...booking,
+      name: shownName || booking.name,
       notes: [booking.notes.trim(), payerNote, ...extra].filter(Boolean).join(' | '),
     }
     try {

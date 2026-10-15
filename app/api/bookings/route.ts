@@ -95,7 +95,8 @@ export async function POST(req: Request) {
       : (booking.timeSlotId ?? '')
 
     const customerTitle: TitleId = TITLE_OPTIONS.includes(booking?.title) ? booking.title : DEFAULT_TITLE
-    const customerName  = booking.name.trim()
+    let customerName    = booking.name.trim()
+    let nameNote        = ''   // set when the booking name is replaced by the Aadhaar-verified name
     const customerEmail = booking.email?.trim().toLowerCase() ?? ''
     const rawPhone      = booking.phone?.replace(/\D/g, '') ?? ''
     const customerPhone = toE164(rawPhone, countryIso2)
@@ -164,6 +165,16 @@ export async function POST(req: Request) {
       gateSessionId = sess?.id ?? null
       gateExtra.booking_session_id = sess?.id ?? null
       gateExtra.identity_verification_id = ver!.id
+      // The booking carries the Aadhaar-verified name (e.g. typed "Monali K Patel" → "Monaliben Keyur Patel").
+      // The typed name is kept in the notes. All-capital Aadhaar names are shown in normal capitals.
+      const verifiedName = String(ver!.verified_name ?? '').trim()
+      if (verifiedName) {
+        const tidy = verifiedName === verifiedName.toUpperCase()
+          ? verifiedName.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase())
+          : verifiedName
+        if (tidy !== customerName) nameNote = `[Name on booking form: ${customerName} — replaced by Aadhaar-verified name]`
+        customerName = tidy
+      }
       }
     }
     if (typeof booking?.useCaseId === 'string' && booking.useCaseId) gateExtra.use_case = booking.useCaseId
@@ -226,6 +237,7 @@ export async function POST(req: Request) {
         notes: (() => {
           const parts: string[] = []
           if (booking.notes?.trim()) parts.push(booking.notes.trim())
+          if (nameNote) parts.push(nameNote)
           if (booking.weddingEventType) {
             parts.push(`[Wedding] Event: ${booking.weddingEventType}`)
             if (booking.weddingGuests)    parts.push(`Guests: ${booking.weddingGuests}`)
