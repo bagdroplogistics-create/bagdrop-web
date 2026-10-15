@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { resolveEnabledUseCases } from '@/lib/use-cases'
+import { flowUseCases } from '@/lib/use-cases'
 import { identityGateLocalOverride } from '@/lib/booking-session'
 
 // Public, read-only switches for the /book form. Everything defaults to OFF/safe.
@@ -24,7 +24,7 @@ export async function GET() {
     return NextResponse.json({
       identityGate: gate,
       useCasePicker: picker,
-      useCases: picker ? resolveEnabledUseCases(overrides).map(u => ({ id: u.id, label: u.label, tagline: u.tagline })) : [],
+      useCases: flowUseCases(overrides).map(u => ({ id: u.id, label: u.label, tagline: u.tagline })),
     })
   } catch {
     return NextResponse.json({ identityGate: false, useCasePicker: false, useCases: [] })

@@ -11,7 +11,7 @@ import { BOOKING_LOCATIONS, TITLE_OPTIONS, SERVICE_TYPES, COVERAGE_CITIES } from
 import { INITIAL_BOOKING_STATE, isStep1Valid, isStep2Valid, isStep3Valid, isStep4Valid } from '@/lib/booking-types'
 import type { BookingState, CityId, ServiceId } from '@/lib/booking-types'
 import { calculatePrice } from '@/lib/pricing'
-import { resolveEnabledUseCases, useCaseById } from '@/lib/use-cases'
+import { flowUseCases, useCaseById } from '@/lib/use-cases'
 import { StepBags } from './step-bags'
 import { StepSchedule } from './step-schedule'
 import { BookingOtpModal } from './booking-otp-modal'
@@ -34,7 +34,10 @@ interface Props { useCases: { id: string; label: string; tagline: string }[] }
 export function BookingFlow({ useCases }: Props) {
   const router = useRouter()
   const [step, setStep] = useState(1)
-  const [booking, setBooking] = useState<BookingState>(INITIAL_BOOKING_STATE)
+  // Like the HTML blueprint, "Home → Airport" is preselected.
+  const [booking, setBooking] = useState<BookingState>({
+    ...INITIAL_BOOKING_STATE, useCaseId: 'd2a', serviceId: 'airport-delivery',
+  })
   const [payerOther, setPayerOther] = useState(false)
   const [payerName, setPayerName] = useState('')
   const [payerContact, setPayerContact] = useState('')
@@ -49,9 +52,9 @@ export function BookingFlow({ useCases }: Props) {
   const patch = (p: Partial<BookingState>) => setBooking(b => ({ ...b, ...p }))
   const go = (n: number) => { setStep(n); window.scrollTo({ top: 0, behavior: 'smooth' }) }
 
-  // Server-provided list wins when present (admin overrides); otherwise the enabled-by-default set.
+  // The 8 use cases from the HTML blueprint, in its order (minus any an admin switched off).
   const cases = useMemo(() => {
-    if (!useCases.length) return resolveEnabledUseCases({})
+    if (!useCases.length) return flowUseCases({})
     return useCases.map(u => useCaseById(u.id)).filter((u): u is NonNullable<typeof u> => !!u)
   }, [useCases])
 
@@ -145,7 +148,7 @@ export function BookingFlow({ useCases }: Props) {
                     <h2 className="font-display text-xl font-semibold text-text-primary">What are we carrying for you?</h2>
                     <p className="mt-1 text-sm text-text-muted">Pick one. Everything else adapts to it.</p>
                   </div>
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {cases.map(u => {
                       const sel = booking.useCaseId === u.id
                       return (
