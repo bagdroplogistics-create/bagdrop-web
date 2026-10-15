@@ -92,7 +92,11 @@ function Inner() {
       {phase === 'review' && (
         <div className="rounded-3xl border border-border bg-white p-6 shadow-sm">
           <h1 className="font-display text-xl font-bold">We need a quick manual check</h1>
-          <p className="mt-3 text-sm text-text-secondary">The name on your ID does not match the booking name closely enough. Our team will review it and contact you on WhatsApp. Your booking is saved only once it is approved.</p>
+          <p className="mt-3 text-sm text-text-secondary">
+            The name on your ID{res?.verifiedName ? <> (<b>{res.verifiedName}</b>)</> : null} does not match the booking name closely enough.
+            If you made a typing mistake, go back and enter the name exactly as on your ID, then verify again.
+            Otherwise our team will review it and contact you on WhatsApp.
+          </p>
           <a href="/book" className="mt-5 inline-block text-sm text-brand underline">Back to booking</a>
         </div>
       )}
