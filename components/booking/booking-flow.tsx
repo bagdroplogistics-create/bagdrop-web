@@ -175,7 +175,7 @@ export function BookingFlow({ useCases }: Props) {
           <div className="min-w-0">
             <AnimatePresence mode="wait">
               {step === 1 && (
-                <motion.div key="s1" {...slide} className="space-y-5">
+                <motion.div key="s1" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <div>
                     <h2 className="font-display text-xl font-semibold text-text-primary">What are we carrying for you?</h2>
                     <p className="mt-1 text-sm text-text-muted">Pick one. Everything else adapts to it.</p>
@@ -203,33 +203,33 @@ export function BookingFlow({ useCases }: Props) {
               )}
 
               {step === 2 && (
-                <motion.div key="s2" {...slide} className="space-y-5">
+                <motion.div key="s2" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <FlowWhere state={booking} onChange={patch} />
                   <Nav onBack={() => go(1)} onNext={() => go(3)} nextOk={whereValid(booking)} />
                 </motion.div>
               )}
 
               {step === 3 && (
-                <motion.div key="s3" {...slide} className="space-y-5">
+                <motion.div key="s3" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <FlowWhen state={booking} onChange={patch} />
                   <Nav onBack={() => go(2)} onNext={() => go(4)} nextOk={whenValid(booking)} />
                 </motion.div>
               )}
 
               {step === 4 && (
-                <motion.div key="s4" {...slide} className="space-y-5">
+                <motion.div key="s4" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <FlowBags state={booking} onChange={patch} />
                   <Nav onBack={() => go(3)} onNext={() => go(5)} nextOk={bagsValid(booking)} />
                 </motion.div>
               )}
 
               {step === 5 && (
-                <motion.div key="s5" {...slide} className="space-y-5">
+                <motion.div key="s5" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <div>
                     <h2 className="font-display text-xl font-semibold text-text-primary">Who is travelling?</h2>
                     <p className="mt-1 text-sm text-text-muted">Name exactly as on the ID you will verify with. The bags are released only to this name or the OTP they share.</p>
                   </div>
-                  <div className="space-y-4 rounded-2xl border border-border bg-white p-5">
+                  <div className="space-y-4">
                     <div className="grid gap-4 sm:grid-cols-[110px_1fr]">
                       <div className="space-y-1.5">
                         <label htmlFor="f-title" className="block text-sm font-medium text-text-primary">Title</label>
@@ -280,12 +280,12 @@ export function BookingFlow({ useCases }: Props) {
               )}
 
               {step === 6 && (
-                <motion.div key="s6" {...slide} className="space-y-5">
+                <motion.div key="s6" {...slide} className="space-y-5 rounded-2xl border border-border bg-white p-5 shadow-sm sm:p-6">
                   <div>
                     <h2 className="font-display text-xl font-semibold text-text-primary">Your price</h2>
                     <p className="mt-1 text-sm text-text-muted">One code to your mobile unlocks it.</p>
                   </div>
-                  <div className="rounded-2xl border border-border bg-white p-5">
+                  <div>
                     {unlocked ? (
                       <div className="flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4 text-sm text-green-800">
                         <ShieldCheck className="h-5 w-5 shrink-0" />

@@ -140,11 +140,9 @@ export function FlowWhere({ state, onChange }: { state: BookingState; onChange: 
 
       <div>
         <p className="text-xs text-text-muted">Cities we serve today</p>
-        <div className="mt-1 flex flex-wrap gap-1.5">
-          {[...FLOW_CITIES.map(c => c.label), 'Delhi Airport', 'Hyderabad Airport', 'Mumbai Airport T2'].map(l => (
-            <span key={l} className="rounded-full bg-cream px-2.5 py-1 text-xs text-text-secondary">{l}</span>
-          ))}
-        </div>
+        <p className="mt-1 text-xs leading-relaxed text-text-secondary">
+          {[...FLOW_CITIES.map(c => c.label), 'Delhi Airport', 'Hyderabad Airport', 'Mumbai Airport T2'].join(' · ')}
+        </p>
       </div>
 
       <div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900"><b>Route</b> · {route}</div>
