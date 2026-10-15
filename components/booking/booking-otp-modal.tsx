@@ -158,15 +158,18 @@ export interface BookingOtpModalProps {
   phone: string
   /** ISO 3166-1 alpha-2 country, e.g. 'IN', 'US', 'GB'. Defaults to India. */
   countryIso2?: string
-  /** Called after OTP is verified — parent then submits the booking */
-  onVerified: () => void
+  /** Called after OTP is verified — parent then submits the booking.
+   *  accessToken is only provided when `establishSession` is true (identity gate). */
+  onVerified: (accessToken?: string) => void
+  /** Identity gate on: sign the customer in with the verified OTP so later steps are session-bound. */
+  establishSession?: boolean
   /** Called when the customer closes the modal without verifying */
   onClose: () => void
 }
 
 type Status = 'sending' | 'ready' | 'verifying' | 'error'
 
-export function BookingOtpModal({ phone, countryIso2 = DEFAULT_COUNTRY_ISO2, onVerified, onClose }: BookingOtpModalProps) {
+export function BookingOtpModal({ phone, countryIso2 = DEFAULT_COUNTRY_ISO2, onVerified, onClose, establishSession = false }: BookingOtpModalProps) {
   const [status,          setStatus]          = useState<Status>('sending')
   const [error,           setError]           = useState<string | null>(null)
   const [otp,             setOtp]             = useState('')
@@ -238,6 +241,17 @@ export function BookingOtpModal({ phone, countryIso2 = DEFAULT_COUNTRY_ISO2, onV
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Incorrect or expired code.')
+      // Identity gate: turn the verified OTP into a real session so identity
+      // and booking calls are bound to this verified mobile number.
+      if (establishSession) {
+        const { supabaseBrowser } = await import('@/lib/supabase-browser')
+        const { data: s, error: sErr } = await supabaseBrowser.auth.signInWithPassword({
+          email: data.authEmail, password: data.tempPassword,
+        })
+        if (sErr || !s?.session?.access_token) throw new Error('Could not start a secure session. Please try again.')
+        onVerified(s.session.access_token)
+        return
+      }
       // Verified — let parent create the booking
       onVerified()
     } catch (err: unknown) {

@@ -1,6 +1,6 @@
 'use client'
 
-import { useReducer, useMemo, useState } from 'react'
+import { useReducer, useMemo, useState, useEffect } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { StepIndicator }    from './step-indicator'
@@ -9,6 +9,7 @@ import { StepBags }         from './step-bags'
 import { StepSchedule }     from './step-schedule'
 import { StepReview }       from './step-review'
 import { BookingOtpModal }  from './booking-otp-modal'
+import { StepIdentity, DRAFT_KEY, OK_KEY } from './step-identity'
 import { INITIAL_BOOKING_STATE } from '@/lib/booking-types'
 import { calculatePrice } from '@/lib/pricing'
 import type { BookingState } from '@/lib/booking-types' // still needed for reducer type
@@ -39,6 +40,42 @@ export function BookingEngine() {
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [showOtpModal, setShowOtpModal] = useState(false)
 
+  // ── Identity gate (OFF unless enabled in settings; failure to load = OFF) ──
+  const [identityGate, setIdentityGate] = useState(false)
+  const [identityStage, setIdentityStage] = useState(false)       // showing the identity step
+  const [accessToken, setAccessToken] = useState<string | null>(null)
+  const [verified, setVerified] = useState<{ maskedNumber: string | null; verifiedName: string | null; verificationId: string } | null>(null)
+
+  useEffect(() => {
+    let alive = true
+    fetch('/api/booking-config', { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(c => { if (alive && c?.identityGate === true) setIdentityGate(true) })
+      .catch(() => { /* stay OFF */ })
+    return () => { alive = false }
+  }, [])
+
+  // Returning from DigiLocker (/book/identity-return → /book?identity=done): restore the draft.
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    if (new URLSearchParams(window.location.search).get('identity') !== 'done') return
+    try {
+      const draft = sessionStorage.getItem(DRAFT_KEY)
+      const ok = sessionStorage.getItem(OK_KEY)
+      if (!draft || !ok) return
+      const okObj = JSON.parse(ok)
+      dispatch({ type: 'PATCH', payload: JSON.parse(draft) })
+      setVerified(okObj)
+      setIdentityGate(true)
+      setIdentityStage(true)
+      import('@/lib/supabase-browser').then(async ({ supabaseBrowser }) => {
+        const { data } = await supabaseBrowser.auth.getSession()
+        setAccessToken(data.session?.access_token ?? null)
+      })
+      window.history.replaceState({}, '', '/book')
+    } catch { /* ignore a corrupt draft */ }
+  }, [])
+
   const pricing = useMemo(() => calculatePrice(booking), [booking])
 
   const patch = (payload: Partial<BookingState>) => dispatch({ type: 'PATCH', payload })
@@ -54,21 +91,37 @@ export function BookingEngine() {
 
   // Called after email OTP is verified successfully.
   // Email is already in booking state — submit immediately.
-  async function handleOtpVerified() {
+  async function handleOtpVerified(token?: string) {
     setShowOtpModal(false)
+    // Identity gate on: don't submit yet — verify the traveller first.
+    if (identityGate && token) {
+      setAccessToken(token)
+      setIdentityStage(true)
+      window.scrollTo({ top: 0, behavior: 'smooth' })
+      return
+    }
+    await submitBooking()
+  }
+
+  async function submitBooking(authToken?: string, identityVerificationId?: string) {
     setSubmitting(true)
 
     try {
       const res = await fetch('/api/bookings', {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ booking, pricing }),
+        headers: {
+          'Content-Type': 'application/json',
+          ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        },
+        body:    JSON.stringify({ booking, pricing, ...(identityVerificationId ? { identityVerificationId } : {}) }),
       })
 
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Booking failed')
 
       if (typeof window !== 'undefined') {
+        sessionStorage.removeItem(DRAFT_KEY)
+        sessionStorage.removeItem(OK_KEY)
         sessionStorage.setItem(
           'bagdrop_booking',
           JSON.stringify({ booking, trackingId: data.trackingId })
@@ -91,6 +144,7 @@ export function BookingEngine() {
             phone={booking.phone}
             countryIso2={booking.countryIso2}
             onVerified={handleOtpVerified}
+            establishSession={identityGate}
             onClose={() => setShowOtpModal(false)}
           />
         )}
@@ -117,17 +171,28 @@ export function BookingEngine() {
           </div>
         )}
 
+        {identityStage && (
+          <StepIdentity
+            booking={booking}
+            accessToken={accessToken}
+            verified={verified}
+            submitting={submitting}
+            onBack={() => { setIdentityStage(false); setVerified(null) }}
+            onConfirm={() => submitBooking(accessToken ?? undefined, verified?.verificationId)}
+          />
+        )}
+
         <AnimatePresence mode="wait">
-          {step === 1 && (
+          {!identityStage && step === 1 && (
             <StepRoute key="step-route" state={booking} onChange={patch} onNext={next} />
           )}
-          {step === 2 && (
+          {!identityStage && step === 2 && (
             <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
           )}
-          {step === 3 && (
+          {!identityStage && step === 3 && (
             <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
           )}
-          {step === 4 && (
+          {!identityStage && step === 4 && (
             <StepReview
               key="step-review"
               state={booking}

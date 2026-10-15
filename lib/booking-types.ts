@@ -84,6 +84,10 @@ export interface BookingState {
   phone:       string      // national digits only, no dial code
   countryIso2: string      // e.g. 'IN', 'US', 'CA', 'GB'
   notes:       string
+
+  // Optional use-case refinement (only set when the use-case picker is enabled).
+  useCaseId?:       string
+  travelReference?: string   // flight / train / sailing reference
 }
 
 export const INITIAL_BOOKING_STATE: BookingState = {

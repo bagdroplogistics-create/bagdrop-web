@@ -9,6 +9,10 @@ import { DEFAULT_COUNTRY_ISO2 } from '@/lib/phone-countries'
 import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { generateAutoQuoteForLead } from '@/lib/auto-quote'
+import { calculatePrice } from '@/lib/pricing'
+import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
+import { evaluateEligibility } from '@/lib/identity/eligibility'
+import { normalizeName } from '@/lib/identity/name-match'
 
 // Defensive last line of defense for bookings.flight_datetime (timestamptz).
 // A real incident (BDA-2026-0175, 2026-09-12) traced back to the flight
@@ -41,7 +45,14 @@ function legacyDialCodeToIso2(countryCode: string | undefined | null): string | 
 
 export async function POST(req: Request) {
   try {
-    const { booking, pricing } = await req.json()
+    const body = await req.json()
+    const { booking } = body
+    // Server-side pricing: never trust the browser's numbers. Falls back to the
+    // submitted values only if the shared calculator cannot run on this payload.
+    let pricing = body.pricing
+    try { pricing = calculatePrice(booking) } catch { /* keep client pricing */ }
+    const identityVerificationId: string | undefined =
+      typeof body.identityVerificationId === 'string' ? body.identityVerificationId : undefined
 
     const rawPhoneCheck = booking?.phone?.replace(/\D/g, '') ?? ''
     // countryIso2 is what the booking flow now sends (e.g. 'IN', 'US', 'GB')
@@ -82,11 +93,61 @@ export async function POST(req: Request) {
     // isn't sortable/predictable. Source is still fully preserved on the
     // linked lead's `source` column below, so nothing is lost by dropping
     // the source-specific prefix. See lib/number-series.ts.
+    // ── Identity gate (only when enabled in settings; otherwise skipped entirely) ──
+    // Checked BEFORE a tracking number is consumed. Server-side only: the verified
+    // OTP session, the provider-verified identity and the name match are all
+    // re-read from the database — nothing the browser says is trusted.
+    let gateSessionId: string | null = null
+    const gateExtra: Record<string, unknown> = {}
+    if (await identityGateEnabled()) {
+      const user = await getAuthUser(req)
+      if (!user) {
+        return NextResponse.json({ error: 'Please verify your mobile number to continue.', reason: 'otp_required' }, { status: 401 })
+      }
+      if (user.contact !== customerPhone) {
+        return NextResponse.json({ error: 'The verified mobile number must match the booking mobile number.', reason: 'phone_mismatch' }, { status: 403 })
+      }
+      const { data: ver } = identityVerificationId
+        ? await supabaseAdmin.from('identity_verifications').select('*').eq('id', identityVerificationId).eq('user_id', user.id).maybeSingle()
+        : { data: null }
+      const { data: sess } = ver
+        ? await supabaseAdmin.from('booking_sessions').select('*').eq('id', ver.session_id).eq('user_id', user.id).maybeSingle()
+        : { data: null }
+      const elig = evaluateEligibility({
+        gateRequired: true,
+        otpVerified: !!user,
+        identity: ver ? {
+          status: ver.status,
+          matchOutcome: ver.match_outcome,
+          spellingConfirmed: !!ver.spelling_confirmed_at,
+          reviewStatus: ver.review_status,
+        } : null,
+        quoteExpiresAt: null,        // inquiry flow: no payable quote is issued here yet
+        quoteHashMatches: true,
+        routeServiceable: true,
+        sessionConsumed: !!sess?.consumed_booking_id,
+        now: new Date(),
+      })
+      if (!elig.eligible) {
+        return NextResponse.json({ error: elig.message, reason: elig.reason }, { status: 403 })
+      }
+      // The name that was verified must be the name being booked (no swap after verification).
+      if (normalizeName(ver!.booking_name ?? '') !== normalizeName(customerName)) {
+        return NextResponse.json({ error: 'The booking name changed after verification. Please verify again.', reason: 'name_changed' }, { status: 409 })
+      }
+      gateSessionId = sess?.id ?? null
+      gateExtra.booking_session_id = sess?.id ?? null
+      gateExtra.identity_verification_id = ver!.id
+    }
+    if (typeof booking?.useCaseId === 'string' && booking.useCaseId) gateExtra.use_case = booking.useCaseId
+    if (typeof booking?.travelReference === 'string' && booking.travelReference.trim()) gateExtra.travel_reference = booking.travelReference.trim()
+
     const trackingId = await nextTrackingId()
 
     const { data: savedBooking, error: dbError } = await supabaseAdmin
       .from('bookings')
       .insert({
+        ...gateExtra,
         tracking_id:    trackingId,
         // Must be a valid admin Booking Workflow status (see STATUS_ORDER_BASE
         // in app/(admin)/admin/quotes/view/[lead_id]/page.tsx) — 'pending' was
@@ -185,6 +246,14 @@ export async function POST(req: Request) {
         { error: 'Something went wrong saving your inquiry. Please try again, or contact us directly if it keeps happening.' },
         { status: 500 }
       )
+    }
+
+    // Identity gate: burn the session so this verification cannot create a second booking.
+    if (gateSessionId) {
+      await supabaseAdmin.from('booking_sessions')
+        .update({ consumed_booking_id: savedBooking.id, updated_at: new Date().toISOString() })
+        .eq('id', gateSessionId)
+        .is('consumed_booking_id', null)
     }
 
     // ── Auto-create Lead ────────────────────────────────────────────
