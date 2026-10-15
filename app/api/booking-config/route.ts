@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { resolveEnabledUseCases } from '@/lib/use-cases'
+import { identityGateLocalOverride } from '@/lib/booking-session'
 
 // Public, read-only switches for the /book form. Everything defaults to OFF/safe.
 export const dynamic = 'force-dynamic'
@@ -18,7 +19,7 @@ export async function GET() {
     for (const [k, v] of Object.entries(map)) {
       if (k.startsWith('use_case_enabled:')) overrides[k] = v
     }
-    const gate = (map['identity_gate_enabled'] ?? 'false').toLowerCase() === 'true'
+    const gate = identityGateLocalOverride() || (map['identity_gate_enabled'] ?? 'false').toLowerCase() === 'true'
     const picker = (map['use_case_picker_enabled'] ?? 'false').toLowerCase() === 'true'
     return NextResponse.json({
       identityGate: gate,

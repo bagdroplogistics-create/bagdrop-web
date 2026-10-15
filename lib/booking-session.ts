@@ -21,7 +21,14 @@ export async function getSetting(key: string, fallback: string): Promise<string>
   return (data?.value as string | undefined) ?? fallback
 }
 
+/** Local testing only: IDENTITY_GATE_LOCAL=true in .env.local enables the gate on `npm run dev`
+ *  without touching the shared database setting. Ignored in production builds (Vercel). */
+export function identityGateLocalOverride(): boolean {
+  return process.env.NODE_ENV !== 'production' && process.env.IDENTITY_GATE_LOCAL === 'true'
+}
+
 export async function identityGateEnabled(): Promise<boolean> {
+  if (identityGateLocalOverride()) return true
   return (await getSetting('identity_gate_enabled', 'false')).toLowerCase() === 'true'
 }
 
