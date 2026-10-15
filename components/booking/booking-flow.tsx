@@ -14,7 +14,7 @@ import { flowUseCases, useCaseById } from '@/lib/use-cases'
 import {
   FLOW_CITIES, FLOW_AIRPORTS, FLOW_SLOTS, MODE_COPY, MIN_PIECES, flowQuote, slotLabel, zoneForCityId,
 } from '@/lib/flow-pricing'
-import { BookingOtpModal } from './booking-otp-modal'
+import { FlowOtp } from './flow-otp'
 import { StepIdentity, DRAFT_KEY, OK_KEY } from './step-identity'
 import { WeddingInquiry } from './wedding-inquiry'
 import { FlowWhere, FlowWhen, FlowBags, defaultsFor, whereValid, whenValid, bagsValid } from './flow-steps'
@@ -51,7 +51,6 @@ export function BookingFlow({ useCases }: Props) {
   const [payerName, setPayerName] = useState('')
   const [payerContact, setPayerContact] = useState('')
 
-  const [showOtp, setShowOtp] = useState(false)
   const [token, setToken] = useState<string | null>(null)
   const [unlocked, setUnlocked] = useState(false)
   const [verified, setVerified] = useState<{ maskedNumber: string | null; verifiedName: string | null; verificationId: string } | null>(null)
@@ -149,18 +148,6 @@ export function BookingFlow({ useCases }: Props) {
 
   return (
     <>
-      <AnimatePresence>
-        {showOtp && (
-          <BookingOtpModal
-            phone={booking.phone}
-            countryIso2={booking.countryIso2}
-            establishSession
-            onClose={() => setShowOtp(false)}
-            onVerified={t => { setShowOtp(false); if (t) { setToken(t); setUnlocked(true) } }}
-          />
-        )}
-      </AnimatePresence>
-
       <div className="mx-auto max-w-7xl px-4 py-10 sm:px-6 lg:px-8">
         <div className="mb-8">
           <div className="flex gap-1.5">
@@ -294,7 +281,8 @@ export function BookingFlow({ useCases }: Props) {
                     ) : (
                       <div className="flex flex-col items-start gap-3">
                         <p className="flex items-center gap-2 text-sm text-text-secondary"><Lock className="h-4 w-4" /> Verify <b>{booking.phone || 'your mobile'}</b> to unlock your price.</p>
-                        <Button variant="primary" size="lg" onClick={() => setShowOtp(true)} disabled={!isStep4Valid(booking)}>Send code</Button>
+                        <FlowOtp phone={booking.phone} countryIso2={booking.countryIso2} disabled={!isStep4Valid(booking)}
+                          onVerified={t => { setToken(t); setUnlocked(true) }} />
                       </div>
                     )}
                   </div>
