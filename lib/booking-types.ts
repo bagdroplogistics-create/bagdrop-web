@@ -88,6 +88,11 @@ export interface BookingState {
   // Optional use-case refinement (only set when the use-case picker is enabled).
   useCaseId?:       string
   travelReference?: string   // flight / train / sailing reference
+  // New customer flow (components/booking/booking-flow.tsx):
+  flowStd?:   number         // standard pieces (up to 32 kg)
+  flowOdd?:   number         // oversize pieces
+  flowSlot?:  string         // pickup window start, e.g. '08:00'
+  residency?: 'in' | 'intl'  // Indian resident (Aadhaar) or international traveller
 }
 
 export const INITIAL_BOOKING_STATE: BookingState = {

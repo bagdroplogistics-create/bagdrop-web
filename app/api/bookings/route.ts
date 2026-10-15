@@ -10,6 +10,8 @@ import { nextTrackingId } from '@/lib/number-series'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { generateAutoQuoteForLead } from '@/lib/auto-quote'
 import { calculatePrice } from '@/lib/pricing'
+import { flowQuote, zoneForCityId } from '@/lib/flow-pricing'
+import { useCaseById } from '@/lib/use-cases'
 import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
 import { evaluateEligibility } from '@/lib/identity/eligibility'
 import { normalizeName } from '@/lib/identity/name-match'
@@ -50,7 +52,23 @@ export async function POST(req: Request) {
     // Server-side pricing: never trust the browser's numbers. Falls back to the
     // submitted values only if the shared calculator cannot run on this payload.
     let pricing = body.pricing
-    try { pricing = calculatePrice(booking) } catch { /* keep client pricing */ }
+    if (booking?.useCaseId && typeof booking.flowStd === 'number') {
+      // New customer flow: blueprint estimate (lib/flow-pricing.ts), recomputed here from the
+      // submitted route / pieces / slot / date. "Others" cities have no zone → no estimate (0);
+      // the team prices those by hand.
+      const q = flowQuote({
+        mode: useCaseById(booking.useCaseId)?.mode ?? 'road',
+        uc: booking.useCaseId,
+        zoneFrom: zoneForCityId(booking.fromCity), zoneTo: zoneForCityId(booking.toCity),
+        std: Number(booking.flowStd) || 0, odd: Number(booking.flowOdd) || 0,
+        slotFrom: booking.flowSlot ?? null, date: booking.date ?? '',
+      })
+      const pieces = (Number(booking.flowStd) || 0) + (Number(booking.flowOdd) || 0)
+      pricing = { total: q ? Math.round(q.total) : 0, totalBags: Math.max(1, pieces) }
+    } else {
+      try { pricing = calculatePrice(booking) } catch { /* keep client pricing */ }
+    }
+    const intlTraveller = body.residency === 'intl'
     const identityVerificationId: string | undefined =
       typeof body.identityVerificationId === 'string' ? body.identityVerificationId : undefined
 
@@ -107,9 +125,17 @@ export async function POST(req: Request) {
       if (user.contact !== customerPhone) {
         return NextResponse.json({ error: 'The verified mobile number must match the booking mobile number.', reason: 'phone_mismatch' }, { status: 403 })
       }
-      const { data: ver } = identityVerificationId
+      // International travellers: Aadhaar does not apply. They still need the verified OTP session
+      // above; the passport is verified manually by the team (flagged in the booking notes).
+      if (intlTraveller) {
+        const { data: s } = await supabaseAdmin.from('booking_sessions').select('id').eq('user_id', user.id)
+          .is('consumed_booking_id', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
+        if (s?.id) { gateSessionId = s.id; gateExtra.booking_session_id = s.id }
+      }
+      const { data: ver } = identityVerificationId && !intlTraveller
         ? await supabaseAdmin.from('identity_verifications').select('*').eq('id', identityVerificationId).eq('user_id', user.id).maybeSingle()
         : { data: null }
+      if (!intlTraveller) {
       const { data: sess } = ver
         ? await supabaseAdmin.from('booking_sessions').select('*').eq('id', ver.session_id).eq('user_id', user.id).maybeSingle()
         : { data: null }
@@ -138,6 +164,7 @@ export async function POST(req: Request) {
       gateSessionId = sess?.id ?? null
       gateExtra.booking_session_id = sess?.id ?? null
       gateExtra.identity_verification_id = ver!.id
+      }
     }
     if (typeof booking?.useCaseId === 'string' && booking.useCaseId) gateExtra.use_case = booking.useCaseId
     if (typeof booking?.travelReference === 'string' && booking.travelReference.trim()) gateExtra.travel_reference = booking.travelReference.trim()
