@@ -9,18 +9,19 @@ import type { BookingState } from '@/lib/booking-types'
 // (Setu): we keep only the verified name, a reference and the last 4 digits.
 
 interface Props {
-  booking:        BookingState
+  booking:        Pick<BookingState, 'title' | 'name'>
+  trackingId:     string
   accessToken:    string | null
   verified:       { maskedNumber: string | null; verifiedName: string | null } | null
   submitting:     boolean
-  onConfirm:      () => void
-  onBack:         () => void
+  onConfirm:      () => void      // continue to the confirmation page
+  onBack:         () => void      // "Do this later"
 }
 
 export const DRAFT_KEY = 'bagdrop_booking_draft'
 export const OK_KEY    = 'bagdrop_identity_ok'
 
-export function StepIdentity({ booking, accessToken, verified, submitting, onConfirm, onBack }: Props) {
+export function StepIdentity({ booking, trackingId, accessToken, verified, submitting, onConfirm, onBack }: Props) {
   const [consent, setConsent] = useState(false)
   const [busy, setBusy]       = useState(false)
   const [error, setError]     = useState<string | null>(null)
@@ -32,12 +33,10 @@ export function StepIdentity({ booking, accessToken, verified, submitting, onCon
     if (!accessToken) { setError('Session expired. Please verify your mobile again.'); return }
     setBusy(true)
     try {
-      // Save the booking so it survives the DigiLocker redirect.
-      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(booking))
       const res = await fetch('/api/identity/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
-        body: JSON.stringify({ bookingName: booking.name.trim(), consent: true, useCase: booking.useCaseId ?? null }),
+        body: JSON.stringify({ trackingId, consent: true }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Could not start verification.')
@@ -56,7 +55,7 @@ export function StepIdentity({ booking, accessToken, verified, submitting, onCon
         </div>
         <div>
           <h2 className="font-display text-xl font-bold text-text-primary">Verify the traveller</h2>
-          <p className="text-sm text-text-muted">Once, before we confirm. We never store your full Aadhaar number.</p>
+          <p className="text-sm text-text-muted">Once, needed before pickup. We never store your full Aadhaar number.</p>
         </div>
       </div>
 
@@ -70,11 +69,9 @@ export function StepIdentity({ booking, accessToken, verified, submitting, onCon
             </p>
           </div>
           <div className="flex gap-3">
-            <button onClick={onBack} disabled={submitting}
-              className="h-12 rounded-xl border border-border px-5 text-sm font-semibold text-text-secondary disabled:opacity-50">Back</button>
             <button onClick={onConfirm} disabled={submitting}
               className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-6 text-sm font-semibold text-white shadow-lg shadow-brand/25 disabled:opacity-50">
-              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Confirm booking request'}
+              {submitting ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Continue'}
             </button>
           </div>
         </div>
@@ -94,8 +91,8 @@ export function StepIdentity({ booking, accessToken, verified, submitting, onCon
 
           <div className="flex gap-3">
             <button onClick={onBack} disabled={busy}
-              className="h-12 rounded-xl border border-border px-5 text-sm font-semibold text-text-secondary disabled:opacity-50">Back</button>
-            <button onClick={start} disabled={!consent || busy || !booking.name.trim()}
+              className="h-12 rounded-xl border border-border px-5 text-sm font-semibold text-text-secondary disabled:opacity-50">Do this later</button>
+            <button onClick={start} disabled={!consent || busy || !trackingId}
               className="flex h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-brand px-6 text-sm font-semibold text-white shadow-lg shadow-brand/25 disabled:cursor-not-allowed disabled:opacity-50">
               {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify with DigiLocker'}
             </button>

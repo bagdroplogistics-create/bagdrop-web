@@ -13,8 +13,6 @@ import { calculatePrice } from '@/lib/pricing'
 import { flowQuote, zoneForCityId } from '@/lib/flow-pricing'
 import { useCaseById } from '@/lib/use-cases'
 import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
-import { evaluateEligibility } from '@/lib/identity/eligibility'
-import { normalizeName } from '@/lib/identity/name-match'
 
 // Defensive last line of defense for bookings.flight_datetime (timestamptz).
 // A real incident (BDA-2026-0175, 2026-09-12) traced back to the flight
@@ -133,52 +131,9 @@ export async function POST(req: Request) {
           .is('consumed_booking_id', null).order('created_at', { ascending: false }).limit(1).maybeSingle()
         if (s?.id) { gateSessionId = s.id; gateExtra.booking_session_id = s.id }
       }
-      const { data: ver } = identityVerificationId && !intlTraveller
-        ? await supabaseAdmin.from('identity_verifications').select('*').eq('id', identityVerificationId).eq('user_id', user.id).maybeSingle()
-        : { data: null }
-      if (!intlTraveller) {
-      const { data: sess } = ver
-        ? await supabaseAdmin.from('booking_sessions').select('*').eq('id', ver.session_id).eq('user_id', user.id).maybeSingle()
-        : { data: null }
-      const elig = evaluateEligibility({
-        gateRequired: true,
-        otpVerified: !!user,
-        identity: ver ? {
-          status: ver.status,
-          matchOutcome: ver.match_outcome,
-          spellingConfirmed: !!ver.spelling_confirmed_at,
-          reviewStatus: ver.review_status,
-        } : null,
-        quoteExpiresAt: null,        // inquiry flow: no payable quote is issued here yet
-        quoteHashMatches: true,
-        routeServiceable: true,
-        sessionConsumed: !!sess?.consumed_booking_id,
-        now: new Date(),
-      })
-      if (!elig.eligible) {
-        return NextResponse.json({ error: elig.message, reason: elig.reason }, { status: 403 })
-      }
-      // The name that was verified must be the name being booked (no swap after verification).
-      // Accept the name that was verified against (typed) OR the provider-verified name itself
-      // (the form sends the Aadhaar name after verification). Anything else = swapped after verification.
-      const sent = normalizeName(customerName)
-      if (sent !== normalizeName(ver!.booking_name ?? '') && sent !== normalizeName(ver!.verified_name ?? '')) {
-        return NextResponse.json({ error: 'The booking name changed after verification. Please verify again.', reason: 'name_changed' }, { status: 409 })
-      }
-      gateSessionId = sess?.id ?? null
-      gateExtra.booking_session_id = sess?.id ?? null
-      gateExtra.identity_verification_id = ver!.id
-      // The booking carries the Aadhaar-verified name (e.g. typed "Monali K Patel" → "Monaliben Keyur Patel").
-      // The typed name is kept in the notes. All-capital Aadhaar names are shown in normal capitals.
-      const verifiedName = String(ver!.verified_name ?? '').trim()
-      if (verifiedName) {
-        const tidy = verifiedName === verifiedName.toUpperCase()
-          ? verifiedName.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase())
-          : verifiedName
-        if (tidy !== customerName) nameNote = `[Name on booking form: ${customerName} — replaced by Aadhaar-verified name]`
-        customerName = tidy
-      }
-      }
+      // Indian travellers: Aadhaar is verified AFTER the request is saved (/book/verify →
+      // /api/identity/start links the verification to this booking). The booking name is replaced
+      // by the Aadhaar-verified name at that point (lib/identity/apply-to-booking.ts).
     }
     if (typeof booking?.useCaseId === 'string' && booking.useCaseId) gateExtra.use_case = booking.useCaseId
     if (typeof booking?.travelReference === 'string' && booking.travelReference.trim()) gateExtra.travel_reference = booking.travelReference.trim()

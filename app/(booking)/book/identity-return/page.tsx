@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useState } from 'react'
 import { useSearchParams } from 'next/navigation'
 import { supabaseBrowser } from '@/lib/supabase-browser'
-import { OK_KEY } from '@/components/booking/step-identity'
 
 // Landing page after DigiLocker. The URL flags (success/id/scope) are NOT trusted:
 // we ask our server, which asks Setu, and only then continue.
@@ -26,13 +25,14 @@ function Inner() {
   const [msg, setMsg] = useState('')
   const [token, setToken] = useState('')
 
-  function finish(r: Result, adoptName = false) {
-    sessionStorage.setItem(OK_KEY, JSON.stringify({
-      verificationId: r.verificationId, maskedNumber: r.maskedNumber, verifiedName: r.verifiedName,
-      adoptName,   // true → the booking continues under the name on the ID
-    }))
+  const trackingId = sp.get('b') ?? ''
+  const backHref = trackingId ? '/book/verify?id=' + encodeURIComponent(trackingId) : '/book'
+  const confirmHref = trackingId ? '/book/confirmation?id=' + encodeURIComponent(trackingId) : '/book'
+
+  // The booking already exists; the server has applied the verified name. Go to the confirmation page.
+  function finish(_r: Result, _adoptName = false) {
     setPhase('done')
-    window.location.replace('/book?identity=done')
+    window.location.replace(confirmHref)
   }
 
   useEffect(() => {
@@ -95,16 +95,15 @@ function Inner() {
           <h1 className="font-display text-xl font-bold">We need a quick manual check</h1>
           <p className="mt-3 text-sm text-text-secondary">
             The name on your ID{res?.verifiedName ? <> (<b>{res.verifiedName}</b>)</> : null} does not match the booking name closely enough.
-            If you made a typing mistake, go back and enter the name exactly as on your ID, then verify again.
-            Otherwise our team will review it and contact you on WhatsApp.
+            Your booking request is saved. Our team will review it and contact you on WhatsApp.
           </p>
-          <a href="/book" className="mt-5 inline-block text-sm text-brand underline">Back to booking</a>
+          <a href={confirmHref} className="mt-5 inline-block text-sm text-brand underline">Continue</a>
         </div>
       )}
       {phase === 'failed' && (
         <div className="rounded-3xl border border-red-200 bg-red-50 p-6">
           <p className="text-sm text-red-700">{msg || 'Something went wrong.'}</p>
-          <a href="/book" className="mt-4 inline-block text-sm text-brand underline">Back to booking</a>
+          <a href={backHref} className="mt-4 inline-block text-sm text-brand underline">Try again</a>
         </div>
       )}
     </div>

@@ -3,6 +3,7 @@ import { supabaseAdmin } from '@/lib/supabase'
 import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
 import { setuConfigFromEnv, fetchVerifiedIdentity } from '@/lib/identity/setu-digilocker'
 import { nameMatchScore, classifyMatch } from '@/lib/identity/name-match'
+import { applyVerifiedNameToBooking } from '@/lib/identity/apply-to-booking'
 
 // POST /api/identity/complete  { requestId: string }
 // Called by the /book/identity-return page. The redirect query string is NEVER trusted:
@@ -74,6 +75,7 @@ export async function POST(req: Request) {
       .select('*')
       .maybeSingle()
     if (error) throw new Error(error.message)
+    if (upd && outcome === 'pass') await applyVerifiedNameToBooking(upd.id)
     return NextResponse.json(view(upd ?? row))
   } catch (e) {
     const m = (e as Error).message

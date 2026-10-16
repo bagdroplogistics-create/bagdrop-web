@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
+import { applyVerifiedNameToBooking } from '@/lib/identity/apply-to-booking'
 
 // POST /api/identity/confirm-spelling  { verificationId: string, confirm: boolean }
 // Only valid for the 0.70–0.85 "confirm" band, and only once. confirm=true accepts the
@@ -31,5 +32,6 @@ export async function POST(req: Request) {
     : { review_status: 'pending' }
   const { error } = await supabaseAdmin.from('identity_verifications').update(patch).eq('id', id)
   if (error) return NextResponse.json({ error: 'Could not save. Please try again.' }, { status: 500 })
+  if (body.confirm) await applyVerifiedNameToBooking(id)
   return NextResponse.json({ ok: true, outcome: body.confirm ? 'confirmed' : 'review' })
 }

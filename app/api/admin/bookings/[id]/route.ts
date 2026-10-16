@@ -317,6 +317,25 @@ export async function PATCH(
       return NextResponse.json({ error: 'Booking is completed and cannot be modified' }, { status: 403 })
     }
 
+    // Aadhaar must be verified before pickup (website flow bookings only; international travellers
+    // are verified manually via passport). Columns are nullable, so older bookings are unaffected.
+    if (['pickup_scheduled', 'picked_up', 'in_transit'].includes(status)) {
+      const { data: idb } = await supabaseAdmin.from('bookings')
+        .select('use_case, notes, identity_verification_id').eq('id', id).maybeSingle()
+      const intl = /International traveller/i.test(String(idb?.notes ?? ''))
+      if (idb?.use_case && !intl) {
+        let ok = false
+        if (idb.identity_verification_id) {
+          const { data: v } = await supabaseAdmin.from('identity_verifications')
+            .select('status, review_status, match_outcome, spelling_confirmed_at').eq('id', idb.identity_verification_id).maybeSingle()
+          ok = v?.status === 'verified' && !v.review_status && (v.match_outcome === 'pass' || !!v.spelling_confirmed_at)
+        }
+        if (!ok) {
+          return NextResponse.json({ error: 'Aadhaar verification is pending for this booking. It must be verified before pickup.' }, { status: 409 })
+        }
+      }
+    }
+
     updates.status = status
 
     // notified_statuses may not exist yet if supabase/migrations/

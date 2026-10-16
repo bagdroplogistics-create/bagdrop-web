@@ -15,16 +15,16 @@ import {
   FLOW_CITIES, FLOW_AIRPORTS, FLOW_SLOTS, MODE_COPY, MIN_PIECES, flowQuote, slotLabel, zoneForCityId,
 } from '@/lib/flow-pricing'
 import { FlowOtp } from './flow-otp'
-import { StepIdentity, DRAFT_KEY, OK_KEY } from './step-identity'
 import { WeddingInquiry } from './wedding-inquiry'
 import { FlowWhere, FlowWhen, FlowBags, defaultsFor, whereValid, whenValid, bagsValid } from './flow-steps'
 
 // Customer flow from "Bagdrop Platform.html":
-//   1 What → 2 Where → 3 When → 4 Bags → 5 Who → 6 Price (OTP unlocks) → 7 Verify the traveller → request saved
+//   1 What → 2 Where → 3 When → 4 Bags → 5 Who → 6 Price (OTP unlocks) → 7 Confirm → request saved
+//   → /book/verify (Aadhaar via DigiLocker, AFTER the booking exists) → /book/confirmation
 // "Wedding or event" opens the wedding inquiry form instead. No payment: the booking is saved as an
 // inquiry (same as today) and payment stays manual.
 
-const LABELS = ['What', 'Where', 'When', 'Bags', 'Who', 'Price', 'Verify']
+const LABELS = ['What', 'Where', 'When', 'Bags', 'Who', 'Price', 'Confirm']
 const slide = {
   initial: { opacity: 0, x: 20 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -20 },
   transition: { duration: 0.3, ease: 'easeOut' as const },
@@ -53,7 +53,6 @@ export function BookingFlow({ useCases }: Props) {
 
   const [token, setToken] = useState<string | null>(null)
   const [unlocked, setUnlocked] = useState(false)
-  const [verified, setVerified] = useState<{ maskedNumber: string | null; verifiedName: string | null; verificationId: string } | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -75,28 +74,6 @@ export function BookingFlow({ useCases }: Props) {
     slotFrom: booking.flowSlot ?? null, date: booking.date,
   }), [mode, booking])
 
-  // Returning from DigiLocker (/book/identity-return → /book?identity=done): restore the draft.
-  useEffect(() => {
-    if (new URLSearchParams(window.location.search).get('identity') !== 'done') return
-    try {
-      const draft = sessionStorage.getItem(DRAFT_KEY)
-      const ok = sessionStorage.getItem(OK_KEY)
-      if (!draft || !ok) return
-      const okObj = JSON.parse(ok)
-      const draftObj = JSON.parse(draft)
-      // If the customer accepted the name on their ID, the booking continues under that name.
-      setBooking(okObj.adoptName && okObj.verifiedName ? { ...draftObj, name: okObj.verifiedName } : draftObj)
-      setVerified(okObj)
-      setUnlocked(true)
-      setStep(7)
-      import('@/lib/supabase-browser').then(async ({ supabaseBrowser }) => {
-        const { data } = await supabaseBrowser.auth.getSession()
-        setToken(data.session?.access_token ?? null)
-      })
-      window.history.replaceState({}, '', '/book')
-    } catch { /* ignore a corrupt draft */ }
-  }, [])
-
   function pickUseCase(id: string) {
     const d = useCaseById(id)
     if (!d) return
@@ -113,13 +90,8 @@ export function BookingFlow({ useCases }: Props) {
       booking.travelReference?.trim() ? `${MODE_COPY[mode].refLabel || 'Reference'}: ${booking.travelReference.trim()}` : '',
       intl ? '[Identity] International traveller: passport verification by our team required before pickup' : '',
     ]
-    // After Aadhaar verification the booking carries the name on the Aadhaar (the server does the same).
-    const idName = !intl && verified?.verifiedName ? verified.verifiedName.trim() : ''
-    const shownName = idName && idName === idName.toUpperCase()
-      ? idName.toLowerCase().replace(/\b[a-z]/g, c => c.toUpperCase()) : idName
     const toSend: BookingState = {
       ...booking,
-      name: shownName || booking.name,
       notes: [booking.notes.trim(), payerNote, ...extra].filter(Boolean).join(' | '),
     }
     try {
@@ -129,15 +101,14 @@ export function BookingFlow({ useCases }: Props) {
         body: JSON.stringify({
           booking: toSend,
           pricing: quote ? { total: Math.round(quote.total), totalBags: quote.actual } : undefined,
-          identityVerificationId: intl ? undefined : verified?.verificationId,
           residency: intl ? 'intl' : 'in',
         }),
       })
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Booking failed')
-      sessionStorage.removeItem(DRAFT_KEY); sessionStorage.removeItem(OK_KEY)
       sessionStorage.setItem('bagdrop_booking', JSON.stringify({ booking: toSend, trackingId: data.trackingId }))
-      router.push('/book/confirmation?id=' + data.trackingId)
+      // Indian travellers verify their Aadhaar right after the request is saved.
+      router.push(intl ? '/book/confirmation?id=' + data.trackingId : '/book/verify?id=' + data.trackingId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Booking failed. Please try again.')
       setSubmitting(false)
@@ -295,31 +266,25 @@ export function BookingFlow({ useCases }: Props) {
                       </div>
                     )}
                   </div>
-                  <Nav onBack={() => go(5)} onNext={() => go(7)} nextOk={unlocked && !!token} nextLabel="Verify and book" />
+                  <Nav onBack={() => go(5)} onNext={() => go(7)} nextOk={unlocked && !!token} nextLabel="Continue" />
                 </motion.div>
               )}
 
               {step === 7 && (
                 <motion.div key="s7" {...slide}>
-                  {intl ? (
-                    <div className="rounded-3xl border border-border bg-white p-6 shadow-sm sm:p-8">
-                      <h2 className="font-display text-xl font-bold text-text-primary">Verify the traveller</h2>
-                      <p className="mt-2 text-sm text-text-secondary">
-                        International travellers are verified with a passport. Online passport checks are not live yet, so our team will contact you on
-                        WhatsApp to verify the passport before pickup. Your request is saved now.
-                      </p>
-                      <div className="mt-6 flex gap-3">
-                        <Button variant="secondary" size="lg" onClick={() => go(6)} disabled={submitting}>Back</Button>
-                        <Button variant="primary" size="lg" className="flex-1" onClick={() => submit(true)} disabled={submitting}>{submitting ? 'Submitting…' : 'Submit booking request'}</Button>
-                      </div>
+                  <div className="rounded-3xl border border-border bg-white p-6 shadow-sm sm:p-8">
+                    <h2 className="font-display text-xl font-bold text-text-primary">Confirm your request</h2>
+                    <p className="mt-2 text-sm text-text-secondary">
+                      {intl
+                        ? 'International travellers are verified with a passport. Online passport checks are not live yet, so our team will contact you on WhatsApp to verify the passport before pickup. Your request is saved now.'
+                        : 'Your request is saved first. Next, you verify the traveller with Aadhaar through DigiLocker. It takes about a minute and is needed before pickup.'}
+                    </p>
+                    {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
+                    <div className="mt-6 flex gap-3">
+                      <Button variant="secondary" size="lg" onClick={() => go(6)} disabled={submitting}>Back</Button>
+                      <Button variant="primary" size="lg" className="flex-1" onClick={() => submit(intl)} disabled={submitting}>{submitting ? 'Submitting…' : 'Submit booking request'}</Button>
                     </div>
-                  ) : (
-                    <StepIdentity
-                      booking={booking} accessToken={token} verified={verified} submitting={submitting}
-                      onBack={() => { setVerified(null); go(6) }}
-                      onConfirm={() => submit(false)}
-                    />
-                  )}
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>
