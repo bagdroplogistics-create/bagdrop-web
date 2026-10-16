@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter } from 'next/navigation'
+import { IdentityCard } from '@/components/admin/identity-card'
 import {
   ArrowLeft, Printer, Download,
   CheckCircle, Clock, AlertCircle, Send,
@@ -2339,6 +2340,7 @@ export default function QuoteViewPage() {
             WORKFLOW PANEL (no-print)
         ════════════════════════════════════════════════════════════ */}
         {booking && <FamilyGuestsCard bookingId={booking.id} />}
+        {booking && <IdentityCard bookingId={booking.id} />}
         {booking && (
           <div className="no-print mx-auto mt-6 max-w-3xl">
             <div className="overflow-hidden rounded-xl border border-gray-200 bg-white shadow-sm">
