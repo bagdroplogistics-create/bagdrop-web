@@ -40,9 +40,9 @@ const START: BookingState = {
   residency: 'in',
 }
 
-interface Props { useCases: { id: string; label: string; tagline: string }[] }
+interface Props { useCases: { id: string; label: string; tagline: string }[]; identityGate?: boolean }
 
-export function BookingFlow({ useCases }: Props) {
+export function BookingFlow({ useCases, identityGate = true }: Props) {
   const router = useRouter()
   const [step, setStep] = useState(1)
   const [weddingForm, setWeddingForm] = useState(false)
@@ -108,7 +108,7 @@ export function BookingFlow({ useCases }: Props) {
       if (!res.ok) throw new Error(data.error ?? 'Booking failed')
       sessionStorage.setItem('bagdrop_booking', JSON.stringify({ booking: toSend, trackingId: data.trackingId }))
       // Indian travellers verify their Aadhaar right after the request is saved.
-      router.push(intl ? '/book/confirmation?id=' + data.trackingId : '/book/verify?id=' + data.trackingId)
+      router.push(intl || !identityGate ? '/book/confirmation?id=' + data.trackingId : '/book/verify?id=' + data.trackingId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Booking failed. Please try again.')
       setSubmitting(false)
@@ -277,6 +277,7 @@ export function BookingFlow({ useCases }: Props) {
                     <p className="mt-2 text-sm text-text-secondary">
                       {intl
                         ? 'International travellers are verified with a passport. Online passport checks are not live yet, so our team will contact you on WhatsApp to verify the passport before pickup. Your request is saved now.'
+                        : !identityGate ? 'Your request is saved and our team will contact you to confirm availability and price.'
                         : 'Your request is saved first. Next, you verify the traveller with Aadhaar through DigiLocker. It takes about a minute and is needed before pickup.'}
                     </p>
                     {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
