@@ -19,12 +19,12 @@ import { WeddingInquiry } from './wedding-inquiry'
 import { FlowWhere, FlowWhen, FlowBags, defaultsFor, whereValid, whenValid, bagsValid } from './flow-steps'
 
 // Customer flow from "Bagdrop Platform.html":
-//   1 What → 2 Where → 3 When → 4 Bags → 5 Who → 6 Price (OTP unlocks) → 7 Confirm → request saved
+//   1 What → 2 Where → 3 When → 4 Bags → 5 Who → 6 Price (OTP unlocks + Submit booking request) → request saved
 //   → /book/verify (Aadhaar via DigiLocker, AFTER the booking exists) → /book/confirmation
 // "Wedding or event" opens the wedding inquiry form instead. No payment: the booking is saved as an
 // inquiry (same as today) and payment stays manual.
 
-const LABELS = ['What', 'Where', 'When', 'Bags', 'Who', 'Price', 'Confirm']
+const LABELS = ['What', 'Where', 'When', 'Bags', 'Who', 'Price']
 const slide = {
   initial: { opacity: 0, x: 20 }, animate: { opacity: 1, x: 0 }, exit: { opacity: 0, x: -20 },
   transition: { duration: 0.3, ease: 'easeOut' as const },
@@ -107,8 +107,9 @@ export function BookingFlow({ useCases, identityGate = true }: Props) {
       const data = await res.json()
       if (!res.ok) throw new Error(data.error ?? 'Booking failed')
       sessionStorage.setItem('bagdrop_booking', JSON.stringify({ booking: toSend, trackingId: data.trackingId }))
-      // Indian travellers verify their Aadhaar right after the request is saved.
-      router.push(intl || !identityGate ? '/book/confirmation?id=' + data.trackingId : '/book/verify?id=' + data.trackingId)
+      // Submitting only sends a request (no commitment). Aadhaar is asked later, after the customer
+      // accepts the quote and the booking is confirmed (link → /book/verify?id=…).
+      router.push('/book/confirmation?id=' + data.trackingId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Booking failed. Please try again.')
       setSubmitting(false)
@@ -266,25 +267,12 @@ export function BookingFlow({ useCases, identityGate = true }: Props) {
                       </div>
                     )}
                   </div>
-                  <Nav onBack={() => go(5)} onNext={() => go(7)} nextOk={unlocked && !!token} nextLabel="Continue" />
-                </motion.div>
-              )}
-
-              {step === 7 && (
-                <motion.div key="s7" {...slide}>
-                  <div className="rounded-3xl border border-border bg-white p-6 shadow-sm sm:p-8">
-                    <h2 className="font-display text-xl font-bold text-text-primary">Confirm your request</h2>
-                    <p className="mt-2 text-sm text-text-secondary">
-                      {intl
-                        ? 'International travellers are verified with a passport. Online passport checks are not live yet, so our team will contact you on WhatsApp to verify the passport before pickup. Your request is saved now.'
-                        : !identityGate ? 'Your request is saved and our team will contact you to confirm availability and price.'
-                        : 'Your request is saved first. Next, you verify the traveller with Aadhaar through DigiLocker. It takes about a minute and is needed before pickup.'}
-                    </p>
-                    {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
-                    <div className="mt-6 flex gap-3">
-                      <Button variant="secondary" size="lg" onClick={() => go(6)} disabled={submitting}>Back</Button>
-                      <Button variant="primary" size="lg" className="flex-1" onClick={() => submit(intl)} disabled={submitting}>{submitting ? 'Submitting…' : 'Submit booking request'}</Button>
-                    </div>
+                  {error && <p className="text-sm text-red-600">{error}</p>}
+                  <div className="flex gap-3">
+                    <Button variant="secondary" size="lg" onClick={() => go(5)} disabled={submitting}>Back</Button>
+                    <Button variant="primary" size="lg" className="flex-1" onClick={() => submit(intl)} disabled={!unlocked || !token || submitting}>
+                      {submitting ? 'Submitting…' : 'Submit booking request'}
+                    </Button>
                   </div>
                 </motion.div>
               )}
