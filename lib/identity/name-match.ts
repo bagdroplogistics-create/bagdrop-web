@@ -10,7 +10,8 @@
 //           (ben, bhai, bai, devi — only if >= 3 letters remain)
 //        d. known abbreviation / spelling group          "md" = "mohd" = "mohammed" = "muhammad"
 //   3. score = matched words / the larger number of words in either name (order does not matter;
-//      each word can be matched once). Identical normalised names score 1.
+//      each word can be matched once). Identical normalised names score 1, and so does a name
+//      of 2+ words that is fully contained in the other (a middle name left out).
 // Thresholds (configurable): >= 0.85 pass · 0.70–0.85 customer confirms once · < 0.70 manual review.
 //
 // No imports: runs in tests, server and browser.
@@ -64,6 +65,10 @@ export function nameMatchScore(a: string, b: string): number {
     const j = tb.findIndex((x, k) => !used.has(k) && wordsMatch(w, x))
     if (j >= 0) { used.add(j); hit++ }
   }
+  // Everyone omits a middle / father's / husband's name sometimes ("Monali Patel" for
+  // "Monaliben Keyur Patel"). If the shorter name has 2+ words and ALL of them are found in the
+  // longer one, it is the same person's name written shorter → full match.
+  if (Math.min(ta.length, tb.length) >= 2 && hit === Math.min(ta.length, tb.length)) return 1
   return hit / Math.max(ta.length, tb.length)
 }
 

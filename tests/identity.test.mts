@@ -14,8 +14,16 @@ t('one of two tokens → 0.5 → blocked', () => {
 })
 t('2 of 3 tokens → 0.667 blocked; 3 of 4 → 0.75 confirm', () => {
   assert.equal(classifyMatch(nameMatchScore('Mihir K Amin', 'Mihir Amin Shah')), 'blocked')
-  assert.equal(nameMatchScore('Mihir Kumar Amin Shah', 'Mihir Kumar Amin'), 0.75)
+  assert.equal(nameMatchScore('Mihir Kumar Amin Shah', 'Mihir Kumar Amin Joshi'), 0.75)
   assert.equal(classifyMatch(0.75), 'confirm')
+})
+t('middle name left out → full match (Monali Patel vs Monaliben Keyur Patel)', () => {
+  assert.equal(nameMatchScore('Monali Patel', 'Monaliben Keyur Patel'), 1)
+  assert.equal(classifyMatch(nameMatchScore('Ms. Monali Patel', 'MONALIBEN KEYUR PATEL')), 'pass')
+  assert.equal(nameMatchScore('Mihir Kumar Amin Shah', 'Mihir Kumar Amin'), 1)
+  // a single word is NOT enough, and different people still fail
+  assert.ok(nameMatchScore('Monali', 'Monaliben Keyur Patel') < 0.7)
+  assert.ok(nameMatchScore('Rahul Shah', 'Priya Patel') === 0)
 })
 t('thresholds', () => {
   assert.equal(classifyMatch(0.85), 'pass')
