@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { getAdminRole, requireAdminAuth } from '@/lib/admin-auth'
 import { notifyBookingStatus } from '@/lib/notifications'
+import { identityGateEnabled } from '@/lib/booking-session'
 import { sendDriverDetails } from '@/lib/driver-details'
 import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 import { sendLifecycleWhatsApp, isForwardMove, STATUS_ORDER, type LifecycleSendResult } from '@/lib/lifecycle-notifications'
@@ -319,7 +320,7 @@ export async function PATCH(
 
     // Aadhaar must be verified before pickup (website flow bookings only; international travellers
     // are verified manually via passport). Columns are nullable, so older bookings are unaffected.
-    if (['pickup_scheduled', 'picked_up', 'in_transit'].includes(status)) {
+    if (['pickup_scheduled', 'picked_up', 'in_transit'].includes(status) && await identityGateEnabled()) {
       const { data: idb } = await supabaseAdmin.from('bookings')
         .select('use_case, notes, identity_verification_id').eq('id', id).maybeSingle()
       const intl = /International traveller/i.test(String(idb?.notes ?? ''))

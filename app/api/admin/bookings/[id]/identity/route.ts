@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendEmail } from '@/lib/email'
+import { identityGateEnabled } from '@/lib/booking-session'
 
 // Admin: Aadhaar verification status of a booking + "Send Aadhaar link" to the customer.
 // Applies to website-flow bookings (use_case set). International travellers are verified manually.
@@ -20,7 +21,7 @@ async function load(id: string) {
   let verifiedName: string | null = null
   let maskedNumber: string | null = null
   let verifiedAt: string | null = null
-  if (!b.use_case || intl) status = 'not_required'
+  if (!b.use_case || intl || !(await identityGateEnabled())) status = 'not_required'
   else if (b.identity_verification_id) {
     const { data: v } = await supabaseAdmin.from('identity_verifications')
       .select('status, review_status, match_outcome, spelling_confirmed_at, verified_name, masked_number, verified_at')
