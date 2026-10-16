@@ -4,6 +4,7 @@ import { getAuthUser, identityGateEnabled } from '@/lib/booking-session'
 import { setuConfigFromEnv, fetchVerifiedIdentity } from '@/lib/identity/setu-digilocker'
 import { nameMatchScore, classifyMatch } from '@/lib/identity/name-match'
 import { applyVerifiedNameToBooking } from '@/lib/identity/apply-to-booking'
+import { sendBondAfterVerification } from '@/lib/indemnity-send'
 
 // POST /api/identity/complete  { requestId: string }
 // Called by the /book/identity-return page. The redirect query string is NEVER trusted:
@@ -75,7 +76,10 @@ export async function POST(req: Request) {
       .select('*')
       .maybeSingle()
     if (error) throw new Error(error.message)
-    if (upd && outcome === 'pass') await applyVerifiedNameToBooking(upd.id)
+    if (upd && outcome === 'pass') {
+      await applyVerifiedNameToBooking(upd.id)
+      await sendBondAfterVerification(upd.id)      // confirmed bookings get the indemnity bond by email
+    }
     return NextResponse.json(view(upd ?? row))
   } catch (e) {
     const m = (e as Error).message

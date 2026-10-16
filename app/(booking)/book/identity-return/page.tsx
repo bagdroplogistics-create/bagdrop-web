@@ -27,7 +27,7 @@ function Inner() {
 
   const trackingId = sp.get('b') ?? ''
   const backHref = trackingId ? '/book/verify?id=' + encodeURIComponent(trackingId) : '/book'
-  const confirmHref = trackingId ? '/book/confirmation?id=' + encodeURIComponent(trackingId) : '/book'
+  const confirmHref = trackingId ? '/book/confirmation?verified=1&id=' + encodeURIComponent(trackingId) : '/book'
 
   // The booking already exists; the server has applied the verified name. Go to the confirmation page.
   function finish(_r: Result, _adoptName = false) {

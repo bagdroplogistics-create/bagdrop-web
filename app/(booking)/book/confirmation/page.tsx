@@ -54,6 +54,16 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ delay: 0.15, duration: 0.4 }}
     >
+      {params.get('verified') === '1' ? (
+        <>
+          <h1 className="font-display text-3xl font-bold text-text-primary">Identity Verified</h1>
+          <p className="mt-3 text-base text-text-secondary">
+            Thank you. Your Aadhaar is verified for this booking. Next, we email you the indemnity bond to sign.
+            Please check your inbox (and spam folder). Our team will contact you about pickup.
+          </p>
+        </>
+      ) : (
+        <>
       <h1 className="font-display text-3xl font-bold text-text-primary">
         Booking Request Received
       </h1>
@@ -70,6 +80,8 @@ transition={{ type: 'spring', stiffness: 300, damping: 20 }}
         is confirmed only after you approve the quotation and complete the required
         confirmation/payment process.
       </p>
+        </>
+      )}
 
       {trackingId && (
         <div className="mt-6 inline-flex items-center gap-2 rounded-xl bg-white border border-border px-5 py-3 shadow-sm">
