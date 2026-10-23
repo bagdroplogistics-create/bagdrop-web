@@ -18,5 +18,5 @@ export async function POST(
   const body = await req.json().catch(() => ({}))
   const r = await sendIndemnityBondForBooking(id, body?.admin_approve === true)
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status })
-  return NextResponse.json({ success: true, secure_link: r.secureLink, expires_at: r.expiresAt })
+  return NextResponse.json({ success: true, secure_link: r.secureLink, expires_at: r.expiresAt, delivery: r.delivery })
 }

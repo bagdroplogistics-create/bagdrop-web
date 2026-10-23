@@ -7,8 +7,14 @@ import { resolveIndemnityToken } from '@/lib/indemnity-token'
 // (app/api/admin/bookings/[id]/indemnity/send) and the automatic send after Aadhaar verification.
 // Logic moved unchanged from the admin route.
 
+// What actually happened to each customer message (so the admin is not told "sent" when it was not).
+export type Delivery = {
+  email:    { status: 'sent' | 'failed' | 'skipped'; detail: string }
+  whatsapp: { status: 'sent' | 'failed' | 'skipped'; detail: string }
+}
+
 export type SendBondResult =
-  | { ok: true; secureLink: string; expiresAt: string }
+  | { ok: true; secureLink: string; expiresAt: string; delivery: Delivery }
   | { ok: false; status: number; error: string }
 
 export async function sendIndemnityBondForBooking(id: string, adminApprove = false): Promise<SendBondResult> {
@@ -67,18 +73,27 @@ export async function sendIndemnityBondForBooking(id: string, adminApprove = fal
 
   const secureLink = `https://www.bagdrop.co/indemnity/${secureToken}`
 
+  const delivery: Delivery = {
+    email:    { status: 'skipped', detail: 'Admin Approve: no customer notification' },
+    whatsapp: { status: 'skipped', detail: 'Admin Approve: no customer notification' },
+  }
   if (!adminApprove) {
     if (booking.customer_email) {
-      await sendIndemnityBondEmail({
+      const er = await sendIndemnityBondEmail({
         customerName:  booking.customer_name,
         customerEmail: booking.customer_email,
         trackingId:    booking.tracking_id,
         secureLink,
         expiryDays,
       })
+      delivery.email = er.success
+        ? { status: 'sent', detail: `to ${booking.customer_email}` }
+        : { status: 'failed', detail: String(er.error ?? 'unknown error').slice(0, 200) }
+    } else {
+      delivery.email = { status: 'skipped', detail: 'no email address on this booking' }
     }
     // Approved WhatsApp template "indemnity_bond_sent": exactly 2 body variables ({{1}} name, {{2}} link).
-    await sendIndemnityWhatsApp('bond_sent', {
+    delivery.whatsapp = await sendIndemnityWhatsApp('bond_sent', {
       customerPhone: booking.customer_phone,
       customerName:  booking.customer_name,
       trackingId:    booking.tracking_id,
@@ -102,7 +117,7 @@ export async function sendIndemnityBondForBooking(id: string, adminApprove = fal
     .eq('id', id)
   if (statusErr) return { ok: false, status: 500, error: statusErr.message }
 
-  return { ok: true, secureLink, expiresAt: tokenExpiresAt }
+  return { ok: true, secureLink, expiresAt: tokenExpiresAt, delivery }
 }
 
 // Called right after Aadhaar is verified. Sends the bond ONLY when the booking is at "confirmed"

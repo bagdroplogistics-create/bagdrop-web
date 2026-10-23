@@ -79,16 +79,16 @@ export async function sendIndemnityWhatsApp(
   event: IndemnityEvent,
   target: WhatsAppTarget,
   variables: string[],
-): Promise<void> {
+): Promise<{ status: 'sent' | 'failed' | 'skipped'; detail: string }> {
   try {
     const templateName = TEMPLATE_BY_EVENT[event]
     if (!templateName) {
       console.log(`[IndemnityWhatsApp] Booking ${target.trackingId} — skipped (${event}): template not configured`)
-      return
+      return { status: 'skipped', detail: 'WhatsApp template not configured' }
     }
     if (!target.customerPhone) {
       console.log(`[IndemnityWhatsApp] Booking ${target.trackingId} — skipped (${event}): no phone on file`)
-      return
+      return { status: 'skipped', detail: 'no phone on file' }
     }
     // Routed via sendWhatsAppTemplate() — Indian numbers through Fast2SMS,
     // everyone else through Meta's Cloud API directly (see that
@@ -96,7 +96,11 @@ export async function sendIndemnityWhatsApp(
     const result = await sendWhatsAppTemplate(target.customerPhone, templateName, variables)
     console.log(`[IndemnityWhatsApp] Booking ${target.trackingId} — ${event} ` +
       (result.success ? `sent — request_id ${result.requestId ?? '—'}` : `failed — ${result.error}`))
+    return result.success
+      ? { status: 'sent', detail: 'accepted by WhatsApp provider' }
+      : { status: 'failed', detail: String(result.error ?? 'unknown error').slice(0, 200) }
   } catch (err) {
     console.error('[IndemnityWhatsApp] Unexpected error (non-fatal):', err)
+    return { status: 'failed', detail: err instanceof Error ? err.message : 'unexpected error' }
   }
 }

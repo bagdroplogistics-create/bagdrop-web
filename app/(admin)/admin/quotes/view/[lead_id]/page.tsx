@@ -1509,6 +1509,15 @@ export default function QuoteViewPage() {
       setBooking(prev => prev ? { ...prev, status: 'indemnity_bond_sent' } : prev)
       setActionSuccess('send_indemnity')
       setTimeout(() => setActionSuccess(null), 6000)
+      // Say what really happened. "Sent" must not hide a failed email.
+      const dl = d.delivery as { email?: { status: string; detail: string }; whatsapp?: { status: string; detail: string } } | undefined
+      if (dl && !adminApproveMode && dl.email?.status !== 'sent') {
+        setActionError(
+          `Link created, but the email was NOT delivered (${dl.email?.status}: ${dl.email?.detail}). ` +
+          `WhatsApp: ${dl.whatsapp?.status} (${dl.whatsapp?.detail}). ` +
+          `Copy the link and send it to the customer yourself: ${d.secure_link ?? ''}`
+        )
+      }
     } catch {
       setActionError('Network error — please try again')
     } finally {
