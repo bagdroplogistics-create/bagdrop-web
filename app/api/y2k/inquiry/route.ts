@@ -450,23 +450,31 @@ export async function POST(req: NextRequest) {
     // ── Google Sheet copy of the inquiry (no-op until Y2K_SHEET_WEBHOOK_URL is set) ──
     // Skipped for test submissions. Never blocks or fails the booking.
     if (!isTestMode) {
+      const leadName   = String(name ?? '').trim()
+      const sheetBags  = fam ? fam.bags.length : leadBagsRaw + addOns.reduce((s, a) => s + (a.bags || 0), 0)
+      const sheetNote  = [
+        isReturnPickup ? `Return pickup, linked to ${originalTrackingId || 'onward booking'}` : '',
+        fam?.notes || '',
+        String(requests ?? '').trim(),
+      ].filter(Boolean).join(' | ')
       await appendInquiryToSheet({
-        submitted_at:   new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
-        tracking_id:    trackingId,
-        type:           isReturnPickup ? 'Return pickup' : 'Onward booking',
-        linked_booking: originalTrackingId || '',
-        name:           String(name ?? '').trim(),
-        phone:          String(phone ?? '').trim(),
-        email:          String(email ?? '').trim().toLowerCase(),
-        pickup_city:    String(pickupCity ?? '').trim(),
-        pickup_address: String(pickupAddress ?? '').trim(),
-        delivery_city:  String(deliveryCity ?? '').trim(),
-        delivery_address: String(deliveryAddress ?? '').trim(),
-        arrival_date:   String(arrivalDate ?? ''),
-        pickup_slot:    String(pickupTime ?? ''),
-        bags:           Number(bags) || 0,
-        extra_guests:   addOns.length,
-        requests:       String(requests ?? '').trim(),
+        timestamp:   new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        booking_id:  trackingId,
+        // No separate family field is collected: the lead guest's surname is used.
+        family:      leadName.split(/\s+/).filter(Boolean).slice(-1)[0] ?? '',
+        lead_guest:  leadName,
+        mobile:      '+91' + String(phone ?? '').replace(/\D/g, '').slice(-10),
+        email:       String(email ?? '').trim().toLowerCase(),
+        side:        fam ? (fam.side === 'groom' ? 'Groom' : 'Bride') : '',
+        travellers:  fam ? fam.members.length : 1 + addOns.length,
+        bags:        sheetBags,
+        // Oversize = Large bags in the wizard.
+        oversize:    fam ? fam.bags.filter(b => b.type === 'large').length : 0,
+        from_city:   String(pickupCity ?? '').trim() || 'Mumbai',
+        to_city:     isReturnPickup ? (String(deliveryCity ?? '').trim() || 'Mumbai') : 'Udaipur',
+        pickup_date: String(arrivalDate ?? ''),
+        pickup_slot: String(pickupTime ?? ''),
+        note:        sheetNote,
       })
     }
 

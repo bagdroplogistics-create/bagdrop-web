@@ -20,12 +20,10 @@ Test submissions are not added. If the sheet is down, the booking still works.
 
 ```javascript
 const SECRET = 'CHANGE_ME_TO_A_LONG_RANDOM_WORD';
-const HEADERS = ['Submitted at', 'Tracking ID', 'Type', 'Linked booking', 'Name', 'Phone', 'Email',
-  'Pickup city', 'Pickup address', 'Delivery city', 'Delivery address', 'Arrival date', 'Pickup slot',
-  'Bags', 'Extra guests', 'Requests'];
-const KEYS = ['submitted_at', 'tracking_id', 'type', 'linked_booking', 'name', 'phone', 'email',
-  'pickup_city', 'pickup_address', 'delivery_city', 'delivery_address', 'arrival_date', 'pickup_slot',
-  'bags', 'extra_guests', 'requests'];
+const HEADERS = ['Timestamp', 'Booking ID', 'Family', 'Lead guest', 'Mobile', 'Email', 'Side', 'Travellers',
+  'Bags', 'Oversize', 'From city', 'To city', 'Pickup date', 'Pickup slot', 'Note'];
+const KEYS = ['timestamp', 'booking_id', 'family', 'lead_guest', 'mobile', 'email', 'side', 'travellers',
+  'bags', 'oversize', 'from_city', 'to_city', 'pickup_date', 'pickup_slot', 'note'];
 
 function doPost(e) {
   try {
@@ -36,12 +34,12 @@ function doPost(e) {
       sheet.appendRow(HEADERS);
       sheet.setFrozenRows(1);
     }
-    // phone/ids stay as text so Sheets does not turn +91... into a number
-    const row = KEYS.map(k => {
-      const v = data.row[k];
-      return (k === 'phone' || k === 'tracking_id' || k === 'linked_booking') ? "'" + (v || '') : (v === undefined ? '' : v);
-    });
-    sheet.appendRow(row);
+    const row = KEYS.map(k => (data.row[k] === undefined || data.row[k] === null ? '' : data.row[k]));
+    const r = sheet.getLastRow() + 1;
+    // Booking ID and Mobile stay as text so Sheets does not turn +91... into a number
+    sheet.getRange(r, 2).setNumberFormat('@');
+    sheet.getRange(r, 5).setNumberFormat('@');
+    sheet.getRange(r, 1, 1, row.length).setValues([row]);
     return out({ ok: true });
   } catch (err) {
     return out({ ok: false, error: String(err) });
