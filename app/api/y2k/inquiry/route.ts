@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { nextTrackingId } from '@/lib/number-series'
+import { appendInquiryToSheet } from '@/lib/sheets-webhook'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 import { generateAutoQuoteForLead } from '@/lib/auto-quote'
 
@@ -444,6 +445,29 @@ export async function POST(req: NextRequest) {
         // Non-fatal — the booking itself already saved above either way.
         console.error('[y2k/inquiry] Lead auto-create failed (non-fatal):', leadErr)
       }
+    }
+
+    // ── Google Sheet copy of the inquiry (no-op until Y2K_SHEET_WEBHOOK_URL is set) ──
+    // Skipped for test submissions. Never blocks or fails the booking.
+    if (!isTestMode) {
+      await appendInquiryToSheet({
+        submitted_at:   new Date().toLocaleString('en-IN', { timeZone: 'Asia/Kolkata' }),
+        tracking_id:    trackingId,
+        type:           isReturnPickup ? 'Return pickup' : 'Onward booking',
+        linked_booking: originalTrackingId || '',
+        name:           String(name ?? '').trim(),
+        phone:          String(phone ?? '').trim(),
+        email:          String(email ?? '').trim().toLowerCase(),
+        pickup_city:    String(pickupCity ?? '').trim(),
+        pickup_address: String(pickupAddress ?? '').trim(),
+        delivery_city:  String(deliveryCity ?? '').trim(),
+        delivery_address: String(deliveryAddress ?? '').trim(),
+        arrival_date:   String(arrivalDate ?? ''),
+        pickup_slot:    String(pickupTime ?? ''),
+        bags:           Number(bags) || 0,
+        extra_guests:   addOns.length,
+        requests:       String(requests ?? '').trim(),
+      })
     }
 
     // ── Send notification email to info@bagdrop.co ────────────
