@@ -280,7 +280,7 @@ export async function GET(req: NextRequest) {
   // pickup_date/completed_month_override — for reporting_month_date below
   // (Month-wise Payment Received grouping; see the PaymentRecord field's
   // own comment).
-  let bookingReportingById: Record<string, { pickup_date: string | null; completed_month_override: string | null }> = {}
+  let bookingReportingById: Record<string, { pickup_date: string | null; completed_month_override: string | null; tracking_id?: string | null }> = {}
   if (pageBookingIds.length > 0) {
     const [{ data: invRows }, { data: bkRows }] = await Promise.all([
       supabaseAdmin
@@ -302,7 +302,7 @@ export async function GET(req: NextRequest) {
       // payment is actually accounted for" ceiling whenever a booking is
       // linked. Also carries pickup_date/completed_month_override, reused
       // for reporting_month_date below — one fetch covers both needs.
-      supabaseAdmin.from('bookings').select('id, total_amount, pickup_date, completed_month_override').in('id', pageBookingIds),
+      supabaseAdmin.from('bookings').select('id, tracking_id, total_amount, pickup_date, completed_month_override').in('id', pageBookingIds),
     ])
     invoiceByBooking = Object.fromEntries(
       (invRows ?? []).map(i => [i.booking_id as string, { invoice_number: i.invoice_number as string, total_amount: Number(i.total_amount ?? 0) }])
@@ -311,7 +311,7 @@ export async function GET(req: NextRequest) {
       (bkRows ?? []).map(b => [b.id as string, Number(b.total_amount ?? 0)])
     )
     bookingReportingById = Object.fromEntries(
-      (bkRows ?? []).map(b => [b.id as string, { pickup_date: (b.pickup_date as string | null) ?? null, completed_month_override: (b.completed_month_override as string | null) ?? null }])
+      (bkRows ?? []).map(b => [b.id as string, { pickup_date: (b.pickup_date as string | null) ?? null, completed_month_override: (b.completed_month_override as string | null) ?? null, tracking_id: (b.tracking_id as string | null) ?? null }])
     )
   }
 
@@ -336,7 +336,14 @@ export async function GET(req: NextRequest) {
     // invoice payment).
     const reporting = p.booking_id ? bookingReportingById[p.booking_id] : undefined
     const reporting_month_date = reporting?.completed_month_override ?? reporting?.pickup_date ?? p.created_at
-    return { ...p, invoice_number: inv?.invoice_number ?? null, unused_amount, reporting_month_date }
+    return {
+      ...p, invoice_number: inv?.invoice_number ?? null, unused_amount, reporting_month_date,
+      // For the Edit window: which booking this counts under, and why it lands in that month.
+      booking_tracking_id: reporting?.tracking_id ?? null,
+      month_source: !p.booking_id ? 'payment_date'
+        : reporting?.completed_month_override ? 'month_override'
+        : reporting?.pickup_date ? 'pickup_date' : 'payment_date',
+    }
   })
 
   return NextResponse.json({ payments: enriched, total: merged.length, page, limit })

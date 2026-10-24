@@ -66,6 +66,8 @@ interface Payment {
   // confirmed the collection date shown is correct, but Month-wise Payment
   // Received should report by the booking's operational month.
   reporting_month_date?: string | null
+  booking_tracking_id?: string | null
+  month_source?: 'payment_date' | 'month_override' | 'pickup_date'
 }
 
 // This filter/badge set covers two different value spaces that GET
@@ -128,6 +130,8 @@ function EditPaymentModal({ p, adminKey, onSaved, onClose }: { p: Payment; admin
   const [date, setDate]           = useState(toDateInputValue(p.created_at))
   const [notes, setNotes]         = useState(p.notes ?? '')
   const [sync, setSync]           = useState(true)
+  const origMonth = monthKey(p.reporting_month_date ?? p.created_at)
+  const [reportMonth, setReportMonth] = useState(origMonth)
   const [saving, setSaving]       = useState(false)
   const [err, setErr]             = useState('')
   const inp = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none'
@@ -148,9 +152,19 @@ function EditPaymentModal({ p, adminKey, onSaved, onClose }: { p: Payment; admin
       if (date !== toDateInputValue(p.created_at)) body.payment_date = date
       if (notes.trim() !== (p.notes ?? '')) body.notes = notes.trim()
     }
-    if (Object.keys(body).length === 0) { onClose(); return }
+    const monthChanged = !!p.booking_id && /^\d{4}-\d{2}$/.test(reportMonth) && reportMonth !== origMonth
+    if (Object.keys(body).length === 0 && !monthChanged) { onClose(); return }
     setSaving(true)
     try {
+      // Move the booking to another reporting month (affects Payments, Dashboard and Reports alike).
+      if (monthChanged) {
+        const mr = await fetch(`/api/admin/bookings/${p.booking_id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ completed_month_override: `${reportMonth}-01` }),
+        })
+        if (!mr.ok) { const mj = await mr.json().catch(() => ({})); setErr(mj.error ?? 'Could not change the month.'); setSaving(false); return }
+        if (Object.keys(body).length === 0) { onSaved(); return }
+      }
       let res: Response
       if (synthetic) {
         // booking-derived row: edit the booking itself
@@ -229,6 +243,22 @@ function EditPaymentModal({ p, adminKey, onSaved, onClose }: { p: Payment; admin
               )}
             </>
           )}
+          <div className="rounded-lg border border-gray-100 bg-gray-50 p-3 text-xs text-gray-600">
+            <p>
+              Linked booking: <b className="font-mono">{p.booking_tracking_id ?? (p.booking_id ? 'yes' : 'none')}</b>
+              {' · '}Counts toward <b>{monthLabel(origMonth)}</b>
+              {' '}({p.month_source === 'month_override' ? 'booking month override'
+                : p.month_source === 'pickup_date' ? 'booking pickup date'
+                : 'payment date, because no booking month is available'})
+            </p>
+            {p.booking_id ? (
+              <label className="mt-2 block font-semibold">Report under month
+                <input type="month" value={reportMonth} onChange={e => setReportMonth(e.target.value)} className={inp + ' mt-1 max-w-[200px]'} />
+              </label>
+            ) : (
+              <p className="mt-1 text-amber-700">Not linked to a booking. Change the payment date above to move it to another month.</p>
+            )}
+          </div>
           {err && <p className="text-xs text-red-600">{err}</p>}
         </div>
         <div className="mt-5 flex justify-end gap-2">
