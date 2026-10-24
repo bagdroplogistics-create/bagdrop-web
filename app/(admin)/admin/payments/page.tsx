@@ -114,6 +114,134 @@ function toDateInputValue(d: string) {
 }
 function fmtRs(n: number) { return '₹' + Number(n).toLocaleString('en-IN', { maximumFractionDigits: 0 }) }
 
+// Full edit for any row — fix a wrong name, phone, amount, mode, reference, date or note.
+// Only the fields that actually changed are sent (sending an unchanged amount would reset the
+// receipt status). A "From Booking" row has no payment record, so it edits the booking's name only.
+function EditPaymentModal({ p, adminKey, onSaved, onClose }: { p: Payment; adminKey: string; onSaved: () => void; onClose: () => void }) {
+  const synthetic = !!p.is_synthetic
+  const [title, setTitle]         = useState(p.title ?? '')
+  const [name, setName]           = useState(p.customer_name)
+  const [phone, setPhone]         = useState(p.customer_phone)
+  const [amount, setAmount]       = useState(String(p.amount))
+  const [method, setMethod]       = useState(p.payment_method)
+  const [reference, setReference] = useState(p.payment_reference ?? '')
+  const [date, setDate]           = useState(toDateInputValue(p.created_at))
+  const [notes, setNotes]         = useState(p.notes ?? '')
+  const [sync, setSync]           = useState(true)
+  const [saving, setSaving]       = useState(false)
+  const [err, setErr]             = useState('')
+  const inp = 'w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:border-orange-400 focus:outline-none'
+
+  async function save() {
+    setErr('')
+    if (name.trim().length < 2) { setErr('Enter the customer name.'); return }
+    const amt = Number(amount)
+    if (!synthetic && (!Number.isFinite(amt) || amt < 0)) { setErr('Enter a valid amount.'); return }
+    const body: Record<string, unknown> = {}
+    if (name.trim() !== p.customer_name) body.customer_name = name.trim()
+    if ((title || '') !== (p.title ?? '')) body.title = title
+    if (!synthetic) {
+      if (phone.trim() !== p.customer_phone) body.customer_phone = phone.trim()
+      if (amt !== Number(p.amount)) body.amount = amt
+      if (method !== p.payment_method) body.payment_method = method
+      if (reference.trim() !== (p.payment_reference ?? '')) body.payment_reference = reference.trim()
+      if (date !== toDateInputValue(p.created_at)) body.payment_date = date
+      if (notes.trim() !== (p.notes ?? '')) body.notes = notes.trim()
+    }
+    if (Object.keys(body).length === 0) { onClose(); return }
+    setSaving(true)
+    try {
+      let res: Response
+      if (synthetic) {
+        // booking-derived row: edit the booking itself
+        res = await fetch(`/api/admin/bookings/${p.booking_id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ customer_name: body.customer_name, title: body.title }),
+        })
+      } else {
+        res = await fetch(`/api/admin/payments/${p.id}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+          body: JSON.stringify({ ...body, sync_booking: sync }),
+        })
+      }
+      const j = await res.json().catch(() => ({}))
+      if (!res.ok) { setErr(j.error ?? 'Could not save.'); setSaving(false); return }
+      onSaved()
+    } catch { setErr('Network error. Try again.'); setSaving(false) }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-xl" onClick={e => e.stopPropagation()}>
+        <div className="mb-4 flex items-center justify-between">
+          <div>
+            <h3 className="text-base font-bold text-gray-900">Edit payment</h3>
+            <p className="font-mono text-xs text-orange-600">{p.payment_id}</p>
+          </div>
+          <button onClick={onClose} className="rounded p-1 text-gray-400 hover:bg-gray-100"><X className="h-4 w-4" /></button>
+        </div>
+        <div className="space-y-3">
+          <div className="grid grid-cols-[110px_1fr] gap-3">
+            <label className="text-xs font-semibold text-gray-600">Title
+              <select value={title} onChange={e => setTitle(e.target.value)} className={inp + ' mt-1'}>
+                <option value="">—</option>
+                {['Mr.', 'Mrs.', 'Ms.', 'M/S'].map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </label>
+            <label className="text-xs font-semibold text-gray-600">Customer name
+              <input value={name} onChange={e => setName(e.target.value)} className={inp + ' mt-1'} />
+            </label>
+          </div>
+          {synthetic ? (
+            <p className="rounded-lg bg-blue-50 p-3 text-xs text-blue-800">This row comes from the booking and has no payment logged yet, so only the name can be edited here. Use Log Payment to record the money.</p>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <label className="text-xs font-semibold text-gray-600">Phone
+                  <input value={phone} onChange={e => setPhone(e.target.value)} className={inp + ' mt-1'} />
+                </label>
+                <label className="text-xs font-semibold text-gray-600">Amount (₹)
+                  <input type="number" min="0" value={amount} onChange={e => setAmount(e.target.value)} className={inp + ' mt-1'} />
+                </label>
+                <label className="text-xs font-semibold text-gray-600">Mode
+                  <select value={method} onChange={e => setMethod(e.target.value)} className={inp + ' mt-1'}>
+                    {Object.entries(METHOD_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                  </select>
+                </label>
+                <label className="text-xs font-semibold text-gray-600">Payment date
+                  <input type="date" value={date} onChange={e => setDate(e.target.value)} className={inp + ' mt-1'} />
+                </label>
+              </div>
+              <label className="block text-xs font-semibold text-gray-600">Reference #
+                <input value={reference} onChange={e => setReference(e.target.value)} className={inp + ' mt-1'} />
+              </label>
+              <label className="block text-xs font-semibold text-gray-600">Notes
+                <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={2} className={inp + ' mt-1'} />
+              </label>
+              {p.booking_id && (
+                <label className="flex items-start gap-2 text-xs text-gray-600">
+                  <input type="checkbox" checked={sync} onChange={e => setSync(e.target.checked)} className="mt-0.5" />
+                  <span>Also update the name on the linked booking and lead</span>
+                </label>
+              )}
+              {Number(amount) !== Number(p.amount) && p.payment_status === 'paid' && (
+                <p className="rounded-lg bg-amber-50 p-2 text-xs text-amber-800">Changing the amount re-arms the payment receipt so it can be resent with the new value.</p>
+              )}
+            </>
+          )}
+          {err && <p className="text-xs text-red-600">{err}</p>}
+        </div>
+        <div className="mt-5 flex justify-end gap-2">
+          <button onClick={onClose} disabled={saving} className="rounded-lg border border-gray-200 px-4 py-2 text-sm text-gray-600">Cancel</button>
+          <button onClick={save} disabled={saving} className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save changes
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // Month-wise breakdown — groups by reporting_month_date (server-computed —
 // see that field's comment on the Payment interface above), NOT created_at
 // (the Date column, which stays the real date the money was collected).
@@ -1000,6 +1128,7 @@ export default function PaymentsPage() {
   // opened for synthetic (is_synthetic) rows, which have no real row to
   // fetch a receipt for.
   const [viewingPaymentId, setViewingPaymentId] = useState<string | null>(null)
+  const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
   const [fixingDuplicates, setFixingDuplicates] = useState(false)
   // Bulk "Log as Paid from confirmation date" — Founder-confirmed
   // 2026-09-28: a large batch of "From Booking / no payment logged" rows
@@ -1352,6 +1481,12 @@ export default function PaymentsPage() {
         <PaymentReceiptPanel paymentId={viewingPaymentId} adminKey={adminKey} onClose={() => setViewingPaymentId(null)} />
       )}
 
+      {editingPayment && (
+        <EditPaymentModal p={editingPayment} adminKey={adminKey}
+          onSaved={() => { setEditingPayment(null); fetchPayments() }}
+          onClose={() => setEditingPayment(null)} />
+      )}
+
       <div className="border-b border-gray-100 bg-white px-6 py-4">
         <div className="flex items-center justify-between">
           <div>
@@ -1599,6 +1734,10 @@ export default function PaymentsPage() {
                       <td className="px-4 py-3"><Badge status={p.payment_status} /></td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
+                          <button onClick={() => setEditingPayment(p)} title="Edit name, amount, mode, date, reference"
+                            className="rounded-lg bg-gray-50 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600">
+                            <Pencil className="h-3.5 w-3.5" />
+                          </button>
                           {p.is_synthetic ? (
                             <button onClick={() => openLogPaymentModal(p)}
                               className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-600 hover:bg-blue-100">

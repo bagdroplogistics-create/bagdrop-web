@@ -87,6 +87,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   for (const key of allowed) {
     if (key in body) updates[key] = body[key]
   }
+  // Full edit (2026-10-24): customer name / title / phone can be corrected, e.g. a payment logged
+  // under the name the customer first enquired with but whose real name is different.
+  if (typeof body.customer_name === 'string') {
+    const nm = body.customer_name.trim()
+    if (nm.length < 2) return NextResponse.json({ error: 'Customer name is too short.' }, { status: 400 })
+    updates.customer_name = nm
+  }
+  if (typeof body.title === 'string') updates.title = body.title.trim() || null
+  if (typeof body.customer_phone === 'string' && body.customer_phone.trim()) updates.customer_phone = body.customer_phone.trim()
+  if ('payment_method' in updates && !['upi', 'qr', 'bank', 'cash'].includes(String(updates.payment_method))) {
+    return NextResponse.json({ error: 'Invalid payment mode.' }, { status: 400 })
+  }
   if ('amount' in updates) {
     const n = Number(updates.amount)
     if (!Number.isFinite(n) || n < 0) {
@@ -124,6 +136,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
 
   const { data, error } = await supabaseAdmin.from('payments').update(updates).eq('id', id).select().single()
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+
+  // Optionally carry the corrected name onto the linked booking and lead, so every screen agrees.
+  if (body.sync_booking === true && data.booking_id && ('customer_name' in updates || 'title' in updates)) {
+    const bk: Record<string, unknown> = {}
+    const ld: Record<string, unknown> = {}
+    if ('customer_name' in updates) { bk.customer_name = updates.customer_name; ld.name = updates.customer_name }
+    if ('title' in updates && updates.title) { bk.title = updates.title; ld.title = updates.title }
+    await supabaseAdmin.from('bookings').update(bk).eq('id', data.booking_id)
+    await supabaseAdmin.from('leads').update(ld).eq('booking_id', data.booking_id)
+  }
 
   // Recompute the booking's aggregate payment_status from the full ledger
   // (Total Paid vs Total Amount — lib/payment-status.ts) rather than blindly
