@@ -1902,6 +1902,18 @@ function LeadsPageInner() {
                                 </span>
                               )}
 
+                              {/* Return quote badge (2026-10-28, founder: "return quote
+                                  is not showing in lead table"). Read-only link to the
+                                  quote page where the return quote lives. */}
+                              {l.return_quote_number && (
+                                <Link href={`/admin/quotes/view/${l.id}`}
+                                  title="Return journey quote"
+                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300 transition-colors">
+                                  <ExternalLink className="h-3 w-3" />
+                                  {l.return_quote_number}
+                                </Link>
+                              )}
+
                               {/* Return Quote button intentionally REMOVED from this
                                   table (2026-08-31, founder request: "remove return
                                   quote from lead tab... keep return quote only inside
