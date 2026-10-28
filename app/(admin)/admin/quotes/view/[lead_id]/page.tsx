@@ -608,7 +608,27 @@ export default function QuoteViewPage() {
   // ── Load data ─────────────────────────────────────────────────────
 
   const loadAll = useCallback(async (adminKey: string) => {
-    setLoading(true)
+    // Instant paint from the hover-prefetch cache (see Leads table), then
+    // refresh from the server below. Cache is single-use so edits are never stale.
+    let usedCache = false
+    try {
+      const ck = 'bagdrop_quote_pre:' + lead_id
+      const raw = sessionStorage.getItem(ck)
+      if (raw) {
+        sessionStorage.removeItem(ck)
+        const c = JSON.parse(raw)
+        if (Date.now() - c.t < 60000 && c.d?.lead) {
+          setLead(c.d.lead as Lead)
+          if (c.d.booking) {
+            setBooking(c.d.booking as Booking)
+            if (c.d.invoices?.[0]) setInvoice(c.d.invoices[0] as Invoice)
+          }
+          setLoading(false)
+          usedCache = true
+        }
+      }
+    } catch { /* ignore */ }
+    if (!usedCache) setLoading(true)
     setError('')
     try {
       // 1. Lead + linked booking + invoice in ONE request (was three

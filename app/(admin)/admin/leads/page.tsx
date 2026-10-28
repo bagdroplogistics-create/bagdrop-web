@@ -7,7 +7,7 @@ import {
   Users, Plus, Search, RefreshCw, ChevronDown,
   Phone, Pencil, Trash2, X, Save, Upload, Plane,
   Package, Calendar, Clock, CheckCircle, ExternalLink, MapPin, ArrowUpDown, History,
-  Printer, Mail, MessageCircle, FlaskConical, Calculator, AlertTriangle,
+  Printer, Mail, MessageCircle, FlaskConical, Calculator, AlertTriangle, Download, Loader2,
 } from 'lucide-react'
 import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
@@ -1063,6 +1063,44 @@ function LeadsPageInner() {
     }
   }
   const [highlightId, setHighlightId] = useState<string | null>(null)
+  const [dlId, setDlId] = useState<string | null>(null)
+
+  // Warm the quote page: fetch its data on hover so opening it is instant
+  // (the quote page reads this short-lived cache, then refreshes in background).
+  const prefetchQuote = useCallback((id: string) => {
+    try {
+      const k = 'bagdrop_quote_pre:' + id
+      const raw = sessionStorage.getItem(k)
+      if (raw && Date.now() - JSON.parse(raw).t < 60000) return
+      fetch(`/api/admin/leads/${id}?include=booking,invoice`, { headers: { 'x-admin-key': adminKey } })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d?.lead) sessionStorage.setItem(k, JSON.stringify({ t: Date.now(), d })) })
+        .catch(() => {})
+      router.prefetch(`/admin/quotes/view/${id}`)
+    } catch { /* ignore */ }
+  }, [adminKey, router])
+
+  // Direct quote PDF download from the table (no need to open the quote).
+  async function downloadQuotePdf(id: string, leg: 'onward' | 'return') {
+    const tag = id + ':' + leg
+    if (dlId) return
+    setDlId(tag)
+    try {
+      const r = await fetch(`/api/admin/leads/${id}/quote-pdf${leg === 'return' ? '?leg=return' : ''}`, {
+        method: 'POST', headers: { 'x-admin-key': adminKey },
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok || !d.url) { alert(d.error ?? 'Could not create the quote PDF.'); return }
+      try {
+        const blob = await (await fetch(d.url)).blob()
+        const u = URL.createObjectURL(blob)
+        const a = document.createElement('a')
+        a.href = u; a.download = d.filename ?? 'quote.pdf'
+        document.body.appendChild(a); a.click(); a.remove()
+        setTimeout(() => URL.revokeObjectURL(u), 2000)
+      } catch { window.open(d.url, '_blank') }
+    } finally { setDlId(null) }
+  }
   const handledOpenParam = useRef(false)
   const scrolledToId     = useRef<string | null>(null)
 
@@ -1872,11 +1910,18 @@ function LeadsPageInner() {
                           )}
                           {l.zoho_estimate_number ? (
                             <div className="flex flex-col gap-1">
-                              <Link href={`/admin/quotes/view/${l.id}`}
+                              <div className="flex items-center gap-1">
+                              <Link href={`/admin/quotes/view/${l.id}`} onMouseEnter={() => prefetchQuote(l.id)}
                                 className="inline-flex items-center gap-1 rounded-lg border border-blue-100 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700 hover:border-blue-300 transition-colors">
                                 <ExternalLink className="h-3 w-3" />
                                 {l.zoho_estimate_number}
                               </Link>
+                              <button type="button" title="Download quote PDF" onClick={() => downloadQuotePdf(l.id, 'onward')}
+                                disabled={!!dlId}
+                                className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-blue-100 bg-white text-blue-700 hover:bg-blue-50 disabled:opacity-50">
+                                {dlId === l.id + ':onward' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                              </button>
+                              </div>
                               {/* Automatic Quote Generation (Founder spec, 2026-10-03) —
                                   this quote was auto-generated from the ₹10,000/2-bag
                                   unknown-route fallback (no Route/Pricing Master match
@@ -2109,10 +2154,17 @@ function LeadsPageInner() {
                                 <ExternalLink className="h-3 w-3" /> View Booking
                               </Link>
                             )}
-                            <Link href={`/admin/quotes/view/${l.id}`}
+                            <div className="flex items-center gap-1">
+                            <Link href={`/admin/quotes/view/${l.id}`} onMouseEnter={() => prefetchQuote(l.id)}
                               className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300 transition-colors">
                               <ExternalLink className="h-3 w-3" /> {l.return_quote_number}
                             </Link>
+                            <button type="button" title="Download return quote PDF" onClick={() => downloadQuotePdf(l.id, 'return')}
+                              disabled={!!dlId}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-purple-100 bg-white text-purple-700 hover:bg-purple-50 disabled:opacity-50">
+                              {dlId === l.id + ':return' ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            </button>
+                            </div>
                           </div>
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
