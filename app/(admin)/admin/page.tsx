@@ -1567,46 +1567,36 @@ export default function AdminDashboard() {
     }
     if (search) qs += '&search=' + encodeURIComponent(search)
 
-    const [sr, br, cr, tr, ar, fr] = await Promise.all([
-      fetch('/api/admin/stats?key=' + adminKey),
-      fetch('/api/admin/bookings' + qs),
-      fetch('/api/admin/crm-stats?key=' + adminKey),
-      fetch('/api/admin/trip-sheets?limit=200&key=' + adminKey),
-      fetch('/api/admin/dashboard-analytics?key=' + adminKey),
-      fetch('/api/admin/sales-followup-summary?key=' + adminKey),
-    ])
-    if (sr.ok) setStats(await sr.json())
-    if (br.ok) setBookings((await br.json()).bookings ?? [])
-    if (cr.ok) setCrmStats(await cr.json())
-    if (ar.ok) setAnalytics(await ar.json())
-    if (fr.ok) setFollowupSummary(await fr.json())
-    if (tr.ok) {
-      const td = await tr.json()
+    // Each section paints as soon as ITS response arrives instead of waiting
+    // for the slowest of the six calls.
+    const applyTrips = (td: { trip_sheets?: Record<string, unknown>[] }) => {
       const sheets = td.trip_sheets ?? []
-      // totalIncome/totalExpense computed once and netProfit derived
-      // directly from those two variables (rather than three separate
-      // .reduce() passes over `sheets`) — was previously recomputing income
-      // and expense a second time inline for the netProfit line, which
-      // *should* always agree with the totalIncome/totalExpense cards next
-      // to it, but any future edit to one sum without the other risked the
-      // three drifting apart, exactly matching the reported Dashboard vs.
-      // Trip Sheets page mismatch. Also coerces with Number(...) — Postgres
-      // numeric columns can come back from Supabase as strings, and
-      // `sum + (s.total_income || 0)` silently does string concatenation
-      // instead of addition when that happens. Number(...) guarantees a
-      // real numeric sum either way. Now uses the exact same
-      // totalIncome - totalExpense formula as app/(admin)/admin/trip-sheets/page.tsx.
-      const totalIncome  = sheets.reduce((sum: number, s: Record<string, unknown>) => sum + (Number(s.total_income)  || 0), 0)
-      const totalExpense = sheets.reduce((sum: number, s: Record<string, unknown>) => sum + (Number(s.total_expense) || 0), 0)
+      const totalIncome  = sheets.reduce((sum: number, s) => sum + (Number(s.total_income)  || 0), 0)
+      const totalExpense = sheets.reduce((sum: number, s) => sum + (Number(s.total_expense) || 0), 0)
       setTripStats({
         total:        sheets.length,
-        active:       sheets.filter((s: Record<string,string>) => !['completed','cancelled','delivered'].includes(s.status)).length,
-        delivered:    sheets.filter((s: Record<string,string>) => ['delivered','completed'].includes(s.status)).length,
+        active:       sheets.filter(s => !['completed','cancelled','delivered'].includes(String(s.status))).length,
+        delivered:    sheets.filter(s => ['delivered','completed'].includes(String(s.status))).length,
         totalIncome,
         totalExpense,
         netProfit:    totalIncome - totalExpense,
       })
     }
+    const run = async (url: string, apply: (d: any) => void) => { // eslint-disable-line @typescript-eslint/no-explicit-any
+      try {
+        const r = await fetch(url)
+        if (r.ok) apply(await r.json())
+      } catch { /* leave previous data in place */ }
+    }
+    const bookingsDone = run('/api/admin/bookings' + qs, d => setBookings(d.bookings ?? []))
+    await Promise.all([
+      run('/api/admin/stats?key=' + adminKey, setStats),
+      bookingsDone,
+      run('/api/admin/crm-stats?key=' + adminKey, setCrmStats),
+      run('/api/admin/trip-sheets?limit=200&key=' + adminKey, applyTrips),
+      run('/api/admin/dashboard-analytics?key=' + adminKey, setAnalytics),
+      run('/api/admin/sales-followup-summary?key=' + adminKey, setFollowupSummary),
+    ])
     setLoading(false)
   }, [adminKey, filter, phaseFilter, search, kpiView])
 
@@ -1662,9 +1652,21 @@ export default function AdminDashboard() {
       if (dashCustomFrom) qs += '&date_from=' + encodeURIComponent(dashCustomFrom)
       if (dashCustomTo)   qs += '&date_to='   + encodeURIComponent(dashCustomTo)
     }
-    const res = await fetch('/api/admin/dashboard-v2' + qs)
-    if (res.ok) setDashData(await res.json())
-    setDashLoading(false)
+    const cacheKey = 'bagdrop_dashv2:' + qs.replace(/key=[^&]*&?/, '')
+    try {
+      const c = sessionStorage.getItem(cacheKey)
+      if (c) { setDashData(JSON.parse(c)); setDashLoading(false) }
+    } catch { /* ignore */ }
+    try {
+      const res = await fetch('/api/admin/dashboard-v2' + qs)
+      if (res.ok) {
+        const d = await res.json()
+        setDashData(d)
+        try { sessionStorage.setItem(cacheKey, JSON.stringify(d)) } catch { /* quota */ }
+      }
+    } finally {
+      setDashLoading(false)
+    }
   }, [adminKey, dashRangePreset, dashCustomFrom, dashCustomTo])
   useEffect(() => { if (authed) fetchDashboardV2() }, [authed, fetchDashboardV2])
 

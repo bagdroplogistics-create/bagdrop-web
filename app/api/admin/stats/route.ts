@@ -1,8 +1,9 @@
+import { cachedAdminGet } from '@/lib/ttl-cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -46,3 +47,5 @@ export async function GET(req: NextRequest) {
     confirmed:     inProgress.count    ?? 0,
   })
 }
+
+export const GET = cachedAdminGet(15_000, handleGet)

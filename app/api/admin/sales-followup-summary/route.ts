@@ -1,3 +1,4 @@
+import { cachedAdminGet } from '@/lib/ttl-cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
@@ -12,7 +13,7 @@ export const dynamic = 'force-dynamic'
 // per lead, for the response-track stop condition) — nothing depends on
 // lead_followups having already been scheduled by a cron tick, so the
 // counts are accurate even if the external cron scheduler is briefly down.
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   if (!requireAdminAuth(req)) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const settings = await getFollowupSettings()
@@ -74,3 +75,5 @@ export async function GET(req: NextRequest) {
     todaysFollowups, tomorrowsFollowups,
   })
 }
+
+export const GET = cachedAdminGet(15_000, handleGet)

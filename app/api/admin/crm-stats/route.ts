@@ -1,3 +1,4 @@
+import { cachedAdminGet } from '@/lib/ttl-cache'
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
@@ -11,7 +12,7 @@ import { countsTowardTotalPaid } from '@/lib/payment-ledger'
 // quotes, today's dispatch, and the raw all-time leads/unbooked-leads
 // counts still consumed by admin-app (the separate mobile admin client).
 
-export async function GET(req: NextRequest) {
+async function handleGet(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
@@ -198,3 +199,5 @@ export async function GET(req: NextRequest) {
     ...(periodAmount !== undefined ? { revenue_period_amount: periodAmount, revenue_period_count: periodCount } : {}),
   })
 }
+
+export const GET = cachedAdminGet(15_000, handleGet)

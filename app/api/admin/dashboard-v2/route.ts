@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { requireAdminAuth } from '@/lib/admin-auth'
+import { cached } from '@/lib/ttl-cache'
 import { getDashboardData, DashboardRangePreset, DrilldownKey } from '@/lib/dashboard-analytics-v2'
 
 export const runtime = 'nodejs'
@@ -39,7 +40,8 @@ export async function GET(req: NextRequest) {
   const drilldown: DrilldownKey | null = drilldownParam && VALID_DRILLDOWNS.has(drilldownParam) ? drilldownParam as DrilldownKey : null
 
   try {
-    const data = await getDashboardData(preset, dateFrom, dateTo, drilldown)
+    const data = await cached(`dv2:${preset}:${dateFrom}:${dateTo}:${drilldown}`, 20_000,
+      () => getDashboardData(preset, dateFrom, dateTo, drilldown))
     return NextResponse.json(data)
   } catch (err) {
     console.error('[dashboard-v2] failed:', err)
