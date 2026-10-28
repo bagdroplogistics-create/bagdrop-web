@@ -92,6 +92,13 @@ interface Lead {
   // quote_number writes here instead of overwriting the primary quote).
   // Used purely to decide whether to show "+ Return Quote" below.
   return_quote_number?:    string | null
+  return_quote_total?:     number | null
+  return_quote_status?:    string | null
+  return_from_city?:       string | null
+  return_to_city?:         string | null
+  return_bags_count?:      number | null
+  return_pickup_date?:     string | null
+  return_booking_id?:      string | null
   customer_responded_at?:  string | null
   deleted_at?:             string | null
   // Auto Estimate Quote (Founder spec, 2026-10-02) — see
@@ -1718,7 +1725,8 @@ function LeadsPageInner() {
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {pagedLeads.map(l => (
-                    <tr key={l.id} id={`lead-row-${l.id}`} className={`transition-colors duration-700 ${
+                    <Fragment key={l.id}>
+                    <tr id={`lead-row-${l.id}`} className={`transition-colors duration-700 ${
                       highlightId === l.id ? 'bg-orange-50 ring-2 ring-inset ring-orange-400' : 'hover:bg-gray-50'
                     }`}>
                       <td className="px-4 py-3">
@@ -1902,18 +1910,6 @@ function LeadsPageInner() {
                                 </span>
                               )}
 
-                              {/* Return quote badge (2026-10-28, founder: "return quote
-                                  is not showing in lead table"). Read-only link to the
-                                  quote page where the return quote lives. */}
-                              {l.return_quote_number && (
-                                <Link href={`/admin/quotes/view/${l.id}`}
-                                  title="Return journey quote"
-                                  className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300 transition-colors">
-                                  <ExternalLink className="h-3 w-3" />
-                                  {l.return_quote_number}
-                                </Link>
-                              )}
-
                               {/* Return Quote button intentionally REMOVED from this
                                   table (2026-08-31, founder request: "remove return
                                   quote from lead tab... keep return quote only inside
@@ -2076,6 +2072,59 @@ function LeadsPageInner() {
                         </div>
                       </td>
                     </tr>
+                    {/* Separate row for the Return Journey quote of the same inquiry
+                        (2026-10-28, founder request). Edit / send / delete all happen
+                        from the quote page; Edit here opens the form for both legs. */}
+                    {l.return_quote_number && (
+                      <tr className="bg-purple-50/40 hover:bg-purple-50">
+                        <td className="px-4 py-3">
+                          <span className="font-mono text-xs font-bold text-purple-600">{l.return_quote_number}</span>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-purple-500">Return</p>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-semibold text-gray-900">{formatCustomerName(l.title, l.name) || l.name}</p>
+                          <div className="flex items-center gap-1 text-xs text-gray-400"><Phone className="h-3 w-3" />{l.phone}</div>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-gray-600">{l.service_interest ?? l.service_type ?? '—'}</td>
+                        <td className="px-4 py-3 text-sm text-gray-600">
+                          {(l.return_from_city ?? l.to_city) && (l.return_to_city ?? l.from_city)
+                            ? `${l.return_from_city ?? l.to_city} → ${l.return_to_city ?? l.from_city}` : '—'}
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-500">{formatDateOnly(l.return_pickup_date ?? null)}</td>
+                        <td className="px-4 py-3 text-center text-sm font-medium text-gray-700">{l.return_bags_count ?? l.bags_count ?? '—'}</td>
+                        <td className="px-4 py-3 text-xs text-gray-400">—</td>
+                        <td className="px-4 py-3">
+                          <span className="inline-flex rounded-full bg-purple-100 px-2.5 py-1 text-xs font-semibold text-purple-700">
+                            {l.return_quote_status ? l.return_quote_status.replace(/_/g, ' ') : 'Return Quote'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-sm font-semibold text-gray-900">
+                          {l.return_quote_total != null ? '₹' + Math.round(Number(l.return_quote_total)).toLocaleString('en-IN') : '—'}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col gap-1">
+                            {l.return_booking_id && (
+                              <Link href={`/admin?highlight=${l.return_booking_id}`}
+                                className="inline-flex items-center gap-1 rounded-lg border border-green-100 bg-green-50 px-2.5 py-1 text-xs font-semibold text-green-700 hover:border-green-300 transition-colors">
+                                <ExternalLink className="h-3 w-3" /> View Booking
+                              </Link>
+                            )}
+                            <Link href={`/admin/quotes/view/${l.id}`}
+                              className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300 transition-colors">
+                              <ExternalLink className="h-3 w-3" /> {l.return_quote_number}
+                            </Link>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
+                        <td className="px-4 py-3">
+                          <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
+                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50">
+                            Edit both quotes
+                          </button>
+                        </td>
+                      </tr>
+                    )}
+                    </Fragment>
                   ))}
                 </tbody>
               </table>

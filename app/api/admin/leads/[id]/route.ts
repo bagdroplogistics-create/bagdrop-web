@@ -98,7 +98,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_quote_subtotal', 'return_quote_tax', 'return_quote_date',
     'return_from_city', 'return_to_city', 'return_bags_count',
     'return_discount_amt', 'return_discount_pct', 'return_quote_notes',
-    'return_pickup_address', 'return_pickup_date', 'return_booking_id',
+    'return_pickup_address', 'return_drop_address', 'return_pickup_date', 'return_booking_id',
     // Return-journey delivery date/time — see RETURN_DELIVERY_MIGRATION.sql
     'return_delivery_date', 'return_delivery_time',
     // Independent return-quote commercial status (Founder spec 2026-09-22,

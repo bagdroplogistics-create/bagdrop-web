@@ -45,6 +45,14 @@ interface Lead {
   zoho_estimate_number: string | null; zoho_estimate_id: string | null
   quote_number: string | null
   return_quote_number: string | null
+  return_quote_line_items?: QuoteLineItem[] | null
+  return_from_city?: string | null; return_to_city?: string | null
+  return_bags_count?: number | null
+  return_pickup_date?: string | null; return_pickup_address?: string | null
+  return_delivery_date?: string | null; return_delivery_time?: string | null
+  return_quote_notes?: string | null
+  return_discount_amt?: number | null; return_discount_pct?: number | null
+  return_drop_address?: string | null
   // Saved quote/pricing data — must be reloaded in full when editing,
   // regardless of whether the route exists in the Route Map.
   quote_line_items:   QuoteLineItem[] | null
@@ -684,6 +692,31 @@ function QuotePageInner() {
         setExpiryDate(d.quote_expiry_date ? toLocalDate(d.quote_expiry_date) : '')
         if (d.salesperson_name) setSalesperson(d.salesperson_name)
         setAgentName(d.agent_name ?? '')
+        // Return leg (same lead): load every saved return value so both
+        // quotes can be edited together.
+        if (d.return_quote_number) {
+          setReturnFromCity(d.return_from_city ?? '')
+          setReturnToCity(d.return_to_city ?? '')
+          setReturnBagsCount(String(d.return_bags_count ?? d.bags_count ?? 1))
+          setReturnPickupDate(toLocalDate(d.return_pickup_date ?? null))
+          setReturnPickupAddr(d.return_pickup_address ?? '')
+          setReturnDropAddr(d.return_drop_address ?? '')
+          setReturnDeliveryDate(toLocalDate(d.return_delivery_date ?? null))
+          setReturnDeliveryTime(d.return_delivery_time ? toLocalTime(d.return_delivery_time) : '')
+          setReturnNotes(d.return_quote_notes ?? '')
+          if (d.return_quote_line_items && d.return_quote_line_items.length > 0) {
+            setReturnLineItems(d.return_quote_line_items.map(li => ({
+              id:          uid(),
+              name:        li.name ?? '',
+              description: li.description ?? '',
+              qty:         li.quantity ?? 1,
+              rate:        li.rate ?? 0,
+              amount:      li.amount ?? undefined,
+              taxId:       li.tax_pct === 0 ? TAX_NONE : TAX_GST5,
+            })))
+            returnItemsFromPricing.current = true
+          }
+        }
       }
     } else setErr('Lead not found')
     setLoading(false)
@@ -1058,10 +1091,32 @@ function QuotePageInner() {
       billing_type:       billingType,
     } : {}
 
+    // Return leg of the same inquiry — saved together with the onward quote.
+    const returnValid = returnLineItems.filter(r => r.name.trim() && r.rate > 0)
+    const returnPayload = (lead?.return_quote_number && returnValid.length > 0) ? {
+      return_quote_line_items: returnValid.map(r => ({
+        name: r.name, description: r.description, quantity: r.qty, rate: r.rate,
+        tax_pct: r.taxId === TAX_NONE ? 0 : 5, hsn_or_sac: SAC_CODE, amount: r.amount ?? r.qty * r.rate,
+      })),
+      return_quote_subtotal: returnSubtotal,
+      return_quote_tax:      returnTaxAmt,
+      return_quote_total:    isFOC ? 0 : returnTotal,
+      return_from_city:      returnFromCity.trim() || null,
+      return_to_city:        returnToCity.trim()   || null,
+      return_bags_count:     Number(returnBagsCount) || null,
+      return_pickup_date:    returnPickupDate || null,
+      return_pickup_address: returnPickupAddr.trim() || null,
+      return_drop_address:   returnDropAddr.trim()   || null,
+      return_delivery_date:  returnDeliveryDate || null,
+      return_delivery_time:  returnDeliveryTime || null,
+      return_quote_notes:    returnNotes.trim() || null,
+    } : {}
+
     const res = await fetch(`/api/admin/leads/${leadId}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
       body: JSON.stringify({
+        ...returnPayload,
         title:            custTitle,
         name:             custName.trim(),
         phone:            toE164(custPhone, custCountryIso2),
@@ -2196,7 +2251,7 @@ function QuotePageInner() {
               Quote mode is active (already-quoted lead). Kept purely
               additive on top of the existing one-way form; nothing above
               this point changed. ── */}
-          {(addReturnOnly || (!isEdit && !lead?.quote_number && tripType === 'return')) && (
+          {(addReturnOnly || (isEdit && !!lead?.return_quote_number) || (!isEdit && !lead?.quote_number && tripType === 'return')) && (
             <div className={sect + ' border-purple-200'}>
               <p className={sectH + ' text-purple-500'}>Return Journey Details</p>
               <div className="grid grid-cols-2 gap-3 mb-3">
