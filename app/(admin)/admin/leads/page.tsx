@@ -1500,6 +1500,73 @@ function LeadsPageInner() {
     }
   }
 
+  // Return-quote actions for the separate "-R" row (act on the return leg only).
+  async function sendReturnQuoteWhatsAppFromTable(l: Lead) {
+    if (!adminKey || sendingWhatsApp) return
+    setSendingWhatsApp(l.id + ':R')
+    try {
+      let pdfUrl: string
+      try {
+        const r = await fetch(`/api/admin/leads/${l.id}/quote-pdf?leg=return`, { method: 'POST', headers: { 'x-admin-key': adminKey } })
+        const d = await r.json().catch(() => ({}))
+        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
+        pdfUrl = d.url
+      } catch { alert('Unable to attach Return Quote PDF. Please try again.'); return }
+      const name = formatCustomerName(l.title, l.name) || l.name || 'Customer'
+      const fmt  = (n: number) => '₹' + Math.round(n).toLocaleString('en-IN')
+      const e164 = waDigits(l.phone) || (l.phone ?? '').replace(/\D/g, '')
+      const msg = [
+        `Hi ${name}! 👋`, '',
+        `Your Bagdrop RETURN journey quote is ready. Here's the summary:`, '',
+        `👤 Customer Name: ${name}`,
+        `📋 Quote No: ${l.return_quote_number ?? ''}`,
+        `🗺️ Route: ${l.return_from_city ?? l.to_city ?? ''} → ${l.return_to_city ?? l.from_city ?? ''}`,
+        `🧳 No. of Bags: ${l.return_bags_count ?? l.bags_count ?? 1}`,
+        `💰 Total Amount: ${fmt(Number(l.return_quote_total ?? 0))}`, '',
+        `📄 Download your return quote PDF:`, pdfUrl, '',
+        'To confirm this return journey, simply reply to this message or call/WhatsApp us anytime.', '',
+        '— Team Bagdrop',
+      ].join('\n')
+      const res = await fetch(`/api/admin/leads/${l.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({ return_quote_status: 'sent', return_quote_sent_at: new Date().toISOString() }),
+      })
+      if (!res.ok) { alert('Return quote PDF created, but the status update failed.') }
+      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
+      fetchLeads()
+    } finally { setSendingWhatsApp(null) }
+  }
+
+  async function removeReturnQuote(l: Lead) {
+    if (!adminKey || deleting) return
+    if (!confirm(`Delete return quote ${l.return_quote_number}? The onward quote stays.`)) return
+    setDeleting(l.id + ':R')
+    try {
+      if (l.return_booking_id) {
+        await fetch(`/api/admin/bookings/${l.return_booking_id}?key=${encodeURIComponent(adminKey)}`, {
+          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: 'cancelled', reason: 'Return quote removed' }),
+        }).catch(() => {})
+      }
+      const res = await fetch(`/api/admin/leads/${l.id}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': adminKey },
+        body: JSON.stringify({
+          return_quote_number: null, return_quote_line_items: null, return_quote_total: null,
+          return_quote_subtotal: null, return_quote_tax: null, return_quote_date: null,
+          return_from_city: null, return_to_city: null, return_bags_count: null,
+          return_discount_amt: null, return_discount_pct: null, return_quote_notes: null,
+          return_pickup_address: null, return_pickup_date: null,
+          return_delivery_date: null, return_delivery_time: null,
+          return_quote_status: null, return_quote_sent_at: null, return_quote_accepted_at: null,
+          return_quote_rejected_at: null, return_rejection_reason: null, return_rejection_comment: null,
+          return_booking_id: null,
+        }),
+      })
+      if (!res.ok) { const j = await res.json().catch(() => ({})); alert(j.error ?? 'Failed to delete return quote'); return }
+      fetchLeads()
+    } finally { setDeleting(null) }
+  }
+
   if (!authed) return null
 
   // ── Pagination derived values — same shape as the Dashboard table's
@@ -2118,8 +2185,8 @@ function LeadsPageInner() {
                       </td>
                     </tr>
                     {/* Separate row for the Return Journey quote of the same inquiry
-                        (2026-10-28, founder request). Edit / send / delete all happen
-                        from the quote page; Edit here opens the form for both legs. */}
+                        (2026-10-28, founder request). Same action icons as the onward row;
+                        send / delete here act on the RETURN quote only. */}
                     {l.return_quote_number && (
                       <tr className="bg-purple-50/40 hover:bg-purple-50">
                         <td className="px-4 py-3">
@@ -2169,10 +2236,45 @@ function LeadsPageInner() {
                         </td>
                         <td className="px-4 py-3 text-xs text-gray-400">{formatDate(l.created_at)}</td>
                         <td className="px-4 py-3">
-                          <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
-                            className="inline-flex items-center gap-1 rounded-lg border border-gray-200 px-2.5 py-1 text-xs font-semibold text-gray-600 hover:bg-gray-50">
-                            Edit both quotes
-                          </button>
+                          <div className="flex items-center gap-2">
+                            <button onClick={() => router.push(`/admin/quotes/new?lead_id=${l.id}&edit=true`)}
+                              title="Edit"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
+                              <Pencil className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => toggleTestMode(l)} disabled={togglingTest === l.id}
+                              title={l.is_test ? 'Test Mode is ON — click to turn off' : 'Mark as Test Mode — no real messages will be sent'}
+                              className={`rounded-lg border p-1.5 transition-colors disabled:opacity-40 ${
+                                l.is_test
+                                  ? 'border-purple-200 bg-purple-50 text-purple-600 hover:bg-purple-100'
+                                  : 'border-gray-200 text-gray-500 hover:bg-gray-100 hover:text-purple-600'
+                              }`}>
+                              {togglingTest === l.id
+                                ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+                                : <FlaskConical className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => sendReturnQuoteWhatsAppFromTable(l)}
+                              disabled={sendingWhatsApp === l.id + ':R'}
+                              title="Send Return Quote via WhatsApp"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-green-600 transition-colors disabled:opacity-40">
+                              {sendingWhatsApp === l.id + ':R'
+                                ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-green-400 border-t-transparent" />
+                                : <MessageCircle className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => setLogLead(l)} title="Communication Log"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors">
+                              <History className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => removeReturnQuote(l)} disabled={deleting === l.id + ':R'}
+                              title="Delete return quote (the onward quote is kept)"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </button>
+                            <button onClick={() => openLeadPrintView(l)} title="Print Inquiry"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-orange-600 transition-colors">
+                              <Printer className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     )}
