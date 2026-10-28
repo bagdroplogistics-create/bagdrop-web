@@ -959,6 +959,7 @@ function LeadsPageInner() {
   const [authed, setAuthed]     = useState(false)
   const [leads, setLeads]       = useState<Lead[]>([])
   const [loading, setLoading]   = useState(true)
+  const [loadingAll, setLoadingAll] = useState(false)   // full list still loading behind the quick first paint
   const [search, setSearch]     = useState('')
   // Debounced copy of `search` that actually drives the API call — one request
   // per pause in typing instead of one per keystroke.
@@ -1085,28 +1086,61 @@ function LeadsPageInner() {
     leadsAbort.current?.abort()
     const ctrl = new AbortController()
     leadsAbort.current = ctrl
-    setLoading(true)
     setLoadError(null)
-    // limit=5000 — the server paginates (default 50); this page paginates
-    // client-side over the full filtered set.
-    let qs = '?key=' + adminKey + '&limit=5000'
+    // Everything after the key/limit: filters, search, source. Also the cache key.
+    let filt = ''
     if (showDeleted) {
       // Show only soft-deleted leads
-      qs += '&deleted=true'
+      filt += '&deleted=true'
     } else if (filter !== 'all') {
-      qs += '&status=' + filter
+      filt += '&status=' + filter
     }
     // Do NOT filter by exclude_status=cancelled — a lead is always visible
     // regardless of its linked booking's status.
-    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
-    if (sourceFilter !== 'all') qs += '&source=' + encodeURIComponent(sourceFilter)
+    if (debouncedSearch) filt += '&search=' + encodeURIComponent(debouncedSearch)
+    if (sourceFilter !== 'all') filt += '&source=' + encodeURIComponent(sourceFilter)
+
+    // Speed: (1) show the last list for these filters instantly from this tab's session cache,
+    // refreshing in the background; (2) with no cache, show the newest 60 right away and load the
+    // full list behind it. The full response below always replaces both.
+    const cacheKey = 'bagdrop_leads_cache:' + filt
+    let hadCache = false
+    if (!showDeleted) {
+      try {
+        const raw = sessionStorage.getItem(cacheKey)
+        if (raw) { setLeads(JSON.parse(raw)); hadCache = true }
+      } catch { /* ignore a bad cache */ }
+    }
+    setLoading(!hadCache)
+    setLoadingAll(true)
+    const auth = '?key=' + adminKey + '&slim=1'
     try {
-      const res = await fetch('/api/admin/leads' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (!hadCache && !showDeleted) {
+        try {
+          const r1 = await fetch('/api/admin/leads' + auth + '&limit=60' + filt, { signal: ctrl.signal, cache: 'no-store' })
+          if (reqId !== leadsReqId.current) return
+          if (r1.ok) {
+            const b1 = await r1.json()
+            if (reqId !== leadsReqId.current) return
+            setLeads(b1.leads ?? [])
+            setLoading(false)
+          }
+        } catch (e) {
+          if ((e as { name?: string })?.name === 'AbortError') return
+          /* first-paint is best effort; the full request below still runs */
+        }
+      }
+      // limit=5000 — the server paginates (default 50); this page paginates
+      // client-side over the full filtered set.
+      const res = await fetch('/api/admin/leads' + auth + '&limit=5000' + filt, { signal: ctrl.signal, cache: 'no-store' })
       if (reqId !== leadsReqId.current) return            // superseded by a newer request
       if (res.ok) {
         const body = await res.json()
         if (reqId !== leadsReqId.current) return
         setLeads(body.leads ?? [])
+        if (!showDeleted) {
+          try { sessionStorage.setItem(cacheKey, JSON.stringify(body.leads ?? [])) } catch { /* storage full: skip */ }
+        }
       } else {
         const body = await res.json().catch(() => ({}))
         if (reqId !== leadsReqId.current) return
@@ -1118,7 +1152,7 @@ function LeadsPageInner() {
       if (reqId !== leadsReqId.current) return
       setLoadError('Network error while loading leads.')
     } finally {
-      if (reqId === leadsReqId.current) setLoading(false)
+      if (reqId === leadsReqId.current) { setLoading(false); setLoadingAll(false) }
     }
   }, [adminKey, filter, debouncedSearch, showDeleted, sourceFilter])
 
@@ -1617,7 +1651,7 @@ function LeadsPageInner() {
           </div>
           <button onClick={() => fetchLeads()}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
-            <RefreshCw className="h-3.5 w-3.5" /> Refresh
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingAll ? 'animate-spin' : ''}`} /> {loadingAll ? 'Updating…' : 'Refresh'}
           </button>
           <button onClick={backfillEstimates} disabled={backfillingEstimates}
             title="One-time catch-up: auto-generate a real Quote for every open lead that doesn't have one yet (e.g. leads created before this feature shipped). Safe to run more than once."

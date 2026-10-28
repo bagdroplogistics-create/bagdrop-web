@@ -78,9 +78,13 @@ async function resolveTokenOrs(search: string | null): Promise<string[]> {
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type FastRow = Record<string, any>
 
+// Heavy JSON columns the Leads table never shows. Dropped from the list response when `slim=1`
+// (sent only by the Leads page), which makes the payload much smaller. Other callers are unaffected.
+const SLIM_DROP = ['quote_line_items', 'return_quote_line_items', 'estimate_line_items'] as const
+
 async function fastList(p: {
   status: string | null; excludeStatus: string | null; search: string | null; source: string | null
-  includeTest: boolean; offset: number; limit: number
+  includeTest: boolean; offset: number; limit: number; slim?: boolean
 }): Promise<NextResponse | null> {
   try {
     const tokenOrs = await resolveTokenOrs(p.search)
@@ -142,6 +146,7 @@ async function fastList(p: {
       const d = derive(l)
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { booking: _booking, ...rest } = l
+      if (p.slim) for (const k of SLIM_DROP) delete rest[k]
       const effective_status = d.completed ? 'completed'
         : d.confirmed ? (d.bs ?? 'confirmed')
         : d.cancelled ? 'cancelled'
@@ -220,7 +225,7 @@ export async function GET(req: NextRequest) {
   // Fast path (single query, status derived from the embedded booking). Falls through to the
   // original implementation below if it returns null.
   if (!deleted && !embedUnsupported) {
-    const fast = await fastList({ status, excludeStatus, search, source, includeTest, offset, limit })
+    const fast = await fastList({ status, excludeStatus, search, source, includeTest, offset, limit, slim: searchParams.get('slim') === '1' })
     if (fast) return fast
   }
 
