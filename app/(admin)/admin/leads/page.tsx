@@ -1537,6 +1537,19 @@ function LeadsPageInner() {
     } finally { setSendingWhatsApp(null) }
   }
 
+  async function sendReturnQuoteEmailFromTable(l: Lead) {
+    if (!adminKey || sendingEmail) return
+    if (!l.email) { alert('This customer has no email address on the inquiry.'); return }
+    setSendingEmail(l.id + ':R')
+    try {
+      const res = await fetch(`/api/admin/leads/${l.id}/send-return-quote-email`, { method: 'POST', headers: { 'x-admin-key': adminKey } })
+      const d = await res.json().catch(() => ({}))
+      if (!res.ok) { alert('Could not send return quote email: ' + (d.error ?? 'Unknown error')); return }
+      flashSent(l.id + ':R', 'email')
+      fetchLeads()
+    } finally { setSendingEmail(null) }
+  }
+
   async function removeReturnQuote(l: Lead) {
     if (!adminKey || deleting) return
     if (!confirm(`Delete return quote ${l.return_quote_number}? The onward quote stays.`)) return
@@ -1764,11 +1777,6 @@ function LeadsPageInner() {
           <button onClick={() => fetchLeads()}
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm">
             <RefreshCw className={`h-3.5 w-3.5 ${loadingAll ? 'animate-spin' : ''}`} /> {loadingAll ? 'Updating…' : 'Refresh'}
-          </button>
-          <button onClick={backfillEstimates} disabled={backfillingEstimates}
-            title="One-time catch-up: auto-generate a real Quote for every open lead that doesn't have one yet (e.g. leads created before this feature shipped). Safe to run more than once."
-            className="flex items-center gap-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-700 hover:bg-amber-100 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-50">
-            <Calculator className="h-3.5 w-3.5" /> {backfillingEstimates ? 'Generating…' : 'Backfill Quotes'}
           </button>
           <button onClick={openPrintView} disabled={leads.length === 0}
             title="Print the current Leads list (respects filters/search/sort above)"
@@ -2252,6 +2260,16 @@ function LeadsPageInner() {
                               {togglingTest === l.id
                                 ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
                                 : <FlaskConical className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => sendReturnQuoteEmailFromTable(l)}
+                              disabled={sendingEmail === l.id + ':R'}
+                              title="Send Return Quote via Email"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-gray-100 hover:text-blue-600 transition-colors disabled:opacity-40">
+                              {sendingEmail === l.id + ':R'
+                                ? <span className="block h-3.5 w-3.5 animate-spin rounded-full border-2 border-blue-400 border-t-transparent" />
+                                : justSent?.id === l.id + ':R'
+                                  ? <CheckCircle className="h-3.5 w-3.5 text-green-600" />
+                                  : <Mail className="h-3.5 w-3.5" />}
                             </button>
                             <button onClick={() => sendReturnQuoteWhatsAppFromTable(l)}
                               disabled={sendingWhatsApp === l.id + ':R'}
