@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest, NextResponse, after } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { sendInquiryNotification } from '@/lib/email'
@@ -15,6 +15,147 @@ import { tokenizeSearch, looksLikePhone, digitsOnly, phoneMatches, buildTokenOr 
 
 let lastAutoLostRun = 0
 
+// ── Fast list path (2026-10-28) ─────────────────────────────────────────────
+// The Leads tab was slow because every load (and every search keystroke) ran
+// several full-table scans — all bookings, all leads with a booking, all lead phone
+// numbers — before the real query, and then a second lookup for the quoted leads' booking
+// statuses. The linked booking's status is now fetched in the SAME query through an embedded
+// relationship (leads.booking_id → bookings), and every status the page shows is derived from
+// it with the exact same rules as before (see `derive` below). Phone search uses an indexed-style
+// query plus a 60s cached id/phone list for format variants. If the relationship is not
+// available for any reason, `fastList` returns null and the original code path below runs
+// unchanged, so behaviour never regresses.
+const ACTIVE_SET = new Set<string>(ACTIVE_BOOKING_STATUSES as readonly string[])
+let embedUnsupported = false
+let phoneCache: { at: number; rows: { id: string; phone: string | null }[] } | null = null
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+async function fetchAllTop<T = any>(
+  build: (from: number, to: number) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+  cap = 20000,
+): Promise<{ rows: T[]; error: { message: string } | null }> {
+  const PAGE = 1000
+  const rows: T[] = []
+  for (let from = 0; from < cap; from += PAGE) {
+    const { data: chunk, error: err } = await build(from, from + PAGE - 1)
+    if (err) return { rows, error: err }
+    rows.push(...(chunk ?? []))
+    if (!chunk || chunk.length < PAGE) break
+  }
+  return { rows, error: null }
+}
+
+async function loadPhoneRows(): Promise<{ id: string; phone: string | null }[]> {
+  if (phoneCache && Date.now() - phoneCache.at < 60_000) return phoneCache.rows
+  const { rows } = await fetchAllTop<{ id: string; phone: string | null }>((f, t) =>
+    supabaseAdmin.from('leads').select('id, phone').order('id').range(f, t))
+  phoneCache = { at: Date.now(), rows }
+  return rows
+}
+
+async function resolveTokenOrs(search: string | null): Promise<string[]> {
+  const tokens = tokenizeSearch(search)
+  const likeEscape = (s: string) => s.replace(/[\\%_]/g, m => '\\' + m)
+  return Promise.all(tokens.map(async token => {
+    const q = digitsOnly(token)
+    const isPhone = looksLikePhone(token)
+    const [bk, quick, all] = await Promise.all([
+      token.length >= 3
+        ? supabaseAdmin.from('bookings').select('id').ilike('tracking_id', `%${likeEscape(token)}%`).limit(300)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+      isPhone && q.length >= 4
+        ? supabaseAdmin.from('leads').select('id').ilike('phone', `%${q.length >= 10 ? q.slice(-10) : q}%`).limit(300)
+        : Promise.resolve({ data: [] as { id: string }[] }),
+      isPhone ? loadPhoneRows() : Promise.resolve([] as { id: string; phone: string | null }[]),
+    ])
+    const phoneIds = new Set<string>(((quick as { data: { id: string }[] | null }).data ?? []).map(r => r.id))
+    for (const r of all) if (phoneMatches(r.phone, q)) phoneIds.add(r.id)
+    const bookingIds = ((bk as { data: { id: string }[] | null }).data ?? []).map(b => b.id)
+    return buildTokenOr(token, Array.from(phoneIds).slice(0, 300), bookingIds)
+  }))
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type FastRow = Record<string, any>
+
+async function fastList(p: {
+  status: string | null; excludeStatus: string | null; search: string | null; source: string | null
+  includeTest: boolean; offset: number; limit: number
+}): Promise<NextResponse | null> {
+  try {
+    const tokenOrs = await resolveTokenOrs(p.search)
+    const statusFilterActive = !!p.status && p.status !== 'all'
+    const jsMode = statusFilterActive || !!p.excludeStatus
+
+    const build = (withDeletedAt: boolean) => {
+      let q = supabaseAdmin
+        .from('leads')
+        // `!booking_id` pins the relationship to leads.booking_id (leads also has return_booking_id).
+        .select('*, booking:bookings!booking_id(status)', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .order('id', { ascending: false })
+      if (!p.includeTest) q = q.eq('is_test', false)
+      if (withDeletedAt) q = q.is('deleted_at', null)
+      if (p.source && p.source !== 'all') q = q.eq('source', p.source)
+      for (const or of tokenOrs) q = q.or(or)
+      return q
+    }
+
+    const derive = (l: FastRow) => {
+      const b = Array.isArray(l.booking) ? l.booking[0] : l.booking
+      const bs: string | null = b?.status ?? null
+      const hasQuote = !!l.quote_number
+      const confirmed = !!bs && ACTIVE_SET.has(bs) && hasQuote
+      const completed = bs === 'completed' && hasQuote
+      const cancelled = bs === 'cancelled'
+      return { bs, confirmed, completed, cancelled }
+    }
+
+    async function run(withDeletedAt: boolean): Promise<{ data: FastRow[] | null; error: { message: string } | null; count: number | null }> {
+      if (!jsMode) {
+        const { data, error, count } = await build(withDeletedAt).range(p.offset, p.offset + p.limit - 1)
+        return { data: data as FastRow[] | null, error, count }
+      }
+      const { rows, error } = await fetchAllTop<FastRow>((f, t) => build(withDeletedAt).range(f, t), 10000)
+      if (error) return { data: null, error, count: null }
+      const filtered = rows.filter(l => {
+        const d = derive(l)
+        if (p.excludeStatus && d.bs === p.excludeStatus) return false
+        if (!statusFilterActive) return true
+        if (p.status === 'confirmed') return d.confirmed
+        if (p.status === 'cancelled') return d.cancelled
+        return l.status === p.status && !d.confirmed
+      })
+      return { data: filtered.slice(p.offset, p.offset + p.limit), error: null, count: filtered.length }
+    }
+
+    let { data, error, count } = await run(true)
+    if (error && error.message?.includes('deleted_at')) ({ data, error, count } = await run(false))
+    if (error) {
+      // Relationship missing/ambiguous → remember it and use the original path.
+      if (/relationship|PGRST200|PGRST201|embed/i.test(error.message)) embedUnsupported = true
+      console.warn('[leads GET] fast path unavailable, using original path:', error.message)
+      return null
+    }
+
+    const enriched = (data ?? []).map(l => {
+      const d = derive(l)
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { booking: _booking, ...rest } = l
+      const effective_status = d.completed ? 'completed'
+        : d.confirmed ? (d.bs ?? 'confirmed')
+        : d.cancelled ? 'cancelled'
+        : (l.quote_number && d.bs) ? d.bs
+        : l.status
+      return { ...rest, effective_status, is_confirmed: d.confirmed || d.completed }
+    })
+    return NextResponse.json({ leads: enriched, total: count, page: Math.floor(p.offset / p.limit) + 1, limit: p.limit })
+  } catch (e) {
+    console.warn('[leads GET] fast path error, using original path:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -28,13 +169,16 @@ export async function GET(req: NextRequest) {
   // Throttled to once a minute per server instance: it used to run (several
   // queries) on EVERY list load, i.e. on every search keystroke, which was a
   // large part of the slowness.
+  // Now runs AFTER the response is sent (Next's after()), so it never delays the list.
   if (Date.now() - lastAutoLostRun > 60_000) {
     lastAutoLostRun = Date.now()
-    try {
-      await autoMarkLostInquiries()
-    } catch (e) {
-      console.warn('[leads GET] autoMarkLostInquiries failed:', e)
-    }
+    after(async () => {
+      try {
+        await autoMarkLostInquiries()
+      } catch (e) {
+        console.warn('[leads GET] autoMarkLostInquiries failed:', e)
+      }
+    })
   }
 
   const { searchParams } = req.nextUrl
@@ -71,6 +215,13 @@ export async function GET(req: NextRequest) {
       .maybeSingle()
     if (error) return NextResponse.json({ error: error.message }, { status: 500 })
     return NextResponse.json({ lead: data ?? null, leads: data ? [data] : [], total: data ? 1 : 0 })
+  }
+
+  // Fast path (single query, status derived from the embedded booking). Falls through to the
+  // original implementation below if it returns null.
+  if (!deleted && !embedUnsupported) {
+    const fast = await fastList({ status, excludeStatus, search, source, includeTest, offset, limit })
+    if (fast) return fast
   }
 
   // ── Helpers ──────────────────────────────────────────────────────────────
