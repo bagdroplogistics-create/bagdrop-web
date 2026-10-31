@@ -61,6 +61,17 @@ const nextConfig: NextConfig = {
         destination: 'https://www.bagdrop.co',
         permanent:   true,
       },
+      // bagdrop-new's "/" is its public marketing homepage (shared by both
+      // basePath builds), so bare /admin-1 would otherwise show that
+      // homepage instead of the admin console. Send it straight to the
+      // admin area, same as bagdrop.co/admin already behaves. Not
+      // permanent: the admin path may change shape before this preview
+      // becomes the real thing.
+      {
+        source:      '/admin-1',
+        destination: '/admin-1/admin',
+        permanent:   false,
+      },
       {
         source:      '/:path((?!admin|admin-1|new-website|api|_next|indemnity|payment-verification|iconiqa|y2k|skybird|favicon.ico).*)',
         has:         [{ type: 'host', value: 'bagdrop.co' }],
