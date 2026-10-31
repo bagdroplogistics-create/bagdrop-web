@@ -96,9 +96,14 @@ const nextConfig: NextConfig = {
   // specify for exactly this: letting a trusted server-to-server request
   // (this rewrite) through without a human SSO login.
   async rewrites() {
+    // No x-vercel-set-bypass-cookie here: this proxy re-sends the bypass
+    // credential on every single request (it doesn't rely on a browser
+    // cookie), so asking Vercel to also set+strip a cookie just causes it
+    // to 307-redirect back to the same URL forever, since our rewrite
+    // re-attaches the query param on the very next hop too.
     const bypass = process.env.BAGDROP_NEW_BYPASS_SECRET
     const dest = (base: string, path: string) =>
-      `${base}${path}${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ''}`
+      `${base}${path}${bypass ? `?x-vercel-protection-bypass=${bypass}` : ''}`
     const ADMIN1 = 'https://bagdrop-new-git-deploy-admin-1-bagdrops-projects.vercel.app'
     const NEWSITE = 'https://bagdrop-new-git-deploy-new-website-bagdrops-projects.vercel.app'
     return [
