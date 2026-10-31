@@ -62,7 +62,7 @@ const nextConfig: NextConfig = {
         permanent:   true,
       },
       {
-        source:      '/:path((?!admin|api|_next|indemnity|payment-verification|iconiqa|y2k|skybird|favicon.ico).*)',
+        source:      '/:path((?!admin|admin-1|new-website|api|_next|indemnity|payment-verification|iconiqa|y2k|skybird|favicon.ico).*)',
         has:         [{ type: 'host', value: 'bagdrop.co' }],
         destination: 'https://www.bagdrop.co/:path',
         permanent:   true,
@@ -74,6 +74,38 @@ const nextConfig: NextConfig = {
         destination: '/blog/airport-integrated-baggage-services',
         permanent:   true,
       },
+    ]
+  },
+
+  // New platform preview (2026-10-31) — bagdrop.co/admin-1 and /new-website
+  // transparently proxy to the separately-deployed bagdrop-new app (its own
+  // Vercel project, own Supabase project), so the browser's address bar
+  // stays on bagdrop.co instead of jumping to a .vercel.app URL. Each
+  // destination is a basePath build of that same app (NEXT_PUBLIC_BASE_PATH
+  // set per-branch on its own project — see bagdrop-new/src/lib/basePath.ts)
+  // so its own assets/API routes resolve correctly under the prefix, with
+  // no effect on that app's default, unprefixed deployments. Both paths are
+  // also excluded from the bagdrop.co -> www.bagdrop.co redirect above (same
+  // treatment as the existing /admin), so this redirect never intercepts
+  // them before the rewrite gets a chance to run.
+  //
+  // bagdrop-new's branch-preview URLs sit behind Vercel's SSO deployment
+  // protection — BAGDROP_NEW_BYPASS_SECRET is that project's "Protection
+  // Bypass for Automation" secret (Vercel → bagdrop-new → Settings →
+  // Deployment Protection), appended as the query param Vercel's own docs
+  // specify for exactly this: letting a trusted server-to-server request
+  // (this rewrite) through without a human SSO login.
+  async rewrites() {
+    const bypass = process.env.BAGDROP_NEW_BYPASS_SECRET
+    const dest = (base: string, path: string) =>
+      `${base}${path}${bypass ? `?x-vercel-protection-bypass=${bypass}&x-vercel-set-bypass-cookie=true` : ''}`
+    const ADMIN1 = 'https://bagdrop-new-git-deploy-admin-1-bagdrops-projects.vercel.app'
+    const NEWSITE = 'https://bagdrop-new-git-deploy-new-website-bagdrops-projects.vercel.app'
+    return [
+      { source: '/admin-1', destination: dest(ADMIN1, '/admin-1') },
+      { source: '/admin-1/:path*', destination: dest(ADMIN1, '/admin-1/:path*') },
+      { source: '/new-website', destination: dest(NEWSITE, '/new-website') },
+      { source: '/new-website/:path*', destination: dest(NEWSITE, '/new-website/:path*') },
     ]
   },
 }
