@@ -17,8 +17,8 @@ import {
 import ProhibitedIcon from './ProhibitedIcons'
 import { WIZARD_CSS } from './wizard.css'
 import {
-  Y2K_BAG_TYPES, bagTypeLabel, Y2K_PICKUP_DATES_LIST, Y2K_SLOT_LIST, Y2K_COLOURS, Y2K_CONTENTS, Y2K_DELIVER,
-  Y2K_WEIGHTS, Y2K_RET_DEST, Y2K_ACCESS, Y2K_TRAVEL_MODES, Y2K_ARR_DATES, Y2K_DEP_DATES, Y2K_LIMITS,
+  Y2K_BAG_TYPES, bagTypeLabel, Y2K_PICKUP_DATES_LIST, Y2K_SLOT_LIST, Y2K_COLOURS, Y2K_CONTENTS,
+  Y2K_WEIGHTS, Y2K_RET_DEST, Y2K_ACCESS, Y2K_DEP_DATES, Y2K_LIMITS,
   isMumbaiPincode, MUMBAI_PIN_RE,
   type FamMember, type FamPickup, type FamBag, type Y2KBagType,
 } from '@/lib/y2k-family'
@@ -48,7 +48,7 @@ const blankPickup = (n: number): FamPickup => ({ ref: 'P' + n, label: n === 1 ? 
 const fresh = (): WState => ({
   family: { phone: '', lead: '', email: '', side: '' },
   members: [blankMember(1)], pickups: [blankPickup(1)], bags: [],
-  extraReturn: '0', retFrom: 'room', notes: '', ackProhibited: false, terms: false, consent: false, seq: { g: 1, p: 1, b: 0 },
+  extraReturn: '0', retFrom: 'bell', notes: '', ackProhibited: false, terms: false, consent: false, seq: { g: 1, p: 1, b: 0 },
 })
 const phoneOk = (p: string) => /^[6-9]\d{9}$/.test(p.replace(/\D/g, ''))
 const clone = <T,>(v: T): T => JSON.parse(JSON.stringify(v))
@@ -171,6 +171,8 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
         // Drop anything that is no longer a valid option (old bag types / non-Mumbai city).
         s0.bags = s0.bags.filter(b => Y2K_BAG_TYPES.some(t => t.id === b.type))
         s0.pickups = s0.pickups.map(p => ({ ...p, city: 'Mumbai' as const }))
+        s0.retFrom = 'bell'
+        s0.bags = s0.bags.map(b => ({ ...b, contents: 'Family luggage', deliverTo: 'room', hang: false, fragile: false }))
         setS(s0); setStep(Math.min(d.step ?? 0, 5)); setMaxStep(Math.min(d.maxStep ?? 0, 5))
       }
     } catch { /* ignore */ }
@@ -200,14 +202,7 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
     }
     mut(n => {
       setPath(n, path, v)
-      let m = path.match(/^bags\.(\d+)\.contents$/)
-      if (m) {
-        const b = n.bags[+m[1]]
-        if (v === 'Bridal / groom outfits') b.hang = true
-        if (v === 'Wedding gifts & hampers' || v === 'Return gift boxes') b.deliverTo = 'host'
-        if (v === 'Décor material') b.deliverTo = 'decor'
-      }
-      m = path.match(/^bags\.(\d+)\.owner$/)
+      const m = path.match(/^bags\.(\d+)\.owner$/)
       if (m) {
         const b = n.bags[+m[1]]
         const p = n.pickups.find(pk => pk.memberRefs.includes(String(v)))
@@ -286,10 +281,6 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
               ? <label className="f" key="lead"><span>Full name</span><input type="text" value={S.family.lead} readOnly /><span className="hint">Taken from the lead guest on the first step.</span></label>
               : inp(`members.${i}.name`, 'Full name', { ph: 'As on ID' })}
             {i > 0 && inp(`members.${i}.phone`, 'Mobile', { type: 'tel', im: 'numeric', max: 10, opt: true, ph: 'For their own bag updates', tel: true })}
-            {sel(`members.${i}.mode`, 'Travelling by', Y2K_TRAVEL_MODES)}
-            {sel(`members.${i}.arrDate`, 'Arrives Udaipur', Y2K_ARR_DATES)}
-            {inp(`members.${i}.arrTime`, 'Arrival time', { type: 'time', opt: true })}
-            {inp(`members.${i}.travelNo`, m.mode === 'Flight' ? 'Flight number' : m.mode === 'Train' ? 'Train number' : 'Vehicle / notes', { opt: true, ph: m.mode === 'Flight' ? 'e.g. 6E 5203' : '' })}
             {sel(`members.${i}.depDate`, 'Leaves Udaipur', Y2K_DEP_DATES)}
           </div>
           {err(`members.${i}.depDate`)}
@@ -403,12 +394,6 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
             {inp(`bags.${i}.mark`, 'Brand or identifying mark', { opt: true, ph: 'e.g. American Tourister, red ribbon on handle' })}
             {sel(`bags.${i}.weight`, 'Approx. weight', Y2K_WEIGHTS, { hint: b.weight === 'Over 32 kg' ? "Bags over 32 kg need two handlers. We'll confirm on WhatsApp." : undefined })}
             {sel(`bags.${i}.contents`, "What's inside", Y2K_CONTENTS)}
-            {sel(`bags.${i}.deliverTo`, 'Deliver to', Y2K_DELIVER)}
-            <div>
-              <span className="lab">Handling</span>
-              <Check style={{ marginTop: 8 }} checked={b.hang} onChange={v => onFieldChange(`bags.${i}.hang`, v)}>Keep hanging (no folding)</Check>
-              <Check style={{ marginTop: 6 }} checked={b.fragile} onChange={v => onFieldChange(`bags.${i}.fragile`, v)}>Fragile</Check>
-            </div>
           </div>
         </div>
       ))}
@@ -449,7 +434,7 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
       </div>
       <div className="grid" style={{ marginTop: 20 }}>
         {sel('extraReturn', 'Extra bags expected on return', [['0', 'None'], ['1', '1 more'], ['2', '2 more'], ['3', '3 more'], ['4', '4 or more']], { hint: 'Gifts and shopping. Our team will plan extra tags.' })}
-        {sel('retFrom', 'Collect return bags from', [['room', "Each guest's room"], ['bell', 'Bell desk']])}
+        {sel('retFrom', 'Collect return bags from', [['bell', 'Bell desk']])}
       </div>
     </>
   )
@@ -460,9 +445,9 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
       <h3 className="ph">Check and send</h3>
       <p className="psub">This sends your pickup request. We&apos;ll review it and confirm on WhatsApp — nothing is confirmed until then.</p>
       <div className="lab" style={{ marginBottom: 8 }}>Travellers</div>
-      <div className="tbl-wrap"><table><thead><tr><th>Guest</th><th>Arrives</th><th>Leaves</th><th>Bags</th></tr></thead><tbody>
+      <div className="tbl-wrap"><table><thead><tr><th>Guest</th><th>Leaves</th><th>Bags</th></tr></thead><tbody>
         {S.members.map((m, i) => (
-          <tr key={m.ref}><td>{i === 0 ? `${S.family.lead} (Lead)` : m.name}</td><td>{m.arrDate} {m.arrTime}{m.travelNo ? ' · ' + m.travelNo : ''}</td><td>{m.depDate}</td><td className="num">{bagsOf(S, m.ref)}</td></tr>
+          <tr key={m.ref}><td>{i === 0 ? `${S.family.lead} (Lead)` : m.name}</td><td>{m.depDate}</td><td className="num">{bagsOf(S, m.ref)}</td></tr>
         ))}
       </tbody></table></div>
       <div className="lab" style={{ margin: '20px 0 8px' }}>Pickups (Mumbai)</div>
@@ -472,12 +457,11 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
         ))}
       </tbody></table></div>
       <div className="lab" style={{ margin: '20px 0 8px' }}>Bags ({S.bags.length})</div>
-      <div className="tbl-wrap"><table><thead><tr><th>Bag</th><th>Owner</th><th>Deliver to</th><th>Return</th></tr></thead><tbody>
+      <div className="tbl-wrap"><table><thead><tr><th>Bag</th><th>Owner</th><th>Return</th></tr></thead><tbody>
         {S.bags.map(b => (
           <tr key={b.ref}>
-            <td>{b.colour} {bagTypeLabel(b.type)}{b.hang ? ' · hang' : ''}{b.fragile ? ' · fragile' : ''}<br /><span className="hint">{b.ref} · {b.weight} · {b.contents}</span></td>
+            <td>{b.colour} {bagTypeLabel(b.type)}<br /><span className="hint">{b.ref} · {b.weight} · {b.contents}</span></td>
             <td>{ownerName(S, b.owner)}</td>
-            <td>{Y2K_DELIVER.find(d => d[0] === b.deliverTo)?.[1]}</td>
             <td>{b.ret ? `19 Dec · ${slotLabel(b.retSlot)}` : 'Carrying back'}</td>
           </tr>
         ))}
@@ -599,8 +583,6 @@ export default function BookingWizard({ isTestMode }: { isTestMode: boolean }) {
   const flags: [string, string][] = []
   const heavy = st.bags.filter(b => b.weight === 'Over 32 kg').length
   if (heavy) flags.push(['w', `${heavy} bag${heavy > 1 ? 's' : ''} over 32 kg`])
-  const hangN = st.bags.filter(b => b.hang).length
-  if (hangN) flags.push(['', `${hangN} bag${hangN > 1 ? 's' : ''} kept hanging`])
   const summary = (
     <aside className="sum" aria-label="Booking summary">
       <div className="eyebrow">{done ? 'Request received' : 'Your booking'}</div>

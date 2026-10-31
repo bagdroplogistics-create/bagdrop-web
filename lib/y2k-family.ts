@@ -25,7 +25,7 @@ export const Y2K_COLOURS: [string, string][] = [
   ['Maroon', '#6a1f2a'], ['Green', '#3f5b3a'], ['Blue', '#2f6db0'], ['Brown', '#6b4a2e'], ['Beige', '#d9c6a3'],
   ['Pink', '#d98fa3'], ['White', '#f7f7f4'], ['Multi-colour', 'linear-gradient(135deg,#a3312a,#e0b341 50%,#2f6db0)'],
 ]
-export const Y2K_CONTENTS = ['Family luggage', 'Bridal / groom outfits', 'Wedding gifts & hampers', 'Return gift boxes', 'Décor material']
+export const Y2K_CONTENTS = ['Family luggage']
 export const Y2K_DELIVER: [string, string][] = [['room', "Guest's room"], ['bell', 'Hold at bell desk'], ['host', 'Host family suite'], ['decor', 'Décor team']]
 export const Y2K_WEIGHTS = ['Under 10 kg', '10–20 kg', '20–32 kg', 'Over 32 kg']
 export const Y2K_RET_DEST: [string, string][] = [['same', 'Same as pickup address'], ['other', 'A different Mumbai address']]
