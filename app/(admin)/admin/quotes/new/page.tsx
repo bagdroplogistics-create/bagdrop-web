@@ -181,6 +181,8 @@ const SOURCES = [
   { value: 'instagram', label: 'Instagram' },
   { value: 'facebook',  label: 'Facebook' },
   { value: 'b2b',       label: 'B2B Partner' },
+  { value: 'flamingo',  label: 'Flamingo' },
+  { value: 'skybird',   label: 'Skybird' },
   { value: 'referral',  label: 'Referral' },
 ]
 

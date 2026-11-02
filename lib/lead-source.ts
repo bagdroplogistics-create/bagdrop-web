@@ -54,6 +54,10 @@ export const SOURCE_LABELS: Record<string, string> = {
   'iconiqa-inquiry': 'ICONIQA Hotel',
   // Flamingo partner source (2026-11-02, founder request).
   flamingo:       'Flamingo',
+  whatsapp:       'WhatsApp',
+  phone:          'Phone Call',
+  instagram:      'Instagram',
+  facebook:       'Facebook',
   // Other values written by existing inquiry-creation routes — labelled so
   // they appear in the Leads Source filter instead of showing raw keys.
   'y2k-inquiry':     'Y2K Wedding',
