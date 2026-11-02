@@ -74,6 +74,7 @@ export const SOURCE_LABELS: Record<string, string> = {
 export function sourceFilterOptions(): { value: string; label: string }[] {
   const byLabel = new Map<string, string[]>()
   for (const [k, l] of Object.entries(SOURCE_LABELS)) byLabel.set(l, [...(byLabel.get(l) ?? []), k])
+  byLabel.delete('Repair Tool')   // internal repair-tool leads: label kept for display, hidden from the filter
   return [...byLabel.entries()].map(([label, keys]) => ({ value: keys.join(','), label }))
 }
 
