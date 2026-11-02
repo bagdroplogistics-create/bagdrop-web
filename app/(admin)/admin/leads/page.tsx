@@ -13,7 +13,7 @@ import Link from 'next/link'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
-import { SOURCE_LABELS } from '@/lib/lead-source'
+import { SOURCE_LABELS, sourceFilterOptions, sourceCreateOptions } from '@/lib/lead-source'
 import FollowUpPanel from '@/components/admin/FollowUpPanel'
 
 // ── Types ────────────────────────────────────────────────────────
@@ -584,7 +584,10 @@ function LeadModal({
             <div>
               <label className="mb-1.5 block text-xs font-semibold text-gray-600">Source</label>
               <select value={form.source} onChange={set('source')} className={sel}>
-                {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+                {sourceCreateOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                {form.source && !sourceCreateOptions().some(o => o.value === form.source) && (
+                  <option value={form.source}>{SOURCE_LABELS[form.source] ?? form.source}</option>
+                )}
               </select>
             </div>
 
@@ -1368,7 +1371,7 @@ function LeadsPageInner() {
     const filterParts: string[] = []
     if (search.trim())        filterParts.push(`Search: "${search.trim()}"`)
     if (filter !== 'all')     filterParts.push(`Status: ${STATUS_CONFIG[filter]?.label ?? filter}`)
-    if (sourceFilter !== 'all') filterParts.push(`Source: ${SOURCE_LABELS[sourceFilter] ?? sourceFilter}`)
+    if (sourceFilter !== 'all') filterParts.push(`Source: ${sourceFilterOptions().find(o => o.value === sourceFilter)?.label ?? SOURCE_LABELS[sourceFilter] ?? sourceFilter}`)
     if (followupParam)        filterParts.push(`Follow-up: ${followupParam.replace(/_/g, ' ')}`)
     if (showDeleted)          filterParts.push('Deleted leads only')
     sessionStorage.setItem('bagdrop_leads_print_data', JSON.stringify({
@@ -1762,7 +1765,7 @@ function LeadsPageInner() {
             <select value={sourceFilter} onChange={e => setSourceFilter(e.target.value)}
               className="appearance-none rounded-lg border border-gray-200 bg-white py-2 pl-3 pr-8 text-sm font-medium text-gray-700 shadow-sm focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400">
               <option value="all">All sources</option>
-              {Object.entries(SOURCE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
+              {sourceFilterOptions().map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
             <ChevronDown className="pointer-events-none absolute right-2 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           </div>

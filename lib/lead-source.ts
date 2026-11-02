@@ -51,6 +51,37 @@ export const SOURCE_LABELS: Record<string, string> = {
   // inquiry from this page must have a clearly identifiable source across
   // Dashboard/Leads/Reports, not lumped into "Website"/"Contact Form".
   'iconiqa-hotel': 'ICONIQA Hotel',
+  'iconiqa-inquiry': 'ICONIQA Hotel',
+  // Flamingo partner source (2026-11-02, founder request).
+  flamingo:       'Flamingo',
+  // Other values written by existing inquiry-creation routes — labelled so
+  // they appear in the Leads Source filter instead of showing raw keys.
+  'y2k-inquiry':     'Y2K Wedding',
+  'wedding-inquiry': 'Wedding Inquiry',
+  'skybird-leads':    'Skybird',
+  'skybird-bookings': 'Skybird',
+  'admin-leads':      'Manual',
+  'repair-tool':      'Repair Tool',
+}
+
+// Source filter options: one entry per distinct LABEL; `value` is a
+// comma-joined list of every raw source key sharing that label (the Leads API
+// accepts a comma list), so e.g. "Manual" matches manual + admin + admin-leads.
+export function sourceFilterOptions(): { value: string; label: string }[] {
+  const byLabel = new Map<string, string[]>()
+  for (const [k, l] of Object.entries(SOURCE_LABELS)) byLabel.set(l, [...(byLabel.get(l) ?? []), k])
+  return [...byLabel.entries()].map(([label, keys]) => ({ value: keys.join(','), label }))
+}
+
+// Same de-duplication for forms that CREATE a lead (single raw value each).
+export function sourceCreateOptions(): { value: string; label: string }[] {
+  const seen = new Set<string>()
+  const out: { value: string; label: string }[] = []
+  for (const [k, l] of Object.entries(SOURCE_LABELS)) {
+    if (seen.has(l) || k.includes('-leads') || k.includes('-bookings') || k === 'repair-tool') continue
+    seen.add(l); out.push({ value: k, label: l })
+  }
+  return out
 }
 
 // Display color for the Dashboard's Source pill, keyed by the *label*
@@ -67,6 +98,9 @@ export const SOURCE_LABEL_COLORS: Record<string, { color: string; bg: string }> 
   Skybird:       { color: '#0369a1', bg: '#e0f2fe' },
   'Group/Wedding': { color: '#be185d', bg: '#fce7f3' },
   'ICONIQA Hotel': { color: '#92400e', bg: '#fef3c7' },
+  Flamingo:      { color: '#be123c', bg: '#ffe4e6' },
+  'Y2K Wedding': { color: '#be185d', bg: '#fce7f3' },
+  'Wedding Inquiry': { color: '#be185d', bg: '#fce7f3' },
 }
 
 const UNRESOLVED = { label: 'Website', color: '#16a34a', bg: '#dcfce7' }
