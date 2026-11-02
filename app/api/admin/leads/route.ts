@@ -100,7 +100,7 @@ async function fastList(p: {
         .order('id', { ascending: false })
       if (!p.includeTest) q = q.eq('is_test', false)
       if (withDeletedAt) q = q.is('deleted_at', null)
-      if (p.source && p.source !== 'all') q = p.source.includes(',') ? q.in('source', p.source.split(',')) : q.eq('source', p.source)
+      if (p.source && p.source !== 'all') q = p.source === 'flamingo' ? q.ilike('source', '%flamingo%') : p.source.includes(',') ? q.in('source', p.source.split(',')) : q.eq('source', p.source)
       for (const or of tokenOrs) q = q.or(or)
       return q
     }
@@ -360,7 +360,7 @@ export async function GET(req: NextRequest) {
     // Auto-Lost (pickup date passed) was silently removing next-day inquiries
     // such as BDL-2026-0275 (Imran Dal) from this list while the Dashboard
     // still showed them. They now stay listed with a "Lost" badge.
-    if (source && source !== 'all') q = source.includes(',') ? q.in('source', source.split(',')) : q.eq('source', source)
+    if (source && source !== 'all') q = source === 'flamingo' ? q.ilike('source', '%flamingo%') : source.includes(',') ? q.in('source', source.split(',')) : q.eq('source', source)
     for (const or of tokenOrs) q = q.or(or)
     return q
   }
