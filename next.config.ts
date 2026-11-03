@@ -123,8 +123,16 @@ const nextConfig: NextConfig = {
       // without deleting it (app/api/y2k/inquiry, the old page's own working
       // inquiry endpoint, is untouched — different path, left exactly as is
       // as a safety net / rollback: just drop this block to go back to it).
+      //
+      // The wedding desk itself lives at /e/y2k inside that app, not at its
+      // root ("/" there is its own generic marketing homepage) — so the
+      // bare /y2k source has to target /y2k/e/y2k specifically. Every other
+      // path (assets, API calls, the My Bags page the app links to with its
+      // own withBase("/e/y2k/my")) already resolves correctly through the
+      // plain :path* passthrough below, since basePath prefixes those the
+      // same way on both sides.
       beforeFiles: [
-        { source: '/y2k', destination: dest(Y2K, '/y2k') },
+        { source: '/y2k', destination: dest(Y2K, '/y2k/e/y2k') },
         { source: '/y2k/:path*', destination: dest(Y2K, '/y2k/:path*') },
       ],
       afterFiles: [
