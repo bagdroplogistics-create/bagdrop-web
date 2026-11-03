@@ -117,12 +117,24 @@ const nextConfig: NextConfig = {
       `${base}${path}${bypass ? `?x-vercel-protection-bypass=${bypass}` : ''}`
     const ADMIN1 = 'https://bagdrop-new-git-deploy-admin-1-bagdrops-projects.vercel.app'
     const NEWSITE = 'https://bagdrop-new-git-deploy-new-website-bagdrops-projects.vercel.app'
-    return [
-      { source: '/admin-1', destination: dest(ADMIN1, '/admin-1') },
-      { source: '/admin-1/:path*', destination: dest(ADMIN1, '/admin-1/:path*') },
-      { source: '/new-website', destination: dest(NEWSITE, '/new-website') },
-      { source: '/new-website/:path*', destination: dest(NEWSITE, '/new-website/:path*') },
-    ]
+    const Y2K = 'https://bagdrop-new-git-deploy-y2k-bagdrops-projects.vercel.app'
+    return {
+      // beforeFiles so /y2k wins over the old static app/y2k/page.tsx below
+      // without deleting it (app/api/y2k/inquiry, the old page's own working
+      // inquiry endpoint, is untouched — different path, left exactly as is
+      // as a safety net / rollback: just drop this block to go back to it).
+      beforeFiles: [
+        { source: '/y2k', destination: dest(Y2K, '/y2k') },
+        { source: '/y2k/:path*', destination: dest(Y2K, '/y2k/:path*') },
+      ],
+      afterFiles: [
+        { source: '/admin-1', destination: dest(ADMIN1, '/admin-1') },
+        { source: '/admin-1/:path*', destination: dest(ADMIN1, '/admin-1/:path*') },
+        { source: '/new-website', destination: dest(NEWSITE, '/new-website') },
+        { source: '/new-website/:path*', destination: dest(NEWSITE, '/new-website/:path*') },
+      ],
+      fallback: [],
+    }
   },
 }
 
