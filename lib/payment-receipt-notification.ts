@@ -246,7 +246,7 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
     }
     if (payment.verified_by) {
       const verifiedDate = payment.verified_at
-        ? new Date(payment.verified_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+        ? new Date(payment.verified_at).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
         : null
       approvalStatus = `Verified by ${payment.verified_by}` + (verifiedDate ? ` on ${verifiedDate}` : '')
     }
@@ -275,7 +275,10 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
           customerAddress: pdfSafe(booking?.pickup_address),
           trackingId,
           amount:         Number(payment.amount),
-          paymentDate:    payment.payment_date ?? payment.created_at,
+          // created_at is the authoritative "payment received" date (the on-screen
+          // preview reads it, and PATCH keeps it in sync with edits). payment_date
+          // can hold the date the record was marked received, i.e. today.
+          paymentDate:    payment.created_at ?? payment.payment_date,
           paymentMethod:  payment.payment_method,
           paymentReference: payment.payment_reference,
           route:          booking?.from_city && booking?.to_city ? `${booking.from_city} to ${booking.to_city}` : null,

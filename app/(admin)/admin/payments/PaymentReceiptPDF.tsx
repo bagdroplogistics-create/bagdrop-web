@@ -107,7 +107,7 @@ function fmtRs(n: number): string {
 function fmtDate(d: string | null | undefined): string {
   if (!d) return '—'
   try {
-    return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' })
+    return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'Asia/Kolkata' })
   } catch { return d }
 }
 
