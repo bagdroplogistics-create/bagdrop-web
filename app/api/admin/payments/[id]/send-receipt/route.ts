@@ -34,6 +34,12 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return NextResponse.json({ error: 'This payment has not been Accounts-approved yet — nothing to send.' }, { status: 400 })
   }
 
+  // ?regenerate=1 — drop the cached PDF so it is rebuilt with current data
+  // (e.g. corrected Payment Date). Channels already 'sent' are NOT re-sent.
+  if (new URL(req.url).searchParams.get('regenerate') === '1') {
+    await supabaseAdmin.from('payments').update({ receipt_pdf_url: null, receipt_generated_at: null }).eq('id', id)
+  }
+
   await sendPaymentReceiptAcknowledgment(id)
 
   const { data: updated } = await supabaseAdmin

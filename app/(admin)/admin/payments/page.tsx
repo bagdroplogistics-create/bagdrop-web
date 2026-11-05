@@ -1125,6 +1125,20 @@ function PaymentReceiptPanel({ paymentId, adminKey, onClose }: { paymentId: stri
                     </div>
                     {detail.payment.receipt_pdf_url && (
                       <a href={detail.payment.receipt_pdf_url} target="_blank" rel="noopener noreferrer"
+                        onClick={async (e) => {
+                          // Rebuild first so the PDF always carries the current Payment Date.
+                          e.preventDefault()
+                          const w = window.open('', '_blank')
+                          try {
+                            const res = await fetch(`/api/admin/payments/${paymentId}/send-receipt?regenerate=1`, { method: 'POST', headers: { 'x-admin-key': adminKey } })
+                            const j = await res.json().catch(() => ({}))
+                            const url = j?.receipt?.receipt_pdf_url || detail.payment.receipt_pdf_url
+                            if (w) w.location.href = url; else window.open(url, '_blank')
+                            loadDetail()
+                          } catch {
+                            if (w) w.location.href = detail.payment.receipt_pdf_url as string
+                          }
+                        }}
                         className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:underline">
                         <Download className="h-3 w-3" /> View generated Receipt PDF
                       </a>
