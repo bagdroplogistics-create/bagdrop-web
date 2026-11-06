@@ -144,7 +144,9 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
     //   WHATSAPP_TEMPLATE_PICKUP_SCHEDULED
     // (draft in FAST2SMS_TEMPLATES.md, section 12).
     const ENV_TEMPLATE_BY_STATUS: Record<string, string | undefined> = {
-      pickup_scheduled:      process.env.WHATSAPP_TEMPLATE_PICKUP_SCHEDULED,
+      // 'pickup_scheduled' is approved in Fast2SMS (Message ID 42328), so it is the default;
+      // the env var can still override the name.
+      pickup_scheduled:      process.env.WHATSAPP_TEMPLATE_PICKUP_SCHEDULED || 'pickup_scheduled',
     }
     const templateName = TEMPLATE_BY_STATUS[status] ?? ENV_TEMPLATE_BY_STATUS[status]
     if (!templateName) {
