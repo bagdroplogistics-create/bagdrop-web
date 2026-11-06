@@ -53,6 +53,36 @@ The WhatsApp system was NOT removed. It is fully built; only configuration/env a
 
 I have not seen pages 2–4 of your template list, so the full inventory/IDs table is incomplete. Please send screenshots of pages 2–4.
 
+## 4b. Full template inventory (all 29, from WhatsApp Manager pages 1–4; all APPROVED, language EN)
+| Template | Msg ID | Cat. | Used by code |
+|---|---|---|---|
+| bagdrop_otp | 42327 | Authentication (Copy code button) | NEW — `sendWhatsAppOtpFast2SMS` (body {{1}} + button param) |
+| inquiry_acknowledgment | 26511 | Utility | lead-acknowledgment |
+| new_inquiry_notification | 28341 | Utility | internal |
+| quote_sent_v2 | 30963 | Utility (PDF header) | lifecycle |
+| quote_accepted / quote_rejected | 26618 / 26619 (rejected is Marketing) | | lifecycle |
+| quote_follow_up_2_hours | 31553 | Utility | sales follow-up to customer |
+| payment_request (QR) | 26627 | Utility | lifecycle |
+| payment_received | 26628 | Utility | lifecycle |
+| payment_verified_receipt | 31794 | Utility (PDF header) | payment receipt |
+| payment_verification_request | 32273 | Utility | internal (accounts) |
+| booking_confirmed_v2 | 26645 | Utility | lifecycle |
+| pickup_scheduled | 42328 | Utility | lifecycle — needs `WHATSAPP_TEMPLATE_PICKUP_SCHEDULED=pickup_scheduled` |
+| indemnity_bond_sent | 26875 | Utility | indemnity |
+| documents_submitted / documents_approved / documents_resubmission | 26876 / 26877 / 26878 | Utility | indemnity |
+| driver_details_shared_v2 | 26647 | Utility | driver-details |
+| bags_picked_up / bags_in_transit / out_for_delivery | 26630 / 26631 / 26633 | Utility | lifecycle |
+| bags_delivered (old) / bags_delivered_review | 26635 / 27992 | Utility / Marketing | review one is used |
+| vendor_notification_request | 32558 | Utility | internal vendor |
+| ops_pickup_reminder | 27293 | Utility | internal |
+| quote_pending_reminder / sales_followup_reminder | 27842 / 27843 | Utility | internal |
+| confirmed_ongoing_summary_v4 | 30452 | Utility | internal |
+
+Every template name the code sends exists and is approved. **No customer-facing template exists** for: pickup reminder, booking cancelled, pickup/delivery date changed — these remain proposals (section 5).
+
+## 4c. bagdrop_otp compatibility
+Authentication template, "Copy code" button, 1 body variable, EN. The sender passes the code as body {{1}} and as the button parameter (sub_type `url`, index 0), exactly as Fast2SMS documents for copy-code authentication templates. Language code sent: `en` (override with `FAST2SMS_OTP_LANGUAGE` if Meta reports `en_US`).
+
 ## 5. Gaps / proposals (no templates created or submitted)
 1. Customer pickup reminder (2 days before, confirmed bookings only, once per booking, recalculated on date change) — new Utility template + extend `lib/ops-reminders.ts` cron.
 2. Booking cancelled; Pickup/delivery date changed — new templates.
