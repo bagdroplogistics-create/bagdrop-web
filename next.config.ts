@@ -38,6 +38,24 @@ const nextConfig: NextConfig = {
           { key: 'Cache-Control', value: 'public, max-age=31536000, immutable' },
         ],
       },
+      // The /admin-1, /new-website and /y2k rewrites below proxy to a
+      // separately-deployed app whose pages are dynamic/authenticated —
+      // Vercel's edge was observed serving a 100+ minute old cached copy
+      // of one of these pages regardless of that app's own Cache-Control,
+      // so force no-store here rather than relying on the proxied origin's
+      // headers surviving the hop.
+      {
+        source: '/:zone(admin-1|new-website|y2k)',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store' },
+        ],
+      },
+      {
+        source: '/:zone(admin-1|new-website|y2k)/:path*',
+        headers: [
+          { key: 'Cache-Control', value: 'no-store' },
+        ],
+      },
     ]
   },
 
