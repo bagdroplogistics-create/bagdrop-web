@@ -106,62 +106,17 @@ const nextConfig: NextConfig = {
     ]
   },
 
-  // New platform preview (2026-10-31) — bagdrop.co/admin-1 and /new-website
-  // transparently proxy to the separately-deployed bagdrop-new app (its own
-  // Vercel project, own Supabase project), so the browser's address bar
-  // stays on bagdrop.co instead of jumping to a .vercel.app URL. Each
-  // destination is a basePath build of that same app (NEXT_PUBLIC_BASE_PATH
-  // set per-branch on its own project — see bagdrop-new/src/lib/basePath.ts)
-  // so its own assets/API routes resolve correctly under the prefix, with
-  // no effect on that app's default, unprefixed deployments. Both paths are
-  // also excluded from the bagdrop.co -> www.bagdrop.co redirect above (same
-  // treatment as the existing /admin), so this redirect never intercepts
-  // them before the rewrite gets a chance to run.
-  //
-  // bagdrop-new's branch-preview URLs sit behind Vercel's SSO deployment
-  // protection — BAGDROP_NEW_BYPASS_SECRET is that project's "Protection
-  // Bypass for Automation" secret (Vercel → bagdrop-new → Settings →
-  // Deployment Protection), appended as the query param Vercel's own docs
-  // specify for exactly this: letting a trusted server-to-server request
-  // (this rewrite) through without a human SSO login.
-  async rewrites() {
-    // No x-vercel-set-bypass-cookie here: this proxy re-sends the bypass
-    // credential on every single request (it doesn't rely on a browser
-    // cookie), so asking Vercel to also set+strip a cookie just causes it
-    // to 307-redirect back to the same URL forever, since our rewrite
-    // re-attaches the query param on the very next hop too.
-    const bypass = process.env.BAGDROP_NEW_BYPASS_SECRET
-    const dest = (base: string, path: string) =>
-      `${base}${path}${bypass ? `?x-vercel-protection-bypass=${bypass}` : ''}`
-    const ADMIN1 = 'https://bagdrop-new-git-deploy-admin-1-bagdrops-projects.vercel.app'
-    const NEWSITE = 'https://bagdrop-new-git-deploy-new-website-bagdrops-projects.vercel.app'
-    const Y2K = 'https://bagdrop-new-git-deploy-y2k-bagdrops-projects.vercel.app'
-    return {
-      // beforeFiles so /y2k wins over the old static app/y2k/page.tsx below
-      // without deleting it (app/api/y2k/inquiry, the old page's own working
-      // inquiry endpoint, is untouched — different path, left exactly as is
-      // as a safety net / rollback: just drop this block to go back to it).
-      //
-      // deploy/y2k's own root ("/") IS the wedding desk (that branch's
-      // src/app/page.tsx renders it directly, unlike main/admin-1/new-website's
-      // homepage there) — specifically so this stays a plain, symmetric
-      // prefix match, same shape as /admin-1's. Pointing the bare /y2k
-      // source at a deeper path like /y2k/e/y2k instead breaks client-side
-      // routing after hydration (it gets reconciled against the real,
-      // shorter address bar, not the longer path it was fetched from).
-      beforeFiles: [
-        { source: '/y2k', destination: dest(Y2K, '/y2k') },
-        { source: '/y2k/:path*', destination: dest(Y2K, '/y2k/:path*') },
-      ],
-      afterFiles: [
-        { source: '/admin-1', destination: dest(ADMIN1, '/admin-1') },
-        { source: '/admin-1/:path*', destination: dest(ADMIN1, '/admin-1/:path*') },
-        { source: '/new-website', destination: dest(NEWSITE, '/new-website') },
-        { source: '/new-website/:path*', destination: dest(NEWSITE, '/new-website/:path*') },
-      ],
-      fallback: [],
-    }
-  },
+  // New platform preview (2026-10-31) — bagdrop.co/admin-1, /new-website and
+  // /y2k transparently proxy to the separately-deployed bagdrop-new app.
+  // Moved from next.config.js rewrites() to middleware.ts (2026-11-06): the
+  // rewrites() version attached the Vercel deployment-protection bypass
+  // secret as a query param, which collided with Next.js's own `?_rsc=`
+  // segment-fetch query on every page that streams dynamic content — the
+  // origin 404'd on the malformed URL, leaving those pages stuck on their
+  // loading state forever. middleware.ts sends the same secret as the
+  // `x-vercel-protection-bypass` header instead (Vercel's primary documented
+  // method, and immune to this collision since headers and query strings
+  // don't share a namespace). See middleware.ts for the actual proxying.
 }
 
 export default nextConfig
