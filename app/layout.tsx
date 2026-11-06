@@ -5,6 +5,7 @@ import { Inter } from 'next/font/google'
 import { cn } from '@/lib/utils'
 import Script from 'next/script'
 import './globals.css'
+import WhatsAppClickTracker from '@/components/analytics/WhatsAppClickTracker'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -333,6 +334,7 @@ export default function RootLayout({
             function gtag(){dataLayer.push(arguments);}
             gtag('js', new Date());
             gtag('config', 'AW-17917128565');
+            gtag('config', 'G-FJFZTWGRH1');
           `}
         </Script>
       </head>
@@ -343,6 +345,7 @@ export default function RootLayout({
         )}
       >
         {children}
+        <WhatsAppClickTracker />
       </body>
     </html>
   )
