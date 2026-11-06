@@ -517,6 +517,65 @@ export async function sendWhatsAppTemplateFast2SMSv2(
   }
 }
 
+// ── WhatsApp OTP (authentication template) via Fast2SMS Meta-format API ─────
+// Template: FAST2SMS_OTP_TEMPLATE_NAME (default 'bagdrop_otp'), language
+// FAST2SMS_OTP_LANGUAGE (default 'en'). Per Fast2SMS docs
+// (reference/sendauthenticationtemplate) an authentication template needs the
+// code in BOTH the body parameter and the copy-code/URL button parameter.
+// The OTP itself is generated + verified by our own /api/auth/send-otp and
+// /verify-otp (auth_otps table) — this function only delivers it.
+export async function sendWhatsAppOtpFast2SMS(
+  phone: string,
+  otp: string,
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const apiKey        = process.env.FAST2SMS_API_KEY
+  const phoneNumberId = process.env.FAST2SMS_WHATSAPP_PHONE_NUMBER_ID
+  if (!apiKey || !phoneNumberId) return { success: false, error: 'Fast2SMS not configured' }
+  if (!phone) return { success: false, error: 'No phone number provided' }
+
+  const templateName = process.env.FAST2SMS_OTP_TEMPLATE_NAME || 'bagdrop_otp'
+  const language     = process.env.FAST2SMS_OTP_LANGUAGE || 'en'
+  const recipient    = buildInternationalRecipient(phone)
+
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(`https://www.fast2sms.com/dev/whatsapp/v26.0/${phoneNumberId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: apiKey, 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: recipient,
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: language },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: otp }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otp }] },
+          ],
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+    const errObj = data.error as { message?: string } | undefined
+    if (!res.ok || errObj) {
+      // Never log the OTP itself.
+      console.error('[Fast2SMS WhatsApp OTP] FAILED | status:', res.status, '| error:', errObj?.message ?? JSON.stringify(data))
+      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+    }
+    const messages = data.messages as Array<{ id?: string }> | undefined
+    return { success: true, requestId: messages?.[0]?.id }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    return { success: false, error: isAbort ? 'Timed out waiting for Fast2SMS (10s)' : (err instanceof Error ? err.message : String(err)) }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 // ── WhatsApp Template Sender — direct Meta Cloud API (2026-09-01) ──────────
 // Root cause discovered while migrating off Fast2SMS: Fast2SMS's own support
 // confirmed "we provide service in India only" — international WhatsApp

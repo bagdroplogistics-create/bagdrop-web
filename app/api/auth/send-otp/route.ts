@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
+import { sendWhatsAppOtpFast2SMS } from '@/lib/notifications'
 
 // Generates a cryptographically random 6-digit OTP
 function generateOtp(): string {
@@ -70,6 +71,16 @@ export async function POST(req: Request) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString() // 10 min
   const authEmail = type === 'email' ? contact.trim().toLowerCase() : syntheticEmail(contact)
 
+  // ── Resend throttle: one OTP per contact per 30s (blocks double-clicks / abuse) ──
+  // Each OTP row lives 10 min, so created-at = expires_at - 10 min.
+  const cooldownCutoff = new Date(Date.now() + 10 * 60 * 1000 - 30 * 1000).toISOString()
+  const { data: recent } = await supabaseAdmin
+    .from('auth_otps').select('contact').eq('contact', authEmail).eq('used', false)
+    .gt('expires_at', cooldownCutoff).limit(1)
+  if (recent && recent.length > 0) {
+    return NextResponse.json({ error: 'Please wait 30 seconds before requesting another code.' }, { status: 429 })
+  }
+
   // ── Delete any previous unused OTPs for this contact ──
   await supabaseAdmin
     .from('auth_otps')
@@ -129,7 +140,17 @@ export async function POST(req: Request) {
     return NextResponse.json({ success: true })
   }
 
-  // ── Phone: send OTP via Fast2SMS ───────────────────────
+  // ── Phone: WhatsApp OTP first (when enabled), then SMS ─────────────
+  // OTP_CHANNEL=whatsapp switches on the Fast2SMS `bagdrop_otp` WhatsApp
+  // authentication template. Default (unset) keeps the existing SMS
+  // behaviour so nothing changes in production until it is switched on
+  // after a successful test. If WhatsApp fails we fall through to SMS.
+  if (process.env.OTP_CHANNEL === 'whatsapp') {
+    const wa = await sendWhatsAppOtpFast2SMS(contact, otp)
+    if (wa.success) return NextResponse.json({ success: true, channel: 'whatsapp' })
+    console.error('[send-otp] WhatsApp OTP failed, falling back to SMS. Reason:', wa.error)
+  }
+
   const smsResult = await sendSmsOtp(contact, otp)
 
   if (!smsResult.ok) {
