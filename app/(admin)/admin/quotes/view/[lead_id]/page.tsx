@@ -792,11 +792,10 @@ export default function QuoteViewPage() {
     // WhatsApp Web flow: open the tab NOW (inside the click, before any await)
     // so the pop-up blocker allows it; point it at the message once saved.
     const newStatus = typeof payload.status === 'string' ? payload.status : ''
-    const wantsWaTab = !adminApproveMode && !!waDigits(booking.customer_phone) &&
-      (isWorkflowWhatsAppStep(newStatus) || (newStatus === 'quote_sent' && !!waMessage))
+    // 2026-11-06: customer WhatsApp now goes out automatically through Fast2SMS
+    // (server-side lifecycle template) — no WhatsApp Web tab / manual send.
+    const wantsWaTab = false
     const waTab: Window | null = null
-    // Customer WhatsApp is sent by the admin via WhatsApp Web — skip the API send.
-    if (wantsWaTab) payload = { ...payload, manual_whatsapp: true }
     // Admin Approve toggle — only meaningful for calls that actually change
     // `status`; harmless to include otherwise since the API only reads it
     // inside the status-change branch.
@@ -814,6 +813,12 @@ export default function QuoteViewPage() {
         setBooking(prev => prev ? { ...prev, ...(d.booking ?? payload) } : prev)
         setActionSuccess(actionKey)
         setTimeout(() => setActionSuccess(null), 4000)
+        // Tell the admin if the automatic customer WhatsApp did not go out.
+        if (d.whatsapp?.attempted && !d.whatsapp.success) {
+          setActionError(`Status saved, but the customer WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}. Use the Resend button to retry.`)
+        } else if (d.whatsapp?.notice) {
+          setActionError(d.whatsapp.notice)
+        }
         if (wantsWaTab) {
           const merged = { ...booking, ...(d.booking ?? {}) }
           const text = waMessage ?? (isWorkflowWhatsAppStep(newStatus)
@@ -1034,39 +1039,23 @@ export default function QuoteViewPage() {
     if (!lead || !booking || !key || sendingQuoteWhatsApp) return
     setSendingQuoteWhatsApp(true)
     setActionError(null)
-    const e164 = waDigits(booking.customer_phone)
-    if (!e164) { setActionError('No valid WhatsApp number on this booking.'); setSendingQuoteWhatsApp(false); return }
-    const waTab: Window | null = null
+    if (!waDigits(booking.customer_phone)) { setActionError('No valid WhatsApp number on this booking.'); setSendingQuoteWhatsApp(false); return }
     try {
-      let pdfUrl: string
-      try {
-        const r = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}`, {
-          method: 'POST', headers: { 'x-admin-key': key },
-        })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok || !d.url) throw new Error(d.error ?? 'no url returned')
-        pdfUrl = d.url
-      } catch (err) {
-        console.error('[doSendQuoteWhatsApp] PDF generation/upload failed:', err)
-        setActionError('Unable to attach Quote PDF. Please try again.')
-        return
-      }
-      const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
-      const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? booking.tracking_id
-      const total = lead.quote_total ?? booking.total_amount ?? 0
-      const msg = buildQuoteSentText({ name, quoteNo: qnum, from: (lead.from_city || '').trim(), to: (lead.to_city || '').trim(), bags: lead.bags_count ?? 1, total: Number(total), pdfUrl })
-      if (!skipStatusChange) {
-        // status change sends no API WhatsApp (manual_whatsapp) — the tab is ours
-        const r = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
-          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ status: 'quote_sent', manual_whatsapp: true }),
-        })
-        const d = await r.json().catch(() => ({}))
-        if (!r.ok) { setActionError(d.error ?? 'Action failed'); return }
-        setBooking(prev => prev ? { ...prev, ...(d.booking ?? {}) } : prev)
+      // 2026-11-06: sent directly via Fast2SMS (quote_sent_v2 template, with the
+      // quote PDF) — no WhatsApp Web tab. First send = status change; re-send =
+      // resend_whatsapp (no status change, ignores the "already notified" flag).
+      const r = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(skipStatusChange ? { resend_whatsapp: true, status: 'quote_sent' } : { status: 'quote_sent' }),
+      })
+      const d = await r.json().catch(() => ({}))
+      if (!r.ok) { setActionError(d.error ?? 'Action failed'); return }
+      setBooking(prev => prev ? { ...prev, ...(d.booking ?? {}) } : prev)
+      if (d.whatsapp?.attempted && !d.whatsapp.success) {
+        setActionError(`Quote saved, but the WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}`)
+      } else {
         setActionSuccess('send_quote'); setTimeout(() => setActionSuccess(null), 4000)
       }
-      goWhatsAppWeb(waTab, e164, msg)
     } finally {
       setSendingQuoteWhatsApp(false)
     }
@@ -1286,7 +1275,9 @@ export default function QuoteViewPage() {
       status: 'payment_pending',
       send_payment_email: !!booking?.customer_email,
     })
-    if (ok && booking) {
+    // 2026-11-06: the payment_request WhatsApp (with QR) is now sent automatically
+    // by the server on the status change — no WhatsApp Web tab.
+    if (false && ok && booking) {
       // Open WhatsApp with payment link
       const amt = Number(booking.total_amount ?? 0)
       const upi = upiId || 'BAGDROP1717@IOB'
@@ -3125,20 +3116,24 @@ export default function QuoteViewPage() {
                 {isWorkflowWhatsAppStep(booking.status) && booking.customer_phone && (
                   <div className="flex flex-wrap items-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3">
                     <button type="button"
-                      onClick={() => {
-                        const ok = openWorkflowWhatsApp(booking.customer_phone, buildWorkflowWhatsAppText(booking.status as Parameters<typeof buildWorkflowWhatsAppText>[0], {
-                          tracking_id: booking.tracking_id, title: lead.title, customer_name: lead.name,
-                          customer_phone: booking.customer_phone, from_city: lead.from_city, to_city: lead.to_city,
-                          total_bags: lead.bags_count, total_amount: booking.total_amount,
-                          pickup_date: lead.pickup_date, pickup_time: lead.pickup_time, pickup_address: lead.pickup_address, delivery_date: lead.delivery_date, service_type: booking.service_type,
-                        }))
-                        if (!ok) setActionError('No valid WhatsApp number on this booking.')
+                      onClick={async () => {
+                        if (!waDigits(booking.customer_phone)) { setActionError('No valid WhatsApp number on this booking.'); return }
+                        setActionError(null)
+                        const r = await fetch(`/api/admin/bookings/${booking.id}?key=${encodeURIComponent(key)}`, {
+                          method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ resend_whatsapp: true, status: booking.status }),
+                        })
+                        const d = await r.json().catch(() => ({}))
+                        if (!r.ok) setActionError(d.error ?? 'Resend failed')
+                        else if (d.whatsapp?.attempted && !d.whatsapp.success) setActionError(`WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}`)
+                        else if (d.whatsapp?.notice) setActionError(d.whatsapp.notice)
+                        else { setActionSuccess('resend_wa'); setTimeout(() => setActionSuccess(null), 4000) }
                       }}
                       className="flex items-center gap-1.5 rounded-lg bg-green-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-green-700 transition-colors">
                       <MessageCircle className="h-4 w-4" />
                       Re-send “{WORKFLOW_WHATSAPP_LABEL[booking.status as keyof typeof WORKFLOW_WHATSAPP_LABEL]}” on WhatsApp
                     </button>
-                    <p className="text-[11px] text-green-700">Opens WhatsApp Web with the message ready. Press Send there. Status is not changed.</p>
+                    <p className="text-[11px] text-green-700">{actionSuccess === 'resend_wa' ? '✅ WhatsApp sent to the customer.' : 'Sends the approved WhatsApp template directly. Status is not changed.'}</p>
                   </div>
                 )}
 

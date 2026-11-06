@@ -290,6 +290,17 @@ export async function PATCH(
   // below). When status IS present, fall through so the status update +
   // lifecycle WhatsApp send still happen, matching the send_quote_email
   // pattern above.
+  // resend_whatsapp — re-send the customer WhatsApp template for `status` (or the
+  // booking's current status) straight through Fast2SMS/Meta, with no status change
+  // and regardless of notified_statuses. Used by the admin "Resend on WhatsApp" buttons.
+  if (body.resend_whatsapp === true) {
+    const { data: bk } = await supabaseAdmin.from('bookings').select('*').eq('id', id).single()
+    if (!bk) return NextResponse.json({ error: 'Booking not found' }, { status: 404 })
+    const st = (typeof status === 'string' && status) ? status : bk.status
+    const result = await sendLifecycleWhatsApp(st, bk)
+    return NextResponse.json({ booking: bk, whatsapp: result })
+  }
+
   if (body.send_payment_email) {
     const { data: bk } = await supabaseAdmin.from('bookings').select('*').eq('id', id).single()
     if (bk && bk.customer_email) {
