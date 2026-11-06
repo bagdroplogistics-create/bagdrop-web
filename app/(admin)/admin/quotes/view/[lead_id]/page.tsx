@@ -794,7 +794,7 @@ export default function QuoteViewPage() {
     const newStatus = typeof payload.status === 'string' ? payload.status : ''
     // 2026-11-06: customer WhatsApp now goes out automatically through Fast2SMS
     // (server-side lifecycle template) — no WhatsApp Web tab / manual send.
-    const wantsWaTab = false
+    const wantsWaTab = false as boolean
     const waTab: Window | null = null
     // Admin Approve toggle — only meaningful for calls that actually change
     // `status`; harmless to include otherwise since the API only reads it
@@ -1271,34 +1271,12 @@ export default function QuoteViewPage() {
   }
 
   async function doSendPaymentRequest() {
-    const ok = await patchBooking('send_payment', {
+    // The payment_request WhatsApp (with QR) is sent automatically by the server
+    // on the status change — no WhatsApp Web tab.
+    await patchBooking('send_payment', {
       status: 'payment_pending',
       send_payment_email: !!booking?.customer_email,
     })
-    // 2026-11-06: the payment_request WhatsApp (with QR) is now sent automatically
-    // by the server on the status change — no WhatsApp Web tab.
-    if (false && ok && booking) {
-      // Open WhatsApp with payment link
-      const amt = Number(booking.total_amount ?? 0)
-      const upi = upiId || 'BAGDROP1717@IOB'
-      const phone = (booking.customer_phone ?? '').replace(/\D/g, '')
-      const e164 = waDigits(booking.customer_phone) || phone
-      const upiLink = `upi://pay?pa=${upi}&pn=Bagdrop&am=${amt}&cu=INR&tn=${booking.tracking_id}`
-      const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(upiLink)}`
-      const msg = [
-        `Hi! 🧳 Your Bagdrop quote is ready for payment.`,
-        `💰 *Amount Due: ₹${amt.toLocaleString('en-IN')}*`,
-        `UPI ID: *${upi}*`,
-        `📲 Pay: ${upiLink}`,
-        `QR: ${qrUrl}`,
-        `Ref: ${booking.tracking_id}`,
-        `Reply with screenshot once paid. — Bagdrop`,
-      ].join('\n')
-      // web.whatsapp.com/send goes straight to the WhatsApp Web chat with
-      // the message drafted — wa.me bounces through an api.whatsapp.com
-      // landing page on desktop browsers first.
-      window.open(`https://web.whatsapp.com/send?phone=${e164}&text=${encodeURIComponent(msg)}`, '_blank')
-    }
   }
 
   async function doMarkPaymentReceived() {
