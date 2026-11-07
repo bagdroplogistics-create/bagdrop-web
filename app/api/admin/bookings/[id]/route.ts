@@ -11,6 +11,7 @@ import { syncBookingReminders } from '@/lib/ops-reminders'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { createOrGetLrForBooking } from '@/lib/lr-auto-create'
 import { ensureBagsForBooking } from '@/lib/bag-tags'
+import { sendBondOnConfirmed } from '@/lib/indemnity-send'
 import type { BookingStatus } from '@/lib/supabase'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/lib/constants'
 import { buildQuotePdfBuffer, quotePdfFilename, type LeadRowForPdf } from '@/lib/quote-pdf'
@@ -571,6 +572,7 @@ export async function PATCH(
       if (result.error) console.error('[booking patch] ensureBagsForBooking error:', result.error)
       else if (result.created) console.log(`[booking patch] auto-generated ${result.created} bag tag(s) for booking ${id}`)
     }).catch(err => console.error('[booking patch] ensureBagsForBooking error:', err))
+    sendBondOnConfirmed(id, admin_approve === true)
   }
 
   // Recompute the derived payment_status whenever something that feeds its
@@ -724,6 +726,7 @@ export async function PATCH(
         if (result.error) console.error('[booking patch] ensureBagsForBooking (auto-confirm) error:', result.error)
         else if (result.created) console.log(`[booking patch] auto-generated ${result.created} bag tag(s) for booking ${id} (auto-confirm)`)
       }).catch(err => console.error('[booking patch] ensureBagsForBooking (auto-confirm) error:', err))
+      sendBondOnConfirmed(id, admin_approve === true)
     }
   }
 

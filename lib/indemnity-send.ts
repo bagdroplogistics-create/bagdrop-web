@@ -137,3 +137,28 @@ export async function sendBondAfterVerification(verificationId: string): Promise
     console.error('[identity] auto bond error:', e)
   }
 }
+
+// Founder request (2026-11-07): sending the Indemnity Bond was a step that was
+// easy to miss — it previously only went out via the admin's manual "Send
+// Indemnity Bond" button, or incidentally via sendBondAfterVerification above
+// (and only for bookings that happen to go through Aadhaar verification).
+// Most bookings don't, so most customers never got it unless an admin
+// remembered to click the button. This is the main trigger: fires the moment
+// a booking reaches 'confirmed' (the status this app's own STATUS_ORDER
+// already places the bond right after — see lib/booking-status.ts), from
+// both places app/api/admin/bookings/[id]/route.ts can reach 'confirmed'
+// (the direct status-change branch and the payment_approved auto-confirm
+// branch). Same idempotency guard as sendBondAfterVerification (no-ops if a
+// bond was already sent, by whichever path), and respects Admin Approve the
+// same way every other notification on this route does. Never throws.
+export async function sendBondOnConfirmed(bookingId: string, adminApprove = false): Promise<void> {
+  try {
+    const { data: bond } = await supabaseAdmin.from('indemnity_bonds').select('sent_at').eq('booking_id', bookingId).maybeSingle()
+    if (bond?.sent_at) return
+    const r = await sendIndemnityBondForBooking(bookingId, adminApprove)
+    if (!r.ok) console.error(`[booking confirmed] auto indemnity bond for ${bookingId} failed: ${r.error}`)
+    else console.log(`[booking confirmed] indemnity bond auto-sent for ${bookingId}`)
+  } catch (e) {
+    console.error('[booking confirmed] auto indemnity bond error:', e)
+  }
+}

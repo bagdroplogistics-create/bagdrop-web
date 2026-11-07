@@ -4,6 +4,7 @@ import { getAdminRole } from '@/lib/admin-auth'
 import { sendLifecycleWhatsApp, isForwardMove } from '@/lib/lifecycle-notifications'
 import { recomputeBookingPaymentStatus } from '@/lib/payment-status'
 import { sendPaymentReceiptAcknowledgment } from '@/lib/payment-receipt-notification'
+import { sendBondOnConfirmed } from '@/lib/indemnity-send'
 
 // Booking statuses from which an approved payment verification should
 // auto-advance the workflow to 'confirmed'. Matches the gate the Payment
@@ -291,6 +292,9 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
           // throws.
           if (shouldNotifyCustomer && updatedBooking) {
             await sendLifecycleWhatsApp('confirmed', updatedBooking)
+          }
+          if (updatedBooking) {
+            sendBondOnConfirmed(data.booking_id, false)
           }
         }
       }
