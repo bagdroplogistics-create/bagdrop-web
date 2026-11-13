@@ -9,10 +9,9 @@ import { BackHeader } from '@/components/BackHeader'
 import { colors, radius } from '@/theme/colors'
 import { type } from '@/theme/typography'
 import { useAdminAuth } from '@/context/AdminAuthContext'
-import { AdminLead, SavedQuoteLineItem, fetchLead, updateBooking } from '@/lib/api'
+import { AdminLead, SavedQuoteLineItem, fetchLead, updateBooking, createQuotePdf } from '@/lib/api'
 import { rupees, rupeesDecimal } from '@/shared/quotes'
 import { formatDateTime, formatCustomerName } from '@/shared/format'
-import { buildQuoteHtml, openQuotePrint, downloadQuotePdfNative } from '@/shared/quotePrint'
 
 const PAYMENT_META: Record<string, { label: string; color: string; bg: string }> = {
   received: { label: 'Payment Received', color: '#15803d', bg: '#dcfce7' },
@@ -65,48 +64,36 @@ export default function QuoteDetail() {
   const total = Number(lead.quote_total ?? 0)
   const meta = PAYMENT_META[(lead.payment_status as string) ?? 'pending'] ?? PAYMENT_META.pending
 
+  // Uses the website's own server-rendered quote PDF (same layout, QR code,
+  // signature, T&C) instead of rebuilding the quote locally on the device.
   async function handleDownload() {
-    if (!lead) return
-    const quoteDate = lead.quote_date
-      ? new Date(lead.quote_date as string).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
-      : undefined
-    const html = buildQuoteHtml({
-      quoteNumber: lead.quote_number as string,
-      leadNumber: lead.lead_number,
-      quoteDate,
-      customerName: formatCustomerName(lead.title, lead.name) || lead.name,
-      customerPhone: lead.phone,
-      customerEmail: lead.email ?? undefined,
-      fromCity: (lead.from_city as string) || '',
-      toCity: (lead.to_city as string) || '',
-      bagsCount: Number(lead.bags_count ?? 1),
-      pickupDate: (lead.pickup_date as string) || undefined,
-      pickupTime: (lead.pickup_time as string ?? '').slice(0, 5) || undefined,
-      deliveryDate: (lead.delivery_date as string) || undefined,
-      flightNumber: (lead.flight_number as string) || undefined,
-      pnr: (lead.pnr as string) || undefined,
-      pickupAddress: (lead.pickup_address as string) || undefined,
-      dropAddress: (lead.drop_address as string) || undefined,
-      items: items.map(it => ({
-        name: it.name, description: it.description, quantity: it.quantity, rate: it.rate,
-        taxPct: it.tax_pct, amount: it.amount ?? it.quantity * it.rate,
-      })),
-      subtotal, discountAmt, discountPct, tax, total,
-      notes: (lead.quote_notes as string) || undefined,
-      terms: (lead.quote_terms as string) || undefined,
-      salesperson: (lead.salesperson_name as string) || undefined,
-      agentName: (lead.agent_name as string) || undefined,
-      expiryDate: (lead.quote_expiry_date as string) || undefined,
-    })
-    if (Platform.OS === 'web') {
-      const opened = openQuotePrint(html)
-      if (!opened) setError('Could not open the print dialog.')
-      return
-    }
-
+    if (!lead || !adminKey) return
     setDownloading(true); setError('')
     try {
-      await downloadQuotePdfNative(html, `${lead.quote_number}.pdf`)
+      const { url, filename } = await createQuotePdf(adminKey, lead.id)
+      const name = filename ?? `${lead.quote_number}.pdf`
+      if (Platform.OS === 'web') {
+        try {
+          const blob = await (await fetch(url)).blob()
+          const u = URL.createObjectURL(blob)
+          const a = document.createElement('a')
+          a.href = u; a.download = name
+          document.body.appendChild(a); a.click(); a.remove()
+          setTimeout(() => URL.revokeObjectURL(u), 2000)
+        } catch {
+          window.open(url, '_blank')
+        }
+        return
+      }
+      const FileSystem = await import('expo-file-system')
+      const Sharing = await import('expo-sharing')
+      const dest = `${FileSystem.cacheDirectory}${name}`
+      const { uri } = await FileSystem.downloadAsync(url, dest)
+      if (await Sharing.isAvailableAsync()) {
+        await Sharing.shareAsync(uri, { mimeType: 'application/pdf', dialogTitle: name })
+      } else {
+        throw new Error(`PDF saved to ${uri} — sharing isn't available on this device.`)
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate the PDF.')
     } finally {

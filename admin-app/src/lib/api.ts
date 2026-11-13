@@ -348,6 +348,14 @@ export function fetchLeads(key: string, params: FetchLeadsParams = {}) {
   )
 }
 
+// Server-rendered quote PDF — the exact same file the website's Download
+// button produces (lib/quote-pdf.ts). Returns a public URL to the PDF.
+export function createQuotePdf(key: string, leadId: string, leg: 'onward' | 'return' = 'onward') {
+  return adminRequest<{ url: string; filename?: string }>(
+    key, `/api/admin/leads/${leadId}/quote-pdf${leg === 'return' ? '?leg=return' : ''}`, { method: 'POST' },
+  )
+}
+
 export function fetchLead(key: string, id: string) {
   return adminRequest<{ lead: AdminLead }>(key, `/api/admin/leads/${id}`)
 }
