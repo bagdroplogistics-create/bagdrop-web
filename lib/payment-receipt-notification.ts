@@ -158,8 +158,8 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
       return
     }
 
-    const emailAlreadySent    = payment.receipt_email_status === 'sent'
-    const whatsappAlreadySent = payment.receipt_whatsapp_status === 'sent'
+    let emailAlreadySent    = payment.receipt_email_status === 'sent'
+    let whatsappAlreadySent = payment.receipt_whatsapp_status === 'sent'
     if (emailAlreadySent && whatsappAlreadySent) {
       console.log(`[PaymentReceipt] Payment ${payment.payment_id} — already fully acknowledged (email + WhatsApp both sent), no-op`)
       return
@@ -217,6 +217,41 @@ export async function sendPaymentReceiptAcknowledgment(paymentId: string): Promi
       }
       console.log(`[PaymentReceipt] Payment ${payment.payment_id} — skipped (Test Mode booking)`)
       return
+    }
+
+    // ── One receipt per real payment (founder-reported 2026-11-13) ──────
+    // Customer got two receipts (BDP-2026-0134 / BDP-2026-0135, same booking,
+    // same ₹5,250, one minute apart). Idempotency above is per payment ROW, so
+    // when the booking workflow ends up with two 'paid' rows for the same
+    // money (proof-upload approval + Mark Payment Received, a double click, a
+    // second tab…) each row legitimately triggered its own send. Guard here,
+    // at the single place every send goes through: if another payment on this
+    // booking for the SAME amount, created within 24h of this one, has already
+    // had its receipt sent on a channel, don't send that channel again — the
+    // customer already has their receipt for this money.
+    if (payment.booking_id) {
+      const { data: siblings } = await supabaseAdmin
+        .from('payments')
+        .select('id, amount, created_at, receipt_email_status, receipt_whatsapp_status')
+        .eq('booking_id', payment.booking_id)
+        .neq('id', payment.id)
+      const DAY = 24 * 3600 * 1000
+      const dupes = (siblings ?? []).filter(s =>
+        Math.abs(Number(s.amount) - Number(payment.amount)) < 0.01 &&
+        Math.abs(new Date(s.created_at).getTime() - new Date(payment.created_at).getTime()) < DAY
+      )
+      const dupEmail = !emailAlreadySent    && dupes.some(s => s.receipt_email_status === 'sent')
+      const dupWa    = !whatsappAlreadySent && dupes.some(s => s.receipt_whatsapp_status === 'sent')
+      if (dupEmail || dupWa) {
+        const updates: Record<string, unknown> = {}
+        if (dupEmail) { updates.receipt_email_status = 'skipped';    updates.receipt_email_error = 'Receipt already sent for an identical payment on this booking — duplicate suppressed' }
+        if (dupWa)    { updates.receipt_whatsapp_status = 'skipped'; updates.receipt_whatsapp_error = 'Receipt already sent for an identical payment on this booking — duplicate suppressed' }
+        await supabaseAdmin.from('payments').update(updates).eq('id', payment.id)
+        console.log(`[PaymentReceipt] Payment ${payment.payment_id} — duplicate receipt suppressed (email:${dupEmail} whatsapp:${dupWa})`)
+        emailAlreadySent    = emailAlreadySent    || dupEmail
+        whatsappAlreadySent = whatsappAlreadySent || dupWa
+        if (emailAlreadySent && whatsappAlreadySent) return
+      }
     }
 
     // ── Payment Summary — Previous Paid / Total Paid / Outstanding ───
