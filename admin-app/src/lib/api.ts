@@ -124,6 +124,73 @@ export function fetchDashboardAnalytics(key: string) {
   return adminRequest<DashboardAnalytics>(key, '/api/admin/dashboard-analytics')
 }
 
+// ── Redesigned dashboard (mirrors website /admin) ────────────────────────
+export interface DashboardV2Data {
+  range: { preset: string; from: string; to: string }
+  business_overview: {
+    total_inquiries: number; quotes_sent: number; confirmed_bookings: number
+    payments_received_count: number; payments_received_amount: number
+    outstanding_amount: number; revenue: number
+  }
+  funnel: {
+    stages: {
+      total_inquiries: number; quotes_generated: number; quotes_sent: number
+      accepted: number; payment_received: number; confirmed: number; completed: number
+    }
+  }
+  revenue_collection: {
+    revenue: number; payments_received_amount: number; payments_received_count: number
+    outstanding: number; pending_verification: number; refunds: number; net_revenue: number
+  }
+  trip_profitability: {
+    total_trips: number; active_trips: number; completed_trips: number; delivered_trips: number
+    total_income: number; total_expense: number; net_profit: number
+    avg_revenue_per_trip: number; avg_expense_per_trip: number; profit_margin: number
+  }
+  service_types: { service_label: string; bookings: number; bags: number; revenue: number }[]
+}
+export type DashboardRange = 'today' | 'this_week' | 'this_month' | 'last_month' | 'this_year' | 'all_time' | 'custom'
+export type DrilldownKey = 'total_inquiries' | 'quotes_sent' | 'confirmed_bookings' | 'payments_received' | 'completed'
+export interface DrilldownRecord {
+  id: string; date: string | null; customer_name: string | null; tracking_id: string | null
+  route: string | null; status: string | null; amount: number | null
+}
+
+function rangeQs(range: string, from?: string, to?: string, fromKey = 'date_from', toKey = 'date_to') {
+  let qs = `range=${range}`
+  if (range === 'custom') {
+    if (from) qs += `&${fromKey}=${encodeURIComponent(from)}`
+    if (to) qs += `&${toKey}=${encodeURIComponent(to)}`
+  }
+  return qs
+}
+
+export function fetchDashboardV2(key: string, range: DashboardRange, from?: string, to?: string) {
+  return adminRequest<DashboardV2Data>(key, `/api/admin/dashboard-v2?${rangeQs(range, from, to)}`)
+}
+
+export function fetchDashboardDrilldown(key: string, range: DashboardRange, drilldown: DrilldownKey, from?: string, to?: string) {
+  return adminRequest<{ drilldown_records?: DrilldownRecord[] }>(
+    key, `/api/admin/dashboard-v2?${rangeQs(range, from, to)}&drilldown=${drilldown}`,
+  )
+}
+
+export type OpsRange = 'today' | 'tomorrow' | 'next3' | 'next7' | 'all' | 'custom'
+export interface OpsBookingRow {
+  id: string; tracking_id: string; status: string
+  customer_name: string | null; service_label: string | null
+  from_city: string | null; to_city: string | null
+  pickup_date: string | null; delivery_date: string | null
+  total_bags: number | null; driver_name: string | null
+}
+export interface OpsData {
+  upcoming_bookings: OpsBookingRow[]
+  widgets: { todays_pickups: number; todays_deliveries: number; delivered_today: number; upcoming_pickups_7d: number }
+}
+export function fetchOperations(key: string, range: OpsRange, from?: string, to?: string) {
+  return adminRequest<OpsData>(key, `/api/admin/reports/operations?${rangeQs(range, from, to, 'from', 'to')}`)
+}
+
 export function fetchCrmStats(key: string) {
   return adminRequest<CrmStats>(key, '/api/admin/crm-stats')
 }
