@@ -23,7 +23,7 @@ import {
 } from '@/shared/quotes'
 import { PICKUP_LOCATIONS, OTHERS_VALUE, matchLocation, toRouteCityKey } from '@/shared/locations'
 import { TIME_OPTIONS, timeLabel } from '@/shared/time-options'
-import { buildQuoteHtml, openQuotePrint, downloadQuotePdfNative } from '@/shared/quotePrint'
+import { downloadServerQuotePdf } from '@/shared/quotePdfDownload'
 import { parseStoredPhone, toE164 } from '@/shared/phone-format'
 import { DEFAULT_COUNTRY_ISO2 } from '@/shared/phone-countries'
 import { TITLE_OPTIONS, DEFAULT_TITLE, formatCustomerName } from '@/shared/format'
@@ -400,47 +400,10 @@ export default function NewQuote() {
   }
 
   async function handleDownloadQuote(source: (GenerateQuoteResult & { resolvedLeadId: string }) | null) {
-    if (!source) return
-    const html = buildQuoteHtml({
-      quoteNumber: source.estimate_number || source.quote_number,
-      leadNumber: lead?.lead_number,
-      quoteDate: new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
-      customerName: formatCustomerName(lead?.title ?? custTitle, lead?.name ?? custName) || (lead?.name ?? custName),
-      customerPhone: lead?.phone ?? toE164(custPhone, custCountryIso2),
-      customerEmail: (lead?.email ?? custEmail) || undefined,
-      fromCity, toCity,
-      bagsCount: Number(bagsCount) || 1,
-      pickupDate: pickupDate || undefined,
-      pickupTime: pickupTime ? timeLabel(pickupTime) : undefined,
-      deliveryDate: deliveryDate || undefined,
-      flightNumber: flightNumber || undefined,
-      pnr: pnr || undefined,
-      pickupAddress: pickupAddr || undefined,
-      dropAddress: dropAddr || undefined,
-      items: source.line_items.map(li => ({
-        name: li.name, description: li.description, quantity: li.quantity, rate: li.rate,
-        taxPct: li.tax_pct, amount: li.amount,
-      })),
-      subtotal: source.subtotal,
-      discountAmt: source.discount_amt,
-      discountPct: source.discount_pct,
-      tax: source.tax,
-      total: source.total,
-      notes: custNotes || undefined,
-      terms: terms || undefined,
-      salesperson: salesperson ?? undefined,
-      agentName: agentName || undefined,
-      expiryDate: expiryDate || undefined,
-    })
-    if (Platform.OS === 'web') {
-      const opened = openQuotePrint(html)
-      if (!opened) setError('Could not open the print dialog.')
-      return
-    }
-
+    if (!source || !adminKey) return
     setDownloadingQuote(true); setError('')
     try {
-      await downloadQuotePdfNative(html, `${source.estimate_number || source.quote_number}.pdf`)
+      await downloadServerQuotePdf(adminKey, source.resolvedLeadId, `${source.quote_number}.pdf`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not generate the PDF.')
     } finally {
