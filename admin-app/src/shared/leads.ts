@@ -30,3 +30,15 @@ export const LEAD_SERVICE_TYPES = [
 export function leadNeedsFlightInfo(serviceType: string | null | undefined): boolean {
   return LEAD_SERVICE_TYPES.find(s => s.value === serviceType)?.needsFlight ?? false
 }
+
+// Website Leads tab status filter (STATUS_CONFIG there): lead-funnel statuses
+// plus the two display-only booking-derived ones. 'converted' reads "Completed".
+export const LEAD_FILTER_STATUSES: LeadStatusMeta[] = [
+  { key: 'new', label: 'New', color: '#2563eb', bg: '#dbeafe' },
+  { key: 'contacted', label: 'Contacted', color: '#d97706', bg: '#fef3c7' },
+  { key: 'qualified', label: 'Qualified', color: '#7c3aed', bg: '#ede9fe' },
+  { key: 'converted', label: 'Completed', color: '#16a34a', bg: '#dcfce7' },
+  { key: 'lost', label: 'Lost', color: '#dc2626', bg: '#fee2e2' },
+  { key: 'confirmed', label: 'Confirmed', color: '#0e7490', bg: '#cffafe' },
+  { key: 'cancelled', label: 'Cancelled', color: '#dc2626', bg: '#fee2e2' },
+]

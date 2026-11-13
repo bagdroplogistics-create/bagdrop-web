@@ -308,6 +308,19 @@ export interface AdminLead {
   deleted_at: string | null
   created_at: string
   updated_at: string
+  partner_name?: string | null
+  effective_status?: string
+  is_confirmed?: boolean
+  is_test?: boolean | null
+  zoho_estimate_number?: string | null
+  quote_total?: number | null
+  estimate_status?: 'generated' | 'converted' | null
+  estimate_total?: number | null
+  estimate_is_unknown_route?: boolean | null
+  quote_needs_review?: boolean | null
+  quote_discount_pct?: number | null
+  quote_discount_amt?: number | null
+  billing_type?: 'paid' | 'foc' | null
   [key: string]: unknown
 }
 
@@ -316,6 +329,9 @@ export interface FetchLeadsParams {
   search?: string
   page?: number
   limit?: number
+  source?: string
+  deleted?: boolean
+  slim?: boolean
 }
 
 export function fetchLeads(key: string, params: FetchLeadsParams = {}) {
@@ -324,6 +340,9 @@ export function fetchLeads(key: string, params: FetchLeadsParams = {}) {
   if (params.search) qs.set('search', params.search)
   if (params.page) qs.set('page', String(params.page))
   if (params.limit) qs.set('limit', String(params.limit))
+  if (params.source) qs.set('source', params.source)
+  if (params.deleted) qs.set('deleted', 'true')
+  if (params.slim) qs.set('slim', '1')
   return adminRequest<{ leads: AdminLead[]; total: number; page: number; limit: number }>(
     key, `/api/admin/leads?${qs.toString()}`
   )
