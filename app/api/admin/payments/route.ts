@@ -491,7 +491,7 @@ export async function POST(req: NextRequest) {
         // amount — sendPaymentReceiptAcknowledgment already no-ops safely
         // for a non-'paid' status or a $0 amount, so this is a safe
         // addition for every other call site too.
-        await sendPaymentReceiptAcknowledgment(converted.id)
+        if (body.admin_approve !== true) await sendPaymentReceiptAcknowledgment(converted.id)
         return NextResponse.json({ payment: converted, converted: true }, { status: 200 })
       }
       // Update failed for some reason (e.g. race) — fall through and
@@ -555,7 +555,9 @@ export async function POST(req: NextRequest) {
   // convert-branch above. Only fires when this fresh row was recorded
   // directly as 'paid' (the common "Mark Payment Received" case); a
   // 'pending' manual entry correctly sends nothing yet.
-  if (data && data.payment_status === 'paid') {
+  // admin_approve === true: "Admin Approve (no customer notification)" —
+  // record the payment silently, no receipt to the customer.
+  if (data && data.payment_status === 'paid' && body.admin_approve !== true) {
     await sendPaymentReceiptAcknowledgment(data.id)
   }
 

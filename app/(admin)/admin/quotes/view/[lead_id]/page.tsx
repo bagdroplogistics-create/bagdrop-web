@@ -1332,6 +1332,9 @@ export default function QuoteViewPage() {
               payment_status:     'paid',
               payment_reference:  paymentRef.trim() || undefined,
               notes:              'Marked Payment Received — Booking Workflow',
+              // "Admin Approve (no customer notification)" — the server must
+              // not send the Payment Received receipt either.
+              ...(adminApproveMode ? { admin_approve: true } : {}),
             }),
           }).then(async r => {
             const d = await r.json().catch(() => ({}))
@@ -1437,7 +1440,11 @@ export default function QuoteViewPage() {
       const r = await fetch(`/api/admin/payments/${booking.payment_verification_payment_id}?key=${encodeURIComponent(key)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
-        body: JSON.stringify({ payment_status: action === 'approve' ? 'paid' : 'rejected' }),
+        body: JSON.stringify({
+          payment_status: action === 'approve' ? 'paid' : 'rejected',
+          // Admin Approve (no customer notification) — suppress the receipt.
+          ...(adminApproveMode ? { admin_approve: true } : {}),
+        }),
       })
       const d = await r.json().catch(() => ({}))
       if (!r.ok) { setProofErr(d.error ?? 'Failed to update payment'); return }

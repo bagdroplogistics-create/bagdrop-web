@@ -224,7 +224,10 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       // block below to match the spec's own step order (Payment Received
       // → Get/Generate Receipt → Acknowledgement → Continue Booking
       // Workflow), though the two are otherwise independent of each other.
-      if (verificationStatus === 'verified') {
+      // admin_approve === true is the Booking Workflow's "Admin Approve (no
+      // customer notification)" checkbox — approve silently, no receipt.
+      // (A receipt can still be sent later by hand via send-receipt.)
+      if (verificationStatus === 'verified' && body.admin_approve !== true) {
         await sendPaymentReceiptAcknowledgment(data.id)
       }
 
@@ -271,10 +274,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             ? (bookingNow as { notified_statuses?: string[] }).notified_statuses as string[]
             : []
           const alreadyNotified   = prevNotified.includes('confirmed')
-          const shouldNotifyCustomer = isForwardMove(bookingNow.status, 'confirmed') && !alreadyNotified
+          const silentApprove     = body.admin_approve === true   // "Admin Approve (no customer notification)"
+          const shouldNotifyCustomer = isForwardMove(bookingNow.status, 'confirmed') && !alreadyNotified && !silentApprove
 
           const bookingUpdate: Record<string, unknown> = { status: 'confirmed', status_history: history }
-          if (shouldNotifyCustomer && notifiedStatusesSupported) {
+          // Silent approve also marks 'confirmed' as notified (same as the
+          // main bookings PATCH route) so no later path re-sends it.
+          if ((shouldNotifyCustomer || silentApprove) && notifiedStatusesSupported && !alreadyNotified) {
             bookingUpdate.notified_statuses = [...prevNotified, 'confirmed']
           }
 
@@ -294,7 +300,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
             await sendLifecycleWhatsApp('confirmed', updatedBooking)
           }
           if (updatedBooking) {
-            sendBondOnConfirmed(data.booking_id, false)
+            sendBondOnConfirmed(data.booking_id, body.admin_approve === true)
           }
         }
       }
