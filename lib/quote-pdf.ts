@@ -120,7 +120,7 @@ export async function buildQuotePdfBuffer(lead: LeadRowForPdf, leg: QuotePdfLeg 
   // which would show the wrong cities.
   const subject = isReturn
     ? (lead.return_from_city && lead.return_to_city
-        ? `Transportation of Goods From ${lead.return_from_city} to ${lead.return_to_city} — Return`
+        ? `Transportation of Bags From ${lead.return_from_city} to ${lead.return_to_city}`
         : 'Return Journey Quotation')
     : lead.quote_subject
 

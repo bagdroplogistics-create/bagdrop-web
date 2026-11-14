@@ -452,6 +452,7 @@ function toReturnView(l: Lead): Lead {
     quote_discount_pct:  l.return_discount_pct,
     quote_discount_amt:  l.return_discount_amt,
     quote_notes:         l.return_quote_notes,
+    quote_subject:       (l.return_from_city && l.return_to_city) ? `Transportation of Bags From ${l.return_from_city} to ${l.return_to_city}` : null,
     from_city:           l.return_from_city ?? l.to_city,
     to_city:             l.return_to_city ?? l.from_city,
     bags_count:          l.return_bags_count ?? l.bags_count,
