@@ -639,7 +639,18 @@ export default function QuoteViewPage() {
       .catch(() => { setPaidTotal(0); setConvertibleUploadPayment(null) })
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [booking?.id, booking?.payment_verification_status, paymentRefreshTick, key])
-  const outstandingAmount = Math.max(0, (Number(booking?.total_amount) || 0) - paidTotal)
+  // The booking's Total always equals THIS quotation's amount. Older combined-journey handling left a
+  // booking at onward + return; show/charge only this quotation's amount (the saved total is also
+  // corrected in the database when the page loads).
+  const bookingTotal = (() => {
+    const bt = Number(booking?.total_amount) || 0
+    const qt = Number(lead?.quote_total) || 0
+    if (!booking || qt <= 0 || (booking as { billing_type?: string }).billing_type === 'foc') return bt
+    if (isReturnLeg) return qt
+    const rt = Number(lead?.return_quote_total) || 0
+    return rt > 0 && Math.abs(bt - (qt + rt)) < 0.5 ? qt : bt
+  })()
+  const outstandingAmount = Math.max(0, bookingTotal - paidTotal)
 
   // ── Load data ─────────────────────────────────────────────────────
 
@@ -3281,7 +3292,7 @@ export default function QuoteViewPage() {
               <div className="border-t border-gray-100 bg-gray-50 px-6 py-3">
                 <div className="flex flex-wrap gap-x-6 gap-y-1 text-xs text-gray-500">
                   <span><Clock className="mr-1 inline h-3 w-3" />Created {fmtDateTime(lead.created_at)}</span>
-                  {booking.total_amount && <span>Total: <strong className="text-orange-600">{fmtRs(booking.total_amount)}</strong></span>}
+                  {!!bookingTotal && <span>Total: <strong className="text-orange-600">{fmtRs(bookingTotal)}</strong></span>}
                   {/* Outstanding Amount — booking total minus approved
                       ('paid') payments only, recomputed live from the
                       payments ledger (see the paidTotal effect above). */}
@@ -3293,21 +3304,21 @@ export default function QuoteViewPage() {
                   )}
                   {/* Overpaid vs this quotation (legacy combined-journey payment): offer a one-click correction
                       when exactly one paid payment explains the excess. */}
-                  {!!booking.total_amount && paidTotal - Number(booking.total_amount) > 0.5 && overpayFix && (
+                  {!!bookingTotal && paidTotal - bookingTotal > 0.5 && overpayFix && (
                     <button
                       onClick={async () => {
-                        if (!confirm(`This payment is ₹${overpayFix.amount.toLocaleString('en-IN')} but the quotation total is ₹${Number(booking.total_amount).toLocaleString('en-IN')}. Correct the payment to ₹${(overpayFix.amount - (paidTotal - Number(booking.total_amount))).toLocaleString('en-IN')}?`)) return
+                        if (!confirm(`This payment is ₹${overpayFix.amount.toLocaleString('en-IN')} but the quotation total is ₹${bookingTotal.toLocaleString('en-IN')}. Correct the payment to ₹${(overpayFix.amount - (paidTotal - bookingTotal)).toLocaleString('en-IN')}?`)) return
                         await fetch(`/api/admin/payments/${overpayFix.id}?key=${encodeURIComponent(key)}`, {
                           method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
-                          body: JSON.stringify({ amount: overpayFix.amount - (paidTotal - Number(booking.total_amount)) }),
+                          body: JSON.stringify({ amount: overpayFix.amount - (paidTotal - bookingTotal) }),
                         })
                         setPaymentRefreshTick(t => t + 1)
                       }}
                       className="rounded-md bg-red-50 px-2 py-0.5 font-semibold text-red-700 hover:bg-red-100">
-                      Paid exceeds quotation — correct to ₹{Number(booking.total_amount).toLocaleString('en-IN')}
+                      Paid exceeds quotation — correct to ₹{bookingTotal.toLocaleString('en-IN')}
                     </button>
                   )}
-                  {!!booking.total_amount && (
+                  {!!bookingTotal && (
                     <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
                   )}
                   {/* Payment Follow Up — manual outstanding-payment reminder,
@@ -3334,7 +3345,7 @@ export default function QuoteViewPage() {
                           pickupLocation: lead.pickup_address || lead.from_city,
                           deliveryLocation: lead.drop_address || lead.to_city,
                           invoiceNumber: invoice?.invoice_number ?? null,
-                          totalAmount: Number(booking.total_amount) || 0,
+                          totalAmount: bookingTotal || Number(booking.total_amount) || 0,
                           paidAmount: paidTotal,
                           outstandingAmount,
                         }}
