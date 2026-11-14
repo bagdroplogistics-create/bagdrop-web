@@ -596,6 +596,7 @@ export default function QuoteViewPage() {
   // never reduces it. Rejected/pending_verification payments are excluded
   // automatically since only payment_status === 'paid' is summed.
   const [paidTotal, setPaidTotal] = useState(0)
+  const [overpayFix, setOverpayFix] = useState<{ id: string; amount: number } | null>(null)
   // An already-approved payment-proof upload (payment_method === 'upload',
   // payment_status === 'paid') that hasn't yet been converted into a real
   // ledger entry — see doMarkPaymentReceived below (2026-08-26 fix). Kept
@@ -630,6 +631,8 @@ export default function QuoteViewPage() {
           .filter(countsTowardTotalPaid)
           .reduce((acc, p) => acc + (Number(p.amount) || 0), 0)
         setPaidTotal(sum)
+        const paidRows = payments.filter(countsTowardTotalPaid)
+        setOverpayFix(paidRows.length === 1 ? { id: paidRows[0].id, amount: Number(paidRows[0].amount) || 0 } : null)
         const convertible = payments.find(p => p.payment_method === 'upload' && p.payment_status === 'paid' && Number(p.amount) > 0)
         setConvertibleUploadPayment(convertible ? { id: convertible.id, amount: Number(convertible.amount) } : null)
       })
@@ -683,7 +686,18 @@ export default function QuoteViewPage() {
         setLead(toReturnView(l))
         const rb = await fetch(`/api/admin/bookings/${l.return_booking_id}?key=${encodeURIComponent(adminKey)}`)
           .then(r => r.json()).catch(() => ({}))
-        setBooking((rb.booking ?? rb) as Booking)
+        let rbk = (rb.booking ?? rb) as Booking
+        // The return booking's Total must equal the RETURN quotation amount. Older combined-journey
+        // handling left it at onward+return, so correct it to the quotation total.
+        const rqt = Number(l.return_quote_total) || 0
+        if (rqt > 0 && (rbk as { billing_type?: string }).billing_type !== 'foc' && Math.abs((Number(rbk.total_amount) || 0) - rqt) > 0.5) {
+          await fetch(`/api/admin/bookings/${l.return_booking_id}?key=${encodeURIComponent(adminKey)}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ total_amount: rqt }),
+          }).catch(() => {})
+          rbk = { ...rbk, total_amount: rqt } as Booking
+        }
+        setBooking(rbk)
         const ri = await fetch(`/api/admin/invoices?booking_id=${l.return_booking_id}&key=${encodeURIComponent(adminKey)}`)
           .then(r => r.json()).catch(() => ({}))
         setInvoice(ri.invoices?.[0] ? (ri.invoices[0] as Invoice) : null)
@@ -3276,6 +3290,22 @@ export default function QuoteViewPage() {
                       the Outstanding figure below is derived from. */}
                   {paidTotal > 0 && (
                     <span>Paid: <strong className="text-green-600">{fmtRs(paidTotal)}</strong></span>
+                  )}
+                  {/* Overpaid vs this quotation (legacy combined-journey payment): offer a one-click correction
+                      when exactly one paid payment explains the excess. */}
+                  {!!booking.total_amount && paidTotal - Number(booking.total_amount) > 0.5 && overpayFix && (
+                    <button
+                      onClick={async () => {
+                        if (!confirm(`This payment is ₹${overpayFix.amount.toLocaleString('en-IN')} but the quotation total is ₹${Number(booking.total_amount).toLocaleString('en-IN')}. Correct the payment to ₹${(overpayFix.amount - (paidTotal - Number(booking.total_amount))).toLocaleString('en-IN')}?`)) return
+                        await fetch(`/api/admin/payments/${overpayFix.id}?key=${encodeURIComponent(key)}`, {
+                          method: 'PATCH', headers: { 'Content-Type': 'application/json', 'x-admin-key': key },
+                          body: JSON.stringify({ amount: overpayFix.amount - (paidTotal - Number(booking.total_amount)) }),
+                        })
+                        setPaymentRefreshTick(t => t + 1)
+                      }}
+                      className="rounded-md bg-red-50 px-2 py-0.5 font-semibold text-red-700 hover:bg-red-100">
+                      Paid exceeds quotation — correct to ₹{Number(booking.total_amount).toLocaleString('en-IN')}
+                    </button>
                   )}
                   {!!booking.total_amount && (
                     <span>Outstanding: <strong className={outstandingAmount > 0 ? 'text-amber-600' : 'text-green-600'}>{fmtRs(outstandingAmount)}</strong></span>
