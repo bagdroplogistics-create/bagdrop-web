@@ -1592,7 +1592,19 @@ function LeadsPageInner() {
   // above deliberately keeps its own separate copy of this same
   // computation so printing still exports every matching row, not just
   // whatever page is currently on screen.
-  const visibleLeads = sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam))
+  // Instant search: while the server search for the typed text is still pending (debounce + request),
+  // narrow the already-loaded list in the browser so results appear on the first keystroke. Once the
+  // server result arrives it replaces the list and no local narrowing is applied.
+  const pendingQ = search.trim().toLowerCase()
+  const serverPending = pendingQ !== '' && (pendingQ !== debouncedSearch.toLowerCase() || loadingAll)
+  const localNarrowed = serverPending
+    ? leads.filter(l => {
+        const hay = Object.values(l as unknown as Record<string, unknown>)
+          .filter(v => typeof v === 'string' || typeof v === 'number').join(' ').toLowerCase()
+        return pendingQ.split(/\s+/).every(t => hay.includes(t))
+      })
+    : leads
+  const visibleLeads = sortLeads(localNarrowed, sort).filter(l => matchesFollowupFilter(l, followupParam))
   const totalPages    = Math.max(1, Math.ceil(visibleLeads.length / pageSize))
   const pagedLeads    = visibleLeads.slice((page - 1) * pageSize, page * pageSize)
   const showingFrom   = visibleLeads.length === 0 ? 0 : (page - 1) * pageSize + 1

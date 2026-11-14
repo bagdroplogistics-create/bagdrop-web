@@ -1160,10 +1160,23 @@ export default function PaymentsPage() {
   const [adminKey,  setAdminKey]  = useState('')
   const [role,      setRole]      = useState<AdminRole>(null)
   const [authed,    setAuthed]    = useState(false)
-  const [payments,  setPayments]  = useState<Payment[]>([])
+  const [rawPayments, setPayments] = useState<Payment[]>([])
   const [loading,   setLoading]   = useState(false)
   const [filter,    setFilter]    = useState('all')
   const [search,    setSearch]    = useState('')
+  // Search is applied instantly in the browser on the already-loaded list (no server
+  // round-trip per keystroke). The server is only hit when the status filter changes.
+  const payments = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return rawPayments
+    const qd = q.replace(/\D/g, '')
+    return rawPayments.filter(p => {
+      const r = p as unknown as Record<string, unknown>
+      const hay = [p.customer_name, p.customer_phone, p.payment_id, r.invoice_number, r.booking_tracking_id, r.payment_reference]
+        .filter(Boolean).join(' ').toLowerCase()
+      return hay.includes(q) || (qd.length >= 4 && String(p.customer_phone ?? '').replace(/\D/g, '').includes(qd))
+    })
+  }, [rawPayments, search])
   const [monthFilter, setMonthFilter] = useState('all')
   const [showModal, setShowModal] = useState(false)
   const [modalPrefill, setModalPrefill] = useState<PaymentFormPrefill | undefined>(undefined)
@@ -1324,11 +1337,11 @@ export default function PaymentsPage() {
     // operates on whatever's in `payments` state, so this was the true
     // root cause of records "disappearing," independent of the separate
     // created_at-vs-business-date fix above.
-    const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
+    const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}`
     const res = await fetch('/api/admin/payments' + qs)
     if (res.ok) setPayments((await res.json()).payments ?? [])
     setLoading(false)
-  }, [adminKey, filter, search])
+  }, [adminKey, filter])
 
   useEffect(() => { if (authed) fetchPayments() }, [authed, fetchPayments])
 

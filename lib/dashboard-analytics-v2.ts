@@ -445,13 +445,33 @@ export async function getDashboardData(
   // aggregation (a Postgres RPC/materialized view) is the right next step
   // once real volume exceeds that, per the founder spec's performance
   // section — flagged as a suggested improvement, not built here.
-  let isTestSupported = true
-  let leadsRes = await supabaseAdmin
+  // Speed: all five table reads are started TOGETHER here (they used to run one after another),
+  // then awaited below in the same order with the same fallbacks.
+  const BOOKING_SELECT = 'id, status, status_history, payment_status, total_amount, pickup_date, delivery_date, completed_month_override, created_at, is_test, service_type, service_label, customer_name, tracking_id, from_city, to_city, total_bags, driver_name, booking_type, approved_without_payment, billing_type'
+  const BOOKING_SELECT_NO_OVERRIDE = 'id, status, status_history, payment_status, total_amount, pickup_date, delivery_date, created_at, is_test, service_type, service_label, customer_name, tracking_id, from_city, to_city, total_bags, driver_name, booking_type, approved_without_payment, billing_type'
+  const leadsP = Promise.resolve(supabaseAdmin
     .from('leads')
     .select('id, created_at, booking_id, quote_number, quote_date, quote_sent_at, customer_responded_at, status, source, booking_type')
     .is('deleted_at', null)
     .eq('is_test', false)
-    .limit(20000)
+    .limit(20000))
+  const bookingsP = Promise.resolve(supabaseAdmin.from('bookings').select(BOOKING_SELECT).not('tracking_id', 'is', null).limit(20000))
+  const paymentsP = Promise.resolve(supabaseAdmin
+    .from('payments')
+    .select('id, booking_id, amount, payment_status, payment_method, payment_date, created_at, refund_amount, refunded_at')
+    .limit(20000))
+  const tripSheetsP = Promise.resolve(supabaseAdmin
+    .from('trip_sheets')
+    .select('id, booking_id, status, pickup_date, delivery_date, total_bags, total_income, total_expense, trip_expenses(actual_cost)')
+    .limit(20000))
+  const groupBagsP = Promise.resolve(supabaseAdmin
+    .from('group_bags')
+    .select('id, booking_id, status, deleted_at')
+    .is('deleted_at', null)
+    .limit(20000))
+
+  let isTestSupported = true
+  let leadsRes = await leadsP
   if (leadsRes.error?.message?.includes('is_test')) {
     isTestSupported = false
     leadsRes = await supabaseAdmin
@@ -464,11 +484,9 @@ export async function getDashboardData(
   const leads = (leadsRes.data ?? []) as unknown as LeadRow[]
 
   let completedOverrideSupported = true
-  const BOOKING_SELECT = 'id, status, status_history, payment_status, total_amount, pickup_date, delivery_date, completed_month_override, created_at, is_test, service_type, service_label, customer_name, tracking_id, from_city, to_city, total_bags, driver_name, booking_type, approved_without_payment, billing_type'
-  const BOOKING_SELECT_NO_OVERRIDE = 'id, status, status_history, payment_status, total_amount, pickup_date, delivery_date, created_at, is_test, service_type, service_label, customer_name, tracking_id, from_city, to_city, total_bags, driver_name, booking_type, approved_without_payment, billing_type'
   let bookings: BookingRow[]
   {
-    const primary = await supabaseAdmin.from('bookings').select(BOOKING_SELECT).not('tracking_id', 'is', null).limit(20000)
+    const primary = await bookingsP
     if (primary.error?.message?.includes('completed_month_override')) {
       completedOverrideSupported = false
       const fallback = await supabaseAdmin.from('bookings').select(BOOKING_SELECT_NO_OVERRIDE).not('tracking_id', 'is', null).limit(20000)
@@ -481,28 +499,18 @@ export async function getDashboardData(
   }
   const bookingsById = new Map(bookings.map(b => [b.id, b]))
 
-  const paymentsRes = await supabaseAdmin
-    .from('payments')
-    .select('id, booking_id, amount, payment_status, payment_method, payment_date, created_at, refund_amount, refunded_at')
-    .limit(20000)
+  const paymentsRes = await paymentsP
   if (paymentsRes.error) throw new Error('payments query failed: ' + paymentsRes.error.message)
   const payments = (paymentsRes.data ?? []) as unknown as PaymentRow[]
 
-  const tripSheetsRes = await supabaseAdmin
-    .from('trip_sheets')
-    .select('id, booking_id, status, pickup_date, delivery_date, total_bags, total_income, total_expense, trip_expenses(actual_cost)')
-    .limit(20000)
+  const tripSheetsRes = await tripSheetsP
   if (tripSheetsRes.error) throw new Error('trip_sheets query failed: ' + tripSheetsRes.error.message)
   const tripSheetsRaw = (tripSheetsRes.data ?? []) as unknown as TripSheetRow[]
 
   // group_bags is optional — table exists per 20260904/20260905 migrations,
   // but treated defensively (empty array) in case a database hasn't run them
   // yet, same pattern as every other optional-column probe in this file.
-  const groupBagsRes = await supabaseAdmin
-    .from('group_bags')
-    .select('id, booking_id, status, deleted_at')
-    .is('deleted_at', null)
-    .limit(20000)
+  const groupBagsRes = await groupBagsP
   const groupBags = (groupBagsRes.error ? [] : (groupBagsRes.data ?? [])) as unknown as GroupBagRow[]
 
   // ── Shared derived maps ──────────────────────────────────────────────

@@ -102,7 +102,7 @@ function resolveReportingMonthDate(b: { pickup_date: string | null; delivery_dat
   return b.completed_month_override ?? b.pickup_date ?? b.created_at
 }
 
-async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Promise<PaymentRecord[]> {
+async function fetchUnloggedBookingPayments(existingBookingIdsP: Promise<Set<string>>): Promise<PaymentRecord[]> {
   type Row = { id: string; tracking_id: string; status: string; title: string | null; customer_name: string | null; customer_phone: string | null; total_amount: number | null; payment_status: string | null; payment_method: string | null; created_at: string; pickup_date: string | null; completed_month_override: string | null }
 
   // completed_month_override may not exist yet on this database — see
@@ -141,6 +141,7 @@ async function fetchUnloggedBookingPayments(existingBookingIds: Set<string>): Pr
     }
   }
 
+  const existingBookingIds = await existingBookingIdsP
   return rows
     .filter(b => !existingBookingIds.has(b.id))
     .map(b => ({
@@ -208,10 +209,16 @@ export async function GET(req: NextRequest) {
   // `payments` has no is_test column of its own — a payment tied to a Test
   // Mode booking is only excludable by cross-referencing booking_id, so
   // fetch the set of test booking ids up front and filter against it below.
+  // The unlogged-booking query now runs IN PARALLEL with the payments query (it used to wait for
+  // it), roughly halving load time. It only needs the payments' booking ids at the final filter step.
+  let resolveExisting: (s: Set<string>) => void = () => {}
+  const existingP = new Promise<Set<string>>(res => { resolveExisting = res })
+  const syntheticP = fetchUnloggedBookingPayments(existingP)
   const [{ data, error }, { data: testBookingRows }] = await Promise.all([
     query,
     supabaseAdmin.from('bookings').select('id').eq('is_test', true),
   ])
+  if (error) resolveExisting(new Set())
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   const testBookingIds = new Set((testBookingRows ?? []).map(b => b.id as string))
 
@@ -256,7 +263,8 @@ export async function GET(req: NextRequest) {
   const realPayments = rawPayments.filter(p => !redundantUploadIds.has(p.id))
   const existingBookingIds = new Set(realPayments.map(p => p.booking_id).filter((id): id is string => !!id))
 
-  let synthetic = await fetchUnloggedBookingPayments(existingBookingIds)
+  resolveExisting(existingBookingIds)
+  let synthetic = await syntheticP
   if (status && status !== 'all') synthetic = synthetic.filter(p => p.payment_status === status)
   if (search) {
     const s = search.toLowerCase()
