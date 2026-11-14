@@ -1160,6 +1160,7 @@ export default function PaymentsPage() {
   const [adminKey,  setAdminKey]  = useState('')
   const [role,      setRole]      = useState<AdminRole>(null)
   const [authed,    setAuthed]    = useState(false)
+  const [renderLimit, setRenderLimit] = useState(100)
   const [rawPayments, setPayments] = useState<Payment[]>([])
   const [loading,   setLoading]   = useState(false)
   const [filter,    setFilter]    = useState('all')
@@ -1338,10 +1339,27 @@ export default function PaymentsPage() {
     // root cause of records "disappearing," independent of the separate
     // created_at-vs-business-date fix above.
     const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}`
-    const res = await fetch('/api/admin/payments' + qs)
-    if (res.ok) setPayments((await res.json()).payments ?? [])
-    setLoading(false)
+    // Stale-while-revalidate: show the last list for this filter instantly (this tab's session
+    // cache), refresh from the server in the background.
+    const ck = 'bagdrop_payments_cache:' + filter
+    let hadCache = false
+    try {
+      const raw = sessionStorage.getItem(ck)
+      if (raw) { setPayments(JSON.parse(raw)); hadCache = true }
+    } catch { /* ignore bad cache */ }
+    setLoading(!hadCache)
+    try {
+      const res = await fetch('/api/admin/payments' + qs, { cache: 'no-store' })
+      if (res.ok) {
+        const list = (await res.json()).payments ?? []
+        setPayments(list)
+        try { sessionStorage.setItem(ck, JSON.stringify(list)) } catch { /* storage full: skip */ }
+      }
+    } finally {
+      setLoading(false)
+    }
   }, [adminKey, filter])
+  useEffect(() => { setRenderLimit(100) }, [search, filter, monthFilter])
 
   useEffect(() => { if (authed) fetchPayments() }, [authed, fetchPayments])
 
@@ -1715,7 +1733,7 @@ export default function PaymentsPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
-                  {visiblePayments.map(p => (
+                  {visiblePayments.slice(0, renderLimit).map(p => (
                     <tr key={p.id} className={`transition-colors hover:bg-orange-50/30 ${p.is_synthetic ? 'bg-blue-50/20' : ''}`}>
                       <td className="px-4 py-3">
                         {eligibleForBulk(p) && (
@@ -1829,6 +1847,13 @@ export default function PaymentsPage() {
                   ))}
                 </tbody>
               </table>
+              {visiblePayments.length > renderLimit && (
+                <div className="flex items-center justify-center gap-3 border-t border-gray-100 py-3 text-sm">
+                  <span className="text-gray-500">Showing {renderLimit} of {visiblePayments.length}</span>
+                  <button onClick={() => setRenderLimit(n => n + 100)} className="rounded-lg bg-orange-500 px-3 py-1.5 font-semibold text-white hover:bg-orange-600">Show 100 more</button>
+                  <button onClick={() => setRenderLimit(visiblePayments.length)} className="rounded-lg border border-gray-200 px-3 py-1.5 font-semibold text-gray-600 hover:bg-gray-50">Show all</button>
+                </div>
+              )}
             </div>
           )}
         </div>

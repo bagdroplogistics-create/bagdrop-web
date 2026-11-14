@@ -290,11 +290,18 @@ export async function GET(req: NextRequest) {
   // own comment).
   let bookingReportingById: Record<string, { pickup_date: string | null; completed_month_override: string | null; tracking_id?: string | null }> = {}
   if (pageBookingIds.length > 0) {
+    // Speed: the page can hold thousands of booking ids (the Payments tab asks for everything), and a
+    // single .in() with that many uuids makes an enormous request URL that is slow or silently fails.
+    // Query in chunks of 100, all chunks in parallel.
+    const chunks: string[][] = []
+    for (let i = 0; i < pageBookingIds.length; i += 100) chunks.push(pageBookingIds.slice(i, i + 100))
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const inChunks = async (table: string, cols: string, col: string): Promise<{ data: any[] }> => {
+      const parts = await Promise.all(chunks.map(c => Promise.resolve(supabaseAdmin.from(table).select(cols).in(col, c))))
+      return { data: parts.flatMap(r => r.data ?? []) }
+    }
     const [{ data: invRows }, { data: bkRows }] = await Promise.all([
-      supabaseAdmin
-        .from('invoices')
-        .select('booking_id, invoice_number, total_amount')
-        .in('booking_id', pageBookingIds),
+      inChunks('invoices', 'booking_id, invoice_number, total_amount', 'booking_id'),
       // Founder-reported 2026-09-16 (BDA-2026-0090): a ₹9,030 payment
       // (matching the booking's full, CURRENT total_amount) showed
       // "Unused Amount ₹1,890" because that booking's invoice had been
@@ -310,7 +317,7 @@ export async function GET(req: NextRequest) {
       // payment is actually accounted for" ceiling whenever a booking is
       // linked. Also carries pickup_date/completed_month_override, reused
       // for reporting_month_date below — one fetch covers both needs.
-      supabaseAdmin.from('bookings').select('id, tracking_id, total_amount, pickup_date, completed_month_override').in('id', pageBookingIds),
+      inChunks('bookings', 'id, tracking_id, total_amount, pickup_date, completed_month_override', 'id'),
     ])
     invoiceByBooking = Object.fromEntries(
       (invRows ?? []).map(i => [i.booking_id as string, { invoice_number: i.invoice_number as string, total_amount: Number(i.total_amount ?? 0) }])

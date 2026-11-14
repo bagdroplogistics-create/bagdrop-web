@@ -1180,14 +1180,30 @@ function LeadsPageInner() {
       }
       // limit=5000 — the server paginates (default 50); this page paginates
       // client-side over the full filtered set.
-      const res = await fetch('/api/admin/leads' + auth + '&limit=5000' + filt, { signal: ctrl.signal, cache: 'no-store' })
+      // Speed: with no status filter the server can page cheaply, so fetch 1000-row pages — the first
+      // page paints immediately (newest 1000) and the remaining pages load IN PARALLEL instead of one
+      // giant request. (A status filter makes the server scan everything per call, so it stays one request.)
+      const pageable = filter === 'all' && !showDeleted
+      const res = await fetch('/api/admin/leads' + auth + (pageable ? '&limit=1000&page=1' : '&limit=5000') + filt, { signal: ctrl.signal, cache: 'no-store' })
       if (reqId !== leadsReqId.current) return            // superseded by a newer request
       if (res.ok) {
         const body = await res.json()
         if (reqId !== leadsReqId.current) return
-        setLeads(body.leads ?? [])
+        let all: unknown[] = body.leads ?? []
+        setLeads(all as typeof leads)
+        const total: number = typeof body.total === 'number' ? body.total : all.length
+        if (pageable && total > all.length) {
+          const pages = Math.ceil(total / 1000)
+          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) =>
+            fetch('/api/admin/leads' + auth + '&limit=1000&page=' + (i + 2) + filt, { signal: ctrl.signal, cache: 'no-store' })
+              .then(r => (r.ok ? r.json() : { leads: [] }))
+              .then(b => (b.leads ?? []) as unknown[])))
+          if (reqId !== leadsReqId.current) return
+          all = all.concat(...rest)
+          setLeads(all as typeof leads)
+        }
         if (!showDeleted) {
-          try { sessionStorage.setItem(cacheKey, JSON.stringify(body.leads ?? [])) } catch { /* storage full: skip */ }
+          try { sessionStorage.setItem(cacheKey, JSON.stringify(all)) } catch { /* storage full: skip */ }
         }
       } else {
         const body = await res.json().catch(() => ({}))
