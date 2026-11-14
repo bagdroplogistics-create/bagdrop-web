@@ -711,9 +711,9 @@ export default function QuotePDF(p: QuotePDFProps) {
               // Cancellation Policy is highlighted so the customer reads it (founder request 2026-11-14).
               const isCancel = /cancellations? must be made/i.test(tc.text)
               return (
-                <View key={tc.num} style={isCancel ? [s.tcItem, { backgroundColor: '#fef08a', borderLeftWidth: 3, borderLeftColor: '#dc2626', borderLeftStyle: 'solid', padding: 3 }] : s.tcItem}>
+                <View key={tc.num} style={isCancel ? [s.tcItem, { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderStyle: 'solid', borderRadius: 4, padding: 3 }] : s.tcItem}>
                   <Text style={s.tcNum}>{tc.num}.</Text>
-                  <Text style={isCancel ? [s.tcText, { fontFamily: 'Helvetica-Bold', color: '#7f1d1d' }] : s.tcText}>{tc.text}</Text>
+                  <Text style={isCancel ? [s.tcText, { fontFamily: 'Helvetica-Bold', color: '#9a3412' }] : s.tcText}>{tc.text}</Text>
                 </View>
               )
             })}
