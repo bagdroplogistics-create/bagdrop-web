@@ -86,6 +86,8 @@ interface Lead {
   return_to_city:          string | null
   return_bags_count:       number | null
   return_pickup_date:      string | null
+  return_pickup_address?:  string | null
+  return_drop_address?:    string | null
   return_delivery_date:    string | null
   return_delivery_time:    string | null
   return_quote_status:         string | null
@@ -453,6 +455,8 @@ function toReturnView(l: Lead): Lead {
     to_city:             l.return_to_city ?? l.from_city,
     bags_count:          l.return_bags_count ?? l.bags_count,
     pickup_date:         l.return_pickup_date ?? null,
+    pickup_address:      l.return_pickup_address ?? l.drop_address,
+    drop_address:        l.return_drop_address ?? l.pickup_address,
     delivery_date:       l.return_delivery_date ?? null,
     booking_id:          l.return_booking_id,
     // Hide the "Add Return Quote" CTA / Return card / combined total — this
