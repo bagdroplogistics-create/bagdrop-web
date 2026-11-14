@@ -48,7 +48,7 @@ interface Lead {
   return_quote_line_items?: QuoteLineItem[] | null
   return_from_city?: string | null; return_to_city?: string | null
   return_bags_count?: number | null
-  return_pickup_date?: string | null; return_pickup_address?: string | null
+  return_pickup_date?: string | null; return_pickup_time?: string | null; return_pickup_address?: string | null
   return_delivery_date?: string | null; return_delivery_time?: string | null
   return_quote_notes?: string | null
   return_discount_amt?: number | null; return_discount_pct?: number | null
@@ -717,6 +717,7 @@ function QuotePageInner() {
           setReturnToCity(d.return_to_city ?? '')
           setReturnBagsCount(String(d.return_bags_count ?? d.bags_count ?? 1))
           setReturnPickupDate(toLocalDate(d.return_pickup_date ?? null))
+          setReturnPickupTime(d.return_pickup_time ? toLocalTime(d.return_pickup_time) : '')
           setReturnPickupAddr(d.return_pickup_address ?? '')
           setReturnDropAddr(d.return_drop_address ?? '')
           setReturnDeliveryDate(toLocalDate(d.return_delivery_date ?? null))
@@ -1130,6 +1131,7 @@ function QuotePageInner() {
       return_to_city:        returnToCity.trim()   || null,
       return_bags_count:     Number(returnBagsCount) || null,
       return_pickup_date:    returnPickupDate || null,
+      return_pickup_time:    returnPickupTime || null,
       return_pickup_address: returnPickupAddr.trim() || null,
       return_drop_address:   returnDropAddr.trim()   || null,
       return_delivery_date:  returnDeliveryDate || null,

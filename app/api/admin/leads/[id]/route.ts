@@ -148,7 +148,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     'return_quote_number', 'return_quote_total', 'return_quote_subtotal',
     'return_quote_tax', 'return_quote_date', 'return_from_city', 'return_to_city',
     'return_bags_count', 'return_discount_amt', 'return_discount_pct',
-    'return_quote_notes', 'return_pickup_address', 'return_pickup_date',
+    'return_quote_notes', 'return_pickup_address', 'return_pickup_date', 'return_pickup_time',
     'return_delivery_date', 'return_delivery_time',
     'return_quote_status', 'return_quote_sent_at', 'return_quote_accepted_at',
     'return_quote_rejected_at', 'return_rejection_reason', 'return_rejection_comment',
