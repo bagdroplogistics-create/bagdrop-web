@@ -201,7 +201,8 @@ const LEAD_STATUSES = [
   { value: 'lost',      label: 'Lost' },
 ]
 
-const DEFAULT_NOTES = 'Looking forward for your business.'
+// Customer Notes start blank — the admin adds a note only when one is needed (founder request 2026-11-14).
+const DEFAULT_NOTES = ''
 const DEFAULT_TERMS =
   '1. Booking Confirmation : All bookings are confirmed upon receipt of the total amount payable. - A unique CN (Confirmation) number will be provided for your reference.\n' +
   '2. Total Amount Payable: - The total amount payable for the baggage service is as per the policy.\n' +
@@ -229,10 +230,23 @@ const uid = () => `r_${++_rowId}_${Date.now()}`
 function buildQuoteSubject(from: string, to: string): string {
   const f = from.trim()
   const t = to.trim()
-  if (!f && !t) return 'Transportation of Goods From'
-  if (f && t)   return `Transportation of Goods From ${f} to ${t}`
-  if (f)        return `Transportation of Goods From ${f} to`
-  return `Transportation of Goods From to ${t}`
+  if (!f && !t) return 'Transportation of Bags From'
+  if (f && t)   return `Transportation of Bags From ${f} to ${t}`
+  if (f)        return `Transportation of Bags From ${f} to`
+  return `Transportation of Bags From to ${t}`
+}
+
+// Service Type auto-selected from the route (founder request 2026-11-14): an airport on the pickup side
+// and/or the delivery side decides Airport→Doorstep / Doorstep→Airport / Airport→Airport; no airport on
+// either side is Doorstep→Doorstep.
+function inferServiceType(from: string, to: string, pickupAddr: string, dropAddr: string): string {
+  const isAir = (s: string) => /air\s*port|\bairport\b|\bT[123]\b|terminal|\b(BOM|DEL|AMD|GOI|STV|BDQ)\b/i.test(s)
+  const fromAir = isAir(from) || (!from.trim() && isAir(pickupAddr))
+  const toAir = isAir(to) || (!to.trim() && isAir(dropAddr))
+  if (fromAir && toAir) return 'airport-to-airport'
+  if (fromAir) return 'airport-to-doorstep'
+  if (toAir) return 'doorstep-to-airport'
+  return 'doorstep-to-doorstep'
 }
 
 function toLocalDate(iso: string | null) { return iso ? iso.slice(0, 10) : '' }
@@ -370,6 +384,7 @@ function QuotePageInner() {
   const [dupModal, setDupModal] = useState<typeof inlineDuplicate>(null)
   const [custSource,  setCustSource]  = useState('admin')
   const [custService, setCustService] = useState('')
+  const serviceManual = useRef(false)   // true once the admin changes Service Type by hand
   const [custStatus,  setCustStatus]  = useState('new')
   const [custNotes2,  setCustNotes2]  = useState('')   // lead-level notes (different from estimate notes)
   const [pnr,         setPnr]         = useState('')
@@ -497,7 +512,7 @@ function QuotePageInner() {
 
   function populateReturnItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
     const items: LineItemRow[] = [{
-      id: uid(), name: `Transportation of Goods (Upto 2 Bags) — ${from} → ${to}`,
+      id: uid(), name: `Transportation of Bags (Upto 2 Bags) — ${from} → ${to}`,
       // Description sub-line removed per founder request (2026-08-19) —
       // "Airport-to-Doorstep..." text no longer appears anywhere this
       // quote's line items are shown (quote preview, PDF, or any invoice
@@ -689,7 +704,8 @@ function QuotePageInner() {
         if (d.quote_subject && d.quote_subject === buildQuoteSubject(d.from_city ?? '', d.to_city ?? '')) {
           subjectAutoValue.current = d.quote_subject
         }
-        setCustNotes(d.quote_notes ?? DEFAULT_NOTES)
+        // Previously-saved default boilerplate is treated as blank too.
+        setCustNotes((d.quote_notes ?? '').trim() === 'Looking forward for your business.' ? '' : (d.quote_notes ?? DEFAULT_NOTES))
         setTerms(d.quote_terms ?? DEFAULT_TERMS)
         setExpiryDate(d.quote_expiry_date ? toLocalDate(d.quote_expiry_date) : '')
         if (d.salesperson_name) setSalesperson(d.salesperson_name)
@@ -744,6 +760,13 @@ function QuotePageInner() {
       return generated
     })
   }, [fromCity, toCity])
+
+  // ── Auto-select Service Type from the route (until the admin picks one by hand) ──
+  useEffect(() => {
+    if (serviceManual.current) return
+    if (!fromCity.trim() && !toCity.trim() && !pickupAddr.trim() && !dropAddr.trim()) return
+    setCustService(inferServiceType(fromCity, toCity, pickupAddr, dropAddr))
+  }, [fromCity, toCity, pickupAddr, dropAddr])
 
   // ── "Select Existing Customer" search (debounced, new-quote only) ──
   // Fetches as soon as the field is focused (custSearchOpen), even with
@@ -905,7 +928,7 @@ function QuotePageInner() {
 
   function populateItemsFromRoute(p: RoutePrice, from: string, to: string, bags: number) {
     const items: LineItemRow[] = [{
-      id: uid(), name: `Transportation of Goods (Upto 2 Bags) — ${from} → ${to}`,
+      id: uid(), name: `Transportation of Bags (Upto 2 Bags) — ${from} → ${to}`,
       // Description sub-line removed per founder request (2026-08-19) —
       // "Airport-to-Doorstep..." text no longer appears anywhere this
       // quote's line items are shown (quote preview, PDF, or any invoice
@@ -1329,6 +1352,7 @@ function QuotePageInner() {
     if (deliveryDate)         payload.delivery_date    = deliveryDate
     if (flightDT)             payload.flight_datetime  = flightDT
     if (subject.trim())       payload.subject          = subject.trim()
+    if (custService)          payload.service_type     = custService
     if (custNotes.trim())     payload.customer_notes   = custNotes.trim()
     if (terms.trim())         payload.terms_conditions = terms.trim()
     if (customerIdNo.trim())  payload.customer_id_no   = customerIdNo.trim()
@@ -1814,7 +1838,7 @@ function QuotePageInner() {
               </div>
               <div>
                 <label className={lbl}>Service Type</label>
-                <select value={custService} onChange={e => setCustService(e.target.value)}
+                <select value={custService} onChange={e => { serviceManual.current = true; setCustService(e.target.value) }}
                   disabled={!!lead && !isEdit} className={!!lead && !isEdit ? inpRO : inp}>
                   <option value="">— Select service type —</option>
                   {SERVICE_TYPES.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}

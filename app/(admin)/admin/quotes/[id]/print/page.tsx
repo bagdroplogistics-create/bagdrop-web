@@ -278,7 +278,7 @@ export default function QuotePrintPage() {
                 'Bagdrop is not liable for loss, damage or theft during transit. Secure valuables and carry essential documents personally.',
                 'Rates are subject to change without prior notice. Services are subject to availability at the time of booking.',
               ].map((t, i) => (
-                <div key={i} style={{display:'flex',gap:'6px'}}>
+                <div key={i} style={{display:'flex',gap:'6px',...(/cancellation/i.test(t) ? {background:'#fef08a',borderLeft:'3px solid #dc2626',padding:'3px 6px',fontWeight:700,color:'#7f1d1d'} : {})}}>
                   <span style={{color:'#f97316',fontWeight:700,flexShrink:0}}>{i+1}.</span>
                   <span>{t}</span>
                 </div>

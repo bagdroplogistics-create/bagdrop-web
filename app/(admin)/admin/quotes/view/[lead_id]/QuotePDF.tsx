@@ -707,12 +707,16 @@ export default function QuotePDF(p: QuotePDFProps) {
               // the tcNum badge rendered below.
               ? p.terms.split('\n').filter(Boolean).map((t, i) => ({ num: i + 1, text: t.replace(/^\s*\d+[.)]\s*/, '') }))
               : TC_ITEMS.map((t, i) => ({ num: i + 1, text: t }))
-            ).map(tc => (
-              <View key={tc.num} style={s.tcItem}>
-                <Text style={s.tcNum}>{tc.num}.</Text>
-                <Text style={s.tcText}>{tc.text}</Text>
-              </View>
-            ))}
+            ).map(tc => {
+              // Cancellation Policy is highlighted so the customer reads it (founder request 2026-11-14).
+              const isCancel = /cancellations? must be made/i.test(tc.text)
+              return (
+                <View key={tc.num} style={isCancel ? [s.tcItem, { backgroundColor: '#fef08a', borderLeftWidth: 3, borderLeftColor: '#dc2626', borderLeftStyle: 'solid', padding: 3 }] : s.tcItem}>
+                  <Text style={s.tcNum}>{tc.num}.</Text>
+                  <Text style={isCancel ? [s.tcText, { fontFamily: 'Helvetica-Bold', color: '#7f1d1d' }] : s.tcText}>{tc.text}</Text>
+                </View>
+              )
+            })}
           </View>
         </View>
 

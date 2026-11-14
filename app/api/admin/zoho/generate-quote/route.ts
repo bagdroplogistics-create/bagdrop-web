@@ -114,7 +114,7 @@ interface LineItem {
 function buildRouteItems(from: string, to: string, bags: number, base: number, perBag: number): LineItem[] {
   const route = `${from} → ${to}`
   const items: LineItem[] = [{
-    name:        `Transportation of Goods (Upto 2 Bags) — ${route}`,
+    name:        `Transportation of Bags (Upto 2 Bags) — ${route}`,
     description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
     quantity:    1,
     rate:        base,
@@ -139,7 +139,7 @@ function buildRouteItems(from: string, to: string, bags: number, base: number, p
 
 function buildCustomItems(from: string, to: string, bags: number, pricePerBag: number): LineItem[] {
   return [{
-    name:        `Transportation of Goods (${bags} Bag${bags !== 1 ? 's' : ''}) — ${from} → ${to}`,
+    name:        `Transportation of Bags (${bags} Bag${bags !== 1 ? 's' : ''}) — ${from} → ${to}`,
     description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery · SAC 996511',
     quantity:    bags,
     rate:        pricePerBag,
@@ -494,6 +494,8 @@ export async function POST(req: NextRequest) {
       ...(fromCityOverride      ? { from_city:      fromCity        } : {}),
       ...(toCityOverride        ? { to_city:        toCity          } : {}),
       ...(bagsCountOverride     ? { bags_count:     bags            } : {}),
+      ...(typeof (body as { service_type?: string }).service_type === 'string' && (body as { service_type?: string }).service_type
+          ? { service_interest: (body as { service_type?: string }).service_type } : {}),
       ...(pickupAddrOverride    ? { pickup_address: pickupAddrOverride } : {}),
       ...(pickupDtOverride ? {
         pickup_date: pickupDtOverride.slice(0, 10),

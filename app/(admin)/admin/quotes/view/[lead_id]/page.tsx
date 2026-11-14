@@ -2345,8 +2345,9 @@ export default function QuoteViewPage() {
                   // Saved terms text is already numbered ("1. Booking Confirmation : ...") —
                   // strip the leading "1." / "1)" so it doesn't double up with the badge below.
                   const text = line.replace(/^\s*\d+[.)]\s*/, '')
+                  const isCancel = /cancellations? must be made/i.test(text)
                   return (
-                    <div key={i} style={{ display: 'flex', gap: '5px' }}>
+                    <div key={i} style={{ display: 'flex', gap: '5px', ...(isCancel ? { background: '#fef08a', borderLeft: '3px solid #dc2626', padding: '3px 6px', fontWeight: 700, color: '#7f1d1d' } : {}) }}>
                       <span style={{ color: '#f97316', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
                       <span>{text}</span>
                     </div>
@@ -2363,7 +2364,7 @@ export default function QuoteViewPage() {
                   'Bagdrop is not liable for loss/damage during transit. Carry essential documents personally.',
                   'Rates subject to change without prior notice and subject to availability at time of booking.',
                 ].map((t, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '5px' }}>
+                  <div key={i} style={{ display: 'flex', gap: '5px', ...(/cancellation/i.test(t) ? { background: '#fef08a', borderLeft: '3px solid #dc2626', padding: '3px 6px', fontWeight: 700, color: '#7f1d1d' } : {}) }}>
                     <span style={{ color: '#f97316', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
                     <span>{t}</span>
                   </div>

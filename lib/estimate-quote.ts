@@ -78,7 +78,7 @@ function round2(n: number): number {
 function buildKnownRouteLineItems(from: string, to: string, bags: number, base: number, perBag: number): EstimateLineItem[] {
   const route = `${from} → ${to}`
   const items: EstimateLineItem[] = [{
-    name:        `Transportation of Goods (Upto 2 Bags) — ${route}`,
+    name:        `Transportation of Bags (Upto 2 Bags) — ${route}`,
     description: 'Airport-to-Doorstep / Doorstep-to-Airport baggage delivery (estimate)',
     quantity:    1,
     rate:        base,
