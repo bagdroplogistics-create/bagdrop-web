@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback, useRef } from 'react'
 import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { IdentityCard } from '@/components/admin/identity-card'
 import {
   ArrowLeft, Printer, Download,
@@ -433,9 +433,42 @@ function FamilyGuestsCard({ bookingId }: { bookingId: string }) {
 }
 
 
+// Presents a lead's RETURN quote as if it were the lead's primary quote, so the
+// whole page (quote document, workflow, payments) can render the return
+// journey as an independent quotation. Never written back to the server.
+function toReturnView(l: Lead): Lead {
+  return {
+    ...l,
+    quote_number:        l.return_quote_number,
+    zoho_estimate_number: l.return_quote_number,
+    quote_line_items:    l.return_quote_line_items,
+    quote_total:         l.return_quote_total,
+    quote_subtotal:      l.return_quote_subtotal,
+    quote_tax:           l.return_quote_tax,
+    quote_date:          l.return_quote_date,
+    quote_discount_pct:  l.return_discount_pct,
+    quote_discount_amt:  l.return_discount_amt,
+    quote_notes:         l.return_quote_notes,
+    from_city:           l.return_from_city ?? l.to_city,
+    to_city:             l.return_to_city ?? l.from_city,
+    bags_count:          l.return_bags_count ?? l.bags_count,
+    pickup_date:         l.return_pickup_date ?? null,
+    delivery_date:       l.return_delivery_date ?? null,
+    booking_id:          l.return_booking_id,
+    // Hide the "Add Return Quote" CTA / Return card / combined total — this
+    // page IS the return quotation.
+    return_quote_number: null,
+    return_booking_id:   null,
+  }
+}
+
 export default function QuoteViewPage() {
   const { lead_id } = useParams<{ lead_id: string }>()
   const router = useRouter()
+  // ?leg=return opens the RETURN journey as its own, fully separate quotation:
+  // its own quote data, its own (-R) booking, its own payment proof / payment
+  // received / workflow. Nothing here is shared with the onward quotation.
+  const isReturnLeg = useSearchParams().get('leg') === 'return'
 
   const [key, setKey]         = useState('')
   const [lead, setLead]       = useState<Lead | null>(null)
@@ -614,7 +647,7 @@ export default function QuoteViewPage() {
     try {
       const ck = 'bagdrop_quote_pre:' + lead_id
       const raw = sessionStorage.getItem(ck)
-      if (raw) {
+      if (raw && !isReturnLeg) {
         sessionStorage.removeItem(ck)
         const c = JSON.parse(raw)
         if (Date.now() - c.t < 60000 && c.d?.lead) {
@@ -641,6 +674,22 @@ export default function QuoteViewPage() {
         return
       }
       const l: Lead = ld.lead
+      if (isReturnLeg) {
+        if (!l.return_quote_number || !l.return_booking_id) {
+          setError('This inquiry has no return quotation.')
+          setLoading(false)
+          return
+        }
+        setLead(toReturnView(l))
+        const rb = await fetch(`/api/admin/bookings/${l.return_booking_id}?key=${encodeURIComponent(adminKey)}`)
+          .then(r => r.json()).catch(() => ({}))
+        setBooking((rb.booking ?? rb) as Booking)
+        const ri = await fetch(`/api/admin/invoices?booking_id=${l.return_booking_id}&key=${encodeURIComponent(adminKey)}`)
+          .then(r => r.json()).catch(() => ({}))
+        setInvoice(ri.invoices?.[0] ? (ri.invoices[0] as Invoice) : null)
+        setLoading(false)
+        return
+      }
       setLead(l)
 
       let foundBooking: Booking | null = (ld.booking as Booking | null) ?? null
@@ -672,7 +721,7 @@ export default function QuoteViewPage() {
       setError('Network error while loading this quote. Please retry.')
       setLoading(false)
     }
-  }, [lead_id])
+  }, [lead_id, isReturnLeg])
 
   useEffect(() => {
     const k = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -841,7 +890,9 @@ export default function QuoteViewPage() {
         // later) even while its share of the round-trip payment is
         // genuinely still outstanding. Best-effort/non-blocking: never
         // let this fail the primary action the admin actually clicked.
-        if (lead?.return_booking_id) {
+        // Onward and Return are separate quotations now (founder, 2026-11-14):
+        // never mirror status/payment onto the return booking.
+        if (false as boolean && lead?.return_booking_id) {
           const mirrorPayload: Record<string, unknown> = {}
           for (const f of MIRROR_TO_RETURN_FIELDS) {
             if (f in payload) mirrorPayload[f] = payload[f]
@@ -864,7 +915,7 @@ export default function QuoteViewPage() {
         // showing "Pending" there indefinitely, which is confusing and
         // was mistaken for a Payments-tab bug (the Payments tab itself
         // was already correct; this badge just never caught up to it).
-        if (lead?.id && 'payment_status' in payload) {
+        if (!isReturnLeg && lead?.id && 'payment_status' in payload) {
           const mappedLeadStatus = payload.payment_status === 'paid' ? 'received' : 'pending'
           fetch(`/api/admin/leads/${lead.id}?key=${encodeURIComponent(key)}`, {
             method: 'PATCH',
@@ -1896,6 +1947,13 @@ export default function QuoteViewPage() {
           </button>
           <ChevronRight className="h-3.5 w-3.5 text-gray-300" />
           <span className="text-sm font-semibold text-gray-800">{quoteNumber}</span>
+          {isReturnLeg && (
+            <>
+              <span className="rounded-full bg-purple-100 px-2.5 py-0.5 text-xs font-bold uppercase text-purple-700">Return Journey</span>
+              <button onClick={() => router.push(`/admin/quotes/view/${lead_id}`)}
+                className="text-xs font-semibold text-purple-600 underline">View onward quotation</button>
+            </>
+          )}
           {booking?.status && (
             <span className={`rounded-full px-2.5 py-0.5 text-xs font-semibold ${STATUS_COLOR[booking.status] ?? 'bg-gray-100 text-gray-600'}`}>
               {STATUS_LABEL[booking.status] ?? booking.status}
@@ -3531,6 +3589,10 @@ export default function QuoteViewPage() {
                  'Not Sent Yet'}
               </span>
               <span className="ml-auto text-xs text-purple-500">{fmtDate(lead.return_quote_date)}</span>
+              <button onClick={() => router.push(`/admin/quotes/view/${lead.id}?leg=return`)}
+                className="ml-2 rounded-lg border border-purple-200 bg-white px-2 py-1 text-xs font-semibold text-purple-700 hover:bg-purple-100">
+                Open return quotation →
+              </button>
               <button
                 onClick={async () => {
                   if (!key || !lead) return
@@ -3712,20 +3774,6 @@ export default function QuoteViewPage() {
                 )}
               </div>
 
-              {/* Combined total */}
-              {(lead.quote_total ?? 0) > 0 && (lead.return_quote_total ?? 0) > 0 && (
-                <div className="mt-4 rounded-lg border-2 border-purple-200 bg-purple-50 px-4 py-3 flex items-center justify-between">
-                  <div>
-                    <p className="text-xs font-bold text-purple-700 uppercase tracking-wide">Combined Journey Total</p>
-                    <p className="text-xs text-purple-500 mt-0.5">
-                      Outward {fmtRs(lead.quote_total!)} + Return {fmtRs(lead.return_quote_total!)}
-                    </p>
-                  </div>
-                  <p className="text-xl font-black text-purple-700">
-                    {fmtRs((lead.quote_total ?? 0) + (lead.return_quote_total ?? 0))}
-                  </p>
-                </div>
-              )}
             </div>
           </div>
         )}

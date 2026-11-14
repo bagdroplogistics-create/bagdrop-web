@@ -2233,7 +2233,7 @@ function LeadsPageInner() {
                               </Link>
                             )}
                             <div className="flex items-center gap-1">
-                            <Link href={`/admin/quotes/view/${l.id}`} onMouseEnter={() => prefetchQuote(l.id)}
+                            <Link href={`/admin/quotes/view/${l.id}?leg=return`}
                               className="inline-flex items-center gap-1 rounded-lg border border-purple-100 bg-purple-50 px-2.5 py-1 text-xs font-semibold text-purple-700 hover:border-purple-300 transition-colors">
                               <ExternalLink className="h-3 w-3" /> {l.return_quote_number}
                             </Link>

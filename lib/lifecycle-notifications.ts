@@ -193,12 +193,24 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
       // quote_sent additionally needs everything getQuotePdfUrl/
       // LeadRowForPdf reads to regenerate the PDF for the template's
       // Document header.
-      const { data: lead } = await supabaseAdmin
+      let { data: lead } = await supabaseAdmin
         .from('leads')
         .select('*')
         .eq('booking_id', booking.id)
         .maybeSingle()
-      const quoteNumber = lead?.quote_number ?? booking.tracking_id
+      // Return-journey bookings (tracking id …-R) are linked via
+      // leads.return_booking_id and carry their OWN quote (return_quote_*).
+      let quoteLeg: 'onward' | 'return' = 'onward'
+      if (!lead) {
+        const { data: retLead } = await supabaseAdmin
+          .from('leads')
+          .select('*')
+          .eq('return_booking_id', booking.id)
+          .maybeSingle()
+        if (retLead) { lead = retLead; quoteLeg = 'return' }
+      }
+      const isRet = quoteLeg === 'return'
+      const quoteNumber = (isRet ? lead?.return_quote_number : lead?.quote_number) ?? booking.tracking_id
 
       if (status === 'quote_sent') {
         // 2026-10-09 — Route in the customer message came out as
@@ -207,7 +219,7 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
         // lead row is the source of the quoted route, so prefer its cities and
         // never send a half-empty route; fall back to the booking, then to a
         // neutral phrase instead of a dangling arrow.
-        const leadRoute = [lead?.from_city, lead?.to_city]
+        const leadRoute = (isRet ? [lead?.return_from_city ?? lead?.to_city, lead?.return_to_city ?? lead?.from_city] : [lead?.from_city, lead?.to_city])
           .map((c: unknown) => (typeof c === 'string' ? c.trim() : ''))
           .filter(Boolean)
         const quoteRoute = leadRoute.length === 2 ? leadRoute.join(' → ')
@@ -217,8 +229,8 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
           name,
           quoteNumber,
           quoteRoute,
-          String(lead?.bags_count ?? booking.total_bags ?? 1),
-          fmtRs(lead?.quote_total ?? booking.total_amount),
+          String((isRet ? lead?.return_bags_count ?? lead?.bags_count : lead?.bags_count) ?? booking.total_bags ?? 1),
+          fmtRs((isRet ? lead?.return_quote_total : lead?.quote_total) ?? booking.total_amount),
         ]
         // quote_sent_v2's approved template has a Document header — the
         // quote PDF itself. getQuotePdfUrl() always regenerates fresh off
@@ -229,7 +241,7 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
         // failure, rather than sending a Document-header template with no
         // document attached.
         if (lead) {
-          const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf)
+          const { url, filename } = await getQuotePdfUrl(lead as LeadRowForPdf, quoteLeg)
           quotePdfHeader = { type: 'document', url, filename }
         }
       } else {
