@@ -87,8 +87,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Unauthorized — full admin key required' }, { status: 401 })
   }
   const body = await req.json().catch(() => null)
+  // { action: 'test-send', to: '+14155550123' } — sends a dummy bagdrop_otp (code 123456) straight through Meta
+  // and returns Meta's full result, so we can see whether sends work for ANY number (India vs international).
+  if (body?.action === 'test-send' && typeof body?.to === 'string') {
+    const { sendWhatsAppOtpMeta } = await import('@/lib/notifications')
+    const r = await sendWhatsAppOtpMeta(body.to, '123456')
+    return NextResponse.json(r, { status: r.success ? 200 : 502 })
+  }
   if (body?.action !== 'subscribe') {
-    return NextResponse.json({ error: "Unknown action — use { action: 'subscribe' }" }, { status: 400 })
+    return NextResponse.json({ error: "Unknown action — use { action: 'subscribe' } or { action: 'test-send', to }" }, { status: 400 })
   }
   const { token, wabaId } = config()
   if (!token) return NextResponse.json({ error: 'WHATSAPP_ACCESS_TOKEN is not set' }, { status: 500 })
