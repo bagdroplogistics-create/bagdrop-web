@@ -770,6 +770,16 @@ export async function sendWhatsAppTemplate(
     : (fast2smsConfigured ? 'fast2sms' : 'meta')
   const secondary: 'fast2sms' | 'meta' = preferred === 'fast2sms' ? 'meta' : 'fast2sms'
 
+  // International (non-India) recipients: Fast2SMS rejects them outright ("International message are
+  // restricted on advance meta api"), so send them through Meta ONLY — no pointless Fast2SMS attempt,
+  // and the error shown is Meta's own (the one that actually needs fixing).
+  const digits = phone.replace(/\D/g, '')
+  const isInternational = phone.trim().startsWith('+') ? !digits.startsWith('91') : (digits.length > 10 && !digits.startsWith('91'))
+  if (isInternational) {
+    const r = await sendWhatsAppTemplateMeta(phone, templateName, variables, header, buttons)
+    return r.success ? { ...r, provider: 'meta' } : { ...r, provider: 'meta', error: `meta (international): ${r.error ?? 'failed'}` }
+  }
+
   const run = (p: 'fast2sms' | 'meta'): Promise<WhatsAppSendResult> =>
     p === 'fast2sms'
       ? sendWhatsAppTemplateFast2SMSv2(phone, templateName, variables, header, buttons)
