@@ -54,6 +54,18 @@ export async function GET(req: NextRequest) {
   const { token, phoneId, wabaId } = config()
   if (!token) return NextResponse.json({ error: 'WHATSAPP_ACCESS_TOKEN is not set' }, { status: 500 })
 
+  // What this token is actually allowed to do — sending needs whatsapp_business_messaging
+  // (and the token's user/system user must have full control of this WABA + phone number).
+  const tokenInfoRaw = await graph(`/debug_token?input_token=${encodeURIComponent(token)}`, token)
+  const tokenData = tokenInfoRaw.ok ? (tokenInfoRaw.data as { data?: Record<string, unknown> })?.data : null
+  const tokenInfo = tokenInfoRaw.ok
+    ? {
+        type: tokenData?.type, app_id: tokenData?.application, is_valid: tokenData?.is_valid,
+        expires_at: tokenData?.expires_at, scopes: tokenData?.scopes, granular_scopes: tokenData?.granular_scopes,
+        has_messaging_scope: Array.isArray(tokenData?.scopes) && (tokenData.scopes as string[]).includes('whatsapp_business_messaging'),
+      }
+    : tokenInfoRaw
+
   const [phone, phoneHealth, waba, wabaHealth, subscribedApps, templatesProbe] = await Promise.all([
     graph(`/${phoneId}?fields=display_phone_number,verified_name,name_status,quality_rating,status,platform_type,account_mode,code_verification_status,messaging_limit_tier`, token),
     graph(`/${phoneId}?fields=health_status`, token),
@@ -65,6 +77,7 @@ export async function GET(req: NextRequest) {
 
   return NextResponse.json({
     ids: { phoneId, wabaId },
+    tokenInfo,
     phone, phoneHealth, waba, wabaHealth, subscribedApps, templatesProbe,
   })
 }
