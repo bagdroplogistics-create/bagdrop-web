@@ -611,10 +611,13 @@ export async function sendWhatsAppOtpMeta(
       }),
     })
     const data = await res.json().catch(() => ({})) as Record<string, unknown>
-    const errObj = data.error as { message?: string } | undefined
+    const errObj = data.error as { message?: string; code?: number; error_subcode?: number; fbtrace_id?: string; error_data?: { details?: string } } | undefined
     if (!res.ok || errObj) {
-      console.error('[Meta WhatsApp OTP] FAILED | status:', res.status, '| error:', errObj?.message ?? JSON.stringify(data))
-      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+      console.error('[Meta WhatsApp OTP] FAILED | status:', res.status, '| error:', JSON.stringify(data))
+      const detail = errObj
+        ? `${errObj.message ?? 'error'} [code ${errObj.code ?? '?'}${errObj.error_subcode ? `/${errObj.error_subcode}` : ''}${errObj.error_data?.details ? `: ${errObj.error_data.details}` : ''}${errObj.fbtrace_id ? ` | trace ${errObj.fbtrace_id}` : ''}]`
+        : JSON.stringify(data)
+      return { success: false, error: detail }
     }
     const messages = data.messages as Array<{ id?: string }> | undefined
     return { success: true, requestId: messages?.[0]?.id }
@@ -742,10 +745,14 @@ export async function sendWhatsAppTemplateMeta(
     })
     const data = await res.json().catch(() => ({})) as Record<string, unknown>
 
-    const errObj = data.error as { message?: string } | undefined
+    const errObj = data.error as { message?: string; code?: number; error_subcode?: number; fbtrace_id?: string; error_data?: { details?: string } } | undefined
     if (!res.ok || errObj) {
       console.error('[Meta WhatsApp] FAILED', '| status:', res.status, '| error:', JSON.stringify(data))
-      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+      // Include Meta's code/subcode/details so the admin screen shows the real cause, not just "no permission".
+      const detail = errObj
+        ? `${errObj.message ?? 'error'} [code ${errObj.code ?? '?'}${errObj.error_subcode ? `/${errObj.error_subcode}` : ''}${errObj.error_data?.details ? `: ${errObj.error_data.details}` : ''}${errObj.fbtrace_id ? ` | trace ${errObj.fbtrace_id}` : ''}]`
+        : JSON.stringify(data)
+      return { success: false, error: detail }
     }
 
     const messages = data.messages as Array<{ id?: string }> | undefined
