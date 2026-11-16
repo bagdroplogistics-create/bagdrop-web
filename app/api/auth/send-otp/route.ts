@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
-import { sendWhatsAppOtpFast2SMS } from '@/lib/notifications'
+import { sendWhatsAppOtpFast2SMS, sendWhatsAppOtpMeta } from '@/lib/notifications'
 
 // Generates a cryptographically random 6-digit OTP
 function generateOtp(): string {
@@ -149,6 +149,18 @@ export async function POST(req: Request) {
     const wa = await sendWhatsAppOtpFast2SMS(contact, otp)
     if (wa.success) return NextResponse.json({ success: true, channel: 'whatsapp' })
     console.error('[send-otp] WhatsApp OTP failed, falling back to SMS. Reason:', wa.error)
+  }
+
+  // International (non-India) numbers: Fast2SMS can't reach them, so send the OTP on WhatsApp through Meta.
+  {
+    const d = String(contact).replace(/\D/g, '')
+    const intl = String(contact).trim().startsWith('+') ? !d.startsWith('91') : (d.length > 10 && !d.startsWith('91'))
+    if (intl) {
+      const m = await sendWhatsAppOtpMeta(contact, otp)
+      if (m.success) return NextResponse.json({ success: true, channel: 'whatsapp' })
+      console.error('[send-otp] Meta WhatsApp OTP failed for international number. Reason:', m.error)
+      return NextResponse.json({ success: true, otp, fallback: true, smsError: m.error })
+    }
   }
 
   // Default: send the OTP by SMS AND WhatsApp at the same time, so a customer who doesn't receive the

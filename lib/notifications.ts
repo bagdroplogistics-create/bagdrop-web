@@ -576,6 +576,56 @@ export async function sendWhatsAppOtpFast2SMS(
   }
 }
 
+// OTP over the direct Meta Cloud API — used for INTERNATIONAL numbers (Fast2SMS is India-only).
+// Same approved authentication template (bagdrop_otp): body = code, copy-code button = code.
+export async function sendWhatsAppOtpMeta(
+  phone: string,
+  otp: string,
+): Promise<{ success: boolean; error?: string; requestId?: string }> {
+  const token   = process.env.WHATSAPP_ACCESS_TOKEN
+  const phoneId = process.env.WHATSAPP_PHONE_NUMBER_ID || '995935626929789'
+  if (!token) return { success: false, error: 'WHATSAPP_ACCESS_TOKEN missing' }
+  if (!phone) return { success: false, error: 'No phone number provided' }
+  const templateName = process.env.FAST2SMS_OTP_TEMPLATE_NAME || 'bagdrop_otp'
+  const language     = process.env.FAST2SMS_OTP_LANGUAGE || 'en'
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), 10_000)
+  try {
+    const res = await fetch(`https://graph.facebook.com/v26.0/${phoneId}/messages`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        messaging_product: 'whatsapp',
+        recipient_type: 'individual',
+        to: buildInternationalRecipient(phone),
+        type: 'template',
+        template: {
+          name: templateName,
+          language: { code: language },
+          components: [
+            { type: 'body', parameters: [{ type: 'text', text: otp }] },
+            { type: 'button', sub_type: 'url', index: '0', parameters: [{ type: 'text', text: otp }] },
+          ],
+        },
+      }),
+    })
+    const data = await res.json().catch(() => ({})) as Record<string, unknown>
+    const errObj = data.error as { message?: string } | undefined
+    if (!res.ok || errObj) {
+      console.error('[Meta WhatsApp OTP] FAILED | status:', res.status, '| error:', errObj?.message ?? JSON.stringify(data))
+      return { success: false, error: errObj?.message ?? JSON.stringify(data) }
+    }
+    const messages = data.messages as Array<{ id?: string }> | undefined
+    return { success: true, requestId: messages?.[0]?.id }
+  } catch (err) {
+    const isAbort = err instanceof Error && err.name === 'AbortError'
+    return { success: false, error: isAbort ? 'Timed out waiting for Meta (10s)' : (err instanceof Error ? err.message : String(err)) }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
 // ── WhatsApp Template Sender — direct Meta Cloud API (2026-09-01) ──────────
 // Root cause discovered while migrating off Fast2SMS: Fast2SMS's own support
 // confirmed "we provide service in India only" — international WhatsApp
