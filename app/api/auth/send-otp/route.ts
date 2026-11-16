@@ -151,7 +151,26 @@ export async function POST(req: Request) {
     console.error('[send-otp] WhatsApp OTP failed, falling back to SMS. Reason:', wa.error)
   }
 
-  const smsResult = await sendSmsOtp(contact, otp)
+  // Default: send the OTP by SMS AND WhatsApp at the same time, so a customer who doesn't receive the
+  // SMS still gets it on WhatsApp. Set OTP_CHANNEL=sms to turn WhatsApp off (SMS only).
+  let smsResult: { ok: boolean; error?: string }
+  if (process.env.OTP_CHANNEL === 'sms') {
+    smsResult = await sendSmsOtp(contact, otp)
+  } else {
+    const [smsSettled, waSettled] = await Promise.allSettled([
+      sendSmsOtp(contact, otp),
+      sendWhatsAppOtpFast2SMS(contact, otp),
+    ])
+    smsResult = smsSettled.status === 'fulfilled' ? smsSettled.value : { ok: false, error: String(smsSettled.reason) }
+    const waOk = waSettled.status === 'fulfilled' && waSettled.value.success
+    if (!waOk) {
+      console.error('[send-otp] WhatsApp OTP not sent:', waSettled.status === 'fulfilled' ? waSettled.value.error : String(waSettled.reason))
+    }
+    // Delivered on at least one channel → never expose the code on screen.
+    if (smsResult.ok || waOk) {
+      return NextResponse.json({ success: true, channel: smsResult.ok && waOk ? 'sms+whatsapp' : (waOk ? 'whatsapp' : 'sms') })
+    }
+  }
 
   if (!smsResult.ok) {
     // SMS failed (no key, wrong key, provider error, etc.)
