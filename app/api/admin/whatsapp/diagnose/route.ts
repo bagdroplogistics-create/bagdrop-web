@@ -54,6 +54,14 @@ export async function GET(req: NextRequest) {
   const { token, phoneId, wabaId } = config()
   if (!token) return NextResponse.json({ error: 'WHATSAPP_ACCESS_TOKEN is not set' }, { status: 500 })
 
+  // Easy browser test: .../diagnose?key=ADMINKEY&to=%2B91XXXXXXXXXX  → sends a dummy bagdrop_otp via Meta and shows Meta's raw result.
+  const testTo = req.nextUrl.searchParams.get('to')
+  if (testTo) {
+    const { sendWhatsAppOtpMeta } = await import('@/lib/notifications')
+    const r = await sendWhatsAppOtpMeta(testTo.startsWith(' ') ? `+${testTo.trim()}` : testTo, '123456')
+    return NextResponse.json({ testSendTo: testTo, ...r }, { status: r.success ? 200 : 502 })
+  }
+
   // What this token is actually allowed to do — sending needs whatsapp_business_messaging
   // (and the token's user/system user must have full control of this WABA + phone number).
   const tokenInfoRaw = await graph(`/debug_token?input_token=${encodeURIComponent(token)}`, token)
