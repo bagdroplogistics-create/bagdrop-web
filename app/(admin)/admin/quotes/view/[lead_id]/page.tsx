@@ -895,8 +895,12 @@ export default function QuoteViewPage() {
         setActionSuccess(actionKey)
         setTimeout(() => setActionSuccess(null), 4000)
         // Tell the admin if the automatic customer WhatsApp did not go out.
+        // International numbers can't receive the automatic WhatsApp from the business number — that is
+        // expected, so it is not shown as an error (email still goes out). Indian failures still show.
         if (d.whatsapp?.attempted && !d.whatsapp.success) {
-          setActionError(`Status saved, but the customer WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}. Use the Resend button to retry.`)
+          if (!String(d.whatsapp.error ?? '').startsWith('meta (international)')) {
+            setActionError(`Status saved, but the customer WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}. Use the Resend button to retry.`)
+          }
         } else if (d.whatsapp?.notice) {
           setActionError(d.whatsapp.notice)
         }
@@ -3237,6 +3241,7 @@ export default function QuoteViewPage() {
                         })
                         const d = await r.json().catch(() => ({}))
                         if (!r.ok) setActionError(d.error ?? 'Resend failed')
+                        else if (d.whatsapp?.attempted && !d.whatsapp.success && String(d.whatsapp.error ?? '').startsWith('meta (international)')) setActionError('This customer has an international number — automatic WhatsApp is not available. Please send it manually from your WhatsApp.')
                         else if (d.whatsapp?.attempted && !d.whatsapp.success) setActionError(`WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}`)
                         else if (d.whatsapp?.notice) setActionError(d.whatsapp.notice)
                         else { setActionSuccess('resend_wa'); setTimeout(() => setActionSuccess(null), 4000) }
