@@ -1135,7 +1135,43 @@ export default function QuoteViewPage() {
       if (!r.ok) { setActionError(d.error ?? 'Action failed'); return }
       setBooking(prev => prev ? { ...prev, ...(d.booking ?? {}) } : prev)
       if (d.whatsapp?.attempted && !d.whatsapp.success) {
-        setActionError(`Quote saved, but the WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}`)
+        const digits = waDigits(booking.customer_phone)
+        const isIntl = !!digits && !digits.startsWith('91')
+        if (isIntl) {
+          // International customer: the automatic WhatsApp can't be sent from the business number, so
+          // hand over to WhatsApp Web with the quote message + PDF link pre-filled (admin presses Send).
+          // The quote email has already been sent by the save above. Indian numbers never reach this branch.
+          let pdfUrl = ''
+          try {
+            const pr = await fetch(`/api/admin/leads/${lead.id}/quote-pdf?key=${encodeURIComponent(key)}`, {
+              method: 'POST', headers: { 'x-admin-key': key },
+            })
+            const pd = await pr.json().catch(() => ({}))
+            if (pr.ok && pd.url) pdfUrl = pd.url
+          } catch { /* fall through without a PDF link */ }
+          const name  = formatCustomerName(lead.title, lead.name) || lead.name || 'Customer'
+          const qnum  = lead.quote_number ?? lead.zoho_estimate_number ?? lead.lead_number
+          const total = Math.round(Number(lead.quote_total ?? 0)).toLocaleString('en-IN')
+          const msg = [
+            `Hi ${name}! 👋`,
+            '',
+            'Your Bagdrop quote is ready. Here is the summary:',
+            '',
+            `📋 Quote No: ${qnum}`,
+            `🗺️ Route: ${lead.from_city ?? ''} → ${lead.to_city ?? ''}`,
+            `🧳 No. of Bags: ${lead.bags_count ?? 1}`,
+            `💰 Total Amount: ₹${total}`,
+            '',
+            ...(pdfUrl ? ['📄 Download your quote PDF:', pdfUrl, ''] : []),
+            'To confirm, simply reply to this message or call/WhatsApp us anytime.',
+            '',
+            '— Team Bagdrop',
+          ].join('\n')
+          goWhatsAppWeb(null, digits, msg)
+          setActionSuccess('send_quote'); setTimeout(() => setActionSuccess(null), 4000)
+        } else {
+          setActionError(`Quote saved, but the WhatsApp failed: ${d.whatsapp.error ?? 'unknown error'}`)
+        }
       } else {
         setActionSuccess('send_quote'); setTimeout(() => setActionSuccess(null), 4000)
       }
