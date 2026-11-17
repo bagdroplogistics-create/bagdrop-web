@@ -553,7 +553,7 @@ export async function POST(req: NextRequest) {
           headers: { 'Authorization': 'Bearer ' + apiKey, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             from:    'BagDrop Weddings <info@bagdrop.co>',
-            to:      ['info@bagdrop.co'],
+            to:      ['info@bagdrop.co', 'aditya@bagdrop.co'],
             subject: `💍 #Y2K Concierge Inquiry — ${name.trim()} (${trackingId})`,
             html,
           }),
