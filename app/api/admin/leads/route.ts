@@ -84,7 +84,7 @@ const SLIM_DROP = ['quote_line_items', 'return_quote_line_items', 'estimate_line
 
 async function fastList(p: {
   status: string | null; excludeStatus: string | null; search: string | null; source: string | null
-  includeTest: boolean; offset: number; limit: number; slim?: boolean
+  includeTest: boolean; offset: number; limit: number; slim?: boolean; sort?: string | null
 }): Promise<NextResponse | null> {
   try {
     const tokenOrs = await resolveTokenOrs(p.search)
@@ -96,8 +96,21 @@ async function fastList(p: {
         .from('leads')
         // `!booking_id` pins the relationship to leads.booking_id (leads also has return_booking_id).
         .select('*, booking:bookings!booking_id(status)', { count: 'exact' })
-        .order('created_at', { ascending: false })
-        .order('id', { ascending: false })
+      // Server-side sort (whitelisted) so true pagination returns the right
+      // rows on every page. `id` is always the final tiebreak → stable pages.
+      switch (p.sort) {
+        case 'oldest': case 'date_asc':
+          q = q.order('created_at', { ascending: true }); break
+        case 'updated':
+          q = q.order('updated_at', { ascending: false, nullsFirst: false }).order('created_at', { ascending: false }); break
+        case 'name_asc':
+          q = q.order('name', { ascending: true }).order('created_at', { ascending: false }); break
+        case 'name_desc':
+          q = q.order('name', { ascending: false }).order('created_at', { ascending: false }); break
+        default:
+          q = q.order('created_at', { ascending: false })
+      }
+      q = q.order('id', { ascending: false })
       if (!p.includeTest) q = q.eq('is_test', false)
       if (withDeletedAt) q = q.is('deleted_at', null)
       if (p.source && p.source !== 'all') q = p.source === 'flamingo' ? q.ilike('source', '%flamingo%') : p.source.includes(',') ? q.in('source', p.source.split(',')) : q.eq('source', p.source)
@@ -199,8 +212,10 @@ export async function GET(req: NextRequest) {
   // to test the vendor-notification feature) can still be picked to build
   // a trip sheet against.
   const includeTest    = searchParams.get('include_test') === 'true'
-  const page          = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit         = parseInt(searchParams.get('limit') ?? '50', 10)
+  // Bounded: NaN-safe, page >= 1, limit 1..5000 (5000 only for the Leads
+  // page's bulk filtered views; the default list view pages at 20-100).
+  const page          = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+  const limit         = Math.min(5000, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50))
   const offset        = (page - 1) * limit
 
   // ── booking_id lookup: return the exact lead linked to this booking,
@@ -225,7 +240,7 @@ export async function GET(req: NextRequest) {
   // Fast path (single query, status derived from the embedded booking). Falls through to the
   // original implementation below if it returns null.
   if (!deleted && !embedUnsupported) {
-    const fast = await fastList({ status, excludeStatus, search, source, includeTest, offset, limit, slim: searchParams.get('slim') === '1' })
+    const fast = await fastList({ status, excludeStatus, search, source, includeTest, offset, limit, slim: searchParams.get('slim') === '1', sort: searchParams.get('sort') })
     if (fast) return fast
   }
 

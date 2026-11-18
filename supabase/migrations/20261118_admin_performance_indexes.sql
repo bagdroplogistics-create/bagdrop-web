@@ -58,6 +58,10 @@ SELECT pg_temp.bd_make_index('idx_bookings_trgm_email', 'bookings', ARRAY['custo
 -- ── leads ───────────────────────────────────────────────────────────────────
 SELECT pg_temp.bd_make_index('idx_leads_created', 'leads', ARRAY['created_at'],
   'CREATE INDEX IF NOT EXISTS idx_leads_created ON leads (created_at DESC)');
+SELECT pg_temp.bd_make_index('idx_leads_live_created', 'leads', ARRAY['is_test','created_at','id'],
+  'CREATE INDEX IF NOT EXISTS idx_leads_live_created ON leads (is_test, created_at DESC, id DESC)');
+SELECT pg_temp.bd_make_index('idx_leads_booking', 'leads', ARRAY['booking_id'],
+  'CREATE INDEX IF NOT EXISTS idx_leads_booking ON leads (booking_id)');
 SELECT pg_temp.bd_make_index('idx_leads_status_created', 'leads', ARRAY['status','created_at'],
   'CREATE INDEX IF NOT EXISTS idx_leads_status_created ON leads (status, created_at DESC)');
 SELECT pg_temp.bd_make_index('idx_leads_trgm_name', 'leads', ARRAY['name'],

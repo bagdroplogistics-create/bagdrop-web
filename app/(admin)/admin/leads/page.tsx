@@ -988,6 +988,8 @@ function LeadsPageInner() {
   // list, with a page-size selector and Prev/Numbered/Next controls.
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
+  // Total matching rows reported by the server (true server-side pagination).
+  const [totalCount, setTotalCount] = useState(0)
   const [modal, setModal]             = useState<{ open: boolean; lead: Lead | null }>({ open: false, lead: null })
   const [deleting, setDeleting]       = useState<string | null>(null)
   const [togglingTest, setTogglingTest] = useState<string | null>(null)
@@ -1128,7 +1130,7 @@ function LeadsPageInner() {
     return () => clearTimeout(t)
   }, [search])
 
-  const fetchLeads = useCallback(async () => {
+  const fetchLeadsAll = useCallback(async () => {
     if (!adminKey) return
     const reqId = ++leadsReqId.current
     leadsAbort.current?.abort()
@@ -1219,6 +1221,49 @@ function LeadsPageInner() {
       if (reqId === leadsReqId.current) { setLoading(false); setLoadingAll(false) }
     }
   }, [adminKey, filter, debouncedSearch, showDeleted, sourceFilter])
+
+  // ── True server-side pagination (default view) ────────────────────────
+  // When no derived-status filter, deleted view or follow-up filter is active,
+  // the server pages, sorts and counts in the database, so only ONE page of
+  // rows (20/50/100) is ever fetched no matter how many leads exist. Status
+  // filters (derived from the linked booking) and the follow-up filters still
+  // use the bulk path above (the server caps that at 10,000 rows).
+  const serverPaged = !showDeleted && filter === 'all' && !followupParam
+  const fetchLeadsPaged = useCallback(async () => {
+    if (!adminKey) return
+    const reqId = ++leadsReqId.current
+    leadsAbort.current?.abort()
+    const ctrl = new AbortController()
+    leadsAbort.current = ctrl
+    setLoadError(null)
+    setLoading(true)
+    let qs = '?key=' + adminKey + '&slim=1&limit=' + pageSize + '&page=' + page + '&sort=' + encodeURIComponent(sort)
+    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
+    if (sourceFilter !== 'all') qs += '&source=' + encodeURIComponent(sourceFilter)
+    try {
+      const res = await fetch('/api/admin/leads' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (reqId !== leadsReqId.current) return
+      if (res.ok) {
+        const body = await res.json()
+        if (reqId !== leadsReqId.current) return
+        const rows = (body.leads ?? []) as typeof leads
+        setLeads(rows)
+        setTotalCount(typeof body.total === 'number' ? body.total : rows.length)
+      } else {
+        const body = await res.json().catch(() => ({}))
+        if (reqId !== leadsReqId.current) return
+        setLoadError(body?.error ?? `Could not load leads (HTTP ${res.status}).`)
+      }
+    } catch (e) {
+      if ((e as { name?: string })?.name === 'AbortError') return
+      if (reqId !== leadsReqId.current) return
+      setLoadError('Network error while loading leads.')
+    } finally {
+      if (reqId === leadsReqId.current) { setLoading(false); setLoadingAll(false) }
+    }
+  }, [adminKey, pageSize, page, sort, debouncedSearch, sourceFilter])
+
+  const fetchLeads = serverPaged ? fetchLeadsPaged : fetchLeadsAll
 
   useEffect(() => { if (authed) fetchLeads() }, [authed, fetchLeads])
 
@@ -1382,8 +1427,27 @@ function LeadsPageInner() {
   // sessionStorage.setItem synchronously before window.open (rather than
   // after) keeps this inside the click's user-activation window so popup
   // blockers don't interfere.
-  function openPrintView() {
-    const rows = sortLeads(leads, sort).filter(l => matchesFollowupFilter(l, followupParam))
+  async function openPrintView() {
+    let source = leads
+    if (serverPaged) {
+      // The table only holds one page; the print view must still export every
+      // matching row, so pull them (1000 per request, in parallel).
+      try {
+        const base = '?key=' + adminKey + '&slim=1&limit=1000&sort=' + encodeURIComponent(sort)
+          + (debouncedSearch ? '&search=' + encodeURIComponent(debouncedSearch) : '')
+          + (sourceFilter !== 'all' ? '&source=' + encodeURIComponent(sourceFilter) : '')
+        const first = await (await fetch('/api/admin/leads' + base + '&page=1', { cache: 'no-store' })).json()
+        let all: typeof leads = first.leads ?? []
+        const pages = Math.ceil((first.total ?? all.length) / 1000)
+        if (pages > 1) {
+          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) =>
+            fetch('/api/admin/leads' + base + '&page=' + (i + 2), { cache: 'no-store' }).then(r => r.json()).then(b => (b.leads ?? []) as typeof leads)))
+          all = all.concat(...rest)
+        }
+        source = all
+      } catch { alert('Could not load all leads for printing. Please try again.'); return }
+    }
+    const rows = sortLeads(source, sort).filter(l => matchesFollowupFilter(l, followupParam))
     const filterParts: string[] = []
     if (search.trim())        filterParts.push(`Search: "${search.trim()}"`)
     if (filter !== 'all')     filterParts.push(`Status: ${STATUS_CONFIG[filter]?.label ?? filter}`)
@@ -1612,7 +1676,8 @@ function LeadsPageInner() {
   // narrow the already-loaded list in the browser so results appear on the first keystroke. Once the
   // server result arrives it replaces the list and no local narrowing is applied.
   const pendingQ = search.trim().toLowerCase()
-  const serverPending = pendingQ !== '' && (pendingQ !== debouncedSearch.toLowerCase() || loadingAll)
+  // In server-paged mode `leads` is just the current page, so never narrow it locally.
+  const serverPending = !serverPaged && pendingQ !== '' && (pendingQ !== debouncedSearch.toLowerCase() || loadingAll)
   const localNarrowed = serverPending
     ? leads.filter(l => {
         const hay = Object.values(l as unknown as Record<string, unknown>)
@@ -1620,11 +1685,13 @@ function LeadsPageInner() {
         return pendingQ.split(/\s+/).every(t => hay.includes(t))
       })
     : leads
-  const visibleLeads = sortLeads(localNarrowed, sort).filter(l => matchesFollowupFilter(l, followupParam))
-  const totalPages    = Math.max(1, Math.ceil(visibleLeads.length / pageSize))
-  const pagedLeads    = visibleLeads.slice((page - 1) * pageSize, page * pageSize)
-  const showingFrom   = visibleLeads.length === 0 ? 0 : (page - 1) * pageSize + 1
-  const showingTo     = Math.min(page * pageSize, visibleLeads.length)
+  // Server-paged: rows arrive already sorted and sliced; otherwise sort/filter/slice here.
+  const visibleLeads  = serverPaged ? leads : sortLeads(localNarrowed, sort).filter(l => matchesFollowupFilter(l, followupParam))
+  const listTotal     = serverPaged ? totalCount : visibleLeads.length
+  const totalPages    = Math.max(1, Math.ceil(listTotal / pageSize))
+  const pagedLeads    = serverPaged ? visibleLeads : visibleLeads.slice((page - 1) * pageSize, page * pageSize)
+  const showingFrom   = listTotal === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo     = serverPaged ? Math.min((page - 1) * pageSize + visibleLeads.length, listTotal) : Math.min(page * pageSize, listTotal)
 
   return (
     <>
@@ -2337,8 +2404,8 @@ function LeadsPageInner() {
             <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
               {/* Left: count + page size selector */}
               <div className="flex items-center gap-3 text-sm text-gray-500">
-                {visibleLeads.length > 0 ? (
-                  <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{visibleLeads.length}</strong> quotes</span>
+                {listTotal > 0 ? (
+                  <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{listTotal}</strong> quotes</span>
                 ) : (
                   <span>0 quotes</span>
                 )}
