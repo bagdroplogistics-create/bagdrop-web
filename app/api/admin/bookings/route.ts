@@ -63,8 +63,10 @@ export async function GET(req: NextRequest) {
   // trip sheet against, without reopening it to every other list/report
   // that reads this same endpoint.
   const includeTest    = searchParams.get('include_test') === 'true'
-  const page           = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit          = parseInt(searchParams.get('limit') ?? '50', 10)
+  // Bounded pagination: NaN-safe, page >= 1, limit clamped to 1..200 so no
+  // caller can ask this endpoint for an unbounded result set.
+  const page           = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+  const limit          = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50))
   const offset         = (page - 1) * limit
 
   // ── Lead-id lookup: return single booking linked to this lead ──────────────
@@ -118,6 +120,9 @@ export async function GET(req: NextRequest) {
     // (Group Bookings admin list intentionally does NOT apply this filter),
     // and can opt back in here via ?include_test=true (see above).
     .order('created_at', { ascending: false })
+    // Stable tiebreak so rows with identical created_at never shuffle or
+    // repeat across pages.
+    .order('id', { ascending: false })
     .range(offset, offset + limit - 1)
 
   if (!includeTest) query = query.eq('is_test', false)
@@ -158,14 +163,20 @@ export async function GET(req: NextRequest) {
     // this one param rather than applied globally — the Workflow Phase
     // tabs (Payment/Booking/Operations/etc.) deliberately still show
     // quote-less bookings so an admin can find and fix them.
-    const { data: quotedLeads } = await supabaseAdmin
-      .from('leads')
-      .select('booking_id')
-      .not('booking_id', 'is', null)
-      .not('quote_number', 'is', null)
-    const quotedBookingIds = (quotedLeads ?? [])
-      .map(l => l.booking_id)
-      .filter((bid): bid is string => !!bid)
+    // Paged in 1000-row chunks: PostgREST silently caps a single response at
+    // 1000 rows, which would drop quoted bookings once leads grow past that.
+    const quotedBookingIds: string[] = []
+    for (let from = 0; from < 50000; from += 1000) {
+      const { data: chunk } = await supabaseAdmin
+        .from('leads')
+        .select('booking_id')
+        .not('booking_id', 'is', null)
+        .not('quote_number', 'is', null)
+        .order('id', { ascending: true })
+        .range(from, from + 999)
+      for (const l of chunk ?? []) if (l.booking_id) quotedBookingIds.push(l.booking_id as string)
+      if (!chunk || chunk.length < 1000) break
+    }
     // Pass an impossible id when the list is empty rather than relying on
     // .in()-with-empty-array behavior — guarantees zero rows either way.
     query = query.in('id', quotedBookingIds.length ? quotedBookingIds : ['00000000-0000-0000-0000-000000000000'])

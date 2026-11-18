@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useState, useCallback, useRef, Fragment } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Package, Clock, CheckCircle, Truck,
@@ -1445,6 +1445,14 @@ export default function AdminDashboard() {
   const [bookings, setBookings]       = useState<Booking[]>([])
   const [loading, setLoading]         = useState(true)
   const [search, setSearch]           = useState('')
+  // Debounced copy of `search` — the list query only fires 350ms after typing stops.
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
+  const listAbort = useRef<AbortController | null>(null)
+  const listSeq   = useRef(0)
   const [filter, setFilter]           = useState('all')
   const [phaseFilter, setPhaseFilter] = useState('all')
   // Set when a Dashboard Analytics / Monthly Inquiry Statistics KPI card is
@@ -1537,8 +1545,14 @@ export default function AdminDashboard() {
     sessionStorage.setItem('bagdrop_dashboard_sort', val)
   }
 
-  const fetchData = useCallback(async () => {
+  // Bookings list only — depends on filters/search. Cancels any in-flight
+  // request and ignores stale responses so fast typing can never show old rows.
+  const fetchList = useCallback(async () => {
     if (!adminKey) return
+    listAbort.current?.abort()
+    const ctrl = new AbortController()
+    listAbort.current = ctrl
+    const seq = ++listSeq.current
     setLoading(true)
     let qs = '?key=' + adminKey
     if (kpiView) {
@@ -1565,8 +1579,19 @@ export default function AdminDashboard() {
       // Default: hide cancelled from normal view
       qs += '&exclude_status=cancelled'
     }
-    if (search) qs += '&search=' + encodeURIComponent(search)
+    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
 
+    try {
+      const r = await fetch('/api/admin/bookings' + qs, { signal: ctrl.signal })
+      if (r.ok && seq === listSeq.current) setBookings((await r.json()).bookings ?? [])
+    } catch { /* aborted or failed: keep previous rows */ }
+    if (seq === listSeq.current) setLoading(false)
+  }, [adminKey, filter, phaseFilter, debouncedSearch, kpiView])
+
+  // Stats / analytics cards — independent of the list filters, so they are
+  // fetched once on load and on manual refresh, NOT on every filter or keystroke.
+  const fetchStatic = useCallback(async () => {
+    if (!adminKey) return
     // Each section paints as soon as ITS response arrives instead of waiting
     // for the slowest of the six calls.
     const applyTrips = (td: { trip_sheets?: Record<string, unknown>[] }) => {
@@ -1588,22 +1613,23 @@ export default function AdminDashboard() {
         if (r.ok) apply(await r.json())
       } catch { /* leave previous data in place */ }
     }
-    const bookingsDone = run('/api/admin/bookings' + qs, d => setBookings(d.bookings ?? []))
     await Promise.all([
       run('/api/admin/stats?key=' + adminKey, setStats),
-      bookingsDone,
       run('/api/admin/crm-stats?key=' + adminKey, setCrmStats),
       run('/api/admin/trip-sheets?limit=200&key=' + adminKey, applyTrips),
       run('/api/admin/dashboard-analytics?key=' + adminKey, setAnalytics),
       run('/api/admin/sales-followup-summary?key=' + adminKey, setFollowupSummary),
     ])
-    setLoading(false)
-  }, [adminKey, filter, phaseFilter, search, kpiView])
+  }, [adminKey])
 
-  useEffect(() => { if (authed) fetchData() }, [authed, fetchData])
+  // Full refresh (after an edit/cancel or the Refresh button).
+  const fetchData = useCallback(async () => { await Promise.all([fetchList(), fetchStatic()]) }, [fetchList, fetchStatic])
+
+  useEffect(() => { if (authed) fetchList() }, [authed, fetchList])
+  useEffect(() => { if (authed) fetchStatic() }, [authed, fetchStatic])
 
   // Reset to page 1 whenever filters, search, sort, or the active KPI view changes
-  useEffect(() => { setPage(1) }, [filter, phaseFilter, search, sort, pageSize, kpiView])
+  useEffect(() => { setPage(1) }, [filter, phaseFilter, debouncedSearch, sort, pageSize, kpiView])
 
   // ── Revenue Report — resolves the selected period into a date_from/
   // date_to window and fetches the paid-bookings total for it.
