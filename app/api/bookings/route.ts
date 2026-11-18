@@ -43,6 +43,41 @@ function legacyDialCodeToIso2(countryCode: string | undefined | null): string | 
   }
 }
 
+// ── Duplicate-submission guard ─────────────────────────────────────────────
+// A double-click, a slow-network retry or a browser re-submit used to create TWO
+// identical inquiries (two tracking numbers, two leads, two sets of alerts).
+// Same customer phone + route + pickup date + service + bag count inside this
+// window is treated as the SAME request.
+const DUPLICATE_WINDOW_MS = 10 * 60 * 1000
+
+type DupFingerprint = {
+  phone: string; fromCity: string; toCity: string; pickupDate: string | null
+  serviceType: string; totalBags: number
+}
+
+// Earliest matching, still-open booking created inside the window (optionally
+// ignoring one id — the booking we just inserted).
+async function findEarlierDuplicate(fp: DupFingerprint, excludeId?: string) {
+  const since = new Date(Date.now() - DUPLICATE_WINDOW_MS).toISOString()
+  let q = supabaseAdmin
+    .from('bookings')
+    .select('id, tracking_id, created_at')
+    .eq('customer_phone', fp.phone)
+    .eq('from_city', fp.fromCity)
+    .eq('to_city', fp.toCity)
+    .eq('service_type', fp.serviceType)
+    .eq('total_bags', fp.totalBags)
+    .gte('created_at', since)
+    .neq('status', 'cancelled')
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true })
+    .limit(1)
+  q = fp.pickupDate ? q.eq('pickup_date', fp.pickupDate) : q.is('pickup_date', null)
+  if (excludeId) q = q.neq('id', excludeId)
+  const { data } = await q
+  return (data?.[0] as { id: string; tracking_id: string; created_at: string } | undefined) ?? null
+}
+
 export async function POST(req: Request) {
   try {
     const body = await req.json()
@@ -137,6 +172,17 @@ export async function POST(req: Request) {
     }
     if (typeof booking?.useCaseId === 'string' && booking.useCaseId) gateExtra.use_case = booking.useCaseId
     if (typeof booking?.travelReference === 'string' && booking.travelReference.trim()) gateExtra.travel_reference = booking.travelReference.trim()
+
+    const dupFp: DupFingerprint = {
+      phone: customerPhone, fromCity: fromCityLabel, toCity: toCityLabel,
+      pickupDate: booking.date ?? null, serviceType: booking.serviceId ?? '',
+      totalBags: Number(pricing?.totalBags ?? booking.bags ?? 1),
+    }
+    const alreadySaved = await findEarlierDuplicate(dupFp)
+    if (alreadySaved) {
+      console.log(`[Bookings] Duplicate submission ignored — returning existing ${alreadySaved.tracking_id}`)
+      return NextResponse.json({ success: true, trackingId: alreadySaved.tracking_id, id: alreadySaved.id, duplicate: true })
+    }
 
     const trackingId = await nextTrackingId()
 
@@ -243,6 +289,22 @@ export async function POST(req: Request) {
         { error: 'Something went wrong saving your inquiry. Please try again, or contact us directly if it keeps happening.' },
         { status: 500 }
       )
+    }
+
+    // Race guard: two identical requests that arrive at the same instant can both pass the
+    // pre-check above. If an EARLIER identical booking now exists, this one is the duplicate —
+    // remove it before any lead, email or WhatsApp is created, and return the original.
+    // The earlier request never deletes itself, so exactly one booking survives.
+    try {
+      const earlier = await findEarlierDuplicate(dupFp, savedBooking.id)
+      if (earlier && (earlier.created_at < savedBooking.created_at ||
+          (earlier.created_at === savedBooking.created_at && earlier.id < savedBooking.id))) {
+        await supabaseAdmin.from('bookings').delete().eq('id', savedBooking.id)
+        console.log(`[Bookings] Race duplicate ${trackingId} removed — keeping ${earlier.tracking_id}`)
+        return NextResponse.json({ success: true, trackingId: earlier.tracking_id, id: earlier.id, duplicate: true })
+      }
+    } catch (dupErr) {
+      console.warn('[Bookings] duplicate race check failed (non-fatal):', dupErr)
     }
 
     // Identity gate: burn the session so this verification cannot create a second booking.

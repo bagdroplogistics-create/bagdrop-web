@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, useRef } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, ArrowRight, Lock, ShieldCheck } from 'lucide-react'
@@ -81,7 +81,12 @@ export function BookingFlow({ useCases, identityGate = true }: Props) {
     patch({ useCaseId: id, serviceId: d.service as ServiceId, ...defaultsFor(id), travelReference: '', flightNumber: '' })
   }
 
+  // Synchronous in-flight lock: a fast double-click/tap can fire submit() twice before
+  // the `submitting` state re-renders, which used to create two identical inquiries.
+  const submitLock = useRef(false)
   async function submit(intl = false) {
+    if (submitLock.current) return
+    submitLock.current = true
     setSubmitting(true); setError(null)
     const payerNote = payerOther && payerName.trim()
       ? `[Payer] ${payerName.trim()}${payerContact.trim() ? ' (' + payerContact.trim() + ')' : ''}` : ''
@@ -112,6 +117,7 @@ export function BookingFlow({ useCases, identityGate = true }: Props) {
       router.push('/book/confirmation?id=' + data.trackingId)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Booking failed. Please try again.')
+      submitLock.current = false
       setSubmitting(false)
     }
   }
