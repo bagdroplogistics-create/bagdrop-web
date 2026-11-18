@@ -89,13 +89,25 @@ async function fastList(p: {
   try {
     const tokenOrs = await resolveTokenOrs(p.search)
     const statusFilterActive = !!p.status && p.status !== 'all'
-    const jsMode = statusFilterActive || !!p.excludeStatus
+    // 'confirmed' / 'cancelled' are derived from the linked booking's status, so they are
+    // filtered IN THE DATABASE through an inner join → true paging + exact count, no row cap.
+    const dbJoinStatus = statusFilterActive && (p.status === 'confirmed' || p.status === 'cancelled')
+    // Any other status narrows by leads.status in the database (indexed); only the small
+    // "not already confirmed" exclusion is applied in code, over that narrowed set.
+    const jsMode = (statusFilterActive && !dbJoinStatus) || !!p.excludeStatus
 
     const build = (withDeletedAt: boolean) => {
       let q = supabaseAdmin
         .from('leads')
         // `!booking_id` pins the relationship to leads.booking_id (leads also has return_booking_id).
-        .select('*, booking:bookings!booking_id(status)', { count: 'exact' })
+        .select(dbJoinStatus ? '*, booking:bookings!booking_id!inner(status)' : '*, booking:bookings!booking_id(status)', { count: 'exact' })
+      if (dbJoinStatus) {
+        q = p.status === 'confirmed'
+          ? q.in('booking.status', Array.from(ACTIVE_SET)).not('quote_number', 'is', null)
+          : q.eq('booking.status', 'cancelled')
+      } else if (statusFilterActive) {
+        q = q.eq('status', p.status as string)
+      }
       // Server-side sort (whitelisted) so true pagination returns the right
       // rows on every page. `id` is always the final tiebreak → stable pages.
       switch (p.sort) {

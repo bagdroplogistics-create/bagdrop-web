@@ -1223,12 +1223,12 @@ function LeadsPageInner() {
   }, [adminKey, filter, debouncedSearch, showDeleted, sourceFilter])
 
   // ── True server-side pagination (default view) ────────────────────────
-  // When no derived-status filter, deleted view or follow-up filter is active,
+  // Whenever the deleted view and the follow-up filters are not active,
   // the server pages, sorts and counts in the database, so only ONE page of
   // rows (20/50/100) is ever fetched no matter how many leads exist. Status
   // filters (derived from the linked booking) and the follow-up filters still
   // use the bulk path above (the server caps that at 10,000 rows).
-  const serverPaged = !showDeleted && filter === 'all' && !followupParam
+  const serverPaged = !showDeleted && !followupParam
   const fetchLeadsPaged = useCallback(async () => {
     if (!adminKey) return
     const reqId = ++leadsReqId.current
@@ -1238,6 +1238,7 @@ function LeadsPageInner() {
     setLoadError(null)
     setLoading(true)
     let qs = '?key=' + adminKey + '&slim=1&limit=' + pageSize + '&page=' + page + '&sort=' + encodeURIComponent(sort)
+    if (filter !== 'all') qs += '&status=' + filter
     if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
     if (sourceFilter !== 'all') qs += '&source=' + encodeURIComponent(sourceFilter)
     try {
@@ -1261,7 +1262,7 @@ function LeadsPageInner() {
     } finally {
       if (reqId === leadsReqId.current) { setLoading(false); setLoadingAll(false) }
     }
-  }, [adminKey, pageSize, page, sort, debouncedSearch, sourceFilter])
+  }, [adminKey, pageSize, page, sort, filter, debouncedSearch, sourceFilter])
 
   const fetchLeads = serverPaged ? fetchLeadsPaged : fetchLeadsAll
 
@@ -1436,6 +1437,7 @@ function LeadsPageInner() {
         const base = '?key=' + adminKey + '&slim=1&limit=1000&sort=' + encodeURIComponent(sort)
           + (debouncedSearch ? '&search=' + encodeURIComponent(debouncedSearch) : '')
           + (sourceFilter !== 'all' ? '&source=' + encodeURIComponent(sourceFilter) : '')
+          + (filter !== 'all' ? '&status=' + filter : '')
         const first = await (await fetch('/api/admin/leads' + base + '&page=1', { cache: 'no-store' })).json()
         let all: typeof leads = first.leads ?? []
         const pages = Math.ceil((first.total ?? all.length) / 1000)
