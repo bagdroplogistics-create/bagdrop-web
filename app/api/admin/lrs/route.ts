@@ -20,36 +20,18 @@ export async function GET(req: NextRequest) {
   const branchId  = searchParams.get('branch_id')
   const fy        = searchParams.get('financial_year')
   const bookingId = searchParams.get('booking_id')
-  const page   = parseInt(searchParams.get('page')  ?? '1',  10)
-  const limit  = parseInt(searchParams.get('limit') ?? '50', 10)
+  // Pagination is bounded server-side so no caller (old or new) can ask for the
+  // whole table in one request — that unbounded read was the root cause of the
+  // dashboard slowing down as the lrs table grew.
+  const page   = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+  const limit  = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50))
   const offset = (page - 1) * limit
+  const bookingIdsParam = (searchParams.get('booking_ids') ?? '').split(',').map(x => x.trim()).filter(Boolean).slice(0, 500)
+  const wantSummary = searchParams.get('summary') === '1'
 
-  let query = supabaseAdmin
-    .from('lrs')
-    .select('*', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  // Branch-scoped keys only ever see their own branch's LRs — enforced
-  // here at the query level (spec section 11: "must be enforced at the
-  // backend/database level, not only by frontend filtering"), so this
-  // can't be bypassed by a crafted request that omits/changes branch_id.
-  // A super_admin (existing admin/staff key) can still additionally
-  // narrow by branch_id via the query param, same as any other filter.
-  if (access.role === 'branch') {
-    query = query.eq('branch_id', access.branchId)
-  } else if (branchId) {
-    query = query.eq('branch_id', branchId)
-  }
-  if (fy) query = query.eq('financial_year', fy)
-  // Used by the New LR form's "Select Booking" mode to proactively show
-  // "LR Already Created" before the admin even clicks Generate — spec
-  // section 9's 1-booking-to-1-LR duplicate guard, surfaced up front
-  // rather than only as a create-time error.
-  if (bookingId) query = query.eq('booking_id', bookingId)
-
-  if (status && status !== 'all') query = query.eq('status', status)
+  // ── Search clauses (computed once, shared by the page query and the summary) ──
   const q = normalizeSearch(search)
+  let searchClauses: string[] | null = null
   if (q) {
     // Besides the LR's own columns, match the linked booking's Tracking ID
     // and the linked inquiry's Inquiry ID / customer phone, so the table can
@@ -64,22 +46,62 @@ export async function GET(req: NextRequest) {
       ...((ld.data ?? []).map(l => l.booking_id as string)),
     ]))
     const v = ilikeValue(q)
-    const clauses = [
+    searchClauses = [
       `lr_number.ilike.${v}`, `consignor_name.ilike.${v}`, `consignee_name.ilike.${v}`,
       `vehicle_number.ilike.${v}`, `eway_bill_number.ilike.${v}`, `consignor_mobile.ilike.${v}`,
       `branch_code.ilike.${v}`, `from_city.ilike.${v}`, `to_city.ilike.${v}`,
     ]
-    if (linkedBookingIds.length > 0) clauses.push(`booking_id.in.(${linkedBookingIds.join(',')})`)
-    query = query.or(clauses.join(','))
+    if (linkedBookingIds.length > 0) searchClauses.push(`booking_id.in.(${linkedBookingIds.join(',')})`)
   }
 
-  const { data, error, count } = await query
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyFilters = (qb: any) => {
+    // Branch-scoped keys only ever see their own branch's LRs — enforced
+    // here at the query level (spec section 11: "must be enforced at the
+    // backend/database level, not only by frontend filtering"), so this
+    // can't be bypassed by a crafted request that omits/changes branch_id.
+    // A super_admin (existing admin/staff key) can still additionally
+    // narrow by branch_id via the query param, same as any other filter.
+    if (access.role === 'branch') qb = qb.eq('branch_id', access.branchId)
+    else if (branchId) qb = qb.eq('branch_id', branchId)
+    if (fy) qb = qb.eq('financial_year', fy)
+    // Used by the New LR form's "Select Booking" mode to proactively show
+    // "LR Already Created" before the admin even clicks Generate — spec
+    // section 9's 1-booking-to-1-LR duplicate guard.
+    if (bookingId) qb = qb.eq('booking_id', bookingId)
+    // Used by the "awaiting LR" queue: only the LRs of the bookings it is checking.
+    if (bookingIdsParam.length) qb = qb.in('booking_id', bookingIdsParam)
+    if (status && status !== 'all') qb = qb.eq('status', status)
+    if (searchClauses) qb = qb.or(searchClauses.join(','))
+    return qb
+  }
+
+  const { data: rawData, error, count } = await applyFilters(
+    supabaseAdmin.from('lrs').select('*', { count: 'exact' })
+  ).order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + limit - 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (rawData ?? null) as Array<Record<string, any>> | null
+
+  // Totals across the WHOLE filtered set (not just this page) for the KPI cards.
+  // Only two narrow columns are read, and only when the caller asks (filters changed).
+  let summary: { total_amount: number; total_bags: number } | undefined
+  if (wantSummary) {
+    summary = { total_amount: 0, total_bags: 0 }
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data: rows, error: sErr } = await applyFilters(
+        supabaseAdmin.from('lrs').select('total_amount,total_bags')
+      ).order('id', { ascending: true }).range(from, from + 999)
+      if (sErr || !rows?.length) break
+      for (const r of rows) { summary.total_amount += Number(r.total_amount) || 0; summary.total_bags += Number(r.total_bags) || 0 }
+      if (rows.length < 1000) break
+    }
+  }
 
   // `slim=1` skips enrichment (used by callers that only need booking_id /
   // lr_number, e.g. the "awaiting LR" queue).
   if (searchParams.get('slim') === '1') {
-    return NextResponse.json({ lrs: data ?? [], total: count, page, limit })
+    return NextResponse.json({ lrs: data ?? [], total: count, page, limit, summary })
   }
 
   // ── Enrich with the linked booking + inquiry ────────────────────────
@@ -90,14 +112,16 @@ export async function GET(req: NextRequest) {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const bookingMap = new Map<string, any>()
   const leadMap = new Map<string, { id: string; lead_number: string | null; delivery_date: string | null }>()
-  for (let i = 0; i < bookingIds.length; i += 100) {
-    const chunk = bookingIds.slice(i, i + 100)
-    const [bk, ld] = await Promise.all([
-      supabaseAdmin.from('bookings')
-        .select('id, tracking_id, customer_name, customer_phone, service_type, pickup_date, delivery_date, status, total_bags')
-        .in('id', chunk),
-      supabaseAdmin.from('leads').select('id, booking_id, lead_number, delivery_date').in('booking_id', chunk),
-    ])
+  // Chunks run in PARALLEL (was a sequential await per 100 ids).
+  const chunks: string[][] = []
+  for (let i = 0; i < bookingIds.length; i += 100) chunks.push(bookingIds.slice(i, i + 100))
+  const results = await Promise.all(chunks.map(chunk => Promise.all([
+    supabaseAdmin.from('bookings')
+      .select('id, tracking_id, customer_name, customer_phone, service_type, pickup_date, delivery_date, status, total_bags')
+      .in('id', chunk),
+    supabaseAdmin.from('leads').select('id, booking_id, lead_number, delivery_date').in('booking_id', chunk),
+  ])))
+  for (const [bk, ld] of results) {
     for (const b of bk.data ?? []) bookingMap.set(b.id, b)
     for (const l of ld.data ?? []) if (l.booking_id && !leadMap.has(l.booking_id)) leadMap.set(l.booking_id, l)
   }
@@ -118,7 +142,7 @@ export async function GET(req: NextRequest) {
     }
   })
 
-  return NextResponse.json({ lrs, total: count, page, limit })
+  return NextResponse.json({ lrs, total: count, page, limit, summary })
 }
 
 // ── POST /api/admin/lrs ───────────────────────────────────────

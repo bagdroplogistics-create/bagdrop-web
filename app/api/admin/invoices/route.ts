@@ -25,8 +25,9 @@ export async function GET(req: NextRequest) {
   const status    = searchParams.get('status')
   const search    = searchParams.get('search')
   const bookingId = searchParams.get('booking_id')
-  const page   = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit  = parseInt(searchParams.get('limit') ?? '50', 10)
+  // Bounded server-side so no caller can request the whole list in one response.
+  const page   = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+  const limit  = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50))
   const offset = (page - 1) * limit
 
   // Single-booking lookup — used by the booking workflow page purely to
@@ -73,7 +74,8 @@ export async function GET(req: NextRequest) {
 
   const { data: doneBookings, error: bErr } = await supabaseAdmin
     .from('bookings')
-    .select('*')
+    // Only the columns the placeholder rows below actually use (was select('*')).
+    .select('id, title, customer_name, customer_phone, customer_email, from_city, to_city, total_bags, total_amount, payment_status, payment_method, payment_reference, delivery_date, pickup_date, updated_at')
     .in('status', DONE_STATUSES)
     .eq('is_test', false)
   if (bErr) return NextResponse.json({ error: bErr.message }, { status: 500 })
@@ -145,7 +147,16 @@ export async function GET(req: NextRequest) {
   const total = merged.length
   const paged = merged.slice(offset, offset + limit)
 
-  return NextResponse.json({ invoices: paged, total, page, limit })
+  // Header/summary-card figures for the WHOLE filtered list (the page only
+  // receives one slice of rows now, so it can no longer add them up itself).
+  const summary = {
+    total,
+    not_generated: merged.filter(r => !r.generated).length,
+    paid:          merged.filter(r => r.payment_status === 'paid').length,
+    revenue:       merged.filter(r => r.payment_status === 'paid').reduce((a, r) => a + Number(r.total_amount ?? 0), 0),
+  }
+
+  return NextResponse.json({ invoices: paged, total, page, limit, summary })
 }
 
 export const runtime = 'nodejs'

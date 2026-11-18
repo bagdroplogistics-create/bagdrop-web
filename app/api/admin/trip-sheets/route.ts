@@ -36,9 +36,11 @@ export async function GET(req: NextRequest) {
   const bookingId   = searchParams.get('booking_id')
   // Explicit opt-in only — see the Test Mode exclusion below.
   const includeTest = searchParams.get('include_test') === 'true'
-  const page        = parseInt(searchParams.get('page') ?? '1', 10)
-  const limit       = parseInt(searchParams.get('limit') ?? '50', 10)
+  // Bounded server-side: no caller can pull the whole table in one request.
+  const page        = Math.max(1, parseInt(searchParams.get('page') ?? '1', 10) || 1)
+  const limit       = Math.min(200, Math.max(1, parseInt(searchParams.get('limit') ?? '50', 10) || 50))
   const offset      = (page - 1) * limit
+  const wantSummary = searchParams.get('summary') === '1'
 
   // ── Test Mode exclusion ──────────────────────────────────────
   // trip_sheets has no is_test column of its own (unlike bookings/leads) —
@@ -64,33 +66,58 @@ export async function GET(req: NextRequest) {
 
   const excludedTestBookingIds = (!includeTest && !bookingId) ? [...testBookingIdSet] : []
 
-  let query = supabaseAdmin
-    .from('trip_sheets')
-    .select('*, trip_expenses(id, actual_cost)', { count: 'exact' })
-    .order('created_at', { ascending: false })
-    .range(offset, offset + limit - 1)
-
-  if (status && status !== 'all') query = query.eq('status', status)
-  if (vendor)     query = query.ilike('vendor', `%${vendor}%`)
-  // Used by the "New Trip Sheet" wizard to detect whether the selected
-  // booking/lead already has a trip sheet, so it can point the admin at
-  // the existing one (with its real expenses) instead of them accidentally
-  // trying to build a second, blank one for a booking that's already
-  // been converted.
-  if (bookingId)  query = query.eq('booking_id', bookingId)
-  if (excludedTestBookingIds.length > 0) {
-    // NULL-trap-safe — `NOT IN (...)` alone would also exclude manual trip
-    // sheets (booking_id IS NULL), which were never test bookings at all.
-    query = query.or(`booking_id.is.null,booking_id.not.in.(${excludedTestBookingIds.join(',')})`)
-  }
-  if (search) {
-    query = query.or(
-      `customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,trip_number.ilike.%${search}%,driver_name.ilike.%${search}%`
-    )
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const applyFilters = (qb: any) => {
+    if (status && status !== 'all') qb = qb.eq('status', status)
+    if (vendor)     qb = qb.ilike('vendor', `%${vendor}%`)
+    // Used by the "New Trip Sheet" wizard to detect whether the selected
+    // booking/lead already has a trip sheet, so it can point the admin at
+    // the existing one (with its real expenses) instead of them accidentally
+    // trying to build a second, blank one for a booking that's already
+    // been converted.
+    if (bookingId)  qb = qb.eq('booking_id', bookingId)
+    if (excludedTestBookingIds.length > 0) {
+      // NULL-trap-safe — `NOT IN (...)` alone would also exclude manual trip
+      // sheets (booking_id IS NULL), which were never test bookings at all.
+      qb = qb.or(`booking_id.is.null,booking_id.not.in.(${excludedTestBookingIds.join(',')})`)
+    }
+    if (search) {
+      qb = qb.or(
+        `customer_name.ilike.%${search}%,customer_phone.ilike.%${search}%,trip_number.ilike.%${search}%,driver_name.ilike.%${search}%`
+      )
+    }
+    return qb
   }
 
-  const { data, error, count } = await query
+  const { data: rawData, error, count } = await applyFilters(
+    supabaseAdmin.from('trip_sheets').select('*, trip_expenses(id, actual_cost)', { count: 'exact' })
+  ).order('created_at', { ascending: false }).order('id', { ascending: false }).range(offset, offset + limit - 1)
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (rawData ?? null) as Array<Record<string, any>> | null
+
+  // Income / expense totals across the WHOLE filtered set (not just this page),
+  // for the summary cards. Computed only when the caller asks (filters changed).
+  let summary: { total_income: number; total_expense: number } | undefined
+  if (wantSummary) {
+    summary = { total_income: 0, total_expense: 0 }
+    for (let from = 0; from < 20000; from += 1000) {
+      const { data: rows, error: sErr } = await applyFilters(
+        supabaseAdmin.from('trip_sheets').select('total_income,total_expense,trip_expenses(actual_cost)')
+      ).order('id', { ascending: true }).range(from, from + 999)
+      if (sErr || !rows?.length) break
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      for (const r of rows as any[]) {
+        summary.total_income += Number(r.total_income) || 0
+        const exp = r.trip_expenses?.length
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          ? r.trip_expenses.reduce((a: number, e: any) => a + (Number(e.actual_cost) || 0), 0)
+          : Number(r.total_expense) || 0
+        summary.total_expense += exp
+      }
+      if (rows.length < 1000) break
+    }
+  }
 
   // Compute totals for each sheet from its expenses
   const sheets = (data ?? []).map(s => ({
@@ -99,7 +126,7 @@ export async function GET(req: NextRequest) {
     is_test: s.booking_id ? testBookingIdSet.has(s.booking_id) : false,
   }))
 
-  return NextResponse.json({ trip_sheets: sheets, total: count, page, limit })
+  return NextResponse.json({ trip_sheets: sheets, total: count, page, limit, summary })
 }
 
 // ── POST /api/admin/trip-sheets ──────────────────────────────

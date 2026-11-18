@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -81,9 +81,21 @@ export default function TripSheetsPage() {
   // Summary totals. Number(...) coercion guards against Postgres numeric
   // columns coming back from Supabase as strings — `s + (t.total_income ||
   // 0)` would silently string-concatenate instead of add in that case.
-  const totalIncome  = sheets.reduce((s, t) => s + (Number(t.total_income)  || 0), 0)
-  const totalExpense = sheets.reduce((s, t) => s + (Number(t.total_expense) || 0), 0)
+  // Server-side pagination: `sheets` is ONLY the current page. Match count and
+  // income/expense totals for the whole filtered set come from the API.
+  const [totalCount, setTotalCount] = useState(0)
+  const [totals, setTotals] = useState({ total_income: 0, total_expense: 0 })
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const fetchSeq = useRef(0)
+  const fetchAbort = useRef<AbortController | null>(null)
+  const totalIncome  = totals.total_income
+  const totalExpense = totals.total_expense
   const netProfit    = totalIncome - totalExpense
+
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -93,29 +105,41 @@ export default function TripSheetsPage() {
 
   const fetchSheets = useCallback(async () => {
     if (!adminKey) return
+    fetchAbort.current?.abort()
+    const ctrl = new AbortController()
+    fetchAbort.current = ctrl
+    const seq = ++fetchSeq.current
     setLoading(true)
-    // limit=5000 — GET /api/admin/trip-sheets defaults to page=1/limit=50
-    // (server-side pagination it already supports), but this page paginates
-    // client-side instead (same convention as the Leads page), so it needs
-    // everything in one fetch rather than one server page at a time.
-    let qs = '?key=' + adminKey + '&limit=5000'
+    let qs = '?key=' + adminKey + '&page=' + page + '&limit=' + pageSize
+    if (page === 1) qs += '&summary=1'   // totals only change with the filters, not the page
     if (filter !== 'all') qs += '&status=' + filter
-    if (search) qs += '&search=' + encodeURIComponent(search)
+    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
     if (showTest) qs += '&include_test=true'
-    const res = await fetch('/api/admin/trip-sheets' + qs)
-    if (res.ok) setSheets((await res.json()).trip_sheets ?? [])
-    setLoading(false)
-  }, [adminKey, filter, search, showTest])
+    try {
+      const res = await fetch('/api/admin/trip-sheets' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (seq !== fetchSeq.current) return
+      if (res.ok) {
+        const d = await res.json()
+        if (seq !== fetchSeq.current) return
+        setSheets(d.trip_sheets ?? [])
+        setTotalCount(d.total ?? 0)
+        if (d.summary) setTotals(d.summary)
+      }
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return
+    }
+    if (seq === fetchSeq.current) setLoading(false)
+  }, [adminKey, filter, debouncedSearch, showTest, page, pageSize])
 
   useEffect(() => { if (authed) fetchSheets() }, [authed, fetchSheets])
 
   // Reset to page 1 whenever the underlying result set changes shape.
-  useEffect(() => { setPage(1) }, [filter, search, showTest, pageSize])
+  useEffect(() => { setPage(1) }, [filter, debouncedSearch, showTest, pageSize])
 
-  const totalPages  = Math.max(1, Math.ceil(sheets.length / pageSize))
-  const pagedSheets = sheets.slice((page - 1) * pageSize, page * pageSize)
-  const showingFrom = sheets.length === 0 ? 0 : (page - 1) * pageSize + 1
-  const showingTo   = Math.min(page * pageSize, sheets.length)
+  const totalPages  = Math.max(1, Math.ceil(totalCount / pageSize))
+  const pagedSheets = sheets
+  const showingFrom = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo   = Math.min(page * pageSize, totalCount)
 
   async function deleteSheet(id: string) {
     if (!confirm('Delete this trip sheet? This cannot be undone.')) return
@@ -217,7 +241,7 @@ export default function TripSheetsPage() {
         {/* Summary cards */}
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-4">
           {[
-            { label: 'Total Trips',    value: sheets.length,       icon: <Truck className="h-4 w-4" />,         color: '#f97316', bg: '#fff7ed' },
+            { label: 'Total Trips',    value: totalCount,       icon: <Truck className="h-4 w-4" />,         color: '#f97316', bg: '#fff7ed' },
             { label: 'Total Income',   value: fmt(totalIncome),    icon: <TrendingUp className="h-4 w-4" />,    color: '#16a34a', bg: '#f0fdf4' },
             { label: 'Total Expense',  value: fmt(totalExpense),   icon: <TrendingDown className="h-4 w-4" />, color: '#dc2626', bg: '#fef2f2' },
             { label: 'Net Profit',     value: fmt(netProfit),      icon: <IndianRupee className="h-4 w-4" />,  color: netProfit >= 0 ? '#16a34a' : '#dc2626', bg: netProfit >= 0 ? '#f0fdf4' : '#fef2f2' },
@@ -367,7 +391,7 @@ export default function TripSheetsPage() {
           {!loading && sheets.length > 0 && (
             <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
               <div className="flex items-center gap-3 text-sm text-gray-500">
-                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{sheets.length}</strong> trip sheets</span>
+                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{totalCount}</strong> trip sheets</span>
                 <div className="relative">
                   <select
                     value={pageSize}

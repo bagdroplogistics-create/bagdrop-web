@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   Receipt, Search, RefreshCw, ChevronDown, Eye,
@@ -391,6 +391,19 @@ export default function InvoicesPage() {
   const [loading,  setLoading]  = useState(false)
   const [filter,   setFilter]   = useState('all')
   const [search,   setSearch]   = useState('')
+  // Server-side pagination: `invoices` is ONLY the current page. Counts/revenue for
+  // the whole filtered list come back in `summary` from GET /api/admin/invoices.
+  const [page, setPage]               = useState(1)
+  const [pageSize, setPageSize]       = useState(50)
+  const [totalCount, setTotalCount]   = useState(0)
+  const [summary, setSummary]         = useState({ total: 0, not_generated: 0, paid: 0, revenue: 0 })
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const fetchSeq   = useRef(0)
+  const fetchAbort = useRef<AbortController | null>(null)
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
   const [sending,  setSending]  = useState<string | null>(null)
   const [generating, setGenerating] = useState<string | null>(null)
   const [viewingInvoiceId, setViewingInvoiceId] = useState<string | null>(null)
@@ -521,20 +534,32 @@ export default function InvoicesPage() {
 
   const fetchInvoices = useCallback(async () => {
     if (!adminKey) return
+    // Cancel the previous request and ignore its result if a newer one started.
+    fetchAbort.current?.abort()
+    const ctrl = new AbortController()
+    fetchAbort.current = ctrl
+    const seq = ++fetchSeq.current
     setLoading(true)
-    // limit=5000 — same fix/reasoning as the Payments tab (founder-reported
-    // 2026-09-05): with no explicit limit, GET /api/admin/invoices defaults
-    // to 50, and this page has no pagination controls to reach anything
-    // older — so once total (real + placeholder) invoice-list volume passed
-    // 50, older completed bookings simply vanished from the Invoices tab
-    // entirely.
-    const qs = `?key=${adminKey}&limit=5000${filter !== 'all' ? '&status=' + filter : ''}${search ? '&search=' + encodeURIComponent(search) : ''}`
-    const res = await fetch('/api/admin/invoices' + qs)
-    if (res.ok) setInvoices((await res.json()).invoices ?? [])
-    setLoading(false)
-  }, [adminKey, filter, search])
+    const qs = `?key=${adminKey}&page=${page}&limit=${pageSize}${filter !== 'all' ? '&status=' + filter : ''}${debouncedSearch ? '&search=' + encodeURIComponent(debouncedSearch) : ''}`
+    try {
+      const res = await fetch('/api/admin/invoices' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (seq !== fetchSeq.current) return
+      if (res.ok) {
+        const d = await res.json()
+        if (seq !== fetchSeq.current) return
+        setInvoices(d.invoices ?? [])
+        setTotalCount(d.total ?? 0)
+        if (d.summary) setSummary(d.summary)
+      }
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return
+    }
+    if (seq === fetchSeq.current) setLoading(false)
+  }, [adminKey, filter, debouncedSearch, page, pageSize])
 
   useEffect(() => { if (authed) fetchInvoices() }, [authed, fetchInvoices])
+  // Back to page 1 whenever the filter / search / page size changes
+  useEffect(() => { setPage(1) }, [filter, debouncedSearch, pageSize])
 
   function printInvoice(id: string) {
     window.open(`/admin/invoices/${id}/print`, '_blank')
@@ -575,8 +600,9 @@ export default function InvoicesPage() {
     }
   }
 
-  const totalRevenue = invoices.filter(i => i.payment_status === 'paid').reduce((s, i) => s + Number(i.total_amount), 0)
-  const notGeneratedCount = invoices.filter(i => !i.generated).length
+  const totalRevenue = summary.revenue
+  const notGeneratedCount = summary.not_generated
+  const totalPages = Math.max(1, Math.ceil(totalCount / pageSize))
 
   if (!authed) return null
 
@@ -590,7 +616,7 @@ export default function InvoicesPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Invoices</h1>
-            <p className="mt-0.5 text-sm text-gray-400">{invoices.length} completed inquiries · {fmtRs(totalRevenue)} collected</p>
+            <p className="mt-0.5 text-sm text-gray-400">{summary.total} completed inquiries · {fmtRs(totalRevenue)} collected</p>
           </div>
           <button onClick={() => router.push('/admin/invoices/new')}
             className="flex items-center gap-1.5 rounded-lg bg-orange-500 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-orange-600">
@@ -603,9 +629,9 @@ export default function InvoicesPage() {
         {/* Summary cards */}
         <div className="mb-5 grid grid-cols-2 gap-3 sm:grid-cols-4">
           {[
-            { label: 'Completed Inquiries', value: invoices.length,                                                 color: '#2563eb', bg: '#dbeafe' },
+            { label: 'Completed Inquiries', value: summary.total,                                                 color: '#2563eb', bg: '#dbeafe' },
             { label: 'Not Generated',  value: notGeneratedCount,                                                     color: '#dc2626', bg: '#fee2e2' },
-            { label: 'Paid',           value: invoices.filter(i => i.payment_status === 'paid').length,             color: '#16a34a', bg: '#dcfce7' },
+            { label: 'Paid',           value: summary.paid,             color: '#16a34a', bg: '#dcfce7' },
             { label: 'Revenue',        value: fmtRs(totalRevenue),                                                  color: '#FF6300', bg: '#fff7f0' },
           ].map(c => (
             <div key={c.label} className="rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
@@ -815,6 +841,28 @@ export default function InvoicesPage() {
                   ))}
                 </tbody>
               </table>
+            </div>
+          )}
+          {!loading && totalCount > 0 && (
+            <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 text-sm text-gray-500 sm:flex-row sm:justify-between">
+              <div className="flex items-center gap-3">
+                <span>Showing <strong className="text-gray-700">{(page - 1) * pageSize + 1}–{Math.min(page * pageSize, totalCount)}</strong> of <strong className="text-gray-700">{totalCount}</strong></span>
+                <select value={pageSize} onChange={e => setPageSize(Number(e.target.value))}
+                  className="rounded-lg border border-gray-200 bg-white px-2 py-1.5 text-xs font-medium text-gray-600 focus:border-orange-400 focus:outline-none">
+                  <option value={25}>25 / page</option>
+                  <option value={50}>50 / page</option>
+                  <option value={100}>100 / page</option>
+                </select>
+              </div>
+              {totalPages > 1 && (
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">← Prev</button>
+                  <span className="text-xs">Page {page} of {totalPages}</span>
+                  <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages}
+                    className="rounded-lg border border-gray-200 px-3 py-1.5 text-xs font-semibold text-gray-600 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40">Next →</button>
+                </div>
+              )}
             </div>
           )}
         </div>

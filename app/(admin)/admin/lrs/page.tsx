@@ -1,6 +1,6 @@
 'use client'
 
-import { Fragment, useCallback, useEffect, useState } from 'react'
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -125,13 +125,28 @@ export default function LRsPage() {
   const [loadingQueue, setLoadingQueue] = useState(true)
   const [generatingId, setGeneratingId] = useState<string | null>(null)
 
-  const totalPages  = Math.max(1, Math.ceil(lrs.length / pageSize))
-  const pagedLrs    = lrs.slice((page - 1) * pageSize, page * pageSize)
-  const showingFrom  = lrs.length === 0 ? 0 : (page - 1) * pageSize + 1
-  const showingTo    = Math.min(page * pageSize, lrs.length)
+  // Server-side pagination: `lrs` holds ONLY the current page; `totalCount` is the
+  // match count for the active filters/search and `summary` the totals across all
+  // of them (both come from GET /api/admin/lrs).
+  const [totalCount, setTotalCount] = useState(0)
+  const [summary, setSummary] = useState({ total_amount: 0, total_bags: 0 })
+  const [debouncedSearch, setDebouncedSearch] = useState('')
+  const fetchSeq = useRef(0)
+  const fetchAbort = useRef<AbortController | null>(null)
 
-  const totalAmount = lrs.reduce((s, l) => s + (l.total_amount || 0), 0)
-  const totalBags   = lrs.reduce((s, l) => s + (l.total_bags || 0), 0)
+  const totalPages  = Math.max(1, Math.ceil(totalCount / pageSize))
+  const pagedLrs    = lrs
+  const showingFrom  = totalCount === 0 ? 0 : (page - 1) * pageSize + 1
+  const showingTo    = Math.min(page * pageSize, totalCount)
+
+  const totalAmount = summary.total_amount
+  const totalBags   = summary.total_bags
+
+  // Debounce typing: one request ~350ms after the last keystroke, not one per key.
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearch(search.trim()), 350)
+    return () => clearTimeout(t)
+  }, [search])
 
   useEffect(() => {
     const key = sessionStorage.getItem('bagdrop_admin_key') ?? ''
@@ -141,16 +156,34 @@ export default function LRsPage() {
 
   const fetchLrs = useCallback(async () => {
     if (!adminKey) return
+    // Cancel the previous request and ignore its result if a newer one started.
+    fetchAbort.current?.abort()
+    const ctrl = new AbortController()
+    fetchAbort.current = ctrl
+    const seq = ++fetchSeq.current
     setLoading(true)
-    let qs = '?key=' + adminKey + '&limit=5000'   // server default is 50 — would hide older GCs
+    let qs = '?key=' + adminKey + '&page=' + page + '&limit=' + pageSize
+    // Totals only need recomputing when the filters change, not on every page turn.
+    if (page === 1) qs += '&summary=1'
     if (filter !== 'all') qs += '&status=' + filter
-    if (search) qs += '&search=' + encodeURIComponent(search)
+    if (debouncedSearch) qs += '&search=' + encodeURIComponent(debouncedSearch)
     if (branchFilter !== 'all') qs += '&branch_id=' + branchFilter
     if (fyFilter !== 'all') qs += '&financial_year=' + encodeURIComponent(fyFilter)
-    const res = await fetch('/api/admin/lrs' + qs)
-    if (res.ok) setLrs((await res.json()).lrs ?? [])
-    setLoading(false)
-  }, [adminKey, filter, search, branchFilter, fyFilter])
+    try {
+      const res = await fetch('/api/admin/lrs' + qs, { signal: ctrl.signal, cache: 'no-store' })
+      if (seq !== fetchSeq.current) return
+      if (res.ok) {
+        const d = await res.json()
+        if (seq !== fetchSeq.current) return
+        setLrs(d.lrs ?? [])
+        setTotalCount(d.total ?? 0)
+        if (d.summary) setSummary(d.summary)
+      }
+    } catch (e) {
+      if ((e as Error)?.name === 'AbortError') return
+    }
+    if (seq === fetchSeq.current) setLoading(false)
+  }, [adminKey, filter, debouncedSearch, branchFilter, fyFilter, page, pageSize])
 
   const fetchBranches = useCallback(async () => {
     if (!adminKey) return
@@ -166,12 +199,15 @@ export default function LRsPage() {
     if (!adminKey) return
     setLoadingQueue(true)
     try {
-      const [bookingsRes, allLrsRes] = await Promise.all([
-        fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200`),
-        fetch(`/api/admin/lrs?key=${adminKey}&limit=5000&slim=1`),
-      ])
+      // Ask only for the LRs of THESE confirmed bookings (not the whole LR table).
+      const bookingsRes  = await fetch(`/api/admin/bookings?key=${adminKey}&status=confirmed&limit=200`)
       const bookingsData = bookingsRes.ok ? await bookingsRes.json() : { bookings: [] }
-      const lrsData      = allLrsRes.ok  ? await allLrsRes.json()  : { lrs: [] }
+      const confirmedIds: string[] = (bookingsData.bookings ?? []).map((b: { id: string }) => b.id)
+      const lrsData: { lrs: LR[] } = { lrs: [] }
+      for (let i = 0; i < confirmedIds.length; i += 100) {
+        const r = await fetch(`/api/admin/lrs?key=${adminKey}&slim=1&limit=200&booking_ids=${confirmedIds.slice(i, i + 100).join(',')}`)
+        if (r.ok) lrsData.lrs.push(...((await r.json()).lrs ?? []))
+      }
       const coveredBookingIds = new Set(
         (lrsData.lrs ?? []).map((l: LR) => l.booking_id).filter(Boolean)
       )
@@ -190,9 +226,10 @@ export default function LRsPage() {
     setLoadingQueue(false)
   }, [adminKey])
 
-  useEffect(() => { if (authed) { fetchLrs(); fetchQueue(); fetchBranches() } }, [authed, fetchLrs, fetchQueue, fetchBranches])
+  useEffect(() => { if (authed) fetchLrs() }, [authed, fetchLrs])
+  useEffect(() => { if (authed) { fetchQueue(); fetchBranches() } }, [authed, fetchQueue, fetchBranches])
   // Back to page 1 whenever the filters / search / page size change
-  useEffect(() => { setPage(1) }, [filter, search, branchFilter, fyFilter, pageSize])
+  useEffect(() => { setPage(1) }, [filter, debouncedSearch, branchFilter, fyFilter, pageSize])
 
   async function generateLr(bookingId: string) {
     setGeneratingId(bookingId)
@@ -416,7 +453,7 @@ export default function LRsPage() {
 
         <div className="mb-6 grid grid-cols-2 gap-4 sm:grid-cols-3">
           {[
-            { label: 'Total LRs',     value: lrs.length,      icon: <FileText className="h-4 w-4" />,     color: '#f97316', bg: '#fff7ed' },
+            { label: 'Total LRs',     value: totalCount,      icon: <FileText className="h-4 w-4" />,     color: '#f97316', bg: '#fff7ed' },
             { label: 'Total Bags',    value: totalBags,        icon: <Package className="h-4 w-4" />,      color: '#2563eb', bg: '#eff6ff' },
             { label: 'Total Value',   value: fmt(totalAmount), icon: <IndianRupee className="h-4 w-4" />,  color: '#16a34a', bg: '#f0fdf4' },
           ].map(c => (
@@ -662,7 +699,7 @@ export default function LRsPage() {
 
             <div className="flex flex-col items-center gap-3 border-t border-gray-100 px-4 py-3 sm:flex-row sm:justify-between">
               <div className="flex items-center gap-3 text-sm text-gray-500">
-                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{lrs.length}</strong> GCs</span>
+                <span>Showing <strong className="text-gray-700">{showingFrom}–{showingTo}</strong> of <strong className="text-gray-700">{totalCount}</strong> GCs</span>
                 <div className="relative">
                   <select
                     value={pageSize}
