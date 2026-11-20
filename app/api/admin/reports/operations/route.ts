@@ -173,13 +173,13 @@ export async function GET(req: NextRequest) {
   // else: 'all' (or an unrecognized value) — upcomingTo stays null, no
   // upper bound applied to the query below.
 
-  // A confirmed booking is "in the window" when its PICKUP date OR its DELIVERY date falls
-  // inside it (previously pickup only — a booking being delivered today/tomorrow, or one with
-  // no pickup date yet, silently dropped out of Today / Tomorrow / Next 3 / Next 7).
-  // 'all' = anything not finished: pickup or delivery today-or-later, or pickup date not set.
+  // The Today / Tomorrow / Next 3 / Next 7 windows are PICKUP-date windows (the table's
+  // "Pickup" and "Days to pickup" columns). A booking whose pickup already passed is not an
+  // upcoming pickup — it shows under Needs Attention as "Pickup overdue" instead.
+  // 'all' also keeps confirmed bookings whose pickup date is not set yet, so none vanish.
   const windowOr = upcomingTo
-    ? `and(pickup_date.gte.${upcomingFrom},pickup_date.lte.${upcomingTo}),and(delivery_date.gte.${upcomingFrom},delivery_date.lte.${upcomingTo})`
-    : `pickup_date.gte.${upcomingFrom},delivery_date.gte.${upcomingFrom},pickup_date.is.null`
+    ? `and(pickup_date.gte.${upcomingFrom},pickup_date.lte.${upcomingTo})`
+    : `pickup_date.gte.${upcomingFrom},pickup_date.is.null`
 
   // Upcoming CONFIRMED bookings in the requested window — see OPS_ACTIVE_STATUSES above.
   const upcomingQueryBuilder = supabaseAdmin
@@ -208,7 +208,8 @@ export async function GET(req: NextRequest) {
     supabaseAdmin
       .from('bookings')
       .select('id', { count: 'exact', head: true })
-      .or(`and(pickup_date.gte.${todayStr},pickup_date.lte.${in7DaysStr}),and(delivery_date.gte.${todayStr},delivery_date.lte.${in7DaysStr})`)
+      .gte('pickup_date', todayStr)
+      .lte('pickup_date', in7DaysStr)
       .in('status', OPS_ACTIVE_STATUSES)
       .eq('is_test', false),
 
