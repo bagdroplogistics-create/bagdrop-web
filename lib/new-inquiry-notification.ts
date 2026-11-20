@@ -73,6 +73,64 @@ async function recordStatus(inquiryNumber: string, status: 'sent' | 'failed' | '
   }
 }
 
+// ── #Y2K wedding inquiries ───────────────────────────────────────────────────
+// The #Y2K booking form has no delivery date (bags go to the wedding venue on the event
+// schedule), so it gets its own template instead of the generic 10-variable one above.
+//
+// Template to submit to Meta — name: y2k_inquiry_notification · Category: Utility · Language: en
+// Variable order:
+//   {{1}} Inquiry ID   {{2}} Customer   {{3}} Mobile        {{4}} Email        {{5}} Family / side
+//   {{6}} Route        {{7}} Pickup address {{8}} Pickup date & slot {{9}} Luggage pieces {{10}} Guests
+// Until Meta approves it, a failed send automatically falls back to the existing
+// new_inquiry_notification template (with the delivery fields filled honestly, not copied
+// from the pickup date), so ops are never left without an alert.
+export async function sendY2kInquiryWhatsApp(d: {
+  inquiryNumber: string; customerName: string; customerPhone: string; customerEmail: string | null
+  familyName: string; side: string; fromCity: string; toCity: string; pickupAddress: string | null
+  pickupDate: string | null; slot: string | null; bags: number; guests: number
+}): Promise<void> {
+  try {
+    const opsNumbers = await getNewInquiryWhatsAppNumbers()
+    const dateAndSlot = [fmtDate(d.pickupDate), d.slot].filter(x => x && x !== '—').join(' · ') || '—'
+    const familySide = [d.familyName, d.side ? `${d.side}'s side` : ''].filter(Boolean).join(' · ') || '—'
+
+    const y2kVars = [
+      d.inquiryNumber,
+      d.customerName,
+      d.customerPhone || '—',
+      d.customerEmail || '—',
+      familySide,
+      `${d.fromCity} → ${d.toCity}`,
+      d.pickupAddress || '—',
+      dateAndSlot,
+      String(d.bags),
+      String(d.guests),
+    ]
+    let result = await sendToAllRecipients(opsNumbers, 'y2k_inquiry_notification', y2kVars)
+
+    if (!result.anySuccess) {
+      console.warn(`[NewInquiryWhatsApp] y2k template not delivered (${result.summary}) — falling back to the generic template`)
+      result = await sendToAllRecipients(opsNumbers, 'new_inquiry_notification', [
+        d.inquiryNumber,
+        d.customerName,
+        d.customerPhone || '—',
+        d.customerEmail || '—',
+        d.pickupAddress || '—',
+        `Wedding venue, ${d.toCity}`,
+        dateAndSlot,
+        'As per wedding schedule',
+        String(d.bags),
+        `#Y2K Wedding Booking Form${familySide !== '—' ? ` (${familySide})` : ''}`,
+      ])
+    }
+    console.log(`[NewInquiryWhatsApp] ${d.inquiryNumber} (y2k) — ${result.summary}`)
+    await recordStatus(d.inquiryNumber, result.anySuccess ? 'sent' : 'failed', result.failCount > 0 ? result.summary : null)
+  } catch (err) {
+    console.error('[NewInquiryWhatsApp] y2k unexpected error (non-fatal):', err)
+    await recordStatus(d.inquiryNumber, 'failed', err instanceof Error ? err.message : String(err))
+  }
+}
+
 /**
  * Sends the new-inquiry WhatsApp ping to ops. Accepts the exact same data
  * shape already built for sendInquiryNotification at every call site, so

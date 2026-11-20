@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { nextTrackingId } from '@/lib/number-series'
-import { sendNewInquiryWhatsApp } from '@/lib/new-inquiry-notification'
+import { sendY2kInquiryWhatsApp } from '@/lib/new-inquiry-notification'
 import { alertCreationFailure } from '@/lib/creation-failure-alert'
 
 // Receives a Y2K wedding booking from the NEW platform (bagdrop-new, which serves bagdrop.co/y2k)
@@ -66,7 +66,9 @@ export async function POST(req: NextRequest) {
     to_city:              to,
     pickup_address:       pickupAddress,
     pickup_date:          date,
-    delivery_date:        date,
+    // The #Y2K form collects a PICKUP date only (delivery is to the wedding venue on the event
+    // schedule), so no delivery date is stored — it used to be a copy of the pickup date.
+    delivery_date:        null,
     time_slot:            slot,
     total_bags:           bags,
     total_amount:         0,
@@ -112,11 +114,10 @@ export async function POST(req: NextRequest) {
     await alertCreationFailure({ source: 'y2k-forward', trackingId, leadNumber, failureStage: 'lead_insert', customerName: name, customerPhone: phone, customerEmail: email, errorMessage: leadErr.message, rawPayload: b })
   } else {
     try {
-      await sendNewInquiryWhatsApp({
-        inquiryNumber: leadNumber, source: 'website', customerName: name, customerPhone: phone, customerEmail: email,
-        serviceType: 'destination-weddings', fromCity: from, toCity: to, pickupAddress, deliveryAddress: null,
-        pickupDate: date, bagsCount: bags, deliveryDate: date,
-        notes: `#Y2K wedding booking ${y2kId}${family ? ` · ${family}` : ''}`, submittedAt: new Date().toISOString(),
+      await sendY2kInquiryWhatsApp({
+        inquiryNumber: leadNumber, customerName: name, customerPhone: phone, customerEmail: email,
+        familyName: family, side, fromCity: from, toCity: to, pickupAddress,
+        pickupDate: date, slot, bags, guests,
       })
     } catch (e) { console.error('[y2k/forward] ops WhatsApp failed (non-fatal):', e) }
   }
