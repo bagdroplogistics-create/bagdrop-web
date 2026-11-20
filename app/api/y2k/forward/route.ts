@@ -46,6 +46,15 @@ export async function POST(req: NextRequest) {
   const bags = Math.max(1, parseInt(String(b?.bags ?? '1'), 10) || 1)
   const guests = Math.max(1, parseInt(String(b?.guests ?? '1'), 10) || 1)
   const details = str(b?.details, 6000)
+  // Wedding extras sent by the new platform (all optional — older payloads simply omit them).
+  const eventName = str(b?.eventName, 160)
+  const retBags = Math.max(0, parseInt(String(b?.retBags ?? '0'), 10) || 0)
+  const retDate = str(b?.retDate, 20)
+  const retSlot = str(b?.retSlot, 60)
+  const retTo = str(b?.retTo, 300)
+  const returnLine = retBags > 0 || retDate
+    ? `Return journey: ${retBags || '—'} bag(s) · pickup ${[retDate, retSlot].filter(Boolean).join(' ') || 'TBC'}${retTo ? ` · to ${retTo}` : ''}`
+    : ''
 
   // Idempotency — same new-platform booking id never creates a second row.
   const { data: dup } = await supabaseAdmin.from('bookings').select('tracking_id').eq('client_submission_id', y2kId).maybeSingle()
@@ -78,6 +87,8 @@ export async function POST(req: NextRequest) {
       `[#Y2K wedding — received on the new platform as ${y2kId}${side ? `, ${side}'s side` : ''}]`,
       `Group size: ${guests} guest(s)`,
       `Luggage pieces: ${bags}`,
+      eventName && `Event: ${eventName}`,
+      returnLine,
       details,
     ].filter(Boolean).join('\n'),
     status_history: [{ status: 'inquiry', timestamp: new Date().toISOString(), note: `#Y2K wedding booking ${y2kId} forwarded from the new platform` }],
@@ -106,7 +117,7 @@ export async function POST(req: NextRequest) {
     pickup_date:      date,
     pickup_address:   pickupAddress,
     bags_count:       bags,
-    notes:            `Auto-created from #Y2K wedding booking ${y2kId} (new platform)${family ? ` · ${family}` : ''}${side ? ` · ${side}'s side` : ''}\n${details}`.slice(0, 6000),
+    notes:            `Auto-created from #Y2K wedding booking ${y2kId} (new platform)${family ? ` · ${family}` : ''}${side ? ` · ${side}'s side` : ''}${eventName ? `\nEvent: ${eventName}` : ''}${returnLine ? `\n${returnLine}` : ''}\n${details}`.slice(0, 6000),
     booking_id:       saved.id,
   })
   if (leadErr) {
@@ -116,8 +127,8 @@ export async function POST(req: NextRequest) {
     try {
       await sendY2kInquiryWhatsApp({
         inquiryNumber: leadNumber, customerName: name, customerPhone: phone, customerEmail: email,
-        familyName: family, side, fromCity: from, toCity: to, pickupAddress,
-        pickupDate: date, slot, bags, guests,
+        familyName: family, side, eventName, fromCity: from, toCity: to, pickupAddress,
+        pickupDate: date, slot, bags, guests, retBags, retDate, retSlot, retTo,
       })
     } catch (e) { console.error('[y2k/forward] ops WhatsApp failed (non-fatal):', e) }
   }

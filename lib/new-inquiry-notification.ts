@@ -79,20 +79,31 @@ async function recordStatus(inquiryNumber: string, status: 'sent' | 'failed' | '
 //
 // Template to submit to Meta — name: y2k_inquiry_notification · Category: Utility · Language: en
 // Variable order:
-//   {{1}} Inquiry ID   {{2}} Customer   {{3}} Mobile        {{4}} Email        {{5}} Family / side
-//   {{6}} Route        {{7}} Pickup address {{8}} Pickup date & slot {{9}} Luggage pieces {{10}} Guests
+//   {{1}} Inquiry ID   {{2}} Customer   {{3}} Mobile        {{4}} Email        {{5}} Event / family
+//   {{6}} Route        {{7}} Pickup address {{8}} Pickup date & slot {{9}} Luggage pieces
+//   {{10}} Return journey (bags · return pickup date & slot · return to — or "No return requested")
 // Until Meta approves it, a failed send automatically falls back to the existing
 // new_inquiry_notification template (with the delivery fields filled honestly, not copied
 // from the pickup date), so ops are never left without an alert.
 export async function sendY2kInquiryWhatsApp(d: {
   inquiryNumber: string; customerName: string; customerPhone: string; customerEmail: string | null
-  familyName: string; side: string; fromCity: string; toCity: string; pickupAddress: string | null
+  familyName: string; side: string; eventName?: string; fromCity: string; toCity: string; pickupAddress: string | null
   pickupDate: string | null; slot: string | null; bags: number; guests: number
+  retBags?: number; retDate?: string; retSlot?: string; retTo?: string
 }): Promise<void> {
   try {
     const opsNumbers = await getNewInquiryWhatsAppNumbers()
     const dateAndSlot = [fmtDate(d.pickupDate), d.slot].filter(x => x && x !== '—').join(' · ') || '—'
-    const familySide = [d.familyName, d.side ? `${d.side}'s side` : ''].filter(Boolean).join(' · ') || '—'
+    const familySide = [d.eventName || d.familyName, d.side ? `${d.side}'s side` : ''].filter(Boolean).join(' · ') || '—'
+    // One line for the return journey so the template stays at 10 variables.
+    const hasReturn = (d.retBags ?? 0) > 0 || !!d.retDate
+    const returnText = hasReturn
+      ? [
+          `${d.retBags || '—'} bag(s) returning`,
+          `pickup ${[d.retDate ? fmtDate(d.retDate) : '', d.retSlot].filter(x => x && x !== '—').join(' ') || 'TBC'}`,
+          d.retTo ? `to ${d.retTo}` : '',
+        ].filter(Boolean).join(' · ')
+      : 'No return requested'
 
     const y2kVars = [
       d.inquiryNumber,
@@ -104,7 +115,7 @@ export async function sendY2kInquiryWhatsApp(d: {
       d.pickupAddress || '—',
       dateAndSlot,
       String(d.bags),
-      String(d.guests),
+      returnText,
     ]
     let result = await sendToAllRecipients(opsNumbers, 'y2k_inquiry_notification', y2kVars)
 
@@ -120,7 +131,7 @@ export async function sendY2kInquiryWhatsApp(d: {
         dateAndSlot,
         'As per wedding schedule',
         String(d.bags),
-        `#Y2K Wedding Booking Form${familySide !== '—' ? ` (${familySide})` : ''}`,
+        `#Y2K Wedding Booking Form${familySide !== '—' ? ` (${familySide})` : ''} · Return: ${returnText}`.slice(0, 300),
       ])
     }
     console.log(`[NewInquiryWhatsApp] ${d.inquiryNumber} (y2k) — ${result.summary}`)
