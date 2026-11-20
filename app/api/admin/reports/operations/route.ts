@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { STATUS_ORDER } from '@/lib/lifecycle-notifications'
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/booking-status'
 import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 
 export const runtime = 'nodejs'
@@ -103,8 +104,15 @@ function hoursSince(iso: string | null | undefined): number {
   return (Date.now() - new Date(iso).getTime()) / (1000 * 60 * 60)
 }
 
+// Calendar date in INDIA time (IST, UTC+5:30). The server runs in UTC, so a plain
+// toISOString() gave the PREVIOUS day between 00:00 and 05:30 IST — "Today" showed
+// yesterday's pickups and "Tomorrow" showed today's. All ops windows use IST dates.
+const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000
 function dateOnly(d: Date): string {
-  return d.toISOString().slice(0, 10)
+  return new Date(d.getTime() + IST_OFFSET_MS).toISOString().slice(0, 10)
+}
+function addDaysIST(base: Date, days: number): string {
+  return dateOnly(new Date(base.getTime() + days * 24 * 60 * 60 * 1000))
 }
 
 const BOOKING_SELECT = 'id, tracking_id, status, status_history, title, customer_name, customer_phone, customer_email, service_type, service_label, from_city, to_city, pickup_address, drop_address, pickup_date, delivery_date, time_slot, total_bags, total_amount, payment_status, driver_name, driver_phone, driver_details_sent_at, notes, pickup_instructions, created_at, updated_at'
@@ -121,7 +129,12 @@ const BOOKING_SELECT = 'id, tracking_id, status, status_history, title, customer
 //     accessible via the Leads tab, just not cluttering this view.
 //   - 'cancelled' / 'rejected'        — never in STATUS_ORDER at all, so
 //     already excluded by construction.
-const OPS_ACTIVE_STATUSES = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed'), STATUS_ORDER.indexOf('completed'))
+// 2026-11-20: now the SAME definition of "Confirmed" the rest of the app uses
+// (ACTIVE_BOOKING_STATUSES: payment_received → trip_created, excluding completed).
+// The old slice started at 'confirmed', so a paid booking still sitting at
+// payment_received / payment_approved — Confirmed on the Dashboard and Leads tab —
+// never appeared in the Operations Center.
+const OPS_ACTIVE_STATUSES: string[] = [...ACTIVE_BOOKING_STATUSES]
 
 export async function GET(req: NextRequest) {
   if (!requireAdminAuth(req)) {
@@ -142,18 +155,16 @@ export async function GET(req: NextRequest) {
 
   const now        = new Date()
   const todayStr   = dateOnly(now)
-  const in7DaysStr = dateOnly(new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000))
+  const in7DaysStr = addDaysIST(now, 7)
 
   let upcomingFrom = todayStr
   let upcomingTo: string | null = null   // null = no upper bound ('all')
   if (rangeParam === 'today') {
     upcomingTo = todayStr
   } else if (rangeParam === 'tomorrow') {
-    const t = new Date(now); t.setDate(t.getDate() + 1)
-    upcomingFrom = dateOnly(t); upcomingTo = dateOnly(t)
+    upcomingFrom = addDaysIST(now, 1); upcomingTo = upcomingFrom
   } else if (rangeParam === 'next3') {
-    const t = new Date(now); t.setDate(t.getDate() + 3)
-    upcomingTo = dateOnly(t)
+    upcomingTo = addDaysIST(now, 3)
   } else if (rangeParam === 'next7') {
     upcomingTo = in7DaysStr
   } else if (rangeParam === 'custom' && fromParam && toParam) {
@@ -162,21 +173,25 @@ export async function GET(req: NextRequest) {
   // else: 'all' (or an unrecognized value) — upcomingTo stays null, no
   // upper bound applied to the query below.
 
-  // Upcoming CONFIRMED bookings in the requested window — see
-  // OPS_ACTIVE_STATUSES above for why this isn't every booking. Built
-  // as a mutable query so the upper bound can be conditionally omitted for
-  // the 'all' default instead of being forced to always cut off at some
-  // fixed date.
-  let upcomingQueryBuilder = supabaseAdmin
+  // A confirmed booking is "in the window" when its PICKUP date OR its DELIVERY date falls
+  // inside it (previously pickup only — a booking being delivered today/tomorrow, or one with
+  // no pickup date yet, silently dropped out of Today / Tomorrow / Next 3 / Next 7).
+  // 'all' = anything not finished: pickup or delivery today-or-later, or pickup date not set.
+  const windowOr = upcomingTo
+    ? `and(pickup_date.gte.${upcomingFrom},pickup_date.lte.${upcomingTo}),and(delivery_date.gte.${upcomingFrom},delivery_date.lte.${upcomingTo})`
+    : `pickup_date.gte.${upcomingFrom},delivery_date.gte.${upcomingFrom},pickup_date.is.null`
+
+  // Upcoming CONFIRMED bookings in the requested window — see OPS_ACTIVE_STATUSES above.
+  const upcomingQueryBuilder = supabaseAdmin
     .from('bookings')
     .select(BOOKING_SELECT)
-    .gte('pickup_date', upcomingFrom)
     .in('status', OPS_ACTIVE_STATUSES)
+    .or(windowOr)
     // Test Mode bookings never appear in the live Operations Center —
     // founder-reported 2026-09-05.
     .eq('is_test', false)
-  if (upcomingTo) upcomingQueryBuilder = upcomingQueryBuilder.lte('pickup_date', upcomingTo)
-  upcomingQueryBuilder = upcomingQueryBuilder.order('pickup_date', { ascending: true })
+    .order('pickup_date', { ascending: true, nullsFirst: false })
+    .limit(1000)
 
   const [
     upcomingQ,
@@ -193,8 +208,7 @@ export async function GET(req: NextRequest) {
     supabaseAdmin
       .from('bookings')
       .select('id', { count: 'exact', head: true })
-      .gte('pickup_date', todayStr)
-      .lte('pickup_date', in7DaysStr)
+      .or(`and(pickup_date.gte.${todayStr},pickup_date.lte.${in7DaysStr}),and(delivery_date.gte.${todayStr},delivery_date.lte.${in7DaysStr})`)
       .in('status', OPS_ACTIVE_STATUSES)
       .eq('is_test', false),
 
@@ -255,7 +269,7 @@ export async function GET(req: NextRequest) {
       reasons.push({ code: 'indemnity_pending', label: 'Indemnity bond not signed yet' })
     }
     if (bIdx >= confirmedIdx && bIdx !== -1 && bIdx < pickedUpIdx && !b.driver_name &&
-        b.pickup_date && b.pickup_date <= dateOnly(new Date(now.getTime() + 2 * 24 * 60 * 60 * 1000))) {
+        b.pickup_date && b.pickup_date <= addDaysIST(now, 2)) {
       reasons.push({ code: 'driver_unassigned', label: 'Driver not assigned' })
     }
     if (shouldShowDriverDetailsStep(b.service_type) && !b.driver_details_sent_at && bIdx !== -1 && bIdx < pickedUpIdx &&
