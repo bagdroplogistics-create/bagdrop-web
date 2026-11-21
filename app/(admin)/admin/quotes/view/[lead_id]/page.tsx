@@ -15,6 +15,7 @@ import {
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
 import { formatCustomerName } from '@/lib/constants'
+import { CANCEL_TERM_TEXT, normalizeCancelTerm, isCancelTerm, boldParts } from '@/lib/cancellation-terms'
 import { fmtTimeLabel } from '@/lib/time-options'
 import { shouldShowDriverDetailsStep } from '@/lib/service-type'
 import { countsTowardTotalPaid } from '@/lib/payment-ledger'
@@ -2416,12 +2417,12 @@ export default function QuoteViewPage() {
                 {lead.quote_terms.split('\n').filter(Boolean).map((line, i) => {
                   // Saved terms text is already numbered ("1. Booking Confirmation : ...") —
                   // strip the leading "1." / "1)" so it doesn't double up with the badge below.
-                  const text = line.replace(/^\s*\d+[.)]\s*/, '')
-                  const isCancel = /cancellations? must be made/i.test(text)
+                  const text = normalizeCancelTerm(line.replace(/^\s*\d+[.)]\s*/, ''))
+                  const isCancel = isCancelTerm(text)
                   return (
-                    <div key={i} style={{ display: 'flex', gap: '5px', ...(isCancel ? { background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '4px 8px', fontWeight: 700, color: '#9a3412' } : {}) }}>
+                    <div key={i} style={{ display: 'flex', gap: '5px', ...(isCancel ? { background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '4px 8px', color: '#9a3412' } : {}) }}>
                       <span style={{ color: '#f97316', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
-                      <span>{text}</span>
+                      <span>{boldParts(text).map((p, j) => p.bold ? <b key={j} style={{ fontWeight: 800 }}>{p.text}</b> : <span key={j}>{p.text}</span>)}</span>
                     </div>
                   )
                 })}
@@ -2432,13 +2433,13 @@ export default function QuoteViewPage() {
                   'All bookings confirmed on receipt of full payment. A CN number will be issued for reference.',
                   'Only services mentioned above are included. Company reserves the right to cancel at any point.',
                   'Luggage must not contain items prohibited by law. All bags processed through Govt screening.',
-                  'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+                  `Cancellation Policy — ${CANCEL_TERM_TEXT}`,
                   'Bagdrop is not liable for loss/damage during transit. Carry essential documents personally.',
                   'Rates subject to change without prior notice and subject to availability at time of booking.',
                 ].map((t, i) => (
-                  <div key={i} style={{ display: 'flex', gap: '5px', ...(/cancellation/i.test(t) ? { background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '4px 8px', fontWeight: 700, color: '#9a3412' } : {}) }}>
+                  <div key={i} style={{ display: 'flex', gap: '5px', ...(isCancelTerm(t) ? { background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '6px', padding: '4px 8px', color: '#9a3412' } : {}) }}>
                     <span style={{ color: '#f97316', fontWeight: 700, flexShrink: 0 }}>{i + 1}.</span>
-                    <span>{t}</span>
+                    <span>{boldParts(t).map((p, j) => p.bold ? <b key={j} style={{ fontWeight: 800 }}>{p.text}</b> : <span key={j}>{p.text}</span>)}</span>
                   </div>
                 ))}
               </div>

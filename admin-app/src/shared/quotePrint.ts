@@ -60,7 +60,7 @@ const DEFAULT_TERMS_LIST = [
   'All bookings confirmed on receipt of full payment. A CN number will be issued for reference.',
   'Only services mentioned above are included. Company reserves the right to cancel at any point.',
   'Luggage must not contain items prohibited by law. All bags processed through Govt screening.',
-  'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+  'Cancellation Policy — For all routes other than Mumbai to Vadodara, the customer must cancel the inquiry at least 7 days before the pickup date to be eligible for a full refund.',
   'Bagdrop is not liable for loss/damage during transit. Carry essential documents personally.',
   'Rates subject to change without prior notice and subject to availability at time of booking.',
 ]
@@ -128,7 +128,17 @@ export function buildQuoteHtml(d: QuotePrintData): string {
   const termsList = d.terms && d.terms.trim()
     ? d.terms.split('\n').map(t => t.trim()).filter(Boolean)
     : DEFAULT_TERMS_LIST
-  const termsHtml = termsList.map((t, i) => `<div class="termItem"><span class="termNo">${i + 1}.</span> ${escapeHtml(t)}</div>`).join('')
+  // Cancellation line: swap the old wording for the new one on already-saved quotes, and bold
+  // "Mumbai to Vadodara" and "7 days before the pickup date" (founder request 2026-11-21).
+  const legacyCancel = /All Destinations:\s*Cancellations must be made at least 7 days before the scheduled pick-?up time to receive a full refund\.?/gi
+  const newCancel = 'For all routes other than Mumbai to Vadodara, the customer must cancel the inquiry at least 7 days before the pickup date to be eligible for a full refund.'
+  const termHtml = (raw: string): string => {
+    const t = raw.replace(legacyCancel, newCancel)
+    return escapeHtml(t)
+      .replace('Mumbai to Vadodara', '<b>Mumbai to Vadodara</b>')
+      .replace('7 days before the pickup date', '<b>7 days before the pickup date</b>')
+  }
+  const termsHtml = termsList.map((t, i) => `<div class="termItem"><span class="termNo">${i + 1}.</span> ${termHtml(t)}</div>`).join('')
 
   return `<!DOCTYPE html>
 <html>

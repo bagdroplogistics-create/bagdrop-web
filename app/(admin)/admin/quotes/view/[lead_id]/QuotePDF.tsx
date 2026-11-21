@@ -2,6 +2,7 @@ import {
   Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line,
 } from '@react-pdf/renderer'
 import { fmtTimeLabel } from '@/lib/time-options'
+import { CANCEL_TERM_TEXT, normalizeCancelTerm, isCancelTerm, boldParts } from '@/lib/cancellation-terms'
 import { LOGO_FULL_WHITE_DATA_URI, SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 
 const ORANGE = '#f97316'
@@ -236,7 +237,7 @@ const TC_ITEMS = [
   'All bookings confirmed on receipt of full payment. A CN number will be issued.',
   'Only services mentioned above are included. Company reserves the right to cancel.',
   'Luggage must not contain items prohibited by law. All bags processed through Govt. screening.',
-  'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+  `Cancellation Policy — ${CANCEL_TERM_TEXT}`,
   'Bagdrop is not liable for loss/damage during transit. Carry essential documents personally.',
   'Rates subject to change without prior notice and subject to availability at booking.',
 ]
@@ -705,15 +706,20 @@ export default function QuotePDF(p: QuotePDFProps) {
               // Booking Confirmation : ...", "2. Total Amount Payable: ...")
               // — strip any leading "1." / "1)" so it doesn't double up with
               // the tcNum badge rendered below.
-              ? p.terms.split('\n').filter(Boolean).map((t, i) => ({ num: i + 1, text: t.replace(/^\s*\d+[.)]\s*/, '') }))
+              ? p.terms.split('\n').filter(Boolean).map((t, i) => ({ num: i + 1, text: normalizeCancelTerm(t.replace(/^\s*\d+[.)]\s*/, '')) }))
               : TC_ITEMS.map((t, i) => ({ num: i + 1, text: t }))
             ).map(tc => {
-              // Cancellation Policy is highlighted so the customer reads it (founder request 2026-11-14).
-              const isCancel = /cancellations? must be made/i.test(tc.text)
+              // Cancellation Policy is highlighted so the customer reads it (founder request 2026-11-14);
+              // only "Mumbai to Vadodara" and "7 days before the pickup date" are bold (2026-11-21).
+              const isCancel = isCancelTerm(tc.text)
               return (
                 <View key={tc.num} style={isCancel ? [s.tcItem, { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderStyle: 'solid', borderRadius: 4, padding: 3 }] : s.tcItem}>
                   <Text style={s.tcNum}>{tc.num}.</Text>
-                  <Text style={isCancel ? [s.tcText, { fontFamily: 'Helvetica-Bold', color: '#9a3412' }] : s.tcText}>{tc.text}</Text>
+                  <Text style={isCancel ? [s.tcText, { color: '#9a3412' }] : s.tcText}>
+                    {boldParts(tc.text).map((part, j) => part.bold
+                      ? <Text key={j} style={{ fontFamily: 'Helvetica-Bold' }}>{part.text}</Text>
+                      : part.text)}
+                  </Text>
                 </View>
               )
             })}

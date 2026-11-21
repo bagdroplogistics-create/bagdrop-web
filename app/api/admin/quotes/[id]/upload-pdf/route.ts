@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { supabaseAdmin } from '@/lib/supabase'
 import { requireAdminAuth } from '@/lib/admin-auth'
 import { SITE } from '@/lib/constants'
+import { CANCEL_TERM_TEXT, boldParts } from '@/lib/cancellation-terms'
 import { Document, Page, Text, View, StyleSheet, Image, Svg, Rect, Line, pdf } from '@react-pdf/renderer'
 import React from 'react'
 
@@ -159,7 +160,7 @@ function QuotePDF({ q }: { q: Quote }) {
     'All bookings are confirmed on receipt of full payment. A CN number will be issued for reference.',
     'Only the services mentioned above are included. Company reserves the right to cancel at any point.',
     'Luggage must not contain prohibited items. Alcohol and illegal substances are strictly prohibited.',
-    'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+    `Cancellation Policy — ${CANCEL_TERM_TEXT}`,
     'Bagdrop is not liable for loss, damage or theft during transit. Carry valuables personally.',
     'Rates are subject to change. Services subject to availability at time of booking.',
   ]
@@ -334,7 +335,10 @@ function QuotePDF({ q }: { q: Quote }) {
             ...TC.map((t, i) =>
               React.createElement(View, { key: i, style: s.tcItem },
                 React.createElement(Text, { style: s.tcNum }, `${i+1}.`),
-                React.createElement(Text, { style: s.tcText }, t)
+                React.createElement(Text, { style: s.tcText },
+                  ...boldParts(t).map((part, j) => part.bold
+                    ? React.createElement(Text, { key: j, style: { fontFamily: 'Helvetica-Bold' } }, part.text)
+                    : part.text))
               )
             )
           )

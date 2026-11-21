@@ -10,6 +10,7 @@ import {
 } from 'lucide-react'
 import { UNKNOWN_ROUTE_DEFAULT_BASE } from '@/lib/estimate-constants'
 import { TIME_OPTIONS } from '@/lib/time-options'
+import { CANCEL_TERM_TEXT, normalizeCancelTerm } from '@/lib/cancellation-terms'
 import { searchItems, BAGDROP_ITEMS, type BagdropItem } from '@/lib/bagdrop-items'
 import { PhoneInput } from '@/components/ui/phone-input'
 import { parseStoredPhone, toE164 } from '@/lib/phone-format'
@@ -210,7 +211,7 @@ const DEFAULT_TERMS =
   '4. Prohibited Items: - Luggage should not contain any items prohibited by the government or legal system. - Alcohol and Illegal substance is strictly prohibited. All bags are processed through the Govt Screening processes.\n' +
   '5. Assistance and Queries: - For any assistance or queries, clients can contact BAGDROP at 63 5711 5711 / 63 5733 5733 or via email at info@bagdrop.co\n' +
   '6. Payment Confirmation: - Clients are requested to share a screenshot of the payment confirmation for booking verification.\n' +
-  '7. Cancellation Policy: - All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.\n' +
+  `7. Cancellation Policy: - ${CANCEL_TERM_TEXT}\n` +
   '8. Liability: - BAGDROP is not liable for any loss, damage, or theft of items during transportation. - Clients are advised to secure valuable items and carry essential documents with them. No Illegal items and Alcohol shall be kept in the luggage bags given for Shipment.\n' +
   '9. The services are subject to availability at the time of booking. The rates may vary or change at any time without any prior Notice.\n' +
   '10. Terms Acceptance: - Booking with BAGDROP implies acceptance of these terms and conditions. We appreciate your trust in BAGDROP for your baggage transportation needs. If you have any questions or concerns, please don\'t hesitate to reach out to us.'
@@ -706,7 +707,7 @@ function QuotePageInner() {
         }
         // Previously-saved default boilerplate is treated as blank too.
         setCustNotes((d.quote_notes ?? '').trim() === 'Looking forward for your business.' ? '' : (d.quote_notes ?? DEFAULT_NOTES))
-        setTerms(d.quote_terms ?? DEFAULT_TERMS)
+        setTerms(normalizeCancelTerm(d.quote_terms ?? DEFAULT_TERMS))
         setExpiryDate(d.quote_expiry_date ? toLocalDate(d.quote_expiry_date) : '')
         if (d.salesperson_name) setSalesperson(d.salesperson_name)
         setAgentName(d.agent_name ?? '')

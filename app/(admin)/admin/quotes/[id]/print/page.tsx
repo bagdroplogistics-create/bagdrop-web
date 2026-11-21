@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { formatCustomerName } from '@/lib/constants'
+import { CANCEL_TERM_TEXT, isCancelTerm, boldParts } from '@/lib/cancellation-terms'
 
 interface Quote {
   id: string
@@ -274,13 +275,13 @@ export default function QuotePrintPage() {
                 'All bookings are confirmed on receipt of full payment. A CN number will be issued for reference.',
                 'Only the services mentioned above are included. Company reserves the right to cancel at any point.',
                 'Luggage must not contain any items prohibited by law. Alcohol and illegal substances are strictly prohibited. All bags are processed through Govt screening.',
-                'Cancellation Policy — All Destinations: Cancellations must be made at least 7 days before the scheduled pick-up time to receive a full refund.',
+                `Cancellation Policy — ${CANCEL_TERM_TEXT}`,
                 'Bagdrop is not liable for loss, damage or theft during transit. Secure valuables and carry essential documents personally.',
                 'Rates are subject to change without prior notice. Services are subject to availability at the time of booking.',
               ].map((t, i) => (
-                <div key={i} style={{display:'flex',gap:'6px',...(/cancellation/i.test(t) ? {background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:'6px',padding:'4px 8px',fontWeight:700,color:'#9a3412'} : {})}}>
+                <div key={i} style={{display:'flex',gap:'6px',...(isCancelTerm(t) ? {background:'#fff7ed',border:'1px solid #fed7aa',borderRadius:'6px',padding:'4px 8px',color:'#9a3412'} : {})}}>
                   <span style={{color:'#f97316',fontWeight:700,flexShrink:0}}>{i+1}.</span>
-                  <span>{t}</span>
+                  <span>{boldParts(t).map((p, j) => p.bold ? <b key={j} style={{fontWeight:800}}>{p.text}</b> : <span key={j}>{p.text}</span>)}</span>
                 </div>
               ))}
             </div>
