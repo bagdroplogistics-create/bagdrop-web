@@ -353,6 +353,7 @@ export async function GET(req: NextRequest) {
     const reporting_month_date = reporting?.completed_month_override ?? reporting?.pickup_date ?? p.created_at
     return {
       ...p, invoice_number: inv?.invoice_number ?? null, unused_amount, reporting_month_date,
+      pickup_date: reporting?.pickup_date ?? null,
       // For the Edit window: which booking this counts under, and why it lands in that month.
       booking_tracking_id: reporting?.tracking_id ?? null,
       month_source: !p.booking_id ? 'payment_date'

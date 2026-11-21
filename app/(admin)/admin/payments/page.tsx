@@ -66,6 +66,9 @@ interface Payment {
   // confirmed the collection date shown is correct, but Month-wise Payment
   // Received should report by the booking's operational month.
   reporting_month_date?: string | null
+  // The linked booking's pickup date (YYYY-MM-DD) — shown in the table so a payment's
+  // inquiry month is visible at a glance. Null for a payment with no linked booking.
+  pickup_date?: string | null
   booking_tracking_id?: string | null
   month_source?: 'payment_date' | 'month_override' | 'pickup_date'
 }
@@ -1727,7 +1730,7 @@ export default function PaymentsPage() {
                         }}
                       />
                     </th>
-                    {['Date', 'Payment#', 'Reference#', 'Customer Name', 'Invoice#', 'Mode', 'Amount', 'Unused Amount', 'Status', 'Actions'].map(h => (
+                    {['Date', 'Payment#', 'Pickup Date', 'Customer Name', 'Invoice#', 'Mode', 'Amount', 'Unused Amount', 'Status', 'Actions'].map(h => (
                       <th key={h} className="px-4 py-3 text-left text-xs font-semibold text-gray-500">{h}</th>
                     ))}
                   </tr>
@@ -1789,7 +1792,9 @@ export default function PaymentsPage() {
                           </span>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-xs text-gray-500">{p.is_synthetic ? 'No payment logged yet' : (p.payment_reference || '—')}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-xs font-medium text-gray-700">
+                        {p.pickup_date ? fmtDate(p.pickup_date + 'T00:00:00') : <span className="text-gray-300">—</span>}
+                      </td>
                       <td className="px-4 py-3">
                         <p className="font-semibold text-gray-900">{formatCustomerName(p.title, p.customer_name) || p.customer_name}</p>
                         <p className="text-xs text-gray-400">{p.customer_phone}</p>
