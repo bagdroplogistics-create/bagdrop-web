@@ -55,9 +55,15 @@ export async function printGcLabels(id: string, adminKey: string) {
   const iframe = document.createElement('iframe')
   iframe.style.cssText = 'position:fixed;right:0;bottom:0;width:0;height:0;border:0'
   iframe.src = url
+  // Chrome's "Save as PDF" in the print dialog uses the top page title as the file name.
+  const prevTitle = document.title
+  const fileTitle = `Bagdrop_Bag_Labels_${lr.lr_number}`
+  const restoreTitle = () => { document.title = prevTitle }
   iframe.onload = () => {
-    try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { window.open(url, '_blank') }
-    setTimeout(() => { document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 60_000)
+    document.title = fileTitle
+    window.addEventListener('afterprint', restoreTitle, { once: true })
+    try { iframe.contentWindow?.focus(); iframe.contentWindow?.print() } catch { restoreTitle(); window.open(url, '_blank') }
+    setTimeout(() => { restoreTitle(); if (iframe.parentNode) document.body.removeChild(iframe); URL.revokeObjectURL(url) }, 60_000)
   }
   document.body.appendChild(iframe)
 }
