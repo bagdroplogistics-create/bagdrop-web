@@ -700,11 +700,6 @@ export default function LRsPage() {
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors disabled:opacity-40">
                               {printingLr === l.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
                             </button>
-                            <button onClick={() => labelAction(l.id, 'dl')} disabled={labelBusy === `${l.id}:dl`}
-                              title="Download Bag Labels (A4 PDF)"
-                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors disabled:opacity-40">
-                              {labelBusy === `${l.id}:dl` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Tag className="h-3.5 w-3.5" />}
-                            </button>
                             <button onClick={() => labelAction(l.id, 'pr')} disabled={labelBusy === `${l.id}:pr`}
                               title="Print Bag Labels (A4)"
                               className="flex items-center gap-0.5 rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors disabled:opacity-40">
