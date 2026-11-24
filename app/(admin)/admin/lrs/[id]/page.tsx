@@ -5,7 +5,7 @@ import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, Download, Loader2, Save, Truck, Package, User, MapPin,
-  IndianRupee, FileText, CheckCircle, Pencil, X,
+  IndianRupee, FileText, CheckCircle, Pencil, X, Tag, Printer,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS, LR_TYPE_OPTIONS, PAYMENT_TERMS_OPTIONS, GST_PAYABLE_BY_OPTIONS, MODE_OPTIONS, isValidTiTag } from '@/lib/lr-constants'
 
@@ -88,6 +88,7 @@ export default function LRDetailPage() {
   const [lr, setLr] = useState<LR | null>(null)
   const [loading, setLoading] = useState(true)
   const [downloading, setDownloading] = useState(false)
+  const [labelBusy, setLabelBusy] = useState<'dl' | 'pr' | null>(null)
   const [saving, setSaving] = useState(false)
   const [editingCharges, setEditingCharges] = useState(false)
   const [chargeForm, setChargeForm] = useState<Record<string, string>>({})
@@ -236,6 +237,19 @@ export default function LRDetailPage() {
     } finally { setDownloading(false) }
   }
 
+  // GC bag labels (A4, one per bag) — Download and Print are separate buttons.
+  async function labelAction(mode: 'dl' | 'pr') {
+    if (!lr) return
+    setLabelBusy(mode)
+    try {
+      const { downloadGcLabels, printGcLabels } = await import('@/lib/gc-labels')
+      if (mode === 'dl') await downloadGcLabels(lr.id, adminKey)
+      else await printGcLabels(lr.id, adminKey)
+    } catch (e) {
+      console.error(e); alert('Could not generate the bag labels.')
+    } finally { setLabelBusy(null) }
+  }
+
   if (!authed) return null
   if (loading) return <div className="flex h-96 items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-2 border-orange-500 border-t-transparent" /></div>
   if (!lr) return <div className="p-8 text-center text-sm text-gray-500">{err || 'LR not found'}</div>
@@ -298,6 +312,14 @@ export default function LRDetailPage() {
                 <button onClick={startEdit}
                   className="flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-4 py-2.5 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-50 transition-colors">
                   <Pencil className="h-4 w-4" /> Edit LR
+                </button>
+                <button onClick={() => labelAction('dl')} disabled={labelBusy !== null}
+                  className="flex items-center gap-2 rounded-xl border border-orange-200 bg-orange-50 px-4 py-2.5 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-100 transition-colors disabled:opacity-50">
+                  {labelBusy === 'dl' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Tag className="h-4 w-4" />} Download Bag Labels
+                </button>
+                <button onClick={() => labelAction('pr')} disabled={labelBusy !== null}
+                  className="flex items-center gap-2 rounded-xl border border-orange-200 bg-white px-4 py-2.5 text-sm font-semibold text-orange-700 shadow-sm hover:bg-orange-50 transition-colors disabled:opacity-50">
+                  {labelBusy === 'pr' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Printer className="h-4 w-4" />} Print Bag Labels
                 </button>
                 <button onClick={downloadPdf} disabled={downloading}
                   className="flex items-center gap-2 rounded-xl bg-orange-500 px-4 py-2.5 text-sm font-semibold text-white shadow-sm hover:bg-orange-600 transition-colors disabled:opacity-50">

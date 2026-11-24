@@ -6,7 +6,7 @@ import Link from 'next/link'
 import {
   FileText, Plus, Search, RefreshCw, ChevronDown,
   Eye, Download, Loader2, Trash2, IndianRupee, Package,
-  User, MapPin, CheckCircle2, Pencil, Building2, Printer, AlertTriangle,
+  User, MapPin, CheckCircle2, Pencil, Building2, Printer, AlertTriangle, Tag,
 } from 'lucide-react'
 import { LR_STATUS_LABELS, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
 import { formatCustomerName } from '@/lib/constants'
@@ -95,6 +95,7 @@ export default function LRsPage() {
   // buttons' spinners never get confused about which row is busy.
   const [viewingLr, setViewingLr] = useState<string | null>(null)
   const [printingLr, setPrintingLr] = useState<string | null>(null)
+  const [labelBusy, setLabelBusy] = useState<string | null>(null) // `${id}:dl` | `${id}:pr`
   // Pagination — same pattern as the Leads / Dashboard tables
   const [page, setPage]         = useState(1)
   const [pageSize, setPageSize] = useState(20)
@@ -386,6 +387,21 @@ export default function LRsPage() {
       alert('Could not prepare the LR for printing. Please try again.')
     } finally {
       setPrintingLr(null)
+    }
+  }
+
+  // GC bag labels (A4, one per bag) — Download and Print are separate actions.
+  async function labelAction(id: string, mode: 'dl' | 'pr') {
+    setLabelBusy(`${id}:${mode}`)
+    try {
+      const { downloadGcLabels, printGcLabels } = await import('@/lib/gc-labels')
+      if (mode === 'dl') await downloadGcLabels(id, adminKey)
+      else await printGcLabels(id, adminKey)
+    } catch (e) {
+      console.error('GC label failed:', e)
+      alert('Could not generate the bag labels. Please try again.')
+    } finally {
+      setLabelBusy(null)
     }
   }
 
@@ -683,6 +699,16 @@ export default function LRsPage() {
                               title="Print LR/GC"
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-purple-50 hover:text-purple-600 hover:border-purple-200 transition-colors disabled:opacity-40">
                               {printingLr === l.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Printer className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => labelAction(l.id, 'dl')} disabled={labelBusy === `${l.id}:dl`}
+                              title="Download Bag Labels (A4 PDF)"
+                              className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors disabled:opacity-40">
+                              {labelBusy === `${l.id}:dl` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Tag className="h-3.5 w-3.5" />}
+                            </button>
+                            <button onClick={() => labelAction(l.id, 'pr')} disabled={labelBusy === `${l.id}:pr`}
+                              title="Print Bag Labels (A4)"
+                              className="flex items-center gap-0.5 rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-orange-50 hover:text-orange-600 hover:border-orange-200 transition-colors disabled:opacity-40">
+                              {labelBusy === `${l.id}:pr` ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <><Tag className="h-3.5 w-3.5" /><Printer className="h-3 w-3" /></>}
                             </button>
                             <button onClick={() => deleteLr(l.id)} disabled={deleting === l.id}
                               className="rounded-lg border border-gray-200 p-1.5 text-gray-500 hover:bg-red-50 hover:text-red-500 hover:border-red-200 transition-colors disabled:opacity-40">
