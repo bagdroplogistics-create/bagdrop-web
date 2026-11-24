@@ -121,8 +121,14 @@ export default function GCLabelsPDF(input: GCLabelInput) {
   const cV = boxVal(val(input.contents), 138)
   const bV = boxVal(val(input.bookedAt), 143)
   const dV = boxVal(val(input.deliveryAt), 143)
-  const addrLines = Math.min(3, Math.max(2, Math.ceil(val(input.deliverToAddress).length * 9.2 / 400)))
-  const addrBar = 64.6 + 27 * addrLines
+  // Address: short ones keep the reference look (20 pt, wraps at 400 pt). Longer
+  // ones use the full width at a slightly smaller size so they stay on 2 lines.
+  const addrTxt = val(input.deliverToAddress)
+  const addrSize = addrTxt.length <= 70 ? 20 : addrTxt.length <= 112 ? 18 : 16
+  const addrW = addrTxt.length <= 70 ? 400 : 486
+  const addrLH = addrSize * 1.35
+  const addrLines = Math.min(3, Math.max(2, Math.ceil(addrTxt.length * addrSize * 0.5 / addrW)))
+  const addrBar = 440.7 + addrLines * addrLH + 4.1 - 380.2
 
   return (
     <Document title={`${input.gcNumber} – Bag Labels`} author="Bagdrop Logistics Solutions Pvt. Ltd.">
@@ -162,7 +168,7 @@ export default function GCLabelsPDF(input: GCLabelInput) {
             <View style={[s.abs, { left: 66.9 - 24.1, top: 380.2, width: 4.4, height: addrBar, backgroundColor: ORANGE }]} />
             <Text style={[s.abs, { left: 66.9, top: 385.2 }, mono(9, ORANGE, 1.15)]}>DELIVER TO</Text>
             <Text style={[s.abs, { left: 66.9, top: 396.6, width: 486 }, inter(fit(31, nameTxt, 486, 0.72), 900, NAVY, 0.31)]}>{nameTxt}</Text>
-            <Text style={[s.abs, { left: 66.9, top: 440.7, width: 400, lineHeight: 1.35, maxLines: 3 }, inter(20, 500, SLATE, -0.3)]}>{val(input.deliverToAddress)}</Text>
+            <Text style={[s.abs, { left: 66.9, top: 440.7, width: addrW, lineHeight: 1.35, maxLines: 3 }, inter(addrSize, 500, SLATE, -0.3)]}>{addrTxt}</Text>
 
             {/* ── Bag panel ── */}
             <View style={[s.abs, { left: 43.1, top: 527.6, width: 509.3, height: 146.3, borderWidth: 0.75, borderColor: HAIR, borderRadius: 15, overflow: 'hidden' }]}>
