@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { createContext, useCallback, useContext, useEffect, useState } from 'react'
 import { useRouter, useParams } from 'next/navigation'
 import Link from 'next/link'
 import {
@@ -79,6 +79,39 @@ const Field = ({ label, value }: { label: string; value: React.ReactNode }) => (
     <p className="text-sm text-gray-900">{value ?? '—'}</p>
   </div>
 )
+
+// EField / ESelect MUST live at module level. They used to be declared inside
+// LRDetailPage, which gave React a brand-new component type on every render —
+// so each keystroke unmounted + remounted the <input> and it lost focus after
+// one character. They now read the shared edit state through context.
+type EditCtxValue = { editMode: boolean; lr: LR | null; form: Record<string, string>; setForm: React.Dispatch<React.SetStateAction<Record<string, string>>> }
+const EditCtx = createContext<EditCtxValue>({ editMode: false, lr: null, form: {}, setForm: () => {} })
+
+function EField({ label, k, display, type = 'text' }: {
+  label: string; k: string; display?: React.ReactNode; type?: 'text' | 'number' | 'date'
+}) {
+  const { editMode, lr, form, setForm } = useContext(EditCtx)
+  if (!editMode) return <Field label={label} value={display !== undefined ? display : (lr![k] as React.ReactNode)} />
+  return (
+    <div className="mb-2.5">
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
+      <input type={type} value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp} />
+    </div>
+  )
+}
+function ESelect({ label, k, options }: { label: string; k: string; options: readonly string[] }) {
+  const { editMode, lr, form, setForm } = useContext(EditCtx)
+  if (!editMode) return <Field label={label} value={lr![k] as React.ReactNode} />
+  return (
+    <div className="mb-2.5">
+      <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
+      <select value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp}>
+        <option value="">Select…</option>
+        {options.map(o => <option key={o} value={o}>{o}</option>)}
+      </select>
+    </div>
+  )
+}
 
 export default function LRDetailPage() {
   const router = useRouter()
@@ -256,35 +289,8 @@ export default function LRDetailPage() {
 
   const st = LR_STATUS_LABELS[lr.status] ?? { label: lr.status, color: '#6b7280', bg: '#f3f4f6' }
 
-  // Renders either the read-only value or the matching input, depending on
-  // editMode — a single small helper keeps every card below to one line
-  // per field instead of duplicating the whole card twice.
-  function EField({ label, k, display, type = 'text' }: {
-    label: string; k: string; display?: React.ReactNode; type?: 'text' | 'number' | 'date'
-  }) {
-    if (!editMode) return <Field label={label} value={display !== undefined ? display : (lr![k] as React.ReactNode)} />
-    return (
-      <div className="mb-2.5">
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
-        <input type={type} value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp} />
-      </div>
-    )
-  }
-  function ESelect({ label, k, options }: { label: string; k: string; options: readonly string[] }) {
-    if (!editMode) return <Field label={label} value={lr![k] as React.ReactNode} />
-    return (
-      <div className="mb-2.5">
-        <label className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-gray-400">{label}</label>
-        <select value={form[k] ?? ''} onChange={e => setForm(f => ({ ...f, [k]: e.target.value }))} className={inp}>
-          <option value="">Select…</option>
-          {options.map(o => <option key={o} value={o}>{o}</option>)}
-        </select>
-      </div>
-    )
-  }
-
   return (
-    <>
+    <EditCtx.Provider value={{ editMode, lr, form, setForm }}>
       <div className="border-b border-orange-100 bg-white px-6 py-4">
         <div className="flex items-center justify-between flex-wrap gap-3">
           <div className="flex items-center gap-3">
@@ -490,6 +496,6 @@ export default function LRDetailPage() {
           <EField label="Prepared By" k="prepared_by" />
         </Card>
       </main>
-    </>
+    </EditCtx.Provider>
   )
 }
