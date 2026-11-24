@@ -40,7 +40,7 @@ export async function downloadGcLabels(id: string, adminKey: string) {
   const url = URL.createObjectURL(blob)
   const link = document.createElement('a')
   link.href = url
-  link.download = `${lr.lr_number}-bag-labels.pdf`
+  link.download = `Bagdrop_Bag_Labels_${lr.lr_number}.pdf`
   document.body.appendChild(link)
   link.click()
   document.body.removeChild(link)

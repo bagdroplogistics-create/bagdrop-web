@@ -11,7 +11,7 @@
 // (called as a function, rendered with pdf(...).toBlob()), same pattern as
 // components/admin/LRPDF.tsx, so Download and Print are the identical file.
 import React from 'react'
-import { Document, Page, View, Text, Image, Svg, Rect, Font, StyleSheet } from '@react-pdf/renderer'
+import { Document, Page, View, Text, Image, Svg, Rect, Path, Font, StyleSheet } from '@react-pdf/renderer'
 import { GC_LABEL_LOGO_DATA_URI } from '@/lib/gc-label-logo'
 import { code128Bars } from '@/lib/code128'
 
@@ -118,6 +118,8 @@ export default function GCLabelsPDF(input: GCLabelInput) {
   const nameTxt = up(input.deliverToName)
   const fromTxt = up(input.fromCity)
   const toTxt   = up(input.toCity)
+  // From/To share one size: 38 pt when they fit, shrinking for long names (e.g. MUMBAI AIRPORT (T2)).
+  const cityPt = Math.max(16, Math.min(38, (451.9 - 30 - 16 - 24) / (Math.max(1, fromTxt.length + toTxt.length) * 0.76)))
   const cV = boxVal(val(input.contents), 138)
   const bV = boxVal(val(input.bookedAt), 143)
   const dV = boxVal(val(input.deliveryAt), 143)
@@ -131,7 +133,7 @@ export default function GCLabelsPDF(input: GCLabelInput) {
   const addrBar = 440.7 + addrLines * addrLH + 4.1 - 380.2
 
   return (
-    <Document title={`${input.gcNumber} – Bag Labels`} author="Bagdrop Logistics Solutions Pvt. Ltd.">
+    <Document title={`Bagdrop_Bag_Labels_${input.gcNumber}`} author="Bagdrop Logistics Solutions Pvt. Ltd.">
       {Array.from({ length: total }, (_, i) => i + 1).map(n => {
         const code = `${input.gcNumber}-${String(n).padStart(2, '0')}`
         return (
@@ -160,9 +162,17 @@ export default function GCLabelsPDF(input: GCLabelInput) {
             <View style={[s.abs, { left: 43.1, top: 249.4, width: 509.3, height: 102, backgroundColor: PEACH, borderWidth: 0.75, borderColor: PEACH2, borderRadius: 15 }]} />
             <Text style={[s.abs, { left: 71.6, top: 275 }, mono(9, GREY, 1.15)]}>FROM</Text>
             <Text style={[s.abs, { right: PAGE_W - 522.5, top: 275 }, mono(9, GREY, 1.15)]}>TO</Text>
-            <Text style={[s.abs, { left: 71.6, top: 282.6 }, inter(fit(38, fromTxt, 200, 0.74), 900, NAVY, 0.38)]}>{fromTxt}</Text>
-            <Text style={[s.abs, { left: 254.1, top: 281.2 }, { fontFamily: 'DejaVuSans', fontSize: 34, color: ORANGE }]}>➜</Text>
-            <Text style={[s.abs, { right: PAGE_W - 523.6, top: 282.9 }, inter(fit(38, toTxt, 220, 0.74), 900, ORANGE, 0.38)]}>{toTxt}</Text>
+            {/* From → To: one flex row, so long city names shrink instead of colliding */}
+            <View style={[s.abs, { left: 71.6, top: 282.6, width: 451.9, flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between' }]}>
+              <View style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
+                <Text style={inter(cityPt, 900, NAVY, cityPt * 0.01)}>{fromTxt}</Text>
+                <Svg width={30} height={cityPt} viewBox="0 0 30 34" style={{ marginLeft: 16, marginTop: cityPt * 0.04 }}>
+                  <Path d="M3 17 H22" stroke={ORANGE} strokeWidth={3.4} />
+                  <Path d="M15 7 L25 17 L15 27" stroke={ORANGE} strokeWidth={3.4} fill="none" />
+                </Svg>
+              </View>
+              <Text style={inter(cityPt, 900, ORANGE, cityPt * 0.01)}>{toTxt}</Text>
+            </View>
 
             {/* ── Deliver to ── */}
             <View style={[s.abs, { left: 66.9 - 24.1, top: 380.2, width: 4.4, height: addrBar, backgroundColor: ORANGE }]} />
