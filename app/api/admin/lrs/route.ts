@@ -256,7 +256,7 @@ export async function POST(req: NextRequest) {
     vehicle_number: body.vehicle_number || null,
     from_city:      fromCity,
     to_city:        toCity,
-    mode:           body.mode || 'Air',
+    mode:           body.mode || null,
 
     consignor_name:    consignorName,
     consignor_address: body.consignor_address?.trim() || null,
@@ -293,8 +293,8 @@ export async function POST(req: NextRequest) {
     insurance_by_customer: !!body.insurance_by_customer,
     gst_payable_by:        body.gst_payable_by || 'Consignor',
     payment_terms:          body.payment_terms  || 'To Pay',
-    lr_type:                body.lr_type        || 'At Branch',
-    delivery_at:             body.delivery_at    || 'Door Dly',
+    lr_type:                body.lr_type        || 'TBB (MANUAL)',
+    delivery_at:             body.delivery_at    || 'Godown',
     remarks:                 body.remarks?.trim() || null,
     prepared_by:              body.prepared_by   || 'admin',
 

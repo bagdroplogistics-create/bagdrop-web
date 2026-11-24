@@ -311,7 +311,7 @@ export async function createOrGetLrForBooking(
     vehicle_number: (ov.vehicle_number as string) || null,
     from_city:      fromCity,
     to_city:        toCity,
-    mode:           (ov.mode as string) || 'Air',
+    mode:           (ov.mode as string) || null,
 
     consignor_name:    consignorName,
     consignor_address: consignorAddress,

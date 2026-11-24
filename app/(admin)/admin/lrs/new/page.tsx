@@ -58,6 +58,7 @@ function FSelect({ label, value, onChange, options }: {
     <div>
       <label className={lbl}>{label}</label>
       <select value={value} onChange={e => onChange(e.target.value)} className={inp}>
+        {!options.includes(value as never) && <option value="">—</option>}
         {options.map(o => <option key={o} value={o}>{o}</option>)}
       </select>
     </div>
@@ -136,7 +137,7 @@ export default function NewLRPage() {
 
   // ── LR Details (both modes) ──
   const [vehicleNumber, setVehicleNumber] = useState('')
-  const [lrMode, setLrMode] = useState('Air')
+  const [lrMode, setLrMode] = useState('')
   const [contentDescription, setContentDescription] = useState('HOUSEHOLD BAGGAGE')
   const [actualWeight, setActualWeight] = useState('')
   const [chargeableWeight, setChargeableWeight] = useState('')
@@ -155,8 +156,8 @@ export default function NewLRPage() {
   const [insuranceByCustomer, setInsuranceByCustomer] = useState(false)
   const [gstPayableBy, setGstPayableBy] = useState<string>(GST_PAYABLE_BY_OPTIONS[0])
   const [paymentTerms, setPaymentTerms] = useState<string>(PAYMENT_TERMS_OPTIONS[0])
-  const [lrType, setLrType] = useState<string>(LR_TYPE_OPTIONS[0])
-  const [deliveryAt, setDeliveryAt] = useState('Door Dly')
+  const [lrType, setLrType] = useState<string>('TBB (MANUAL)')
+  const [deliveryAt, setDeliveryAt] = useState('Godown')
   const [remarks, setRemarks] = useState('')
   const [preparedBy, setPreparedBy] = useState('admin')
 
@@ -328,7 +329,7 @@ export default function NewLRPage() {
           eway_bill_number: ewayBillNumber.trim()  || null,
 
           vehicle_number: vehicleNumber.trim() || null,
-          mode: lrMode,
+          mode: lrMode || null,
           content_description: contentDescription.trim() || null,
           actual_weight:     actualWeight     ? Number(actualWeight)     : null,
           chargeable_weight: chargeableWeight ? Number(chargeableWeight) : null,
@@ -616,7 +617,7 @@ export default function NewLRPage() {
                 <FSelect label="GST Payable By" value={gstPayableBy} onChange={setGstPayableBy} options={GST_PAYABLE_BY_OPTIONS} />
                 <FSelect label="Payment Terms" value={paymentTerms} onChange={setPaymentTerms} options={PAYMENT_TERMS_OPTIONS} />
                 <FSelect label="LR Type" value={lrType} onChange={setLrType} options={LR_TYPE_OPTIONS} />
-                <FInput label="Delivery At" value={deliveryAt} onChange={setDeliveryAt} placeholder="Door Dly" />
+                <FInput label="Delivery At" value={deliveryAt} onChange={setDeliveryAt} placeholder="Godown" />
                 <FInput label="Prepared By" value={preparedBy} onChange={setPreparedBy} />
                 <label className="flex items-center gap-2 pt-6 text-sm text-gray-700">
                   <input type="checkbox" checked={insuranceByCustomer} onChange={e => setInsuranceByCustomer(e.target.checked)}

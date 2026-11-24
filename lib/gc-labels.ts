@@ -16,11 +16,12 @@ export async function buildGcLabelsBlob(lr: any): Promise<Blob> {
       deliverToAddress: lr.delivery_address || lr.consignee_address,
       totalBags: lr.total_bags ?? 1,
       contents: lr.content_description,
-      bookedAt: lr.booking_office,
-      deliveryAt: lr.delivery_at,
+      // Labels always read: Booked At = pickup city, Delivery At = Godown, LR Type = TBB (Manual)
+      bookedAt: lr.from_city,
+      deliveryAt: 'Godown',
       consignorName: lr.consignor_name,
       consignorAddress: lr.consignor_address,
-      lrType: lr.lr_type,
+      lrType: 'TBB (Manual)',
     })
   ).toBlob()
 }
