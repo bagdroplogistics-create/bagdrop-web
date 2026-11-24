@@ -348,8 +348,8 @@ export async function createOrGetLrForBooking(
     insurance_by_customer: !!ov.insurance_by_customer,
     gst_payable_by: (ov.gst_payable_by as string) || 'Consignor',
     payment_terms:  (ov.payment_terms as string)  || 'To Pay',
-    lr_type:        (ov.lr_type as string)        || 'At Branch',
-    delivery_at:    (ov.delivery_at as string)    || 'Door Dly',
+    lr_type:        (ov.lr_type as string)        || 'TBB (MANUAL)',
+    delivery_at:    (ov.delivery_at as string)    || 'Godown',
     remarks:        (ov.remarks as string)?.trim() || null,
     prepared_by:    (ov.prepared_by as string)    || 'admin',
 
