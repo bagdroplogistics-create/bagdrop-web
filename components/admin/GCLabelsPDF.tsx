@@ -86,6 +86,18 @@ function boxVal(text: string, width: number) {
   return { size: 9.5, lines: 2, lh: 1.15 }
 }
 
+// Labels show only the city name: "Mumbai Airport (T2)" / "Delhi Airport T3" -> "Mumbai" / "Delhi".
+export function cityOnly(raw: string | null | undefined): string {
+  if (!raw) return ''
+  return raw
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/\b(international\s+)?airport\b/gi, ' ')
+    .replace(/\b(terminal|term)\s*\d+\b/gi, ' ')
+    .replace(/\bT\d\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 const PAGE_W = 595.92
 const PAGE_H = 842.88
 
@@ -116,12 +128,12 @@ export default function GCLabelsPDF(input: GCLabelInput) {
   registerFonts()
   const total = Math.max(1, Math.floor(Number(input.totalBags) || 1))
   const nameTxt = up(input.deliverToName)
-  const fromTxt = up(input.fromCity)
-  const toTxt   = up(input.toCity)
+  const fromTxt = up(cityOnly(input.fromCity) || input.fromCity)
+  const toTxt   = up(cityOnly(input.toCity) || input.toCity)
   // From/To share one size: 38 pt when they fit, shrinking for long names (e.g. MUMBAI AIRPORT (T2)).
   const cityPt = Math.max(16, Math.min(38, (451.9 - 30 - 16 - 24) / (Math.max(1, fromTxt.length + toTxt.length) * 0.76)))
   const cV = boxVal(val(input.contents), 138)
-  const bV = boxVal(val(input.bookedAt), 143)
+  const bV = boxVal(val(cityOnly(input.bookedAt) || input.bookedAt), 143)
   const dV = boxVal(val(input.deliveryAt), 143)
   // Address: short ones keep the reference look (20 pt, wraps at 400 pt). Longer
   // ones use the full width at a slightly smaller size so they stay on 2 lines.
@@ -197,7 +209,7 @@ export default function GCLabelsPDF(input: GCLabelInput) {
             <Text style={[s.abs, { left: 244.4, top: 608.8 }, inter(15, 700, NAVY)]}>{`${total} ${total === 1 ? 'Bag' : 'Bags'}`}</Text>
 
             <Text style={[s.abs, { left: 408.5, top: 553.2 }, mono(9, GREY, 1.15)]}>BOOKED AT</Text>
-            <Text style={[s.abs, { left: 408.5, top: 566, width: 143, maxLines: bV.lines, lineHeight: bV.lh }, inter(bV.size, 700, NAVY)]}>{val(input.bookedAt)}</Text>
+            <Text style={[s.abs, { left: 408.5, top: 566, width: 143, maxLines: bV.lines, lineHeight: bV.lh }, inter(bV.size, 700, NAVY)]}>{val(cityOnly(input.bookedAt) || input.bookedAt)}</Text>
             <Text style={[s.abs, { left: 408.5, top: 595.2 }, mono(9, GREY, 1.15)]}>DELIVERY AT</Text>
             <Text style={[s.abs, { left: 408.5, top: 608.8, width: 143, maxLines: dV.lines, lineHeight: dV.lh }, inter(dV.size, 700, NAVY)]}>{val(input.deliveryAt)}</Text>
 
