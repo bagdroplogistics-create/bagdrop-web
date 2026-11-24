@@ -205,7 +205,7 @@ export default function GCLabelsPDF(input: GCLabelInput) {
             <Text style={[s.abs, { left: 41.9, width: 511.7, top: 755.2, textAlign: 'center' }, mono(10.99, ORANGE, 2.25)]}>HANDLE WITH CARE · KEEP DRY · DO NOT THROW</Text>
 
             {/* ── Footer band ── */}
-            <View style={[s.abs, { left: 0, top: 805.5, width: PAGE_W, height: 37.4, backgroundColor: PEACH }]} />
+            <View style={[s.abs, { left: 0, top: 805.5, width: PAGE_W, height: 37, backgroundColor: PEACH }]} />
             <View style={[s.abs, { left: 0, top: 805.5, width: PAGE_W, height: 2.3, backgroundColor: ORANGE }]} />
             <Text style={[s.abs, { left: 0, width: PAGE_W, top: 819.3, textAlign: 'center' }, mono(10, ORANGE, 2.25)]}>THE BAGGAGE LAYER · SEALED · TRACKED · INSURED</Text>
           </Page>
