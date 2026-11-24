@@ -75,6 +75,17 @@ const val = (s: string | null | undefined, fb = '—') => (s && s.trim() ? s.tri
 const fit = (size: number, text: string, maxW: number, perChar = 0.66) =>
   Math.max(size * 0.55, Math.min(size, maxW / Math.max(1, text.length * perChar)))
 
+// Value text for the Contents / Booked-at boxes: one 15 pt line when it fits
+// (the reference look); otherwise a smaller two-line wrap that still ends
+// above the next label, so long values can never overlap "TOTAL PACKAGES".
+function boxVal(text: string, width: number) {
+  const upper = text === text.toUpperCase() && /[A-Z]/.test(text)
+  const est = text.length * 15 * (upper ? 0.74 : 0.6)
+  if (est <= width) return { size: 15, lines: 1, lh: 1.2 }
+  if (text.length * 11.5 * (upper ? 0.74 : 0.6) <= width * 2) return { size: 11.5, lines: 2, lh: 1.15 }
+  return { size: 9.5, lines: 2, lh: 1.15 }
+}
+
 const PAGE_W = 595.92
 const PAGE_H = 842.88
 
@@ -107,6 +118,9 @@ export default function GCLabelsPDF(input: GCLabelInput) {
   const nameTxt = up(input.deliverToName)
   const fromTxt = up(input.fromCity)
   const toTxt   = up(input.toCity)
+  const cV = boxVal(val(input.contents), 138)
+  const bV = boxVal(val(input.bookedAt), 143)
+  const dV = boxVal(val(input.deliveryAt), 143)
   const addrLines = Math.min(3, Math.max(2, Math.ceil(val(input.deliverToAddress).length * 9.2 / 400)))
   const addrBar = 64.6 + 27 * addrLines
 
@@ -162,14 +176,14 @@ export default function GCLabelsPDF(input: GCLabelInput) {
             </Text>
 
             <Text style={[s.abs, { left: 244.4, top: 553.2 }, mono(9, GREY, 1.15)]}>CONTENTS</Text>
-            <Text style={[s.abs, { left: 244.4, top: 566, width: 138 }, inter(15, 700, NAVY)]}>{val(input.contents)}</Text>
+            <Text style={[s.abs, { left: 244.4, top: 566, width: 138, maxLines: cV.lines, lineHeight: cV.lh }, inter(cV.size, 700, NAVY)]}>{val(input.contents)}</Text>
             <Text style={[s.abs, { left: 244.4, top: 595.2 }, mono(9, GREY, 1.15)]}>TOTAL PACKAGES</Text>
             <Text style={[s.abs, { left: 244.4, top: 608.8 }, inter(15, 700, NAVY)]}>{`${total} ${total === 1 ? 'Bag' : 'Bags'}`}</Text>
 
             <Text style={[s.abs, { left: 408.5, top: 553.2 }, mono(9, GREY, 1.15)]}>BOOKED AT</Text>
-            <Text style={[s.abs, { left: 408.5, top: 566, width: 143 }, inter(15, 700, NAVY)]}>{val(input.bookedAt)}</Text>
+            <Text style={[s.abs, { left: 408.5, top: 566, width: 143, maxLines: bV.lines, lineHeight: bV.lh }, inter(bV.size, 700, NAVY)]}>{val(input.bookedAt)}</Text>
             <Text style={[s.abs, { left: 408.5, top: 595.2 }, mono(9, GREY, 1.15)]}>DELIVERY AT</Text>
-            <Text style={[s.abs, { left: 408.5, top: 608.8, width: 143 }, inter(15, 700, NAVY)]}>{val(input.deliveryAt)}</Text>
+            <Text style={[s.abs, { left: 408.5, top: 608.8, width: 143, maxLines: dV.lines, lineHeight: dV.lh }, inter(dV.size, 700, NAVY)]}>{val(input.deliveryAt)}</Text>
 
             {/* ── Consignor / LR type ── */}
             <Text style={[s.abs, { left: 42.5, top: 701.7 }, mono(9, GREY, 1.15)]}>CONSIGNOR</Text>
