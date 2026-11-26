@@ -42,11 +42,11 @@ const s = StyleSheet.create({
 
   body:      { padding: '22 36 0' },
   metaRow:   { flexDirection: 'row', marginBottom: 14 },
-  metaBox:   { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 14', borderLeftWidth: 3, borderLeftColor: ORANGE, marginRight: 10 },
-  metaBoxL:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '10 14', borderLeftWidth: 3, borderLeftColor: DARK },
-  lbl:       { color: GREY, fontSize: 10, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
-  val:       { color: DARK, fontSize: 15, fontFamily: 'Helvetica-Bold' },
-  valSub:    { color: GREY, fontSize: 12, marginTop: 2 },
+  metaBox:   { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '12 14', borderLeftWidth: 3, borderLeftColor: ORANGE, marginRight: 10 },
+  metaBoxL:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '12 14', borderLeftWidth: 3, borderLeftColor: DARK },
+  lbl:       { color: GREY, fontSize: 10, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5, lineHeight: 1.3 },
+  val:       { color: DARK, fontSize: 15, fontFamily: 'Helvetica-Bold', lineHeight: 1.3 },
+  valSub:    { color: GREY, fontSize: 12, marginTop: 2, lineHeight: 1.3 },
 
   tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '9 12', marginTop: 6 },
   tableH:    { color: '#fff', fontSize: 11, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
@@ -66,7 +66,7 @@ const s = StyleSheet.create({
   bdBox:     { backgroundColor: LIGHT, borderRadius: 6, padding: '10 14', borderLeftWidth: 3, borderLeftColor: ORANGE, marginBottom: 12 },
   bdRow:     { flexDirection: 'row' },
   bdCol:     { flex: 1, paddingRight: 6 },
-  bdVal:     { color: DARK, fontSize: 13, fontFamily: 'Helvetica-Bold' },
+  bdVal:     { color: DARK, fontSize: 13, fontFamily: 'Helvetica-Bold', lineHeight: 1.3 },
   depBox:    { marginTop: 10, backgroundColor: LIGHT, borderRadius: 6, padding: '9 14', borderLeftWidth: 3, borderLeftColor: DARK },
   depTx:     { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold', lineHeight: 1.4 },
   notes:     { marginTop: 10, color: GREY, fontSize: 12 },
@@ -178,7 +178,6 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
           </View>
 
           <View style={s.bdBox}>
-            <Text style={s.lbl}>Booking Details</Text>
             <View style={s.bdRow}>
               <View style={[s.bdCol, { flex: 1.45 }]}><Text style={s.lbl}>Route</Text><Text style={s.bdVal}>{route || '-'}</Text></View>
               <View style={[s.bdCol, { flex: 1.3 }]}><Text style={s.lbl}>Service Type</Text><Text style={s.bdVal}>{serviceLabel || '-'}</Text></View>
