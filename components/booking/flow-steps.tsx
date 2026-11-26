@@ -81,8 +81,8 @@ export function FlowWhere({ state, onChange }: { state: BookingState; onChange: 
   const other = (kind !== 'airport-pickup' && fromOthers) || (kind !== 'airport-drop' && toOthers)
   const route = other ? 'we confirm the route and price for this city within the hour'
     : !zf || !zt ? '—'
-    : zf === zt ? `${from} → ${to} · same region, captain run, same day`
-    : `${from} → ${to} · ${zf} hub to ${zt} hub, daily line haul, next day${def?.mode === 'air' ? ', counter 4 h before departure' : ''}`
+    : zf === zt ? `${from} → ${to} · same region, captain run`
+    : `${from} → ${to} · ${zf} hub to ${zt} hub, daily line haul, delivery in 3–5 working days${def?.mode === 'air' ? ', counter 4 h before departure' : ''}`
 
   return (
     <div className={slide}>

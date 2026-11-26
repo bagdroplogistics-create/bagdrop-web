@@ -170,7 +170,7 @@ const POSTS: Record<string, {
       },
       {
         heading: 'How Bagdrop Makes the Move Easier',
-        body: "Bagdrop's intercity service is specifically designed for exactly this use case. You book online, choose your pickup date, and our executive arrives at your home with packaging materials if needed. Your bags are weighed, documented, and photographed. Then they're transported directly to your new city — to your hostel address, your PG, or your flat — typically within 24–48 hours.\n\nNo heavy lifting on trains. No negotiating with auto drivers. No excess baggage counters. You travel light; your bags arrive at the destination.",
+        body: "Bagdrop's intercity service is specifically designed for exactly this use case. You book online, choose your pickup date, and our executive arrives at your home with packaging materials if needed. Your bags are weighed, documented, and photographed. Then they're transported directly to your new city — to your hostel address, your PG, or your flat — typically within 3–5 working days of us receiving your bags.\n\nNo heavy lifting on trains. No negotiating with auto drivers. No excess baggage counters. You travel light; your bags arrive at the destination.",
       },
       {
         heading: 'Domestic Coverage Across India',

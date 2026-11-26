@@ -45,7 +45,7 @@ const SLIDES = [
   },
 ]
 
-const TRUST = ['12,000+ bags delivered', '2–3 day delivery', 'Fully insured']
+const TRUST = ['12,000+ bags delivered', '3–5 day delivery', 'Fully insured']
 
 // ─── Floating order card (right side) ────────────────────────
 

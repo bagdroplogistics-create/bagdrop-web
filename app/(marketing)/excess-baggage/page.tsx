@@ -51,7 +51,7 @@ export default function ExcessBaggagePage() {
       ]}
       faqs={[
         { q: 'How much cheaper is Bagdrop vs airline excess?', a: 'On average, customers save 40 to 60 percent. A bag an airline charges ₹5,000 for typically costs ₹1,500 to 2,500 with Bagdrop, depending on the route and weight.' },
-        { q: 'Can I send bags ahead of my flight?', a: 'Yes. Book pickup 24 to 48 hours before your flight. Your bags will be at the destination before or shortly after you arrive.' },
+        { q: 'Can I send bags ahead of my flight?', a: 'Yes. Delivery takes a minimum of 3–5 working days from the date we receive your bags, so book pickup well ahead of your flight.' },
         { q: 'What is the maximum weight per bag?', a: 'Standard service covers up to 32 kg per bag. Oversized service covers 32 to 50 kg. For items over 50 kg, contact us for a custom quote.' },
         { q: 'Do you accept boxes and non-suitcase items?', a: 'Yes. Cardboard boxes, crates, appliance boxes, and sports equipment are all accepted. Ensure items are securely packed before pickup.' },
       ]}

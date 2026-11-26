@@ -18,9 +18,10 @@ Message IDs.
 
 ---
 
-## 1. Quote Sent — `quote_sent`
+## 1. Quote Sent — `quote_sent_v3` (Approved; supersedes quote_sent / quote_sent_v2)
 
-**Variables:** {{1}} customer name · {{2}} quote number · {{3}} route (from → to) · {{4}} bag count · {{5}} total amount
+**Header:** Document (quote PDF)
+**Variables:** {{1}} customer name · {{2}} quote number · {{3}} route (from → to) · {{4}} pickup date · {{5}} bag count · {{6}} total amount
 
 ```
 Dear {{1}},
@@ -30,8 +31,11 @@ Your Bagdrop quote is ready.
 Customer Name: {{1}}
 Quote No: {{2}}
 Route: {{3}}
-Bags: {{4}}
-Total Amount: {{5}}
+Pickup Date: {{4}}
+Bags: {{5}}
+Total Amount: {{6}}
+
+Delivery Timeline: Delivery to all locations takes a minimum of 3-5 working days, counted from the date we receive your bags.
 
 Please review and confirm. For any questions, call us at +91 63571 15711 or +91 63573 35733.
 

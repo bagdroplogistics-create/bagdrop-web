@@ -27,7 +27,7 @@ export default function DoorToDoorPage() {
       icon={Home}
       benefits={[
         { title: 'No airport needed', desc: 'Pure doorstep-to-doorstep delivery. Perfect for intercity moves, holiday prep, or sending gifts.' },
-        { title: 'Gujarat & Maharashtra', desc: 'Coverage across both states with reliable timelines — most deliveries completed within 24–48 hours.' },
+        { title: 'Gujarat & Maharashtra', desc: 'Coverage across both states with reliable timelines — delivery takes a minimum of 3–5 working days from the date we receive your bags.' },
         { title: 'Goa service', desc: 'Send your bags ahead to your Goa villa or hotel and arrive completely luggage-free.' },
         { title: 'WhatsApp & email updates', desc: 'We keep you and the recipient informed at every stage — pickup, in transit, and delivered. Live tracking coming soon.' },
         { title: 'Flexible scheduling', desc: 'Choose your pickup and delivery time windows. Morning, afternoon, or evening.' },
@@ -40,7 +40,7 @@ export default function DoorToDoorPage() {
         { number: '04', title: 'Delivered to door', desc: 'Recipient is notified before arrival. Bags handed over with proof of delivery.' },
       ]}
       faqs={[
-        { q: 'How long does intercity delivery take?', a: 'Most deliveries within Gujarat and Maharashtra complete within 24–48 hours. Goa typically 36–60 hours.' },
+        { q: 'How long does intercity delivery take?', a: 'Delivery to all locations takes a minimum of 3–5 working days, counted from the date we receive your bags.' },
         { q: 'Can someone else receive the bags?', a: 'Yes. Just provide the recipient name and phone at booking. They will receive a WhatsApp delivery notification before arrival.' },
         { q: 'Is there a weight limit?', a: 'Standard bags up to 32 kg per item. Oversized (up to 50 kg) available at checkout.' },
       ]}

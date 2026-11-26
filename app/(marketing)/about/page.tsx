@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 const VALUES = [
   { icon: Plane,  title: 'Aviation-first',  desc: 'We think like an airport, not a courier. Every process is designed around the traveller\'s journey.' },
   { icon: Shield, title: 'Trust above all', desc: 'Your bags are insured, tracked, and treated with the same care you expect from a premium airline.' },
-  { icon: Zap,    title: '24 / 48 / 72 Hour Delivery', desc: 'Same-day, next-day, or scheduled — choose the delivery window that fits your travel plan. We move as fast as you do.' },
+  { icon: Zap,    title: '3–5 Working Day Delivery', desc: 'Delivery to all locations takes a minimum of 3–5 working days, counted from the date we receive your bags. Book early and plan around it.' },
   { icon: Heart,  title: 'Built for India', desc: 'From NRI families landing at BOM to students shipping to Pune — we\'re solving a uniquely Indian problem.' },
 ]
 

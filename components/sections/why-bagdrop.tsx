@@ -27,7 +27,7 @@ const REASONS = [
   },
   {
     Icon:        Clock,
-    stat:        '2–3 days',
+    stat:        '3–5 days',
     statLabel:   'typical delivery time',
     title:       'Planned around your flight',
     description: 'We schedule around your flight. Your bags are there before your taxi arrives — not the next morning.',

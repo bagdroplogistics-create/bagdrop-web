@@ -77,7 +77,7 @@ interface BookingLike {
 // e.g. for a booking delivered before this template existed, or a customer
 // who wants a second nudge.
 const TEMPLATE_BY_STATUS: Record<string, string> = {
-  quote_sent:       'quote_sent_v2',
+  quote_sent:       'quote_sent_v3',
   accepted:         'quote_accepted',
   rejected:         'quote_rejected',
   payment_pending:  'payment_request',
@@ -229,6 +229,11 @@ export async function sendLifecycleWhatsApp(status: string, booking: BookingLike
           name,
           quoteNumber,
           quoteRoute,
+          // {{4}} Pickup Date (quote_sent_v3). Return leg uses its own date when present.
+          (() => {
+            const pd = (isRet ? (lead?.return_pickup_date ?? lead?.pickup_date) : lead?.pickup_date) ?? booking.pickup_date
+            return pd ? fmtDate(pd) : 'To be confirmed'
+          })(),
           String((isRet ? lead?.return_bags_count ?? lead?.bags_count : lead?.bags_count) ?? booking.total_bags ?? 1),
           fmtRs((isRet ? lead?.return_quote_total : lead?.quote_total) ?? booking.total_amount),
         ]

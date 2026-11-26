@@ -156,7 +156,7 @@ export default function AhmedabadPage() {
               { stat: '₹50,000', label: 'Insurance cover per bag' },
               { stat: '40–60%', label: 'Savings vs airline fees' },
               { stat: '24 hrs', label: 'Advance booking required' },
-              { stat: '2–3 days', label: 'Typical delivery time' },
+              { stat: '3–5 days', label: 'Minimum delivery time' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-2xl font-bold text-orange-500 md:text-3xl">{stat}</div>
@@ -229,15 +229,15 @@ export default function AhmedabadPage() {
             <p className="mb-10 text-center text-gray-500">Send luggage from Ahmedabad to any major city</p>
             <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-3">
               {[
-                { from: 'Ahmedabad', to: 'Mumbai', time: '1–2 days' },
-                { from: 'Ahmedabad', to: 'Delhi', time: '2–3 days' },
-                { from: 'Ahmedabad', to: 'Goa', time: '2–3 days' },
+                { from: 'Ahmedabad', to: 'Mumbai', time: '3–5 days' },
+                { from: 'Ahmedabad', to: 'Delhi', time: '3–5 days' },
+                { from: 'Ahmedabad', to: 'Goa', time: '3–5 days' },
                 { from: 'Ahmedabad', to: 'Vadodara', time: 'Same day' },
                 { from: 'Ahmedabad', to: 'Surat', time: 'Same day' },
-                { from: 'Ahmedabad', to: 'Udaipur', time: '1–2 days' },
-                { from: 'Mumbai', to: 'Ahmedabad', time: '1–2 days' },
-                { from: 'Delhi', to: 'Ahmedabad', time: '2–3 days' },
-                { from: 'Goa', to: 'Ahmedabad', time: '2–3 days' },
+                { from: 'Ahmedabad', to: 'Udaipur', time: '3–5 days' },
+                { from: 'Mumbai', to: 'Ahmedabad', time: '3–5 days' },
+                { from: 'Delhi', to: 'Ahmedabad', time: '3–5 days' },
+                { from: 'Goa', to: 'Ahmedabad', time: '3–5 days' },
               ].map(({ from, to, time }) => (
                 <div key={from + to} className="flex items-center justify-between rounded-xl border border-gray-100 bg-white p-4 shadow-sm">
                   <div>
