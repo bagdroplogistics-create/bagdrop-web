@@ -1464,6 +1464,78 @@ function LeadsPageInner() {
     window.open('/admin/leads/print', '_blank')
   }
 
+  // ── Export to Excel ─────────────────────────────────────────────
+  // Downloads every row matching the CURRENT filter/search/source/sort (e.g. all
+  // "Confirmed" inquiries) as an .xlsx file — not just the visible page.
+  const [exporting, setExporting] = useState(false)
+  async function exportExcel() {
+    if (exporting) return
+    setExporting(true)
+    try {
+      let source = leads
+      if (serverPaged) {
+        const base = '?key=' + adminKey + '&slim=1&limit=1000&sort=' + encodeURIComponent(sort)
+          + (debouncedSearch ? '&search=' + encodeURIComponent(debouncedSearch) : '')
+          + (sourceFilter !== 'all' ? '&source=' + encodeURIComponent(sourceFilter) : '')
+          + (filter !== 'all' ? '&status=' + filter : '')
+        const first = await (await fetch('/api/admin/leads' + base + '&page=1', { cache: 'no-store' })).json()
+        let all: typeof leads = first.leads ?? []
+        const pages = Math.ceil((first.total ?? all.length) / 1000)
+        if (pages > 1) {
+          const rest = await Promise.all(Array.from({ length: pages - 1 }, (_, i) =>
+            fetch('/api/admin/leads' + base + '&page=' + (i + 2), { cache: 'no-store' }).then(r => r.json()).then(b => (b.leads ?? []) as typeof leads)))
+          all = all.concat(...rest)
+        }
+        source = all
+      }
+      const rows = sortLeads(source, sort).filter(l => matchesFollowupFilter(l, followupParam))
+      if (rows.length === 0) { alert('No inquiries to export for the current filter.'); return }
+
+      const dmy = (iso?: string | null) => {
+        if (!iso) return ''
+        const d = new Date(iso)
+        return isNaN(d.getTime()) ? String(iso) : d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Asia/Kolkata' })
+      }
+      const data = rows.map((l, i) => {
+        const st = l.effective_status ?? l.status
+        return {
+          '#': i + 1,
+          'Inquiry No': l.lead_number ?? '',
+          'Quote No': l.quote_number ?? '',
+          'Customer': [l.title, l.name].filter(Boolean).join(' '),
+          'Phone': l.phone ?? '',
+          'Email': l.email ?? '',
+          'Service': l.service_interest ?? l.service_type ?? '',
+          'From': l.from_city ?? '',
+          'To': l.to_city ?? '',
+          'Pickup Date': dmy(l.pickup_date),
+          'Pickup Time': l.pickup_time ?? '',
+          'Delivery Date': dmy(l.delivery_date),
+          'Bags': l.bags_count ?? '',
+          'Source': SOURCE_LABELS[l.source] ?? l.source ?? '',
+          'Status': BOOKING_STATUS_CONFIG[st]?.label ?? STATUS_CONFIG[st]?.label ?? st,
+          'Quote Amount (INR)': l.quote_total ?? '',
+          'Pickup Address': l.pickup_address ?? '',
+          'Drop Address': l.drop_address ?? '',
+          'Flight / PNR': [l.flight_number, l.pnr].filter(Boolean).join(' / '),
+          'Created On': dmy(l.created_at),
+        }
+      })
+      const XLSX = await import('xlsx')
+      const ws = XLSX.utils.json_to_sheet(data)
+      ws['!cols'] = Object.keys(data[0]).map(k => ({ wch: Math.min(40, Math.max(k.length + 2, ...data.map(r => String((r as Record<string, unknown>)[k] ?? '').length + 2))) }))
+      const wb = XLSX.utils.book_new()
+      XLSX.utils.book_append_sheet(wb, ws, 'Inquiries')
+      const label = filter !== 'all' ? (STATUS_CONFIG[filter]?.label ?? filter) : 'All'
+      const stamp = new Date().toISOString().slice(0, 10)
+      XLSX.writeFile(wb, `Bagdrop_${label.replace(/\s+/g, '_')}_Inquiries_${stamp}.xlsx`)
+    } catch {
+      alert('Could not export inquiries. Please try again.')
+    } finally {
+      setExporting(false)
+    }
+  }
+
   // ── Print single Inquiry/Booking record ─────────────────────────
   // Same pattern as openPrintView() above (sessionStorage hand-off to a
   // dedicated print route, opened in a new tab) but for exactly ONE row —
@@ -1882,6 +1954,11 @@ function LeadsPageInner() {
             title="Print the current Leads list (respects filters/search/sort above)"
             className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40">
             <Printer className="h-3.5 w-3.5" /> Print
+          </button>
+          <button onClick={exportExcel} disabled={exporting || (leads.length === 0 && !serverPaged)}
+            title="Download the current list (respects filters/search/sort above) as an Excel file"
+            className="flex items-center gap-1.5 rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors shadow-sm disabled:cursor-not-allowed disabled:opacity-40">
+            {exporting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />} Excel
           </button>
           <button
             onClick={() => setShowDeleted(v => !v)}
