@@ -1,13 +1,13 @@
 // app/api/calendar/feed/route.ts
 //
-// Live iCalendar (.ics) feed of every Confirmed / Ongoing booking so the
+// Live iCalendar (.ics) feed of every Confirmed booking (payment received through delivered) so the
 // ops team can subscribe once in Google Calendar ("Other calendars" -> "From
 // URL") and see, per day, which customer is being picked up / delivered.
 //
 // One event per booking per leg-date: a "Pickup" event on pickup_date and a
 // "Delivery" event on delivery_date. Return-journey legs are stored as their
 // own booking rows, so they appear automatically with their own dates.
-// Bookings that move to Delivered / Cancelled / Lost drop out of the feed and
+// Bookings that move to Completed / Cancelled / Lost drop out of the feed and
 // Google removes them on its next refresh (Google polls subscribed feeds
 // roughly every few hours — it cannot be forced).
 //
@@ -19,15 +19,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { timingSafeEqual } from 'crypto'
 import { supabaseAdmin } from '@/lib/supabase'
-import { STATUS_ORDER } from '@/lib/booking-status'
+import { ACTIVE_BOOKING_STATUSES } from '@/lib/booking-status'
 import { formatCustomerName } from '@/lib/constants'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 
-const CONFIRMED = 'confirmed'
-const ONGOING = STATUS_ORDER.slice(STATUS_ORDER.indexOf('confirmed') + 1, STATUS_ORDER.indexOf('delivered'))
-const INCLUDED = [CONFIRMED, ...ONGOING]
+// Same definition of "Confirmed" the rest of the app uses (Dashboard KPI,
+// Leads tab badge): payment received/approved and every fulfilment status up
+// to, but not including, 'completed'. The earlier version only covered
+// 'confirmed' onward, which dropped bookings still at Payment Received /
+// Payment Approved (e.g. a 28 Nov pickup that showed Confirmed in the app).
+const INCLUDED = ACTIVE_BOOKING_STATUSES
 
 interface Row {
   tracking_id: string
