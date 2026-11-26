@@ -255,6 +255,7 @@ export function SkybirdBookingEngine({ skybirdKey, onSubmitted, onBackToList, ed
               // hidden here only; the public site's StepSchedule usage in
               // booking-engine.tsx doesn't pass this, so it's unaffected.
               hiddenAddonIds={['insurance']}
+              showDeliveryTimeline
             />
           )}
           {step === 4 && (

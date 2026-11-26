@@ -32,6 +32,8 @@ interface StepScheduleProps {
    * is completely unaffected.
    */
   hiddenAddonIds?: string[]
+  /** Show the "Delivery Timeline: minimum 3–5 working days" badge. Skybird partner form only. */
+  showDeliveryTimeline?: boolean
 }
 
 // Minimum date = tomorrow
@@ -41,7 +43,7 @@ function minDate(): string {
   return d.toISOString().split('T')[0]
 }
 
-export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds = [] }: StepScheduleProps) {
+export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds = [], showDeliveryTimeline = false }: StepScheduleProps) {
   const valid            = isStep3Valid(state)
   const isAirportService = ['airport-delivery', 'door-to-airport'].includes(state.serviceId ?? '')
   const visibleAddons     = ADDON_SERVICES.filter(a => !hiddenAddonIds.includes(a.id))
@@ -112,12 +114,14 @@ export function StepSchedule({ state, onChange, onNext, onBack, hiddenAddonIds =
           className="input-base"
         />
         <p className="text-xs text-text-muted">When do you need your bags delivered? We'll plan accordingly.</p>
-        <div className="mt-2 inline-flex items-start gap-2 rounded-xl border border-brand/20 bg-brand-light px-3 py-2">
-          <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={1.75} />
-          <p className="text-xs font-medium leading-snug text-brand">
-            Delivery Timeline: minimum 3–5 working days from the date we receive your bags.
-          </p>
-        </div>
+        {showDeliveryTimeline && (
+          <div className="mt-2 inline-flex items-start gap-2 rounded-xl border border-brand/20 bg-brand-light px-3 py-2">
+            <Clock className="mt-0.5 h-4 w-4 shrink-0 text-brand" strokeWidth={1.75} />
+            <p className="text-xs font-medium leading-snug text-brand">
+              Delivery Timeline: minimum 3–5 working days from the date we receive your bags.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* ── Pickup Time ── */}
