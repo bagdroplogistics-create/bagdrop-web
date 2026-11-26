@@ -1,5 +1,5 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
-import { INVOICE_COMPANY } from '@/lib/company-info'
+import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
 import { amountInWords } from '@/lib/number-to-words'
 import { LOGO_FULL_WHITE_DATA_URI, SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 
@@ -63,6 +63,12 @@ const s = StyleSheet.create({
   words:     { marginTop: 10, backgroundColor: LIGHT, borderRadius: 6, padding: '9 14', borderLeftWidth: 3, borderLeftColor: ORANGE },
   wordsTx:   { color: DARK, fontSize: 13, fontFamily: 'Helvetica-Oblique' },
 
+  bdBox:     { backgroundColor: LIGHT, borderRadius: 6, padding: '10 14', borderLeftWidth: 3, borderLeftColor: ORANGE, marginBottom: 12 },
+  bdRow:     { flexDirection: 'row' },
+  bdCol:     { flex: 1, paddingRight: 6 },
+  bdVal:     { color: DARK, fontSize: 13, fontFamily: 'Helvetica-Bold' },
+  depBox:    { marginTop: 10, backgroundColor: LIGHT, borderRadius: 6, padding: '9 14', borderLeftWidth: 3, borderLeftColor: DARK },
+  depTx:     { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold', lineHeight: 1.4 },
   notes:     { marginTop: 10, color: GREY, fontSize: 12 },
 
   footer:    { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '10 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
@@ -136,7 +142,8 @@ export interface PaymentReceiptPDFProps {
 
 export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
   const { receiptNumber, customerName, customerPhone, trackingId, amount,
-          paymentDate, paymentMethod, paymentReference, notes } = props
+          paymentDate, paymentMethod, paymentReference, notes,
+          route, serviceLabel, bagsCount, pickupDate } = props
   const isCash = paymentMethod === 'cash'
   const method = METHOD_LABELS[paymentMethod] ?? paymentMethod
 
@@ -170,6 +177,16 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
             </View>
           </View>
 
+          <View style={s.bdBox}>
+            <Text style={s.lbl}>Booking Details</Text>
+            <View style={s.bdRow}>
+              <View style={[s.bdCol, { flex: 1.45 }]}><Text style={s.lbl}>Route</Text><Text style={s.bdVal}>{route || '-'}</Text></View>
+              <View style={[s.bdCol, { flex: 1.3 }]}><Text style={s.lbl}>Service Type</Text><Text style={s.bdVal}>{serviceLabel || '-'}</Text></View>
+              <View style={[s.bdCol, { flex: 0.95 }]}><Text style={s.lbl}>No. of Bags</Text><Text style={s.bdVal}>{bagsCount ?? '-'}</Text></View>
+              <View style={[s.bdCol, { flex: 1.2 }]}><Text style={s.lbl}>Pickup Date</Text><Text style={s.bdVal}>{pickupDate ? fmtDate(pickupDate) : '-'}</Text></View>
+            </View>
+          </View>
+
           <View style={s.tableHead}>
             <Text style={[s.tableH, s.cDesc]}>Description</Text>
             <Text style={[s.tableH, s.cMode]}>Mode</Text>
@@ -191,6 +208,13 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
             <Text style={s.lbl}>Amount in Words</Text>
             <Text style={s.wordsTx}>{amountInWords(amount)}</Text>
           </View>
+
+          {!isCash ? (
+            <View style={s.depBox}>
+              <Text style={s.lbl}>Deposited via {method} to</Text>
+              <Text style={s.depTx}>{INVOICE_BANK.bankName} · A/C {INVOICE_BANK.accountNo} · IFSC {INVOICE_BANK.ifsc} · {INVOICE_BANK.branch}</Text>
+            </View>
+          ) : null}
 
           {notes ? <Text style={s.notes}>Note: {notes}</Text> : null}
 
