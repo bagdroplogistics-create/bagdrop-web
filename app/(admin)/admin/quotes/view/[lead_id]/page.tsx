@@ -1,7 +1,6 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
-import { parseStoredPhone } from '@/lib/phone-format'
 import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { IdentityCard } from '@/components/admin/identity-card'
