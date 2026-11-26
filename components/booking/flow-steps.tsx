@@ -211,6 +211,12 @@ export function FlowWhen({ state, onChange }: { state: BookingState; onChange: (
         </Field>
       </div>
       <div className="rounded-xl bg-blue-50 p-3 text-sm text-blue-900"><b>{copy.check}</b> · {copy.checkBody}</div>
+      <div className="inline-flex items-start gap-2 rounded-xl border border-brand/20 bg-brand-light px-3 py-2">
+        <span aria-hidden className="mt-0.5 text-sm">🕒</span>
+        <p className="text-xs font-medium leading-snug text-brand">
+          Delivery Timeline: minimum 3–5 working days from the date we receive your bags.
+        </p>
+      </div>
       <div>
         <p className="mb-2 text-sm font-medium text-text-primary">Pickup window</p>
         <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">

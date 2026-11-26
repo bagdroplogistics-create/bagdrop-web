@@ -125,7 +125,7 @@ export function LegacyBookingEngine() {
             <StepBags key="step-bags" state={booking} onChange={patch} onNext={next} onBack={back} />
           )}
           {step === 3 && (
-            <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} />
+            <StepSchedule key="step-schedule" state={booking} onChange={patch} onNext={next} onBack={back} showDeliveryTimeline />
           )}
           {step === 4 && (
             <StepReview
