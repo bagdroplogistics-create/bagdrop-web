@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import { parseStoredPhone } from '@/lib/phone-format'
 import { buildQuoteSentText, waDigits, isWorkflowWhatsAppStep, buildWorkflowWhatsAppText, openWorkflowWhatsApp, WORKFLOW_WHATSAPP_LABEL } from '@/lib/workflow-whatsapp'
 import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import { IdentityCard } from '@/components/admin/identity-card'
@@ -1560,6 +1561,14 @@ export default function QuoteViewPage() {
   async function doVerifyPayment(action: 'approve' | 'reject') {
     if (!booking?.payment_verification_payment_id || !key) return
     setVerifyingProof(action); setProofErr(null); setProofMsg(null)
+    // International customers can't get the automatic WhatsApp receipt from the business
+    // number, so (as before) hand over to WhatsApp Web. The tab must be opened inside the
+    // click, before any await, or the pop-up blocker stops it.
+    const isIntl = parseStoredPhone(booking.customer_phone).dialCode !== '91'
+    let waTab: Window | null = null
+    if (action === 'approve' && !adminApproveMode && isIntl && waDigits(booking.customer_phone)) {
+      try { waTab = window.open('about:blank', '_blank') } catch { waTab = null }
+    }
     try {
       const r = await fetch(`/api/admin/payments/${booking.payment_verification_payment_id}?key=${encodeURIComponent(key)}`, {
         method: 'PATCH',
@@ -1571,7 +1580,27 @@ export default function QuoteViewPage() {
         }),
       })
       const d = await r.json().catch(() => ({}))
-      if (!r.ok) { setProofErr(d.error ?? 'Failed to update payment'); return }
+      if (!r.ok) { waTab?.close(); setProofErr(d.error ?? 'Failed to update payment'); return }
+      // Receipt hand-off via WhatsApp Web when the automatic WhatsApp did not go out.
+      if (waTab) {
+        const rc = d.receipt as { payment_id?: string; amount?: number | string; receipt_pdf_url?: string | null; receipt_whatsapp_status?: string | null; tracking_id?: string | null } | null
+        if (rc && rc.receipt_whatsapp_status !== 'sent') {
+          const amt = '₹' + Math.round(Number(rc.amount ?? 0)).toLocaleString('en-IN')
+          const text = [
+            `Dear ${lead?.name ?? 'Customer'},`, '',
+            'We have received your payment. Thank you!', '',
+            `Amount Received: ${amt}`,
+            `Booking ID: ${rc.tracking_id ?? booking.tracking_id ?? ''}`,
+            `Receipt No: ${rc.payment_id ?? ''}`,
+            ...(rc.receipt_pdf_url ? ['', `Payment Receipt: ${rc.receipt_pdf_url}`] : []), '',
+            'Thank you for choosing Bagdrop.',
+          ].join('\n')
+          try { void navigator.clipboard?.writeText(text).catch(() => {}) } catch { /* ignore */ }
+          waTab.location.href = `https://web.whatsapp.com/send?phone=${waDigits(booking.customer_phone)}&text=${encodeURIComponent(text)}`
+        } else {
+          waTab.close()
+        }
+      }
       setBooking(prev => {
         if (!prev) return prev
         const next: typeof prev = { ...prev, payment_verification_status: action === 'approve' ? 'verified' : 'rejected' }
@@ -1589,6 +1618,7 @@ export default function QuoteViewPage() {
         ? '✅ Payment approved — booking auto-confirmed.'
         : 'Payment rejected — ask the customer to re-submit proof.')
     } catch {
+      waTab?.close()
       setProofErr('Network error — please try again')
     } finally {
       setVerifyingProof(null)

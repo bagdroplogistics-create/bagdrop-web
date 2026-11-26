@@ -307,5 +307,25 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     }
   }
 
-  return NextResponse.json({ payment: data })
+  // Receipt hand-off info for the admin UI: international customers can't get the
+  // automatic WhatsApp from the business number, so the UI opens WhatsApp Web
+  // with the receipt message + PDF link when receipt_whatsapp_status !== 'sent'.
+  let receipt: Record<string, unknown> | null = null
+  if (body.payment_status === 'paid' && body.admin_approve !== true && data?.id) {
+    const { data: r } = await supabaseAdmin
+      .from('payments')
+      .select('payment_id, amount, receipt_pdf_url, receipt_whatsapp_status, receipt_whatsapp_error, customer_name, booking_id')
+      .eq('id', data.id)
+      .maybeSingle()
+    if (r) {
+      let trackingId: string | null = null
+      if (r.booking_id) {
+        const { data: bk } = await supabaseAdmin.from('bookings').select('tracking_id').eq('id', r.booking_id).maybeSingle()
+        trackingId = bk?.tracking_id ?? null
+      }
+      receipt = { ...r, tracking_id: trackingId }
+    }
+  }
+
+  return NextResponse.json({ payment: data, receipt })
 }
