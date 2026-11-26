@@ -1,8 +1,7 @@
 import { Document, Page, Text, View, StyleSheet, Image } from '@react-pdf/renderer'
 import { INVOICE_COMPANY, INVOICE_BANK } from '@/lib/company-info'
-import { LOGO_ICON_DATA_URI } from '@/lib/invoice-logo'
 import { amountInWords } from '@/lib/number-to-words'
-import { SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
+import { LOGO_FULL_WHITE_DATA_URI, SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 
 // BAGDROP — Payment Receipt PDF (customer-facing)
 //
@@ -20,94 +19,99 @@ import { SIGNATURE_STAMP_DATA_URI } from '@/lib/quote-pdf-images'
 // QuotePDF.tsx — so this can be both emailed as a real attachment and
 // uploaded to Storage for a WhatsApp Document-header URL.
 
-const INK    = '#0f172a'   // main text — near-black for strong legibility
-const LABEL  = '#475569'   // field labels (dark slate, not pale grey)
-const MUTED  = '#64748b'
-const LINE   = '#cbd5e1'   // table / box borders
-const SOFT   = '#f1f5f9'
+// Same visual language as the Quote PDF (app/(admin)/admin/quotes/view/[lead_id]/QuotePDF.tsx):
+// orange header band + amber meta strip + left-bordered cards + dark table head + white footer
+// with the signatory stamp. Only the content is receipt-specific.
+const ORANGE = '#f97316'
+const DARK   = '#111827'
+const GREY   = '#4b5563'
+const LIGHT  = '#f9fafb'
+const AMBER  = '#fff7ed'
 const GREEN  = '#15803d'
-const AMBER  = '#b45309'
-const ORANGE = '#FF6300'
-const NAVY   = '#0b1426'
 
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', fontSize: 9.5, color: INK, backgroundColor: '#ffffff', paddingBottom: 96 },
+  page:      { fontFamily: 'Helvetica', backgroundColor: '#fff' },
 
-  // ── Brand header band ─────────────────────────────────────────
-  band:        { backgroundColor: ORANGE, paddingVertical: 16, paddingHorizontal: 32, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  logoRow:     { flexDirection: 'row', alignItems: 'center' },
-  logoTile:    { backgroundColor: '#ffffff', borderRadius: 6, paddingVertical: 5, paddingHorizontal: 7, marginRight: 10 },
-  logoIcon:    { width: 22, height: 29 },
-  logoWordmark:{ fontSize: 22, fontFamily: 'Helvetica-Bold', color: '#ffffff', letterSpacing: 0.5 },
-  logoTagline: { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: '#ffffff', letterSpacing: 1.4, marginTop: 2 },
-  docTitle:    { fontSize: 20, fontFamily: 'Helvetica-Bold', color: '#ffffff', letterSpacing: 1, textAlign: 'right' },
-  docSub:      { fontSize: 9, color: '#ffffff', marginTop: 3, textAlign: 'right' },
-  navyStrip:   { backgroundColor: NAVY, paddingVertical: 6, paddingHorizontal: 32, flexDirection: 'row', justifyContent: 'space-between' },
-  navyText:    { color: '#ffffff', fontSize: 8, letterSpacing: 0.6 },
+  header:    { backgroundColor: ORANGE, padding: '8 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logoFull:  { width: 40, height: 59, marginBottom: 3 },
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
+  qnLabel:   { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
+  qnValue:   { color: 'rgba(255,255,255,0.95)', fontSize: 9.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
+  qnDate:    { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
+  paidTag:   { alignSelf: 'flex-end', marginTop: 4, backgroundColor: '#fff', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 8 },
+  paidTagTx: { color: GREEN, fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1.2 },
 
-  body:        { paddingHorizontal: 32, paddingTop: 18 },
+  strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '6 28', flexDirection: 'row', gap: 24 },
+  stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
+  stripVal:  { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
-  // ── Receipt meta grid ────────────────────────────────────────
-  metaGrid:    { flexDirection: 'row', borderWidth: 1, borderColor: LINE, borderRadius: 4 },
-  metaCell:    { flex: 1, paddingVertical: 8, paddingHorizontal: 10, borderRightWidth: 1, borderRightColor: LINE },
-  metaCellEnd: { flex: 1, paddingVertical: 8, paddingHorizontal: 10 },
-  lbl:         { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: LABEL, textTransform: 'uppercase', letterSpacing: 0.7 },
-  val:         { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: INK, marginTop: 3 },
+  body:      { padding: '14 28 0' },
+  row2:      { flexDirection: 'row', gap: 12, marginBottom: 10 },
 
-  // ── Two-column boxes ─────────────────────────────────────────
-  twoCol:      { flexDirection: 'row', marginTop: 14 },
-  box:         { flex: 1, borderWidth: 1, borderColor: LINE, borderRadius: 4 },
-  boxHead:     { backgroundColor: SOFT, paddingVertical: 5, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: LINE },
-  boxHeadTxt:  { fontSize: 8, fontFamily: 'Helvetica-Bold', color: NAVY, textTransform: 'uppercase', letterSpacing: 0.8 },
-  boxBody:     { padding: 10 },
-  custName:    { fontSize: 13, fontFamily: 'Helvetica-Bold', color: INK },
-  line:        { fontSize: 9.5, color: '#334155', marginTop: 3, lineHeight: 1.35 },
-  kvRow:       { flexDirection: 'row', marginBottom: 5 },
-  kvKey:       { width: 70, fontSize: 8.5, color: LABEL, fontFamily: 'Helvetica-Bold' },
-  kvVal:       { flex: 1, fontSize: 9.5, color: INK, fontFamily: 'Helvetica-Bold' },
+  card:      { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
+  cardDark:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12', borderLeftWidth: 3, borderLeftColor: DARK },
+  cardLbl:   { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  custName:  { color: DARK, fontSize: 14, fontFamily: 'Helvetica-Bold' },
+  custSub:   { color: GREY, fontSize: 9.5, marginTop: 2 },
+  addressVal:{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: DARK },
 
-  // ── Payment table ────────────────────────────────────────────
-  table:       { marginTop: 14, borderWidth: 1, borderColor: LINE, borderRadius: 4 },
-  thRow:       { flexDirection: 'row', backgroundColor: NAVY, paddingVertical: 7, paddingHorizontal: 10 },
-  th:          { color: '#ffffff', fontSize: 8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.7 },
-  tdRow:       { flexDirection: 'row', paddingVertical: 9, paddingHorizontal: 10 },
-  td:          { fontSize: 10, color: INK },
-  tdBold:      { fontSize: 10, color: INK, fontFamily: 'Helvetica-Bold' },
+  jtRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
+  jtCity:    { color: DARK, fontSize: 12, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
+  jtLbl:     { color: GREY, fontSize: 7.5, textAlign: 'center', marginBottom: 1 },
+  jtLine:    { flex: 1, borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginHorizontal: 6 },
+  kv:        { fontSize: 9, color: GREY, marginTop: 3 },
+  kvVal:     { fontFamily: 'Helvetica-Bold', color: DARK },
 
-  // ── Amount + summary ─────────────────────────────────────────
-  lower:       { flexDirection: 'row', marginTop: 14 },
-  words:       { flex: 1, marginRight: 14, justifyContent: 'center' },
-  wordsLbl:    { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: LABEL, textTransform: 'uppercase', letterSpacing: 0.7 },
-  wordsTxt:    { fontSize: 10.5, fontFamily: 'Helvetica-Bold', color: INK, marginTop: 4, lineHeight: 1.35 },
-  summary:     { width: 250, borderWidth: 1, borderColor: LINE, borderRadius: 4 },
-  sumRow:      { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, paddingHorizontal: 10, borderBottomWidth: 1, borderBottomColor: '#e2e8f0' },
-  sumKey:      { fontSize: 9.5, color: '#334155' },
-  sumVal:      { fontSize: 9.5, fontFamily: 'Helvetica-Bold', color: INK },
-  totalRow:    { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: GREEN, paddingVertical: 9, paddingHorizontal: 10 },
-  totalKey:    { fontSize: 9, fontFamily: 'Helvetica-Bold', color: '#ffffff', textTransform: 'uppercase', letterSpacing: 0.8 },
-  totalVal:    { fontSize: 15, fontFamily: 'Helvetica-Bold', color: '#ffffff' },
+  pickupBox: { margin: '0 28 10', backgroundColor: LIGHT, borderRadius: 6, padding: '7 12', borderLeftWidth: 3, borderLeftColor: ORANGE, flexDirection: 'row', flexWrap: 'wrap' },
+  pickupItem:{ fontSize: 9.5, color: GREY, marginRight: 18 },
+  pickupVal: { fontFamily: 'Helvetica-Bold', color: DARK },
 
-  paidBadge:   { alignSelf: 'flex-start', borderWidth: 2, borderColor: GREEN, borderRadius: 4, paddingVertical: 3, paddingHorizontal: 12, marginTop: 8 },
-  paidTxt:     { color: GREEN, fontSize: 14, fontFamily: 'Helvetica-Bold', letterSpacing: 2 },
+  tableWrap: { padding: '0 28' },
+  tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '7 10' },
+  tableH:    { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tableRow:  { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', padding: '9 10', alignItems: 'flex-start' },
+  cell:      { fontSize: 10, color: '#374151' },
+  cellDesc:  { fontSize: 8.5, color: GREY, marginTop: 2 },
+  cIdx:      { width: 22 },
+  cDesc:     { flex: 1 },
+  cMode:     { width: 70 },
+  cRef:      { width: 105 },
+  cAmt:      { width: 85, textAlign: 'right', fontFamily: 'Helvetica-Bold', color: DARK },
 
-  noteBox:     { marginTop: 14, borderLeftWidth: 3, borderLeftColor: ORANGE, backgroundColor: '#fff7ed', paddingVertical: 7, paddingHorizontal: 10 },
-  noteLbl:     { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: '#9a3412', textTransform: 'uppercase', letterSpacing: 0.7 },
-  noteTxt:     { fontSize: 9.5, color: '#7c2d12', marginTop: 3 },
+  tpRow:     { flexDirection: 'row', gap: 12, padding: '12 28 8' },
+  payBox:    { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12' },
+  payLbl:    { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  payRow:    { flexDirection: 'row', marginBottom: 3 },
+  payKey:    { color: GREY, fontSize: 9, width: 62 },
+  payVal:    { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Bold', flex: 1 },
+  upiBox:    { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '3 8', marginTop: 4 },
+  upiText:   { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
 
-  bankRow:     { marginTop: 26, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' },
-  bankBox:     { flex: 1, marginRight: 14 },
-  bankTxt:     { fontSize: 9.5, color: '#334155', marginTop: 4, lineHeight: 1.4 },
-  sigBox:      { alignItems: 'center', width: 170 },
-  sigImage:    { width: 46, height: 46, marginBottom: 2 },
-  sigLine:     { borderTopWidth: 1, borderTopColor: LABEL, paddingTop: 4, width: 160, textAlign: 'center' },
-  sigText:     { color: INK, fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
-  sigSub:      { color: LABEL, fontSize: 7.5, marginTop: 1 },
+  totalsBox: { flex: 1 },
+  totRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  totKey:    { color: GREY, fontSize: 10 },
+  totVal:    { color: DARK, fontSize: 10 },
+  totDivider:{ borderTopWidth: 2, borderTopColor: DARK, paddingTop: 6, marginTop: 3 },
+  grandKey:  { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold' },
+  grandVal:  { color: ORANGE, fontSize: 16, fontFamily: 'Helvetica-Bold' },
+  amtWords:  { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '5 8', marginTop: 6 },
+  amtWLabel: { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  amtWText:  { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Oblique' },
 
-  footer:      { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  footTop:     { borderTopWidth: 2, borderTopColor: ORANGE, backgroundColor: SOFT, paddingVertical: 9, paddingHorizontal: 32 },
-  footBold:    { fontSize: 9, fontFamily: 'Helvetica-Bold', color: NAVY },
-  footLine:    { fontSize: 8, color: '#334155', lineHeight: 1.45 },
-  footNote:    { fontSize: 7.5, color: LABEL, marginTop: 3 },
+  notesBox:  { margin: '4 28 8', backgroundColor: LIGHT, borderRadius: 6, padding: '6 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
+  notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
+  notesText: { color: '#374151', fontSize: 9.5 },
+
+  footer:    { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '10 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  ftLeft:    { flex: 1, justifyContent: 'center' },
+  ftCo:      { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 1, lineHeight: 1.3 },
+  ftNote:    { color: GREY, fontSize: 7, marginTop: 3 },
+  ftRight:   { alignItems: 'center', width: 170 },
+  sigImage:  { width: 46, height: 46, marginBottom: 2 },
+  sigLine:   { borderTopWidth: 1, borderTopColor: '#d1d5db', paddingTop: 4, width: 150, textAlign: 'center' },
+  sigText:   { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
+  sigSub:    { color: GREY, fontSize: 7, marginTop: 1 },
 })
 
 // 'Rs.' not '₹' — react-pdf's default Helvetica font has no glyph for the
@@ -169,7 +173,7 @@ export interface PaymentReceiptPDFProps {
 
 export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
   const {
-    receiptNumber, receiptDate, customerName, customerPhone, customerAddress,
+    receiptNumber, customerName, customerPhone, customerAddress,
     trackingId, amount, paymentDate, paymentMethod, paymentReference,
     route, serviceLabel, bagsCount, pickupDate, notes,
     previousPaidAmount, totalPaidAmount, bookingTotalAmount, approvalStatus,
@@ -177,152 +181,164 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
   const outstandingAmount = bookingTotalAmount != null && totalPaidAmount != null
     ? Math.max(0, bookingTotalAmount - totalPaidAmount)
     : null
-
   const isCash = paymentMethod === 'cash'
   const method = METHOD_LABELS[paymentMethod] ?? paymentMethod
-  const balanceLabel = outstandingAmount != null ? (outstandingAmount > 0 ? fmtRs(outstandingAmount) : 'NIL (Fully Paid)') : null
+  const [fromCity, toCity] = (route ?? '').split(/\s+to\s+|\s*→\s*/i)
 
   return (
     <Document title={`Payment Receipt ${receiptNumber}`}>
       <Page size="A4" style={s.page}>
-        {/* Brand band */}
-        <View style={s.band}>
-          <View style={s.logoRow}>
+
+        {/* ── Header (same as Quote) ── */}
+        <View style={s.header}>
+          <View>
             {/* eslint-disable-next-line jsx-a11y/alt-text */}
-            <View style={s.logoTile}><Image style={s.logoIcon} src={LOGO_ICON_DATA_URI} /></View>
-            <View>
-              <Text style={s.logoWordmark}>BAGDROP</Text>
-              <Text style={s.logoTagline}>BAG. BOX. DELIVERED.</Text>
-            </View>
+            <Image style={s.logoFull} src={LOGO_FULL_WHITE_DATA_URI} />
+            <Text style={s.logoSub}>India&apos;s First Digital Baggage Infrastructure</Text>
           </View>
           <View>
-            <Text style={s.docTitle}>PAYMENT RECEIPT</Text>
-            <Text style={s.docSub}>Receipt No. {receiptNumber}</Text>
+            <Text style={s.qnLabel}>Payment Receipt</Text>
+            <Text style={s.qnValue}>{receiptNumber}</Text>
+            <Text style={s.qnDate}>{fmtDate(paymentDate)}</Text>
+            <View style={s.paidTag}><Text style={s.paidTagTx}>PAID</Text></View>
           </View>
         </View>
-        <View style={s.navyStrip}>
-          <Text style={s.navyText}>{INVOICE_COMPANY.name.toUpperCase()}</Text>
-          <Text style={s.navyText}>GSTIN: {INVOICE_COMPANY.gstin}</Text>
+
+        {/* ── Meta strip ── */}
+        <View style={s.strip}>
+          <View><Text style={s.stripKey}>GSTIN</Text><Text style={s.stripVal}>{INVOICE_COMPANY.gstin}</Text></View>
+          <View><Text style={s.stripKey}>Booking ID</Text><Text style={s.stripVal}>{trackingId}</Text></View>
+          <View><Text style={s.stripKey}>Payment Mode</Text><Text style={s.stripVal}>{method}</Text></View>
+          <View><Text style={s.stripKey}>Receipt Date</Text><Text style={s.stripVal}>{fmtDate(props.receiptDate)}</Text></View>
         </View>
 
         <View style={s.body}>
-          {/* Receipt meta */}
-          <View style={s.metaGrid}>
-            <View style={s.metaCell}><Text style={s.lbl}>Receipt No.</Text><Text style={s.val}>{receiptNumber}</Text></View>
-            <View style={s.metaCell}><Text style={s.lbl}>Receipt Date</Text><Text style={s.val}>{fmtDate(receiptDate)}</Text></View>
-            <View style={s.metaCell}><Text style={s.lbl}>Booking ID</Text><Text style={s.val}>{trackingId}</Text></View>
-            <View style={s.metaCellEnd}><Text style={s.lbl}>Payment Date</Text><Text style={s.val}>{fmtDate(paymentDate)}</Text></View>
-          </View>
-
-          {/* Received from + Shipment details */}
-          <View style={s.twoCol}>
-            <View style={{ ...s.box, marginRight: 12 }}>
-              <View style={s.boxHead}><Text style={s.boxHeadTxt}>Received From</Text></View>
-              <View style={s.boxBody}>
-                <Text style={s.custName}>{customerName}</Text>
-                {customerPhone ? <Text style={s.line}>Phone: {customerPhone}</Text> : null}
-                {customerAddress ? <Text style={s.line}>{customerAddress}</Text> : null}
-                <View style={s.paidBadge}><Text style={s.paidTxt}>PAID</Text></View>
-              </View>
+          {/* ── Received From + Journey ── */}
+          <View style={s.row2}>
+            <View style={s.card}>
+              <Text style={s.cardLbl}>Received From</Text>
+              <Text style={s.custName}>{customerName}</Text>
+              {customerPhone ? <Text style={s.custSub}>{customerPhone}</Text> : null}
             </View>
-            <View style={s.box}>
-              <View style={s.boxHead}><Text style={s.boxHeadTxt}>Shipment Details</Text></View>
-              <View style={s.boxBody}>
-                {route ? <View style={s.kvRow}><Text style={s.kvKey}>Route</Text><Text style={s.kvVal}>{route}</Text></View> : null}
-                {serviceLabel ? <View style={s.kvRow}><Text style={s.kvKey}>Service</Text><Text style={s.kvVal}>{serviceLabel}</Text></View> : null}
-                {bagsCount ? <View style={s.kvRow}><Text style={s.kvKey}>No. of Bags</Text><Text style={s.kvVal}>{bagsCount}</Text></View> : null}
-                {pickupDate ? <View style={s.kvRow}><Text style={s.kvKey}>Pickup Date</Text><Text style={s.kvVal}>{fmtDate(pickupDate)}</Text></View> : null}
-              </View>
-            </View>
-          </View>
-
-          {/* Payment table */}
-          <View style={s.table}>
-            <View style={s.thRow}>
-              <Text style={{ ...s.th, width: '34%' }}>Description</Text>
-              <Text style={{ ...s.th, width: '18%' }}>Mode</Text>
-              <Text style={{ ...s.th, width: '26%' }}>{isCash ? 'Receipt / Note' : 'Reference / UTR'}</Text>
-              <Text style={{ ...s.th, width: '22%', textAlign: 'right' }}>Amount</Text>
-            </View>
-            <View style={s.tdRow}>
-              <Text style={{ ...s.tdBold, width: '34%' }}>Payment towards booking {trackingId}</Text>
-              <Text style={{ ...s.td, width: '18%' }}>{method}</Text>
-              <Text style={{ ...s.td, width: '26%' }}>{paymentReference || '-'}</Text>
-              <Text style={{ ...s.tdBold, width: '22%', textAlign: 'right' }}>{fmtRs(amount)}</Text>
-            </View>
-          </View>
-
-          {/* Amount in words + summary */}
-          <View style={s.lower}>
-            <View style={s.words}>
-              <Text style={s.wordsLbl}>Amount in words</Text>
-              <Text style={s.wordsTxt}>{amountInWords(amount)}</Text>
-              {approvalStatus ? <Text style={{ ...s.line, color: GREEN, fontFamily: 'Helvetica-Bold', marginTop: 8 }}>{approvalStatus}</Text> : null}
-            </View>
-            <View style={s.summary}>
-              {bookingTotalAmount != null ? (
-                <View style={s.sumRow}><Text style={s.sumKey}>Booking Total</Text><Text style={s.sumVal}>{fmtRs(bookingTotalAmount)}</Text></View>
-              ) : null}
-              {!!previousPaidAmount && previousPaidAmount > 0 ? (
-                <View style={s.sumRow}><Text style={s.sumKey}>Previously Paid</Text><Text style={s.sumVal}>{fmtRs(previousPaidAmount)}</Text></View>
-              ) : null}
-              {balanceLabel ? (
-                <View style={s.sumRow}>
-                  <Text style={s.sumKey}>Balance Due</Text>
-                  <Text style={{ ...s.sumVal, color: outstandingAmount && outstandingAmount > 0 ? AMBER : GREEN }}>{balanceLabel}</Text>
+            <View style={s.cardDark}>
+              <Text style={s.cardLbl}>Journey Details</Text>
+              {fromCity && toCity ? (
+                <View style={s.jtRow}>
+                  <View><Text style={s.jtLbl}>From</Text><Text style={s.jtCity}>{fromCity}</Text></View>
+                  <View style={s.jtLine} />
+                  <View><Text style={s.jtLbl}>To</Text><Text style={s.jtCity}>{toCity}</Text></View>
                 </View>
-              ) : null}
-              <View style={s.totalRow}>
-                <Text style={s.totalKey}>Amount Received</Text>
-                <Text style={s.totalVal}>{fmtRs(amount)}</Text>
-              </View>
+              ) : route ? <Text style={s.jtCity}>{route}</Text> : null}
+              {serviceLabel ? <Text style={s.kv}>Service: <Text style={s.kvVal}>{serviceLabel}</Text></Text> : null}
+              {bagsCount ? <Text style={s.kv}>Bags: <Text style={s.kvVal}>{bagsCount}</Text></Text> : null}
             </View>
           </View>
 
-          {notes ? (
-            <View style={s.noteBox}>
-              <Text style={s.noteLbl}>Notes</Text>
-              <Text style={s.noteTxt}>{notes}</Text>
+          {customerAddress ? (
+            <View style={[s.row2, { marginBottom: 10 }]}>
+              <View style={{ flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '6 10' }}>
+                <Text style={[s.cardLbl, { marginBottom: 2 }]}>Pickup Address</Text>
+                <Text style={s.addressVal}>{customerAddress}</Text>
+              </View>
             </View>
           ) : null}
+        </View>
 
-          {/* Bank (only for non-cash) + signatory */}
-          <View style={s.bankRow} wrap={false}>
-            <View style={s.bankBox}>
-              {isCash ? (
-                <>
-                  <Text style={s.lbl}>Mode of payment</Text>
-                  <Text style={s.bankTxt}>Cash received in person at the Bagdrop office.</Text>
-                </>
-              ) : (
-                <>
-                  <Text style={s.lbl}>Deposited to</Text>
-                  <Text style={s.bankTxt}>
-                    {INVOICE_BANK.bankName} · A/C {INVOICE_BANK.accountNo}{'\n'}IFSC {INVOICE_BANK.ifsc} · {INVOICE_BANK.branch}
-                  </Text>
-                </>
-              )}
+        {pickupDate ? (
+          <View style={s.pickupBox}>
+            <Text style={s.pickupItem}>PICK UP DATE: <Text style={s.pickupVal}>{fmtDate(pickupDate)}</Text></Text>
+          </View>
+        ) : null}
+
+        {/* ── Payment table ── */}
+        <View style={s.tableWrap}>
+          <View style={s.tableHead}>
+            <Text style={[s.tableH, s.cIdx]}>#</Text>
+            <Text style={[s.tableH, s.cDesc]}>Description</Text>
+            <Text style={[s.tableH, s.cMode]}>Mode</Text>
+            <Text style={[s.tableH, s.cRef]}>{isCash ? 'Receipt / Note' : 'Reference / UTR'}</Text>
+            <Text style={[s.tableH, s.cAmt, { color: '#fff' }]}>Amount</Text>
+          </View>
+          <View style={s.tableRow}>
+            <Text style={[s.cell, s.cIdx]}>1</Text>
+            <View style={s.cDesc}>
+              <Text style={[s.cell, { fontFamily: 'Helvetica-Bold', color: DARK }]}>Payment received towards booking {trackingId}</Text>
+              {route ? <Text style={s.cellDesc}>{route}{serviceLabel ? ` · ${serviceLabel}` : ''}</Text> : null}
             </View>
-            <View style={s.sigBox}>
-              <Image style={s.sigImage} src={SIGNATURE_STAMP_DATA_URI} />
-              <View style={s.sigLine}>
-                <Text style={s.sigText}>Authorized Signatory</Text>
-                <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>
+            <Text style={[s.cell, s.cMode]}>{method}</Text>
+            <Text style={[s.cell, s.cRef]}>{paymentReference || '-'}</Text>
+            <Text style={[s.cell, s.cAmt]}>{fmtRs(amount)}</Text>
+          </View>
+        </View>
+
+        {/* ── Payment details + totals ── */}
+        <View style={s.tpRow}>
+          <View style={s.payBox}>
+            <Text style={s.payLbl}>{isCash ? 'Payment Details' : 'Deposited To'}</Text>
+            {isCash ? (
+              <View>
+                <View style={s.payRow}><Text style={s.payKey}>Mode:</Text><Text style={s.payVal}>Cash</Text></View>
+                <View style={s.payRow}><Text style={s.payKey}>Received:</Text><Text style={s.payVal}>In person at the Bagdrop office</Text></View>
+                {paymentReference ? <View style={s.payRow}><Text style={s.payKey}>Receipt:</Text><Text style={s.payVal}>{paymentReference}</Text></View> : null}
               </View>
+            ) : (
+              <View>
+                <View style={s.payRow}><Text style={s.payKey}>Bank:</Text><Text style={s.payVal}>{INVOICE_BANK.bankName}</Text></View>
+                <View style={s.payRow}><Text style={s.payKey}>A/C No:</Text><Text style={s.payVal}>{INVOICE_BANK.accountNo}</Text></View>
+                <View style={s.payRow}><Text style={s.payKey}>IFSC:</Text><Text style={s.payVal}>{INVOICE_BANK.ifsc}</Text></View>
+                <View style={s.payRow}><Text style={s.payKey}>Branch:</Text><Text style={s.payVal}>{INVOICE_BANK.branch}</Text></View>
+              </View>
+            )}
+            {approvalStatus ? <View style={s.upiBox}><Text style={[s.upiText, { fontSize: 8.5, color: GREEN }]}>{approvalStatus}</Text></View> : null}
+          </View>
+
+          <View style={s.totalsBox}>
+            {bookingTotalAmount != null ? <View style={s.totRow}><Text style={s.totKey}>Booking Total</Text><Text style={s.totVal}>{fmtRs(bookingTotalAmount)}</Text></View> : null}
+            {!!previousPaidAmount && previousPaidAmount > 0 ? <View style={s.totRow}><Text style={s.totKey}>Previously Paid</Text><Text style={s.totVal}>{fmtRs(previousPaidAmount)}</Text></View> : null}
+            {outstandingAmount != null ? (
+              <View style={s.totRow}>
+                <Text style={s.totKey}>Balance Due</Text>
+                <Text style={[s.totVal, { fontFamily: 'Helvetica-Bold', color: outstandingAmount > 0 ? '#b45309' : GREEN }]}>
+                  {outstandingAmount > 0 ? fmtRs(outstandingAmount) : 'NIL (Fully Paid)'}
+                </Text>
+              </View>
+            ) : null}
+            <View style={[s.totRow, s.totDivider]}>
+              <Text style={s.grandKey}>Amount Received</Text>
+              <Text style={s.grandVal}>{fmtRs(amount)}</Text>
+            </View>
+            <View style={s.amtWords}>
+              <Text style={s.amtWLabel}>Amount in Words</Text>
+              <Text style={s.amtWText}>{amountInWords(amount)}</Text>
             </View>
           </View>
         </View>
 
-        {/* Footer */}
+        {notes ? (
+          <View style={s.notesBox}>
+            <Text style={s.notesLbl}>Notes</Text>
+            <Text style={s.notesText}>{notes}</Text>
+          </View>
+        ) : null}
+
+        {/* ── Footer (same as Quote) ── */}
         <View style={s.footer} fixed>
-          <View style={s.footTop}>
-            <Text style={s.footBold}>{INVOICE_COMPANY.name}</Text>
-            <Text style={s.footLine}>{INVOICE_COMPANY.addressLine1}, {INVOICE_COMPANY.addressLine2}</Text>
-            <Text style={s.footLine}>GSTIN: {INVOICE_COMPANY.gstin} · CIN: {INVOICE_COMPANY.cin}</Text>
-            <Text style={s.footLine}>{INVOICE_COMPANY.phone} · {INVOICE_COMPANY.email} · {INVOICE_COMPANY.web}</Text>
-            <Text style={s.footNote}>This is a computer-generated receipt and does not require a physical signature.</Text>
+          <View style={s.ftLeft}>
+            <Text style={s.ftCo}>BAGDROP LOGISTICS SOLUTIONS PVT. LTD.</Text>
+            <Text style={s.ftLine}>{INVOICE_COMPANY.addressLine1}, {INVOICE_COMPANY.addressLine2}</Text>
+            <Text style={s.ftLine}>GSTIN: {INVOICE_COMPANY.gstin}  ·  CIN: {INVOICE_COMPANY.cin}</Text>
+            <Text style={s.ftLine}>Tel: {INVOICE_COMPANY.phone}  ·  {INVOICE_COMPANY.email}  ·  {INVOICE_COMPANY.web}</Text>
+            <Text style={s.ftNote}>This is a computer-generated receipt.</Text>
+          </View>
+          <View style={s.ftRight}>
+            <Image style={s.sigImage} src={SIGNATURE_STAMP_DATA_URI} />
+            <View style={s.sigLine}>
+              <Text style={s.sigText}>Authorized Signatory</Text>
+              <Text style={s.sigSub}>For Bagdrop Logistics Solutions Pvt. Ltd.</Text>
+            </View>
           </View>
         </View>
+
       </Page>
     </Document>
   )
