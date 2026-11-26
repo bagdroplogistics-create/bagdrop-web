@@ -34,44 +34,44 @@ const s = StyleSheet.create({
 
   header:    { backgroundColor: ORANGE, padding: '8 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   logoFull:  { width: 40, height: 59, marginBottom: 3 },
-  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 8, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
-  qnLabel:   { color: 'rgba(255,255,255,0.85)', fontSize: 7.5, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
-  qnValue:   { color: 'rgba(255,255,255,0.95)', fontSize: 9.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
-  qnDate:    { color: '#fff', fontSize: 18, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
+  logoSub:   { color: 'rgba(255,255,255,0.92)', fontSize: 9.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1, marginTop: 3, textTransform: 'uppercase' },
+  qnLabel:   { color: 'rgba(255,255,255,0.85)', fontSize: 9, letterSpacing: 1.5, textAlign: 'right', textTransform: 'uppercase' },
+  qnValue:   { color: 'rgba(255,255,255,0.95)', fontSize: 11, fontFamily: 'Helvetica-Bold', textAlign: 'right', letterSpacing: 0.4, marginTop: 2 },
+  qnDate:    { color: '#fff', fontSize: 20, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 3 },
   paidTag:   { alignSelf: 'flex-end', marginTop: 4, backgroundColor: '#fff', borderRadius: 3, paddingVertical: 2, paddingHorizontal: 8 },
-  paidTagTx: { color: GREEN, fontSize: 9, fontFamily: 'Helvetica-Bold', letterSpacing: 1.2 },
+  paidTagTx: { color: GREEN, fontSize: 10.5, fontFamily: 'Helvetica-Bold', letterSpacing: 1.2 },
 
   strip:     { backgroundColor: AMBER, borderBottomWidth: 1, borderBottomColor: '#fed7aa', padding: '6 28', flexDirection: 'row', gap: 24 },
-  stripKey:  { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
-  stripVal:  { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Bold', marginTop: 1 },
+  stripKey:  { color: '#9a3412', fontSize: 9, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8 },
+  stripVal:  { color: DARK, fontSize: 10.5, fontFamily: 'Helvetica-Bold', marginTop: 1 },
 
   body:      { padding: '14 28 0' },
   row2:      { flexDirection: 'row', gap: 12, marginBottom: 10 },
 
   card:      { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
   cardDark:  { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12', borderLeftWidth: 3, borderLeftColor: DARK },
-  cardLbl:   { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
-  custName:  { color: DARK, fontSize: 14, fontFamily: 'Helvetica-Bold' },
-  custSub:   { color: GREY, fontSize: 9.5, marginTop: 2 },
-  addressVal:{ fontSize: 11, fontFamily: 'Helvetica-Bold', color: DARK },
+  cardLbl:   { color: GREY, fontSize: 9, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 4 },
+  custName:  { color: DARK, fontSize: 16, fontFamily: 'Helvetica-Bold' },
+  custSub:   { color: GREY, fontSize: 11, marginTop: 2 },
+  addressVal:{ fontSize: 12.5, fontFamily: 'Helvetica-Bold', color: DARK },
 
   jtRow:     { flexDirection: 'row', alignItems: 'center', marginBottom: 4 },
-  jtCity:    { color: DARK, fontSize: 12, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
-  jtLbl:     { color: GREY, fontSize: 7.5, textAlign: 'center', marginBottom: 1 },
+  jtCity:    { color: DARK, fontSize: 14, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', textAlign: 'center' },
+  jtLbl:     { color: GREY, fontSize: 9, textAlign: 'center', marginBottom: 1 },
   jtLine:    { flex: 1, borderBottomWidth: 1, borderBottomColor: '#d1d5db', marginHorizontal: 6 },
-  kv:        { fontSize: 9, color: GREY, marginTop: 3 },
+  kv:        { fontSize: 10.5, color: GREY, marginTop: 3 },
   kvVal:     { fontFamily: 'Helvetica-Bold', color: DARK },
 
   pickupBox: { margin: '0 28 10', backgroundColor: LIGHT, borderRadius: 6, padding: '7 12', borderLeftWidth: 3, borderLeftColor: ORANGE, flexDirection: 'row', flexWrap: 'wrap' },
-  pickupItem:{ fontSize: 9.5, color: GREY, marginRight: 18 },
+  pickupItem:{ fontSize: 11, color: GREY, marginRight: 18 },
   pickupVal: { fontFamily: 'Helvetica-Bold', color: DARK },
 
   tableWrap: { padding: '0 28' },
   tableHead: { flexDirection: 'row', backgroundColor: DARK, borderRadius: '4 4 0 0', padding: '7 10' },
-  tableH:    { color: '#fff', fontSize: 8.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
+  tableH:    { color: '#fff', fontSize: 10, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
   tableRow:  { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: '#e5e7eb', padding: '9 10', alignItems: 'flex-start' },
-  cell:      { fontSize: 10, color: '#374151' },
-  cellDesc:  { fontSize: 8.5, color: GREY, marginTop: 2 },
+  cell:      { fontSize: 11.5, color: '#374151' },
+  cellDesc:  { fontSize: 10, color: GREY, marginTop: 2 },
   cIdx:      { width: 22 },
   cDesc:     { flex: 1 },
   cMode:     { width: 70 },
@@ -80,38 +80,38 @@ const s = StyleSheet.create({
 
   tpRow:     { flexDirection: 'row', gap: 12, padding: '12 28 8' },
   payBox:    { flex: 1, backgroundColor: LIGHT, borderRadius: 6, padding: '9 12' },
-  payLbl:    { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
+  payLbl:    { color: GREY, fontSize: 9, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 5 },
   payRow:    { flexDirection: 'row', marginBottom: 3 },
-  payKey:    { color: GREY, fontSize: 9, width: 62 },
-  payVal:    { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Bold', flex: 1 },
+  payKey:    { color: GREY, fontSize: 10.5, width: 70 },
+  payVal:    { color: DARK, fontSize: 10.5, fontFamily: 'Helvetica-Bold', flex: 1 },
   upiBox:    { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '3 8', marginTop: 4 },
-  upiText:   { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold' },
+  upiText:   { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold' },
 
   totalsBox: { flex: 1 },
   totRow:    { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  totKey:    { color: GREY, fontSize: 10 },
-  totVal:    { color: DARK, fontSize: 10 },
+  totKey:    { color: GREY, fontSize: 11.5 },
+  totVal:    { color: DARK, fontSize: 11.5 },
   totDivider:{ borderTopWidth: 2, borderTopColor: DARK, paddingTop: 6, marginTop: 3 },
-  grandKey:  { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold' },
-  grandVal:  { color: ORANGE, fontSize: 16, fontFamily: 'Helvetica-Bold' },
+  grandKey:  { color: DARK, fontSize: 12.5, fontFamily: 'Helvetica-Bold' },
+  grandVal:  { color: ORANGE, fontSize: 18, fontFamily: 'Helvetica-Bold' },
   amtWords:  { backgroundColor: AMBER, borderWidth: 1, borderColor: '#fed7aa', borderRadius: 4, padding: '5 8', marginTop: 6 },
-  amtWLabel: { color: '#9a3412', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
-  amtWText:  { color: DARK, fontSize: 9, fontFamily: 'Helvetica-Oblique' },
+  amtWLabel: { color: '#9a3412', fontSize: 9, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5, marginBottom: 2 },
+  amtWText:  { color: DARK, fontSize: 10.5, fontFamily: 'Helvetica-Oblique' },
 
   notesBox:  { margin: '4 28 8', backgroundColor: LIGHT, borderRadius: 6, padding: '6 12', borderLeftWidth: 3, borderLeftColor: ORANGE },
-  notesLbl:  { color: GREY, fontSize: 7.5, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
-  notesText: { color: '#374151', fontSize: 9.5 },
+  notesLbl:  { color: GREY, fontSize: 9, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.8, marginBottom: 3 },
+  notesText: { color: '#374151', fontSize: 11 },
 
   footer:    { position: 'absolute', left: 0, right: 0, bottom: 0, backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#e5e7eb', padding: '10 28', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   ftLeft:    { flex: 1, justifyContent: 'center' },
-  ftCo:      { color: DARK, fontSize: 9.5, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
-  ftLine:    { color: GREY, fontSize: 7.5, marginBottom: 1, lineHeight: 1.3 },
-  ftNote:    { color: GREY, fontSize: 7, marginTop: 3 },
+  ftCo:      { color: DARK, fontSize: 11, fontFamily: 'Helvetica-Bold', marginBottom: 2 },
+  ftLine:    { color: GREY, fontSize: 9, marginBottom: 1, lineHeight: 1.3 },
+  ftNote:    { color: GREY, fontSize: 8.5, marginTop: 3 },
   ftRight:   { alignItems: 'center', width: 170 },
   sigImage:  { width: 46, height: 46, marginBottom: 2 },
   sigLine:   { borderTopWidth: 1, borderTopColor: '#d1d5db', paddingTop: 4, width: 150, textAlign: 'center' },
-  sigText:   { color: DARK, fontSize: 8.5, fontFamily: 'Helvetica-Bold' },
-  sigSub:    { color: GREY, fontSize: 7, marginTop: 1 },
+  sigText:   { color: DARK, fontSize: 10, fontFamily: 'Helvetica-Bold' },
+  sigSub:    { color: GREY, fontSize: 8.5, marginTop: 1 },
 })
 
 // 'Rs.' not '₹' — react-pdf's default Helvetica font has no glyph for the
@@ -289,7 +289,7 @@ export default function PaymentReceiptPDF(props: PaymentReceiptPDFProps) {
                 <View style={s.payRow}><Text style={s.payKey}>Branch:</Text><Text style={s.payVal}>{INVOICE_BANK.branch}</Text></View>
               </View>
             )}
-            {approvalStatus ? <View style={s.upiBox}><Text style={[s.upiText, { fontSize: 8.5, color: GREEN }]}>{approvalStatus}</Text></View> : null}
+            {approvalStatus ? <View style={s.upiBox}><Text style={[s.upiText, { fontSize: 10, color: GREEN }]}>{approvalStatus}</Text></View> : null}
           </View>
 
           <View style={s.totalsBox}>
