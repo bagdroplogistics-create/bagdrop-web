@@ -1168,6 +1168,8 @@ export default function QuoteViewPage() {
             `💰 Total Amount: ₹${total}`,
             '',
             ...(pdfUrl ? ['📄 Download your quote PDF:', pdfUrl, ''] : []),
+            '🚚 Delivery Timeline: minimum 3–5 working days from the date we receive your bags.',
+            '',
             'To confirm, simply reply to this message or call/WhatsApp us anytime.',
             '',
             '— Team Bagdrop',
@@ -1364,6 +1366,7 @@ export default function QuoteViewPage() {
         `💰 Total Amount: ${fmt(Number(total))}`,
         '',
         `📄 Download your return quote PDF:`, pdfUrl, '',
+        '🚚 Delivery Timeline: minimum 3–5 working days from the date we receive your bags.', '',
         'To confirm this return journey, simply reply to this message or call/WhatsApp us anytime.',
         '',
         '— Team Bagdrop',
@@ -2437,6 +2440,14 @@ export default function QuoteViewPage() {
               <div style={{ fontSize: '12.5px', color: '#374151' }}>{lead.quote_notes}</div>
             </div>
           )}
+
+          {/* Delivery Timeline (always shown; mirrors QuotePDF.tsx) */}
+          <div style={{ margin: '0 36px 16px', background: '#fff7ed', border: '1px solid #fed7aa', borderRadius: '8px', padding: '12px 14px', borderLeft: '3px solid #f97316' }}>
+            <div style={{ fontSize: '9.5px', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '1px', color: '#9a3412', marginBottom: '4px' }}>Delivery Timeline</div>
+            <div style={{ fontSize: '12.5px', color: '#374151' }}>
+              Delivery to all locations takes a minimum of <b>3–5 working days</b>. The timeline is counted from the date we receive your bags, so it depends on when they are handed over to us.
+            </div>
+          </div>
 
           {/* Terms */}
           <div style={{ margin: '0 36px', borderTop: '1px solid #f3f4f6', paddingTop: '14px', paddingBottom: '20px' }}>

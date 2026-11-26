@@ -697,6 +697,14 @@ export default function QuotePDF(p: QuotePDFProps) {
           </View>
         ) : null}
 
+        {/* ── Delivery Timeline (always shown) ── */}
+        <View style={notesBoxStyle}>
+          <Text style={s.notesLbl}>Delivery Timeline</Text>
+          <Text style={s.notesText}>
+            Delivery to all locations takes a minimum of 3-5 working days. The timeline is counted from the date we receive your bags, so it depends on when they are handed over to us.
+          </Text>
+        </View>
+
         {/* ── T&C ── */}
         <View style={tcSectionStyle}>
           <Text style={s.tcTitle}>Terms &amp; Conditions</Text>

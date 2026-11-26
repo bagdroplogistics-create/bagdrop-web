@@ -128,6 +128,7 @@ export function buildQuoteSentText(q: {
   return [`Dear ${q.name},`, '', 'Your Bagdrop quote is ready.', '',
     `Customer Name: ${q.name}`, `Quote No: ${q.quoteNo}`, `Route: ${route}`, `Bags: ${q.bags}`,
     `Total Amount: ${fmtRs(Number(q.total))}`, '',
+    'Delivery Timeline: minimum 3–5 working days from the date we receive your bags.', '',
     'Please review and confirm. For any questions, call us at +91 63571 15711 or +91 63573 35733.',
     ...(q.pdfUrl ? ['', `Quote PDF: ${q.pdfUrl}`] : []), '',
     'Thank you for choosing Bagdrop.'].join('\n')
