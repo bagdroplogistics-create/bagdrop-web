@@ -511,6 +511,8 @@ export default function QuoteViewPage() {
   // Test Mode toggle (Founder spec 2026-09-22) — see doToggleTestMode below.
   const [togglingTestMode, setTogglingTestMode] = useState(false)
   const [paymentRef, setPaymentRef]             = useState('')
+  // How the customer paid (Step 6). 'cash' = paid in person at the office.
+  const [paymentMethod, setPaymentMethod]       = useState<'upi' | 'cash'>('upi')
   const [showPaymentInput, setShowPaymentInput] = useState(false)
   const [upiId, setUpiId]                       = useState('')
   const [rejectReason, setRejectReason]         = useState('')
@@ -1455,10 +1457,10 @@ export default function QuoteViewPage() {
               title:              lead.title,
               customer_phone:     booking.customer_phone ?? lead.phone,
               amount,
-              payment_method:     'upi',
+              payment_method:     paymentMethod,
               payment_status:     'paid',
               payment_reference:  paymentRef.trim() || undefined,
-              notes:              'Marked Payment Received — Booking Workflow',
+              notes:              paymentMethod === 'cash' ? 'Cash received at office — Booking Workflow' : 'Marked Payment Received — Booking Workflow',
               // "Admin Approve (no customer notification)" — the server must
               // not send the Payment Received receipt either.
               ...(adminApproveMode ? { admin_approve: true } : {}),
@@ -1479,10 +1481,12 @@ export default function QuoteViewPage() {
       }
       await patchBooking('mark_payment', {
         status: 'payment_received',
+        payment_method: paymentMethod,
         ...(paymentRef ? { payment_reference: paymentRef } : {}),
       })
       setShowPaymentInput(false)
       setPaymentRef('')
+      setPaymentMethod('upi')
       setPaymentRefreshTick(t => t + 1)
     } finally {
       submittingPaymentRef.current = false
@@ -2778,7 +2782,7 @@ export default function QuoteViewPage() {
                 {atStatus('payment_pending') && (
                   <div className="rounded-xl border border-yellow-100 bg-yellow-50 p-4 space-y-3">
                     <p className="text-xs font-bold uppercase tracking-widest text-yellow-600">💰 Step 6 — Confirm Payment Received</p>
-                    <p className="text-sm text-yellow-700">Awaiting customer payment. Once received, enter UTR and confirm.</p>
+                    <p className="text-sm text-yellow-700">Awaiting customer payment. Once received, choose UPI or Cash, add the UTR / receipt no. and confirm.</p>
                     {convertibleUploadPayment && (
                       <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-700">
                         An approved payment-proof upload of {fmtRs(convertibleUploadPayment.amount)} is already on file for this booking.
@@ -2787,7 +2791,15 @@ export default function QuoteViewPage() {
                     )}
                     {showPaymentInput ? (
                       <div className="space-y-2">
-                        <input type="text" placeholder="UTR / Payment Reference (optional)"
+                        <div className="flex gap-2">
+                          {([['upi', '📱 UPI / Online'], ['cash', '💵 Cash (paid at office)']] as const).map(([m, label]) => (
+                            <button key={m} type="button" onClick={() => setPaymentMethod(m)}
+                              className={`rounded-lg border px-3 py-2 text-sm font-semibold transition-colors ${paymentMethod === m ? 'border-green-600 bg-green-600 text-white' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'}`}>
+                              {label}
+                            </button>
+                          ))}
+                        </div>
+                        <input type="text" placeholder={paymentMethod === 'cash' ? 'Cash receipt no. / received by (optional)' : 'UTR / Payment Reference (optional)'}
                           value={paymentRef} onChange={e => setPaymentRef(e.target.value)}
                           className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-green-400" />
                         <div className="flex gap-2">
