@@ -62,7 +62,7 @@ export default function MgasPage() {
       <div className="flex items-center justify-between mb-3">
         <div>
           <h1 className="text-xl font-bold text-slate-900">MGAS Baggage Codes</h1>
-          <p className="text-sm text-slate-500">Mumbai T2 arrivals. Request goes out 2 calendar days before arrival (9:00 AM IST).</p>
+          <p className="text-sm text-slate-500">Mumbai T2 arrivals. Request goes out 2 calendar days before arrival (10:00 AM IST).</p>
         </div>
         <button onClick={() => load(true)} className="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border hover:bg-slate-50">
           <RefreshCw className="w-4 h-4" /> Refresh
