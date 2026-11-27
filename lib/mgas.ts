@@ -142,7 +142,7 @@ export async function sendRequests(requestIds: string[], trigger: 'auto' | 'manu
     out.batches++; out.bookings += ids.length
     if (cfg.mode === 'off') continue
 
-    const res = await sendWhatsAppTemplate(target as string, cfg.template, [batch.text])
+    const res = await sendWhatsAppTemplate(target as string, cfg.template, batch.vars)
     const ok = !!res.success
     await supabaseAdmin.from('mgas_batches').update({
       status: ok ? (cfg.mode === 'live' ? 'sent' : 'test_sent') : 'failed',

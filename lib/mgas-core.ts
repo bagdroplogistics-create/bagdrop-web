@@ -20,8 +20,6 @@ import { createHash } from 'crypto'
 
 /** Number of CALENDAR days before arrival that the request is due. */
 export const MGAS_LEAD_DAYS = 2
-/** Max characters of the single template variable per WhatsApp message (Meta limit is 1024; keep headroom). */
-export const MGAS_MAX_VARIABLE_CHARS = 900
 
 /** "Confirmed" = the app-wide definition (Payment Received … before Completed), minus statuses past the airport hand-over. */
 export const MGAS_CONFIRMED_STATUSES: string[] =
@@ -156,30 +154,23 @@ export function buildBookingLine(index: number, b: MgasBooking): string {
   return cleanText(`${index}. ${customerDisplayName(b)} - ${b.tracking_id} - ${bags} bag${bags === 1 ? '' : 's'} - Arrival ${fmtDate(b.pickup_date as string)}`)
 }
 
-export interface MgasBatch { bookings: MgasBooking[]; text: string }
+export interface MgasBatch { bookings: MgasBooking[]; text: string; vars: string[] }
 
-/** Sort deterministically (arrival date, then booking id) and split into batches that fit the template-variable limit. Never drops or duplicates a booking. */
-export function buildBatches(bookings: MgasBooking[], maxChars: number = MGAS_MAX_VARIABLE_CHARS): MgasBatch[] {
-  const sorted = [...bookings].sort((a, b) =>
-    (a.pickup_date ?? '').localeCompare(b.pickup_date ?? '') || a.tracking_id.localeCompare(b.tracking_id))
-  const batches: MgasBatch[] = []
-  let cur: MgasBooking[] = []
-  let lines: string[] = []
-  const SEP = ' • '
-  const flush = () => { if (cur.length) { batches.push({ bookings: cur, text: lines.join(SEP) }); cur = []; lines = [] } }
-  for (const b of sorted) {
-    const line = buildBookingLine(cur.length + 1, b)
-    const projected = [...lines, line].join(SEP).length
-    if (cur.length > 0 && projected > maxChars) {
-      flush()
-      const first = buildBookingLine(1, b)
-      cur.push(b); lines.push(first)
-    } else {
-      cur.push(b); lines.push(line)
-    }
-  }
-  flush()
-  return batches
+/** Template variables for ONE booking: {{1}} customer, {{2}} booking ID, {{3}} bags, {{4}} arrival date. */
+export function buildVariables(b: MgasBooking): string[] {
+  const bags = b.total_bags ?? 0
+  return [cleanText(customerDisplayName(b)), cleanText(b.tracking_id), `${bags}`, fmtDate(b.pickup_date as string)]
+}
+
+/**
+ * One message PER booking (founder decision 2026-11-27): every eligible Mumbai T2
+ * arrival gets its own separate request to the MGAS contact. Deterministic order
+ * (arrival date, then booking ID); never drops or duplicates a booking.
+ */
+export function buildBatches(bookings: MgasBooking[]): MgasBatch[] {
+  return [...bookings]
+    .sort((x, y) => (x.pickup_date ?? '').localeCompare(y.pickup_date ?? '') || x.tracking_id.localeCompare(y.tracking_id))
+    .map(b => ({ bookings: [b], vars: buildVariables(b), text: buildBookingLine(1, b) }))
 }
 
 /** Idempotency key for one batch: same trigger + same IST day + same booking set => same key. */
@@ -254,5 +245,3 @@ export function planBooking(b: MgasBooking, today: string, approvedReview = fals
   return out('wait', `Due ${requestDueDate(arrival as string)}`)
 }
 
-/** Builds the dry-run / real message body for the template variable list. */
-export function buildMessage(bookings: MgasBooking[]): MgasBatch[] { return buildBatches(bookings) }
