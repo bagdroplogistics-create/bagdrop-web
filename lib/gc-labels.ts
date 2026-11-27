@@ -2,6 +2,15 @@
 // LR detail page. Download and Print are deliberately separate actions that
 // build the exact same PDF (see components/admin/GCLabelsPDF.tsx).
 
+// The label's DELIVER TO address: the most complete one available. The LR's own address can be
+// just a city ("Anand") when it was copied from the booking before the full address was entered,
+// so also consider the booking's current drop address and keep the longest non-empty value.
+export function fullestAddress(...candidates: Array<string | null | undefined>): string | null {
+  const c = candidates.map(x => (x ?? '').trim()).filter(Boolean)
+  if (c.length === 0) return null
+  return c.reduce((best, x) => (x.length > best.length ? x : best))
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export async function buildGcLabelsBlob(lr: any): Promise<Blob> {
   const { pdf } = await import('@react-pdf/renderer')
@@ -13,7 +22,7 @@ export async function buildGcLabelsBlob(lr: any): Promise<Blob> {
       fromCity: lr.from_city,
       toCity: lr.to_city,
       deliverToName: lr.consignee_name,
-      deliverToAddress: lr.delivery_address || lr.consignee_address,
+      deliverToAddress: fullestAddress(lr.delivery_address, lr.consignee_address, lr.booking_drop_address),
       totalBags: lr.total_bags ?? 1,
       contents: lr.content_description,
       // Labels always read: Booked At = pickup city, Delivery At = Godown, LR Type = TBB (Manual)

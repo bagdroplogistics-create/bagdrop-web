@@ -28,7 +28,15 @@ export async function GET(req: NextRequest, { params }: Params) {
   if (!canAccessBranch(access, data.branch_id)) {
     return NextResponse.json({ error: 'This key does not have access to that LR' }, { status: 403 })
   }
-  return NextResponse.json({ lr: data })
+  // Extra, read-only field for the GC bag label: the booking's CURRENT drop address.
+  // lrs.consignee_address is copied once at LR creation, so it can be just a city
+  // (e.g. "Anand") if the full address was added to the booking afterwards.
+  let bookingDropAddress: string | null = null
+  if (data.booking_id) {
+    const { data: bk } = await supabaseAdmin.from('bookings').select('drop_address').eq('id', data.booking_id).maybeSingle()
+    bookingDropAddress = (bk?.drop_address as string | null) ?? null
+  }
+  return NextResponse.json({ lr: { ...data, booking_drop_address: bookingDropAddress } })
 }
 
 // ── PATCH /api/admin/lrs/[id] ───────────────────────────────
