@@ -363,7 +363,10 @@ export async function runScheduledSummary(
   // longer optional/env-driven — sendWhatsAppTemplateMeta itself already
   // reports a clean 'WhatsApp not configured' error per-recipient if
   // WHATSAPP_ACCESS_TOKEN is ever missing, so nothing silently no-ops.
-  const templateId = 'confirmed_ongoing_summary'
+  // Approved Fast2SMS/Meta template name (Message ID 30452). Was 'confirmed_ongoing_summary'
+  // — that name does not exist on the account ("Template not found"), so every
+  // send failed until this was pointed at the approved _v4 template.
+  const templateId = 'confirmed_ongoing_summary_v4'
   const fastResults: FanOutResult[] = []
   for (const vars of messages) {
     fastResults.push(await sendToAllRecipients(recipients, templateId, vars))
