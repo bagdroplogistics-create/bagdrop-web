@@ -2,6 +2,7 @@ import {
   Document, Page, Text, View, StyleSheet, Image,
 } from '@react-pdf/renderer'
 import { LR_COMPANY, LR_CHARGE_FIELDS } from '@/lib/lr-constants'
+import { cityOnly } from './GCLabelsPDF'
 
 // QR code: generated on the fly via the same api.qrserver.com endpoint
 // already used for the UPI payment QR in app/api/admin/bookings/[id]/route.ts
@@ -61,115 +62,96 @@ const GREY   = '#4b5563'
 const LIGHT  = '#f9fafb'
 const BORDER = '#d1d5db'
 
+// A4 PORTRAIT, TWO COPIES PER SHEET (founder request 2026-11-27): the LR is printed as two
+// identical, separate LRs stacked on one A4 page (top + bottom half, cut line between), so the
+// whole design below is a compact version sized to fit one half (595 x 421 pt).
 const s = StyleSheet.create({
-  page: { fontFamily: 'Helvetica', backgroundColor: '#fff', paddingBottom: 30, fontSize: 8 },
+  page: { fontFamily: 'Helvetica', backgroundColor: '#fff', fontSize: 7 },
+  copy: { width: 595.28, height: 420, overflow: 'hidden' },
 
   // Header
-  header:  { backgroundColor: ORANGE, padding: '16 24', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  // Full white BagDrop logo lockup (icon + wordmark, baked into the brand
-  // asset) — replaces the plain "BAGDROP" text mark, matching QuotePDF.tsx's
-  // header treatment. Sized down from Quote's 57x84 to fit LR's shorter
-  // header padding ('16 24' vs Quote's '20 28') while keeping the same
-  // 920:1359 aspect ratio.
-  logoFull:{ width: 36, height: 53, marginBottom: 3 },
-  logoSub: { color: 'rgba(255,255,255,0.92)', fontSize: 7, fontFamily: 'Helvetica-Bold', letterSpacing: 0.8, marginTop: 4, textTransform: 'uppercase' },
+  header:  { backgroundColor: ORANGE, padding: '6 14', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  logoFull:{ width: 24, height: 35, marginBottom: 2 },
+  logoSub: { color: 'rgba(255,255,255,0.92)', fontSize: 5, fontFamily: 'Helvetica-Bold', letterSpacing: 0.6, marginTop: 2, textTransform: 'uppercase' },
   titleC:  { alignItems: 'center' },
-  titleTxt:{ color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
-  titleSub:{ color: 'rgba(255,255,255,0.85)', fontSize: 7.5, marginTop: 2 },
-  gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 7, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
-  // GC No. and Date font sizes interchanged per founder feedback — the Date
-  // is now the prominent large line (was 7.5px), GC No. is now the smaller
-  // secondary line (was 13px), matching the same Date-forward hierarchy
-  // already used in QuotePDF.tsx's header (qnValue/qnDate).
-  gcValue: { color: '#fff', fontSize: 7.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
-  gcDate:  { color: '#fff', fontSize: 13, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 2 },
-  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
-  qrBox:   { width: 40, height: 40, backgroundColor: '#fff', borderRadius: 3, padding: 2 },
+  titleTxt:{ color: '#fff', fontSize: 11, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase' },
+  titleSub:{ color: 'rgba(255,255,255,0.85)', fontSize: 6, marginTop: 1 },
+  gcLabel: { color: 'rgba(255,255,255,0.8)', fontSize: 5.5, letterSpacing: 1, textAlign: 'right', textTransform: 'uppercase' },
+  gcValue: { color: '#fff', fontSize: 6.5, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 1 },
+  gcDate:  { color: '#fff', fontSize: 10, fontFamily: 'Helvetica-Bold', textAlign: 'right', marginTop: 1 },
+  headerRight: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  qrBox:   { width: 32, height: 32, backgroundColor: '#fff', borderRadius: 2, padding: 1.5 },
 
   // Company strip
-  coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '8 24', flexDirection: 'row', justifyContent: 'space-between' },
-  coLine:  { fontSize: 7, color: '#4b5563', lineHeight: 1.4 },
-  // Second line within a stacked pair (address under the company name,
-  // email under the second phone number) — adds breathing room below the
-  // line above it without shifting single-line columns (Tel / web) out of
-  // alignment with the rest of the row.
-  coLineGap: { fontSize: 7, color: '#4b5563', lineHeight: 1.4, marginTop: 3 },
-  // Company name — bold for stronger visual emphasis vs. the address line
-  // below it, which stays regular weight.
-  coName:  { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK },
-  // Contact details as three evenly-spaced columns (Tel / phone+email /
-  // web) instead of two stacked lines, for better balance on the strip.
-  coContactRow: { flexDirection: 'row', gap: 20 },
+  coStrip: { backgroundColor: LIGHT, borderBottomWidth: 1, borderBottomColor: BORDER, padding: '4 14', flexDirection: 'row', justifyContent: 'space-between' },
+  coLine:  { fontSize: 5.8, color: '#4b5563', lineHeight: 1.3 },
+  coLineGap: { fontSize: 5.8, color: '#4b5563', lineHeight: 1.3, marginTop: 1.5 },
+  coName:  { fontSize: 6.3, fontFamily: 'Helvetica-Bold', color: DARK },
+  coContactRow: { flexDirection: 'row', gap: 12 },
 
   // Grid
-  body:    { margin: '0 24' },
-  gridWrap:{ borderTopWidth: 1, borderLeftWidth: 1, borderColor: BORDER, marginTop: 10 },
+  body:    { margin: '0 14' },
+  gridWrap:{ borderTopWidth: 1, borderLeftWidth: 1, borderColor: BORDER, marginTop: 5 },
   row:     { flexDirection: 'row' },
 
-  cell:    { borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '4 6' },
-  cellLbl: { fontSize: 6.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
-  cellVal: { fontSize: 8.5, color: DARK, fontFamily: 'Helvetica-Bold' },
+  cell:    { borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '2.5 5' },
+  cellLbl: { fontSize: 5.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1 },
+  cellVal: { fontSize: 7.2, color: DARK, fontFamily: 'Helvetica-Bold' },
 
-  sectionHead: { backgroundColor: DARK, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '3 6' },
-  sectionHeadTxt: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.6 },
+  sectionHead: { backgroundColor: DARK, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '2 5' },
+  sectionHeadTxt: { color: '#fff', fontSize: 5.8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', letterSpacing: 0.5 },
 
-  partyBox: { padding: '5 6', borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER },
-  partyName:{ fontSize: 9, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
-  partyLine:{ fontSize: 7.5, color: '#4b5563', marginBottom: 1.5 },
-  // Consignor/Consignee/Delivery address text — bigger + bolder than the
-  // mobile/GSTIN partyLine rows, mirroring QuotePDF.tsx's addressVal
-  // treatment for Pickup/Delivery Address values.
-  addressVal: { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1.5 },
+  partyBox: { padding: '3 5', borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER },
+  partyName:{ fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1 },
+  partyLine:{ fontSize: 6.3, color: '#4b5563', marginBottom: 1 },
+  addressVal: { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1 },
 
-  // Value column widened from 46 to 58 — landscape's wider Charges sidebar
-  // (roughly 220pt vs. portrait's ~160pt, see the file-header comment)
-  // leaves comfortable room for a wider figure column without cramping the
-  // label column.
-  chargeRow:  { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#e5e7eb', padding: '2.5 6' },
-  chargeLbl:  { fontSize: 7, color: '#4b5563', flex: 1 },
-  chargeVal:  { fontSize: 7, color: DARK, width: 58, textAlign: 'right' },
-  chargeTotalRow: { flexDirection: 'row', padding: '4 6', backgroundColor: LIGHT, borderTopWidth: 1, borderColor: BORDER },
-  chargeTotalLbl: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', flex: 1 },
-  chargeTotalVal: { fontSize: 7.5, color: DARK, fontFamily: 'Helvetica-Bold', width: 58, textAlign: 'right' },
-  grandTotalRow:  { flexDirection: 'row', padding: '5 6', backgroundColor: ORANGE },
-  grandTotalLbl:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', flex: 1 },
-  grandTotalVal:  { fontSize: 8.5, color: '#fff', fontFamily: 'Helvetica-Bold', width: 58, textAlign: 'right' },
+  chargeRow:  { flexDirection: 'row', borderBottomWidth: 1, borderColor: '#e5e7eb', padding: '1.6 5' },
+  chargeLbl:  { fontSize: 6, color: '#4b5563', flex: 1 },
+  chargeVal:  { fontSize: 6, color: DARK, width: 46, textAlign: 'right' },
+  chargeTotalRow: { flexDirection: 'row', padding: '2.5 5', backgroundColor: LIGHT, borderTopWidth: 1, borderColor: BORDER },
+  chargeTotalLbl: { fontSize: 6.6, color: DARK, fontFamily: 'Helvetica-Bold', flex: 1 },
+  chargeTotalVal: { fontSize: 6.6, color: DARK, fontFamily: 'Helvetica-Bold', width: 46, textAlign: 'right' },
+  grandTotalRow:  { flexDirection: 'row', padding: '3.5 5', backgroundColor: ORANGE },
+  grandTotalLbl:  { fontSize: 7.5, color: '#fff', fontFamily: 'Helvetica-Bold', flex: 1 },
+  grandTotalVal:  { fontSize: 7.5, color: '#fff', fontFamily: 'Helvetica-Bold', width: 56, textAlign: 'right' },
 
   // Package table
   pkgHead:  { flexDirection: 'row', backgroundColor: DARK, borderRightWidth: 1, borderColor: BORDER },
-  pkgHcell: { color: '#fff', fontSize: 7, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', padding: '4 6', borderRightWidth: 1, borderColor: '#374151' },
+  pkgHcell: { color: '#fff', fontSize: 5.8, fontFamily: 'Helvetica-Bold', textTransform: 'uppercase', padding: '2.5 5', borderRightWidth: 1, borderColor: '#374151' },
   pkgRow:   { flexDirection: 'row', borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER },
-  pkgCell:  { fontSize: 8, color: DARK, padding: '5 6', borderRightWidth: 1, borderColor: BORDER },
+  pkgCell:  { fontSize: 6.8, color: DARK, padding: '3.5 5', borderRightWidth: 1, borderColor: BORDER },
 
-  // Footer grid
+  // Footer grid (Insurance / GST Payable / Payment Terms card)
   footRow:  { flexDirection: 'row' },
-  footCell: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '5 6' },
-  footLbl:  { fontSize: 6.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 2 },
-  footVal:  { fontSize: 8, color: DARK, fontFamily: 'Helvetica-Bold' },
+  footCell: { flex: 1, borderRightWidth: 1, borderBottomWidth: 1, borderColor: BORDER, padding: '3 5' },
+  footLbl:  { fontSize: 5.5, color: GREY, textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 1.5 },
+  footVal:  { fontSize: 7, color: DARK, fontFamily: 'Helvetica-Bold' },
+  yesNo:    { flexDirection: 'row', gap: 16, marginTop: 2 },
 
-  // Footer band — Delivery At / Remarks / "For {company}" / stamp+signature
-  // all in ONE bordered row (landscape redesign; previously two separate
-  // full-width rows — see file-header comment). bbCell reused for the
-  // Delivery At/Remarks segments (same look as the rest of the grid's
-  // labelled cells); the signature segments get their own treatment since
-  // they need centered/stacked content rather than a label-over-value pair.
-  footerBand: { margin: '10 24 0', flexDirection: 'row', borderWidth: 1, borderColor: BORDER, alignItems: 'stretch' },
-  // Rebalanced from an even 1 / 1.7 / 1.3 split — the long registered
-  // company name ("For Bagdrop Logistics Solutions Private Limited") was
-  // wrapping to two lines in sigCoCell at 1.3. Delivery At rarely needs
-  // more than a short "Door Dly" (0.8 is plenty); the extra share goes to
-  // sigCoCell so the company line fits on one line.
-  bbCell:     { flex: 0.8, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
-  bbCellWide: { flex: 1.4, padding: '4 6', borderRightWidth: 1, borderColor: BORDER },
-  sigCoCell:  { flex: 1.6, padding: '6 8', borderRightWidth: 1, borderColor: BORDER, justifyContent: 'center' },
-  sigCo:      { fontSize: 8.5, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 2 },
-  sigLine2:   { fontSize: 7, color: GREY, marginBottom: 1 },
-  sigStampCell: { width: 150, padding: '6 8', alignItems: 'center', justifyContent: 'center' },
-  stampImg:   { width: 46, height: 46, marginBottom: 2 },
-  sigBox:     { borderTopWidth: 1, borderColor: DARK, paddingTop: 3, width: 130, textAlign: 'center' },
-  sigTxt:     { fontSize: 7.5, fontFamily: 'Helvetica-Bold', color: DARK },
-  sigSub:     { fontSize: 6.5, color: GREY, marginTop: 2 },
+  // Footer band
+  footerBand: { margin: '5 14 0', flexDirection: 'row', borderWidth: 1, borderColor: BORDER, alignItems: 'stretch' },
+  bbCell:     { flex: 0.8, padding: '3 5', borderRightWidth: 1, borderColor: BORDER },
+  bbCellWide: { flex: 1.4, padding: '3 5', borderRightWidth: 1, borderColor: BORDER },
+  sigCoCell:  { flex: 1.6, padding: '4 6', borderRightWidth: 1, borderColor: BORDER, justifyContent: 'center' },
+  sigCo:      { fontSize: 7, fontFamily: 'Helvetica-Bold', color: DARK, marginBottom: 1.5 },
+  sigLine2:   { fontSize: 6, color: GREY, marginBottom: 1 },
+  sigStampCell: { width: 110, padding: '4 6', alignItems: 'center', justifyContent: 'center' },
+  stampImg:   { width: 34, height: 34, marginBottom: 1 },
+  sigBox:     { borderTopWidth: 1, borderColor: DARK, paddingTop: 2, width: 96, textAlign: 'center' },
+  sigTxt:     { fontSize: 6.5, fontFamily: 'Helvetica-Bold', color: DARK },
+  sigSub:     { fontSize: 5.5, color: GREY, marginTop: 1 },
+
+  cutLine:    { borderTopWidth: 0.8, borderStyle: 'dashed', borderColor: '#9ca3af' },
 })
+
+// Standard weights by bag count (founder, 2026-11-27): bags -> [actual kg, chargeable kg].
+// Applies to 1-4 bags; any other count falls back to the weights stored on the LR.
+const STANDARD_WEIGHTS: Record<number, [number, number]> = { 1: [23, 25], 2: [45, 45], 3: [69, 70], 4: [92, 95] }
+export function lrWeights(bags: number | null | undefined, actual: number | null, chargeable: number | null): [number | null, number | null] {
+  const std = STANDARD_WEIGHTS[Math.floor(Number(bags) || 0)]
+  return std ? [std[0], std[1]] : [actual, chargeable]
+}
 
 function fmtRs(n: number | null | undefined) {
   if (n == null) return '0.00'
@@ -250,7 +232,7 @@ export interface LRPDFProps {
   branchEmail:         string | null
 }
 
-export default function LRPDF(p: LRPDFProps) {
+function LRCopy(p: LRPDFProps) {
   // Branch letterhead falls back field-by-field to LR_COMPANY — a branch
   // missing just a phone or GST number (not yet filled in) still shows the
   // rest of its own details rather than silently reverting the whole strip
@@ -261,9 +243,12 @@ export default function LRPDF(p: LRPDFProps) {
   const coPhone   = p.branchContactNumber || LR_COMPANY.phone
   const coEmail   = p.branchEmail         || LR_COMPANY.email
 
+  // "At Branch" in the Payment Terms card = the issuing city, e.g. "at MUMBAI".
+  const [aW, cW] = lrWeights(p.totalBags, p.actualWeight, p.chargeableWeight)
+  const atBranch = (cityOnly(p.bookingOffice || p.fromCity) || p.bookingOffice || p.fromCity || '').toUpperCase()
+
   return (
-    <Document>
-      <Page size="A4" orientation="landscape" style={s.page}>
+    <View style={s.copy}>
 
         {/* ── Header ── */}
         <View style={s.header}>
@@ -413,8 +398,8 @@ export default function LRPDF(p: LRPDFProps) {
                 <View style={s.pkgRow}>
                   <Text style={[s.pkgCell, { flex: 0.7 }]}>{p.totalBags ?? 1}</Text>
                   <Text style={[s.pkgCell, { flex: 1.6 }]}>{p.contentDescription ?? '—'}</Text>
-                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.actualWeight != null ? `${p.actualWeight} kg` : '—'}</Text>
-                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{p.chargeableWeight != null ? `${p.chargeableWeight} kg` : '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{aW != null ? `${aW} kg` : '—'}</Text>
+                  <Text style={[s.pkgCell, { flex: 0.9 }]}>{cW != null ? `${cW} kg` : '—'}</Text>
                   <Text style={[s.pkgCell, { flex: 1.3 }]}>
                     {p.sizeL != null && p.sizeW != null && p.sizeH != null ? `${p.sizeL} × ${p.sizeW} × ${p.sizeH}` : '—'}
                   </Text>
@@ -422,23 +407,32 @@ export default function LRPDF(p: LRPDFProps) {
                   <Text style={[s.pkgCell, { flex: 1, borderRightWidth: 0 }]}>{p.tiTag ?? '—'}</Text>
                 </View>
 
-                {/* Insurance / GST Payable / Payment Terms / LR Type */}
+                {/* Insurance (both options shown, tick by hand) / GST Payable By (left blank) /
+                    Payment Terms card: LR Type + At Branch */}
                 <View style={s.footRow}>
                   <View style={s.footCell}>
                     <Text style={s.footLbl}>Material Insured By Customer</Text>
-                    <Text style={s.footVal}>{p.insuranceByCustomer ? 'Yes' : 'No'}</Text>
+                    <View style={s.yesNo}>
+                      <Text style={s.footVal}>YES</Text>
+                      <Text style={s.footVal}>NO</Text>
+                    </View>
                   </View>
                   <View style={s.footCell}>
                     <Text style={s.footLbl}>GST Payable By</Text>
-                    <Text style={s.footVal}>{p.gstPayableBy ?? '—'}</Text>
+                    <Text style={s.footVal}> </Text>
                   </View>
-                  <View style={s.footCell}>
-                    <Text style={s.footLbl}>Payment Terms</Text>
-                    <Text style={s.footVal}>{p.paymentTerms ?? '—'}</Text>
-                  </View>
-                  <View style={[s.footCell, { borderRightWidth: 1 }]}>
-                    <Text style={s.footLbl}>LR Type</Text>
-                    <Text style={s.footVal}>{p.lrType ?? '—'}</Text>
+                  <View style={[s.footCell, { borderRightWidth: 1, flex: 1.6, padding: 0 }]}>
+                    <Text style={[s.footLbl, { textAlign: 'center', paddingTop: 3, marginBottom: 0 }]}>Payment Terms</Text>
+                    <View style={s.row}>
+                      <View style={{ flex: 1, padding: '2 5', borderRightWidth: 1, borderColor: BORDER }}>
+                        <Text style={s.footLbl}>LR Type</Text>
+                        <Text style={s.footVal}>{p.lrType ?? '—'}</Text>
+                      </View>
+                      <View style={{ flex: 1, padding: '2 5' }}>
+                        <Text style={s.footLbl}>At Branch</Text>
+                        <Text style={s.footVal}>{atBranch ? `at ${atBranch}` : '—'}</Text>
+                      </View>
+                    </View>
                   </View>
                 </View>
               </View>
@@ -498,6 +492,17 @@ export default function LRPDF(p: LRPDFProps) {
           </View>
         </View>
 
+    </View>
+  )
+}
+
+export default function LRPDF(p: LRPDFProps) {
+  return (
+    <Document>
+      <Page size="A4" style={s.page}>
+        <LRCopy {...p} />
+        <View style={s.cutLine} />
+        <LRCopy {...p} />
       </Page>
     </Document>
   )
