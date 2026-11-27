@@ -6,7 +6,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import {
   LayoutDashboard, Package, Users, UserCheck, FileText,
   Receipt, CreditCard, BarChart3, Settings, LogOut,
-  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact, Route, AlertTriangle,
+  ChevronRight, Menu, X, Luggage, Truck, Map, ClipboardList, Building2, Users2, Contact, Route, AlertTriangle, Plane,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
 
@@ -39,6 +39,7 @@ const NAV = [
       { label: 'Group Bookings',  href: '/admin/group-bookings', icon: Users2 },
       { label: 'Payment Received', href: '/admin/payments',  icon: CreditCard },
       { label: 'LR',               href: '/admin/lrs',       icon: FileText   },
+      { label: 'MGAS Codes',       href: '/admin/mgas',      icon: Plane      },
       { label: 'Tripsheet',        href: '/admin/trip-sheets', icon: Truck    },
       { label: 'Invoice',          href: '/admin/invoices',  icon: Receipt    },
     ],
