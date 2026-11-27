@@ -66,8 +66,8 @@ function serviceKind(b: Pick<MgasBooking, 'service_type' | 'service_label'>): 'a
 }
 
 const T2_LABEL = /^mumbai\s+airport\s*\(?\s*(t2|terminal\s*2)\s*\)?$/
-const T1_LABEL = /(\bt1\b|terminal\s*1)/
-const T2_TEXT = /(\bt2\b|terminal\s*2)/i
+const T1_LABEL = /(\bt[\s-]?1\b|terminal[\s-]*(no\.?\s*)?(1|i|one)\b)/i
+// Matches T2, T-2, Terminal 2, Terminal-2, Terminal No. 2, Terminal II, Terminal Two — incl. inside\n// \"Chhatrapati Shivaji Maharaj International Airport Terminal 2\" (CSMIA).\nconst T2_TEXT = /(\bt[\s-]?2\b|terminal[\s-]*(no\.?\s*)?(2|ii|two)\b)/i
 
 export function normalizeLabel(s: string | null | undefined): string {
   return (s ?? '').toLowerCase().replace(/\s+/g, ' ').trim()
