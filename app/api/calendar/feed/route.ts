@@ -133,7 +133,8 @@ function buildEvent(kind: 'Pickup' | 'Delivery', r: Row, stamp: string): string[
     route && `Route: ${route}`,
     bags && `Bags: ${bags}`,
     slot && `Time: ${slot}`,
-    where && `${kind === 'Pickup' ? 'Pickup' : 'Drop'} address: ${where}`,
+    `Pickup address: ${r.pickup_address || '—'}`,
+    `Delivery address: ${r.drop_address || '—'}`,
     r.driver_name && `Driver: ${r.driver_name}${r.vehicle_number ? ' (' + r.vehicle_number + ')' : ''}`,
   ].filter(Boolean).join('\n')
   lines.push(`DESCRIPTION:${esc(desc)}`)

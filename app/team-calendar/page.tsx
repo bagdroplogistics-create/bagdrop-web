@@ -167,7 +167,6 @@ export default async function TeamCalendarPage({ searchParams }: { searchParams:
               const r = i.row
               const name = formatCustomerName(r.title, r.customer_name) || r.customer_name || 'Customer'
               const route = [r.from_city, r.to_city].filter(Boolean).join(' → ')
-              const addr = i.kind === 'Pickup' ? r.pickup_address : r.drop_address
               const pickup = i.kind === 'Pickup'
               return (
                 <li key={`${r.tracking_id}-${i.kind}-${idx}`} className={`rounded-xl border-l-4 bg-white p-4 shadow-sm ring-1 ring-gray-200 ${pickup ? 'border-l-indigo-600' : 'border-l-emerald-600'}`}>
@@ -178,7 +177,8 @@ export default async function TeamCalendarPage({ searchParams }: { searchParams:
                   </div>
                   <p className="mt-2 text-lg font-semibold text-gray-900">{name}</p>
                   <p className="text-sm text-gray-700">{route}{r.total_bags != null ? ` · ${r.total_bags} bag${r.total_bags === 1 ? '' : 's'}` : ''}</p>
-                  {addr && <p className="mt-1 text-sm text-gray-600">📍 {addr}</p>}
+                  <p className="mt-2 text-sm text-gray-700"><span className="font-semibold text-indigo-700">Pickup address:</span> {r.pickup_address || '—'}</p>
+                  <p className="mt-1 text-sm text-gray-700"><span className="font-semibold text-emerald-700">Delivery address:</span> {r.drop_address || '—'}</p>
                   {r.driver_name && <p className="mt-1 text-sm text-gray-600">🚗 {r.driver_name}{r.vehicle_number ? ` (${r.vehicle_number})` : ''}</p>}
                   {r.customer_phone && <a href={`tel:${r.customer_phone}`} className="mt-2 inline-block text-sm font-medium text-orange-600">📞 {r.customer_phone}</a>}
                 </li>
